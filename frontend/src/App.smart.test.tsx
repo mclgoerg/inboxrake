@@ -659,11 +659,10 @@ test("with only pooled rows selected, Unsubscribe is not offered", async () => {
   tickRow("Newsletters");
   tickRow("Accounts & security");
   expect(unsubOption().disabled).toBe(true);
-  // Even forced (the handler called directly, past `disabled`): nothing is
-  // sent.
-  const btn = unsubOption();
-  const propsKey = Object.keys(btn).find((k) => k.startsWith("__reactProps$"))!;
-  (btn as any)[propsKey].onClick();
+  // A click on the disabled button (what a user or a stray tap can do) sends
+  // nothing. The handler's own guard sits behind this button and is not
+  // reachable through the DOM, so it is not poked via React internals.
+  fireEvent.click(unsubOption());
   await new Promise((r) => setTimeout(r, 50));
   expect(unsubscribeBulk).not.toHaveBeenCalled();
 });

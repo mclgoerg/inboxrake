@@ -58,7 +58,15 @@ export default defineConfig(({ mode }) => ({
     __APP_VERSION__: JSON.stringify(pkg.version),
     ...(mode === "demo" ? { "import.meta.env.VITE_DEMO": '"1"' } : {}),
   },
-  test: { setupFiles: ["./src/testSetup.ts"] },
+  test: {
+    setupFiles: ["./src/testSetup.ts"],
+    // Full-App tests mount the whole app and take 1-1.5 s each on an idle
+    // core; on a loaded CI runner (shared cores, parallel workers) that
+    // multiplies. Throttled to ~1/8 of a core the slowest still finished
+    // in ~7 s, so 5 s (the default) tripped on load alone. Only a failing
+    // test ever waits this long.
+    testTimeout: 15_000,
+  },
   // the demo's Pyodide worker is a module worker (it import()s pyodide.mjs)
   worker: { format: "es" },
   server: {

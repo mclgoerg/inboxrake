@@ -153,15 +153,19 @@ test("selected mails (mails view) are counted by their UIDs", async () => {
       "Trash", null));
 });
 
-test("Delete older than N days: asks for N, counts live, confirms, sends the counted UIDs",
+/* "Delete older than N days" is three short tests, not one long one: every
+ * dialog step waits out the arming delay, so a single test chaining all of
+ * them used ~2.5 s unloaded and hit the 5 s limit on a busy CI runner. */
+const openOlderThan = async () => {
+  panel("trash");
+  await screen.findByText("Again");
+  fireEvent.click(screen.getByRole("button", { name: "Delete older than…" }));
+  return await findDialog();
+};
+
+test("Delete older than N days: asks for N and rejects anything but 1-36500",
   async () => {
-    purgePreview.mockResolvedValue(preview({ uids: [40], count: 1,
-      via_trash: false, role: "trash", folder: "Trash", trash_folder: null,
-      uv: 7 }));
-    panel("trash");
-    await screen.findByText("Again");
-    fireEvent.click(screen.getByRole("button", { name: "Delete older than…" }));
-    const ask = await findDialog();
+    const ask = await openOlderThan();
     expect(within(ask).getByText("Received more than this many days ago"))
       .toBeTruthy();
     const input = within(ask).getByRole("textbox") as HTMLInputElement;
@@ -177,19 +181,24 @@ test("Delete older than N days: asks for N, counts live, confirms, sends the cou
     await pressDialog("Count mails");
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("trash",
       { older_than_days: 36500 }));
-    await cancelDialog();
-    purgePreview.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Delete older than…" }));
-    const again = await findDialog();
-    const input2 = within(again).getByRole("textbox") as HTMLInputElement;
-    fireEvent.change(input2, { target: { value: "1" } });
+  });
+
+test("Delete older than N days: the confirm says '1 day' in the singular",
+  async () => {
+    const again = await openOlderThan();
+    fireEvent.change(within(again).getByRole("textbox"),
+      { target: { value: "1" } });
     await pressDialog("Count mails");
     expect(within(await findDialog()).getByText(
       /received more than 1 day ago/)).toBeTruthy();
-    await cancelDialog();
-    purgePreview.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Delete older than…" }));
-    const third = await findDialog();
+  });
+
+test("Delete older than N days: counts live, confirms, sends the counted UIDs",
+  async () => {
+    purgePreview.mockResolvedValue(preview({ uids: [40], count: 1,
+      via_trash: false, role: "trash", folder: "Trash", trash_folder: null,
+      uv: 7 }));
+    const third = await openOlderThan();
     fireEvent.change(within(third).getByRole("textbox"),
       { target: { value: "90" } });
     await pressDialog("Count mails");
