@@ -139,3 +139,23 @@ for (const [name, tk] of Object.entries(themes)) {
     min("body on chip", tk.body, tk.chip);
   });
 }
+
+// Storage-bar segments (ui.tsx HUE_FILLS): the bright palette tone on the
+// dark panel, the saturated one on the light panel, both >= 3:1.
+const hex = (v: string): Rgba => parse(v);
+const FILLS: Record<string, [string, string]> = {   // [300, 900] (Tailwind)
+  violet: ["#c4b5fd", "#4c1d95"], teal: ["#5eead4", "#134e4a"],
+  cyan: ["#67e8f9", "#164e63"], lime: ["#bef264", "#365314"],
+  indigo: ["#a5b4fc", "#312e81"], fuchsia: ["#f0abfc", "#701a75"],
+};
+test("storage-bar hue fills reach 3:1 on the panel in both themes", () => {
+  for (const [hue, [bright, deep]] of Object.entries(FILLS)) {
+    expect(ratio(hex(bright), themes.dark.panel), `dark ${hue}`)
+      .toBeGreaterThanOrEqual(3);
+    expect(ratio(hex(deep), themes.light.panel), `light ${hue}`)
+      .toBeGreaterThanOrEqual(3);
+  }
+  // "Everyone else" (bg-faint) stays quieter than the bright dark fills
+  for (const [bright] of Object.values(FILLS))
+    expect(lum(themes.dark.faint)).toBeLessThan(lum(hex(bright)));
+});

@@ -817,10 +817,21 @@ export const hueIndex = (name: string): number => {
 
 const hueOf = (name: string): string => ACCOUNT_HUES[hueIndex(name)];
 
-/** The avatar's own (saturated) background of hue number `i`: storage-bar
- *  segments and legend dots, so they match the avatars. */
-export const hueFillAt = (i: number): string =>
-  ACCOUNT_HUES[i % HUE_COUNT].split(" ")[0];
+/* Fills for hue `i` where the avatar's dark tint would vanish: the bright
+ * tone on the dark theme, the saturated avatar background on the light one
+ * (both >= 3:1 against the panel; index.contrast.test.ts). Same hue order
+ * as ACCOUNT_HUES. */
+const HUE_FILLS = [
+  "bg-violet-300 light:bg-violet-900",
+  "bg-teal-300 light:bg-teal-900",
+  "bg-cyan-300 light:bg-cyan-900",
+  "bg-lime-300 light:bg-lime-900",
+  "bg-indigo-300 light:bg-indigo-900",
+  "bg-fuchsia-300 light:bg-fuchsia-900",
+];
+
+/** Storage-bar segments and legend dots in hue number `i`. */
+export const hueFillAt = (i: number): string => HUE_FILLS[i % HUE_COUNT];
 
 /** Letter avatar identifying one account/sender/domain, tinted by a
  *  stable hash of its name so entries stay visually distinct. `size`

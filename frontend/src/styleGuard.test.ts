@@ -8,8 +8,12 @@ const HUES = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|"
   + "green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";
 
 // The only raw palette classes allowed: hash-based avatar tints in ui.tsx.
-const AVATAR_HUES = new Set(["violet", "teal", "cyan", "lime", "indigo",
-  "fuchsia"].map((h) => `"bg-${h}-900 text-${h}-300",`));
+const HUE_NAMES = ["violet", "teal", "cyan", "lime", "indigo", "fuchsia"];
+const AVATAR_HUES = new Set([
+  ...HUE_NAMES.map((h) => `"bg-${h}-900 text-${h}-300",`),
+  // storage-bar fills: bright on dark, saturated on light
+  ...HUE_NAMES.map((h) => `"bg-${h}-300 light:bg-${h}-900",`),
+]);
 
 // The only `!important` utilities allowed (each has a comment in code).
 const BANG_ALLOWED = new Set(["!rounded-none", "!border-0", "!min-h-16",

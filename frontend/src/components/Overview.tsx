@@ -122,7 +122,7 @@ function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
                 </span>
               </button>
               <Menu variant="quiet" icon label={t("menu.more")}
-                className="shrink-0"
+                className="shrink-0" triggerClass="coarse:size-11"
                 trigger={<MoreHorizontal size={18} aria-hidden />}>
                 <MenuItem onClick={() => onCleanUp(c)}>
                   {t("qw.clean_up")}</MenuItem>
@@ -289,14 +289,14 @@ export function Overview(p: OverviewProps) {
           rounded-full">
           {segments.map((s) => (
             <span key={s.key || "rest"} style={{ flexGrow: s.size }}
-              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-muted"}`} />
+              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
           ))}
         </div>
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 type-meta">
           {segments.map((s) => {
             const inner = (<>
               <span aria-hidden className={`size-2 shrink-0 rounded-full
-                ${s.hue != null ? hueFillAt(s.hue) : "bg-muted"}`} />
+                ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
               <span className="truncate">{s.label}</span>
               <span className="text-muted">{fmtSize(s.size)}</span>
             </>);
