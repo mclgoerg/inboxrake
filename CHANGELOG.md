@@ -1,5 +1,59 @@
 # Changelog
 
+## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-07)
+
+
+### Features
+
+* a calmer sender detail with the actions up front ([#266](https://github.com/mclgoerg/inboxrake/issues/266)) ([2a5e60b](https://github.com/mclgoerg/inboxrake/commit/2a5e60ba5276a23c2fc7101ad03efc70af7dd973))
+  <!-- release-notes:266 -->
+  - The sender detail is calmer: the actions (Unsubscribe, Block, Protect, Move) sit right under the name, with Mails / Size / Opened figures and the sender's signals in the header.
+  - New: "Move" in the detail moves all of a sender's mails to a folder (same confirmation, protected-mail handling and Undo as moving selected mails).
+  - "Trash all N" is now "Move N mails to Trash".
+* a floating bar for selected senders ([#268](https://github.com/mclgoerg/inboxrake/issues/268)) ([b806421](https://github.com/mclgoerg/inboxrake/commit/b806421130e6a0948b2d90023aeaef2b1b64d4b6))
+  <!-- release-notes:268 -->
+  - The bar for selected senders and mails is now a floating capsule with Unsubscribe, Archive, Move and a More menu; the Limit setting shows as a visible tag while active.
+* a welcome screen and a shorter first-run setup ([#265](https://github.com/mclgoerg/inboxrake/issues/265)) ([e39dc96](https://github.com/mclgoerg/inboxrake/commit/e39dc964bf80432a643eb672340b130dddf6463c))
+  <!-- release-notes:265 -->
+  - New first-run experience: a welcome screen, then a shorter setup. Choosing which folders to scan is now optional and tucked behind "Choose folders…" on the sign-in step; the defaults are unchanged.
+  - The first scan shows a progress ring with a short checklist.
+* calmer sender rows and a Select mode ([#270](https://github.com/mclgoerg/inboxrake/issues/270)) ([d79d8cb](https://github.com/mclgoerg/inboxrake/commit/d79d8cb57f83d2a7759d8727c57f555bcd74b172))
+  <!-- release-notes:270 -->
+  - Sender lists are calmer: one status badge per row instead of several columns; the details are in the sender panel.
+  - New "Select" button to pick several senders; checkboxes also appear when you hover a row.
+  - Phones show the checkboxes only in Select mode.
+* one toolbar with a Filter menu ([#269](https://github.com/mclgoerg/inboxrake/issues/269)) ([cddfe9f](https://github.com/mclgoerg/inboxrake/commit/cddfe9f388165868d7a3c52c13f69d3d478efc8c))
+  <!-- release-notes:269 -->
+  - Search, filter and sort now share one tidy toolbar; the row of quick-filter chips is replaced by a Filter menu (quick filters, your saved filters, "Describe a filter").
+  - The Filter button lights up and the active filter shows as a removable token.
+* Overview as the new start page ([#272](https://github.com/mclgoerg/inboxrake/issues/272)) ([699c3e0](https://github.com/mclgoerg/inboxrake/commit/699c3e02c6d9c6bca9e964f45577a98a96399c8d))
+  <!-- release-notes:272 -->
+  - New Overview start page: total size, the biggest senders and ready-made cleanup suggestions at a glance.
+  - Quick wins moved there as "Suggestions"; the app now always opens on the Overview instead of remembering All mail.
+* sidebar navigation on wide screens ([#267](https://github.com/mclgoerg/inboxrake/issues/267)) ([c33ce17](https://github.com/mclgoerg/inboxrake/commit/c33ce17e2fa53c5b613db24b2248d812111448aa))
+  <!-- release-notes:267 -->
+  - On wide screens (1024 px and up) a sidebar replaces the Tools menu: cleanup and insight tools, Junk/Trash, search, activity and settings are one click away, and "All mail" is a page of its own.
+  - Phones and narrow windows look exactly as before.
+* tab bar navigation on phones and tablets ([#271](https://github.com/mclgoerg/inboxrake/issues/271)) ([f878c6b](https://github.com/mclgoerg/inboxrake/commit/f878c6b8aa2b02e40bf4fc0ca897669b4d7fbb0a))
+  <!-- release-notes:271 -->
+  - On phones and tablets, navigation moves to a tab bar at the bottom (Senders, Clean up, Insights); the Tools menu and header links are replaced by the Clean up and Insights pages, and your account menu is the avatar at the top right.
+  - Fixes a sideways scroll on very narrow phones.
+* tools open as pages beside the sidebar ([#273](https://github.com/mclgoerg/inboxrake/issues/273)) ([2d9a079](https://github.com/mclgoerg/inboxrake/commit/2d9a07915448d4b9e6634ef1febcc4e223a37f5c))
+  <!-- release-notes:273 -->
+  Tools such as Triage, Rules, Trash, Statistics and the Space map now open as pages next to the sidebar on wide screens, and Back / forward and reload keep you on them. The new Activity page lists what you can undo above the audit log. Phones and tablets are unchanged.
+* warm graphite theme, system font and appearance setting ([#263](https://github.com/mclgoerg/inboxrake/issues/263)) ([cf30219](https://github.com/mclgoerg/inboxrake/commit/cf30219153acc34c2ef21a23ccc04cbf0c5965ab))
+  <!-- release-notes:263 -->
+  - New calmer look: warm graphite surfaces with a caramel accent, in dark and light.
+  - The theme now follows your system's light/dark setting unless you picked one under Appearance (profile menu or Settings > General).
+  - If you had chosen a theme before, it is kept.
+
+
+### Bug Fixes
+
+* solid backgrounds for success and error toasts ([#275](https://github.com/mclgoerg/inboxrake/issues/275)) ([5a7a3e5](https://github.com/mclgoerg/inboxrake/commit/5a7a3e5a45781c9302e4fc513b934c29fcb43f02))
+  <!-- release-notes:275 -->
+  Success and error messages are readable again over busy lists.
+
 ## [2.2.1](https://github.com/mclgoerg/inboxrake/compare/v2.2.0...v2.2.1) (2026-11-07)
 
 
