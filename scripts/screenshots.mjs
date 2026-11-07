@@ -15,7 +15,7 @@
  *     ghcr.io/mclgoerg/inboxrake:latest python /repo/scripts/demo.py
  *   docker run --rm --network mb-docs-net -v "$PWD":/repo -w /tmp node:26 \
  *     bash -c "apt-get update -q && apt-get install -yq --no-install-recommends \
- *       chromium fonts-noto-color-emoji fonts-noto-core || exit 1; \
+ *       chromium fonts-noto-color-emoji fonts-noto-core fonts-roboto || exit 1; \
  *       mkdir rig && cd rig && npm i -s puppeteer-core \
  *       && cp /repo/scripts/*.mjs . && node screenshots.mjs \
  *            http://mb-docs-demo:8765 \
@@ -32,8 +32,8 @@
 
 import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import {
-  byRole, click, dismissNotice, hideCaret, launch, open, openGroup, settle,
-  sleep, waitText,
+  byRole, click, dismissNotice, goNav, hideCaret, launch, open, openGroup,
+  settle, sleep, waitText,
 } from "./capture-lib.mjs";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8765";
@@ -47,19 +47,32 @@ const save = async (page, name) => {
   console.log(name);
 };
 
-/** Quick chips cycle filter -> select, so two taps leave the matches ticked. */
-const selectViaChip = async (page, chip) => {
-  await click(page, "button", chip);
-  await click(page, "button", chip);
-  await byRole(page, "button", /^Trash \d+$/);        // the bulk bar is up
+/** A quick filter in the Filter menu cycles filter -> select, so two picks
+ *  leave the matches ticked (the menu closes after each pick). */
+const selectViaFilter = async (page, item) => {
+  for (let i = 0; i < 2; i++) {
+    await click(page, "button", "Filter");
+    await click(page, "menuitemradio", item);
+  }
+  await byRole(page, "button", /^Trash \d+$/);        // the selection bar is up
   await settle(page);
 };
 
-// 1) Hero: the group list, dark.
+// 1) Hero: the Senders page (sidebar + list), dark.
 let page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
 await dismissNotice(page);
 await settle(page);
 await save(page, "groups-dark.png");
+await page.close();
+
+// 1b) The Overview, the start page.
+page = await open(browser, BASE, {
+  width: 1440, height: 900, scale: 2, route: "overview",
+});
+await dismissNotice(page);
+await waitText(page, /Biggest senders/);
+await settle(page);
+await save(page, "overview.png");
 await page.close();
 
 // 2) Same, light theme.
@@ -75,6 +88,20 @@ await page.close();
 page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
 await dismissNotice(page);
 await openGroup(page, "PayBank");
+// Keep every row clear of the sticky header: after the pane has settled,
+// scroll so the first row below the header sits flush under it (no row cut).
+await settle(page);
+await page.evaluate(() => {
+  const th = document.querySelector("thead th");
+  const headerBottom = th ? th.getBoundingClientRect().bottom : 0;
+  const first = [...document.querySelectorAll("[data-gidx]")]
+    .filter((e) => e.offsetParent)
+    .find((e) => e.getBoundingClientRect().bottom > headerBottom + 4);
+  // The page scrolls inside <body>, not the window.
+  if (first) document.body.scrollBy(0, first.getBoundingClientRect().top
+    - headerBottom);
+});
+await sleep(400);
 await save(page, "split-pane.png");
 await page.close();
 
@@ -85,11 +112,10 @@ await openGroup(page, "PayBank");
 await save(page, "detail.png");
 await page.close();
 
-// 5) Statistics, via the Tools menu.
+// 5) Statistics, opened from the sidebar (Insights).
 page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
 await dismissNotice(page);
-await click(page, "button", "Tools");
-await click(page, "menuitem", "Statistics");
+await goNav(page, "Statistics");
 await waitText(page, /top (senders|domains)/i);
 await settle(page);
 await save(page, "stats.png");
@@ -113,7 +139,7 @@ await page.close();
 
 page = await open(browser, BASE, PHONE);
 await dismissNotice(page);
-await selectViaChip(page, "AI-safe groups");
+await selectViaFilter(page, "AI-safe groups");
 await click(page, "button", /^Trash \d+$/);
 await byRole(page, "dialog", /Trash/);
 await settle(page);

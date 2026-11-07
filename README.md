@@ -22,7 +22,7 @@ cannot be undone:
 the manual "delete permanently" actions confirm with exact counts, and
 opt-in purge rules only act after you have reviewed a report run.
 
-![The group list (dark theme): senders with mail counts, sizes, AI verdicts and quick filters](docs/screenshots/groups-dark.png)
+![The group list (dark theme): the Senders page with the sidebar, mail counts, sizes and AI verdicts](docs/screenshots/groups-dark.png)
 
 ## Quick start
 
@@ -45,10 +45,11 @@ docker compose up -d
 warning. Keep the key safe and out of your backups - if it is lost you
 re-enter the secrets.
 
-Open <http://localhost:8765>; on a fresh install a setup wizard walks you
-through provider, sign-in, folders, an optional login password and the first
-scan. For Proton Mail use `docker-compose.proton.yml` instead (it needs a
-Bridge image you provide - see its header).
+Open <http://localhost:8765>; on a fresh install a welcome screen and a short
+setup walk you through provider, sign-in (folders are optional), an optional
+login password and the first scan. For Proton Mail use
+`docker-compose.proton.yml` instead (it needs a Bridge image you provide - see
+its header).
 
 **Plain `docker run`** with the published image:
 
@@ -78,8 +79,8 @@ docker run --rm -p 127.0.0.1:8765:8765 -v "$PWD":/repo \
   ghcr.io/mclgoerg/inboxrake:latest python /repo/scripts/demo.py
 ```
 
-Add `--empty` to see the first-run wizard instead (in the wizard any mail
-server name works and the password `demo` signs in).
+Add `--empty` to see the welcome screen and first-run setup instead (in the
+setup any mail server name works and the password `demo` signs in).
 
 **In action** - click a filter together, select the matches, confirm the
 move to Trash (with the count spelled out), undo from the result toast, open
@@ -88,10 +89,11 @@ a group beside the list:
 ![Build a filter, select, move to Trash with confirmation and Undo, open a group in the split pane](docs/screenshots/demo.gif)
 
 <details>
-<summary>More screenshots - split pane, drill-down, statistics, phone, light theme</summary>
+<summary>More screenshots - overview, split pane, drill-down, statistics, phone, light theme</summary>
 
+![The Overview start page: storage, what could go, suggestions and the biggest senders](docs/screenshots/overview.png)
 ![A group open in the side pane next to the group list](docs/screenshots/split-pane.png)
-![Group drill-down as a dialog on a mid-size screen, with the Block sender and Trash all actions](docs/screenshots/detail.png)
+![Group drill-down as a dialog on a mid-size screen, with the Block sender and Move to Trash actions](docs/screenshots/detail.png)
 ![Statistics panel: totals, mails per month and year, categories](docs/screenshots/stats.png)
 ![Phone layout: group list, a group's mails, and the bottom-sheet confirmation before moving to Trash](docs/screenshots/mobile.png)
 ![The group list in the light theme](docs/screenshots/groups-light.png)
@@ -182,13 +184,13 @@ security; you add user and password.
 ## Features
 
 Five views (Sender, Smart pools of small senders, Subject, Thread, a flat
-list), a drill-down reader with no remote content, quick wins and a filter
-builder, optional AI review and a "describe a filter" box, swipe triage,
-rules and a scheduler, one-click and bulk unsubscribe with a watchdog,
-protected senders and mails, a Trash/Junk browser, space map, statistics,
-audit log, multiple strictly separate accounts, light/dark, phone layout,
-English and German. Everything is listed in
-**[docs/features.md](docs/features.md)**.
+list), an Overview start page with cleanup suggestions, a drill-down reader
+with no remote content, a Filter menu and filter builder, optional AI review
+and a "describe a filter" box, swipe triage, rules and a scheduler, one-click
+and bulk unsubscribe with a watchdog, protected senders and mails, a
+Trash/Junk browser, space map, statistics, audit log, multiple strictly
+separate accounts, system/light/dark appearance, phone layout, English and
+German. Everything is listed in **[docs/features.md](docs/features.md)**.
 
 ## Security & multi-user
 

@@ -5,8 +5,8 @@ description: "The query language of the filter box and of saved rules."
 
 # Filter syntax
 
-The filter box above the group list, saved rules and the "describe a
-filter" helper all use the same small query language. The browser
+The filter box above the group list (and its Filter menu), saved rules and the
+"describe a filter" helper all use the same small query language. The browser
 (`frontend/src/lib.ts`) and the backend rules engine (`backend/rules.py`)
 implement it identically, so a rule matches exactly what you saw in the UI.
 
