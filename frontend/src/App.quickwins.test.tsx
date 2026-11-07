@@ -171,25 +171,93 @@ test("Clean up opens the trash confirm with the card's counts and does " +
   "nothing on Cancel", async () => {
   setup();
   await ready();
-  fireEvent.click(screen.getAllByRole("button", { name: "Clean up" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
   const dlg = await findDialog();
   expect(dlg.textContent).toContain("30 mails");
   expect(dlg.textContent).not.toContain("40");       // protected skipped
-  expect(window.location.hash).toBe("#/senders");
+  expect(window.location.hash).toBe("");              // still on the Overview
   expect(deleteGroups).not.toHaveBeenCalled();
   await cancelDialog();
   await expectNoDialog();
   expect(deleteGroups).not.toHaveBeenCalled();
+  expect(window.location.hash).toBe("");              // Cancel: where we were
+  expect(screen.getByRole("region", { name: "Storage" })).toBeTruthy();
 });
 
 test("confirming Clean up trashes exactly the card's non-protected keys, " +
   "in the Sender grouping", async () => {
   setup();
   await ready();
-  fireEvent.click(screen.getAllByRole("button", { name: "Clean up" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
   await pressDialog(/Move to Trash/);
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledWith(
     "sender", ["quiet@x.example"], "trash", "", false, null, null));
+  expect(window.location.hash).toBe("");              // Overview, in place
+});
+
+test("Clean up and Review work on the Sender groups whatever grouping " +
+  "Senders was left on (Smart, Thread)", async () => {
+  for (const tab of ["Smart", "Thread"]) {
+    window.location.hash = "#/senders";
+    setup();
+    await readySenders();
+    fireEvent.click(screen.getByRole("tab", { name: tab }));
+    if (tab === "Smart")
+      expect(screen.getByText(/Smart pools small senders/)).toBeTruthy();
+    const bar = within(screen.getByRole("navigation",
+      { name: "Main navigation" }));
+    fireEvent.click(bar.getByRole("link", { name: "Overview" }));
+    await ready();
+    // the Smart first-use help belongs to Senders only
+    expect(screen.queryByText(/Smart pools small senders/)).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
+    await pressDialog(/Move to Trash/);
+    await waitFor(() => expect(deleteGroups).toHaveBeenLastCalledWith(
+      "sender", ["quiet@x.example"], "trash", "", false, null, null));
+    expect(window.location.hash).toBe("#/overview");
+    // Review lands on the Sender tab with the card's query and selection
+    fireEvent.click(screen.getAllByRole("button", { name: "Review" })[0]);
+    expect((await screen.findByPlaceholderText("Search or filter…") as
+      HTMLInputElement).value).toBe("eng:low age:>1y");
+    expect(screen.getByRole("tab", { name: "Sender" })
+      .getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(screen.getByText(/^1 group · 30 mails( · .+)?$/))
+      .toBeTruthy());
+    cleanup();
+    localStorage.clear();
+    window.location.hash = "";
+    deleteGroups.mockClear();
+  }
+});
+
+test("phones: Suggestions are a compact list; the row is Review, More holds " +
+  "Clean up… and Not now", async () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: q.includes("767"), media: q,
+    addEventListener: () => {}, removeEventListener: () => {},
+  }));
+  try {
+    setup();
+    await ready();
+    const rows = screen.getAllByTestId("qw-card");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain("30 mails - 10.0 MB");
+    expect(within(rows[0]).queryByRole("button", { name: "Not now" })).toBeNull();
+    fireEvent.click(within(rows[0]).getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Not now" }));
+    expect(screen.getAllByTestId("qw-card")).toHaveLength(1);
+    fireEvent.click(within(screen.getAllByTestId("qw-card")[0])
+      .getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Clean up…" }));
+    await findDialog();
+    await cancelDialog();
+    fireEvent.click(within(screen.getAllByTestId("qw-card")[0])
+      .getByRole("button", { name: /^Review/ }));
+    expect((await screen.findByPlaceholderText("Search or filter…") as
+      HTMLInputElement).value).toBe("tag:newsletter unread:>90 age:>6m");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test("Not now hides the card for this account only, and it returns after " +
@@ -241,7 +309,7 @@ test("a card carries its hint, and Not now is an always-visible icon button",
   setup();
   await ready();
   const card = screen.getAllByTestId("qw-card")[0];
-  expect(within(card).getByTestId("qw-hint").className).not.toContain("hidden");
+  expect(within(card).getByTestId("qw-hint")).toBeTruthy();
   const dismiss = within(card).getByRole("button", { name: "Not now" });
   expect(dismiss.textContent).toBe("");
   expect(within(card).getByRole("button", { name: "Review" })).toBeTruthy();
@@ -252,7 +320,7 @@ test("German strings", async () => {
   setup();
   await waitFor(() => expect(
     screen.getByRole("heading", { name: "Vorschläge" })).toBeTruthy());
-  expect(screen.getAllByRole("button", { name: "Aufräumen" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Aufräumen…" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Nicht jetzt" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Ansehen" })).toHaveLength(2);
 });

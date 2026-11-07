@@ -1,5 +1,5 @@
-import { BellOff, ChevronRight, Hourglass, Newspaper, Paperclip, Sparkles,
-  X } from "lucide-react";
+import { BellOff, ChevronRight, Hourglass, MoreHorizontal, Newspaper,
+  Paperclip, Sparkles, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { t } from "../i18n";
@@ -9,8 +9,8 @@ import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   TOP_CARDS, unionTotals, type Dismissed, type QuickWinCard }
   from "../quickwins";
 import type { Group } from "../types";
-import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex, ProgressBar, Spinner }
-  from "./ui";
+import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex, Menu,
+  MenuItem, ProgressBar, Spinner, useMediaQuery } from "./ui";
 
 /** What the page shows: the figures, or the guidance of a mailbox that has
  *  none yet (replaces the old first-run card on the Senders page). */
@@ -79,6 +79,7 @@ function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
   onCleanUp: (c: QuickWinCard) => void;
 }) {
   const [all, setAll] = useState(false);
+  const phone = useMediaQuery("(max-width: 767px)");
   const shown = all ? cards : cards.slice(0, TOP_CARDS);
   return (
     <Section title={t("overview.suggestions")}
@@ -87,6 +88,54 @@ function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
           {all ? t("qw.less") : t("overview.show_all", { n: cards.length })}
         </Button>
       )}>
+      {phone ? (
+      /* Phones: a compact inset list. The row is Review; Clean up and
+         Not now sit in the row's More menu. */
+      <ul className="rounded-card bg-panel">
+        {shown.map((c) => {
+          const tile = CARD_TILE[c.def.id];
+          return (
+            <li key={c.def.id} data-testid="qw-card"
+              className="relative flex items-center
+                [&:not(:first-child)]:before:absolute
+                [&:not(:first-child)]:before:left-16
+                [&:not(:first-child)]:before:right-0
+                [&:not(:first-child)]:before:top-0
+                [&:not(:first-child)]:before:border-t
+                [&:not(:first-child)]:before:border-line">
+              <button type="button" onClick={() => onReview(c)}
+                aria-label={`${t("qw.review")}: ${t(c.def.titleKey)}`}
+                className="flex min-h-14 min-w-0 flex-1 items-center gap-3
+                  rounded-card py-2 pl-4 text-left transition-colors
+                  hover:bg-panel2">
+                <span className={`inline-flex size-8 shrink-0 items-center
+                  justify-center rounded-control ${tile?.tone ?? "bg-chip"}`}>
+                  {tile?.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate type-body font-medium">
+                    {t(c.def.titleKey)}</span>
+                  <span className="block truncate type-meta text-muted">
+                    {t("qw.card_meta", { mails: c.mails,
+                      size: fmtSize(c.size) })}
+                  </span>
+                </span>
+              </button>
+              <Menu variant="quiet" icon label={t("menu.more")}
+                className="shrink-0"
+                trigger={<MoreHorizontal size={18} aria-hidden />}>
+                <MenuItem onClick={() => onCleanUp(c)}>
+                  {t("qw.clean_up")}</MenuItem>
+                <MenuItem onClick={() => onDismiss(c)}>
+                  {t("qw.not_now")}</MenuItem>
+              </Menu>
+              <ChevronRight size={16} aria-hidden
+                className="mr-3 shrink-0 text-faint" />
+            </li>
+          );
+        })}
+      </ul>
+      ) : (
       <ul className="grid gap-3 md:grid-cols-3">
         {shown.map((c) => {
           const tile = CARD_TILE[c.def.id];
@@ -127,6 +176,7 @@ function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
           );
         })}
       </ul>
+      )}
     </Section>
   );
 }
@@ -222,7 +272,7 @@ export function Overview(p: OverviewProps) {
             <div className="type-hero tabular-nums">{fmtSize(totals.size)}</div>
             <div className="type-body text-muted">
               {t("overview.summary", { mails: t("n.mails", { n: totals.mails }),
-                senders: t("n.senders", { n: totals.senders }) })}
+                n: totals.senders })}
             </div>
           </div>
           {canGo.size > 0 && (
@@ -239,14 +289,14 @@ export function Overview(p: OverviewProps) {
           rounded-full">
           {segments.map((s) => (
             <span key={s.key || "rest"} style={{ flexGrow: s.size }}
-              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-chip"}`} />
+              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-muted"}`} />
           ))}
         </div>
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 type-meta">
           {segments.map((s) => {
             const inner = (<>
               <span aria-hidden className={`size-2 shrink-0 rounded-full
-                ${s.hue != null ? hueFillAt(s.hue) : "bg-chip"}`} />
+                ${s.hue != null ? hueFillAt(s.hue) : "bg-muted"}`} />
               <span className="truncate">{s.label}</span>
               <span className="text-muted">{fmtSize(s.size)}</span>
             </>);

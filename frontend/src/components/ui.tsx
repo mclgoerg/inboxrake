@@ -817,10 +817,10 @@ export const hueIndex = (name: string): number => {
 
 const hueOf = (name: string): string => ACCOUNT_HUES[hueIndex(name)];
 
-/** A solid fill in hue number `i` (the avatar's text colour as a
- *  background): storage-bar segments and legend dots. */
+/** The avatar's own (saturated) background of hue number `i`: storage-bar
+ *  segments and legend dots, so they match the avatars. */
 export const hueFillAt = (i: number): string =>
-  `${ACCOUNT_HUES[i % HUE_COUNT].split(" ")[1]} bg-current`;
+  ACCOUNT_HUES[i % HUE_COUNT].split(" ")[0];
 
 /** Letter avatar identifying one account/sender/domain, tinted by a
  *  stable hash of its name so entries stay visually distinct. `size`

@@ -1082,20 +1082,19 @@ export default function App() {
 
   // Quick-win cards (see quickwins.ts, shown as the Overview's suggestions).
   // Review = the chips' second tap: the card's query in the filter box and
-  // its matches selected, so the list and the BulkBar show exactly what the
-  // card counted. Clean up goes through the usual trash confirm naming the
-  // counts (protected / pinned handling included) and the Undo toast; both
-  // land on the Senders page.
+  // its matches selected on the Senders page, so the list and the BulkBar
+  // show exactly what the card counted. Clean up stays where it was asked
+  // for: the usual trash confirm naming the counts (protected / pinned
+  // handling included), then the Undo toast, with the Overview updating in
+  // place; Cancel leaves the user on the Overview. It always works on the
+  // Sender groups (`act` would read whatever grouping Senders was left on).
   const reviewQuickWin = (c: QuickWinCard) => {
     showSenders();
     setFilter(c.def.query);
     setSelected(new Set(c.keys));
   };
-  const cleanUpQuickWin = async (c: QuickWinCard) => {
-    showSenders();
-    // `act` would still read the grouping we are leaving.
-    if (await actOn("sender", state?.groups?.sender ?? {}, c.keys, "trash"))
-      setSelected(new Set());
+  const cleanUpQuickWin = (c: QuickWinCard) => {
+    actOn("sender", state?.groups?.sender ?? {}, c.keys, "trash");
   };
 
   // Saved filter presets: unlike selectPreset() above (which ADDS to the
@@ -2044,7 +2043,7 @@ export default function App() {
       )}
 
       {!toolPage && (<>
-      {mode === "smart" && !flat && smartHelp && <Notice className="mb-2"
+      {mode === "smart" && !flat && !overview && smartHelp && <Notice className="mb-2"
         onClose={() => { setSmartHelp(false); localStorage.setItem("pmc_smart_help_seen", "1"); }}>
         {t("smart.first_use")}
       </Notice>}
