@@ -340,6 +340,8 @@ test("toast stack sits on the toast layer above the bulk bar", () => {
   const stack = document.querySelector("[aria-live=polite]") as HTMLElement;
   expect(stack.className).toContain("z-(--z-toast)");
   expect(stack.className).toContain("pmc-toasts");
+  // centred over the content column beside the sidebar, like the bulk bar
+  expect(stack.className).toContain("lg:left-61");
 });
 
 test("confirmDialog resolves true on confirm, false on Cancel / Esc / backdrop", async () => {
@@ -714,6 +716,26 @@ test("toast variants carry an icon; errors are role=alert, others are not", () =
   }
   expect(screen.getByRole("alert").textContent).toContain("broke");
   expect(document.querySelectorAll("[role=alert]")).toHaveLength(1);
+});
+
+test("floating toasts have an opaque panel base under the semantic tint", () => {
+  let api!: ReturnType<typeof useToast>;
+  const Grab = () => { api = useToast(); return null; };
+  render(<ToastProvider><Grab /></ToastProvider>);
+  act(() => {
+    api.show("fine", { variant: "success" });
+    api.show("broke", { variant: "error" });
+    api.show("info!");
+  });
+  const cls = (v: string) =>
+    document.querySelector(`[data-variant=${v}]`)!.className;
+  expect(cls("success")).toMatch(/(^| )bg-panel( |$)/);
+  expect(cls("success")).toContain("from-safe-bg");
+  expect(cls("error")).toMatch(/(^| )bg-panel( |$)/);
+  expect(cls("error")).toContain("from-keep-bg");
+  // no translucent tint as the only background
+  expect(cls("success")).not.toMatch(/(^| )bg-safe-bg/);
+  expect(cls("error")).not.toMatch(/(^| )bg-keep-bg/);
 });
 
 test("ChipGroup is named by its label; segments keep their ring inside the pill", () => {

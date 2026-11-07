@@ -1392,8 +1392,10 @@ type ToastItem = ToastOptions & { id: number; message: ReactNode };
 const TOAST_MS = 8000;
 const TOAST_STYLE: Record<ToastVariant, string> = {
   info: "border-line bg-panel2 text-body",
-  success: "border-transparent bg-safe-bg text-safe-fg",
-  error: "border-transparent bg-keep-bg text-keep-fg",
+  // Toasts float over the list: opaque panel base, the translucent tint
+  // layered on top as a flat gradient (a `*-bg` alone lets the page show through).
+  success: "border-transparent bg-panel bg-linear-to-b from-safe-bg to-safe-bg text-safe-fg",
+  error: "border-transparent bg-panel bg-linear-to-b from-keep-bg to-keep-bg text-keep-fg",
 };
 
 type ToastApi = {
@@ -1602,7 +1604,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div aria-live="polite" className="pmc-toasts pointer-events-none fixed
-        inset-x-0 z-(--z-toast) flex flex-col items-center gap-2 px-3">
+        inset-x-0 lg:left-61 z-(--z-toast) flex flex-col items-center gap-2 px-3">
         {items.map((x) => (
           <ToastView key={x.id} toast={x} dismiss={dismiss} />
         ))}
