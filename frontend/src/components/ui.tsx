@@ -805,16 +805,22 @@ const ACCOUNT_HUES = [
   "bg-fuchsia-900 text-fuchsia-300",
 ];
 
-const hueOf = (name: string): string => {
+/** Number of identity hues. */
+export const HUE_COUNT = ACCOUNT_HUES.length;
+
+/** Index into the hue list for a name (stable hash). */
+export const hueIndex = (name: string): number => {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return ACCOUNT_HUES[Math.abs(h) % ACCOUNT_HUES.length];
+  return Math.abs(h) % HUE_COUNT;
 };
 
-/** A solid fill in the same hue as `Avatar` for that name (the avatar's text
- *  colour as a background): storage-bar segments and legend dots. */
-export const hueFill = (name: string): string =>
-  `${hueOf(name).split(" ")[1]} bg-current`;
+const hueOf = (name: string): string => ACCOUNT_HUES[hueIndex(name)];
+
+/** A solid fill in hue number `i` (the avatar's text colour as a
+ *  background): storage-bar segments and legend dots. */
+export const hueFillAt = (i: number): string =>
+  `${ACCOUNT_HUES[i % HUE_COUNT].split(" ")[1]} bg-current`;
 
 /** Letter avatar identifying one account/sender/domain, tinted by a
  *  stable hash of its name so entries stay visually distinct. `size`

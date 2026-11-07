@@ -9,7 +9,7 @@ import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   TOP_CARDS, unionTotals, type Dismissed, type QuickWinCard }
   from "../quickwins";
 import type { Group } from "../types";
-import { Avatar, Button, EmptyState, hueFill, ProgressBar, Spinner }
+import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex, ProgressBar, Spinner }
   from "./ui";
 
 /** What the page shows: the figures, or the guidance of a mailbox that has
@@ -191,7 +191,8 @@ export function Overview(p: OverviewProps) {
   useEffect(() => setDismissed(loadDismissed(account)), [account]);
   const totals = useMemo(() => totalsOf(groups), [groups]);
   const segments = useMemo(
-    () => storageSegments(groups, t("overview.everyone_else")), [groups]);
+    () => storageSegments(groups, t("overview.everyone_else"), 4, hueIndex,
+      HUE_COUNT), [groups]);
   const top = useMemo(() => biggestSenders(groups, 5), [groups]);
   const cards = useMemo(
     () => computeQuickWins(groups)
@@ -238,14 +239,14 @@ export function Overview(p: OverviewProps) {
           rounded-full">
           {segments.map((s) => (
             <span key={s.key || "rest"} style={{ flexGrow: s.size }}
-              className={`min-w-1 ${s.group ? hueFill(s.label) : "bg-chip"}`} />
+              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-chip"}`} />
           ))}
         </div>
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 type-meta">
           {segments.map((s) => {
             const inner = (<>
               <span aria-hidden className={`size-2 shrink-0 rounded-full
-                ${s.group ? hueFill(s.label) : "bg-chip"}`} />
+                ${s.hue != null ? hueFillAt(s.hue) : "bg-chip"}`} />
               <span className="truncate">{s.label}</span>
               <span className="text-muted">{fmtSize(s.size)}</span>
             </>);

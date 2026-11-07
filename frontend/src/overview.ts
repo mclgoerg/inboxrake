@@ -27,19 +27,30 @@ export interface Segment {
   label: string;
   size: number;
   group: Group | null;
+  /** Identity hue index; null for "Everyone else". */
+  hue: number | null;
 }
 
 /** The `n` largest senders plus "Everyone else", summing EXACTLY to the
  *  total (the rest is the difference, never a rounded share). Empty when
- *  nothing has a size; the rest is left out when it is zero. */
-export function storageSegments(groups: Group[], rest: string, n = 4):
-    Segment[] {
+ *  nothing has a size; the rest is left out when it is zero. `hueOf` maps a
+ *  label to its identity hue (of `hueCount`). */
+export function storageSegments(groups: Group[], rest: string, n = 4,
+    hueOf: (label: string) => number = () => 0, hueCount = 1): Segment[] {
   const total = totalsOf(groups).size;
   if (total <= 0) return [];
   const top = biggestSenders(groups, n).filter((g) => g.size > 0);
-  const segs: Segment[] = top.map((g) => ({ key: g.key, label: g.label,
-    size: g.size, group: g }));
+  // A segment whose hue equals its left neighbour's takes the next hue, so
+  // neighbours never blend (the legend dot uses the same hue).
+  let prev = -1;
+  const segs: Segment[] = top.map((g) => {
+    let hue = hueOf(g.label);
+    if (hueCount > 1 && hue === prev) hue = (hue + 1) % hueCount;
+    prev = hue;
+    return { key: g.key, label: g.label, size: g.size, group: g, hue };
+  });
   const left = total - top.reduce((s, g) => s + g.size, 0);
-  if (left > 0) segs.push({ key: "", label: rest, size: left, group: null });
+  if (left > 0)
+    segs.push({ key: "", label: rest, size: left, group: null, hue: null });
   return segs;
 }

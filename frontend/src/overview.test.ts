@@ -40,3 +40,13 @@ test("storage segments: no rest entry when four or fewer senders; none when empt
   expect(storageSegments([], "Rest")).toEqual([]);
   expect(storageSegments([mk("z", 0)], "Rest")).toEqual([]);
 });
+
+test("adjacent segments never share a hue: the second takes the next one", () => {
+  const same = () => 3;                       // every label hashes alike
+  const segs = storageSegments(many, "Rest", 4, same, 6);
+  expect(segs.map((s) => s.hue)).toEqual([3, 4, 3, 4, null]);
+  // different hues stay as they are; the wrap-around works
+  const byKey = (l: string) => (l === "a" ? 5 : l === "b" ? 5 : 0);
+  expect(storageSegments(many, "Rest", 4, byKey, 6).slice(0, 3)
+    .map((s) => s.hue)).toEqual([5, 0, 0 + 1]);
+});
