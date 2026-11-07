@@ -1604,7 +1604,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div aria-live="polite" className="pmc-toasts pointer-events-none fixed
-        inset-x-0 z-(--z-toast) flex flex-col items-center gap-2 px-3">
+        inset-x-0 lg:left-61 z-(--z-toast) flex flex-col items-center gap-2 px-3">
         {items.map((x) => (
           <ToastView key={x.id} toast={x} dismiss={dismiss} />
         ))}

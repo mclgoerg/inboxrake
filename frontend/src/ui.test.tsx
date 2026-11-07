@@ -340,6 +340,8 @@ test("toast stack sits on the toast layer above the bulk bar", () => {
   const stack = document.querySelector("[aria-live=polite]") as HTMLElement;
   expect(stack.className).toContain("z-(--z-toast)");
   expect(stack.className).toContain("pmc-toasts");
+  // centred over the content column beside the sidebar, like the bulk bar
+  expect(stack.className).toContain("lg:left-61");
 });
 
 test("confirmDialog resolves true on confirm, false on Cancel / Esc / backdrop", async () => {
