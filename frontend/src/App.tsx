@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
-import { DEFAULT_PAGE, isTabPage, isToolPage, useNav, useSidebar, type Page,
+import { DEFAULT_PAGE, isTabPage, isToolPage, TOOL_TAB, useNav, useSidebar, type Page,
   type ToolPage } from "./nav";
 import { TabBar, ToolList, ToolRow } from "./components/TabBar";
 import { AuditLogPanel } from "./components/AuditLogPanel";
@@ -1864,7 +1864,9 @@ export default function App() {
   const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
     if (wide) { goPage(to); return; }
     modal();
-    if (routeTool) goPage(to);   // a modal opened by a deep link / a resize
+    // A modal opened by a deep link / a resize returns to the tab page that
+    // lists the tool (Search has none: `to`).
+    if (routeTool) goPage(TOOL_TAB[routeTool] ?? to);
   };
   const toolShown = (id: ToolPage) => shownTool === id;
 

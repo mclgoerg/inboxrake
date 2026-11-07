@@ -115,9 +115,13 @@ function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate type-body font-medium">
                     {t(c.def.titleKey)}</span>
-                  <span className="block truncate type-meta text-muted">
+                  <span className="block type-meta text-muted">
                     {t("qw.card_meta", { mails: c.mails,
                       size: fmtSize(c.size) })}
+                    {c.protectedSkipped > 0 && (
+                      <span> · {t("qw.protected_skipped",
+                        { n: c.protectedSkipped })}</span>
+                    )}
                   </span>
                 </span>
               </button>

@@ -22,6 +22,13 @@ export const isToolPage = (p: Page): p is ToolPage =>
  *  items, so from 1024 px these routes fall back to the default page. */
 export const TAB_PAGES: readonly Page[] = ["cleanup", "insights"];
 export const isTabPage = (p: Page): boolean => TAB_PAGES.includes(p);
+/** The tab page (below 1024 px) that lists each tool; Search has none. */
+export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
+  triage: "cleanup", duplicates: "cleanup", attachments: "cleanup",
+  rules: "cleanup", junk: "cleanup", trash: "cleanup",
+  stats: "insights", space: "insights", trackers: "insights",
+  activity: "insights",
+};
 /** The start page for everyone: a fresh load without a route lands here. */
 export const DEFAULT_PAGE: Page = "overview";
 
@@ -48,6 +55,15 @@ export function useNav(initial: Page = DEFAULT_PAGE): [Page, (p: Page) => void] 
     return () => window.removeEventListener("hashchange", on);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The tab pages don't exist from 1024 px: replace their history entry with
+  // the start page, so Back never lands on a route that shows nothing of its own.
+  const wide = useSidebar();
+  useEffect(() => {
+    if (!wide || !isTabPage(page)) return;
+    window.history.replaceState(window.history.state, "",
+      hashOf(DEFAULT_PAGE));
+    setPageState(DEFAULT_PAGE);
+  }, [wide, page]);
   const setPage = useCallback((p: Page) => {
     setPageState(p);
     if (parseHash(window.location.hash) !== p)

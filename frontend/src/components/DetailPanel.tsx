@@ -895,21 +895,22 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       ) : (
         <>
           {tab === "senders" && hasSenders ? (
-            <>
-              {/* (55%: the header may take at most that much of the pane, the
-                  sender list below keeps the rest) */}
-              <div className="max-h-[55%] shrink-0 overflow-y-auto pb-3">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {/* The header takes its natural height and the body scrolls as
+                  a whole when it is tall; the list keeps a usable minimum
+                  (and fills the rest of the pane otherwise). */}
+              <div className="shrink-0 pb-3">
                 {filingBox}
                 {head}
               </div>
               <div {...tabPanelProps("pool", "senders")}
-                className="flex min-h-0 flex-1 flex-col">
+                className="flex min-h-64 flex-1 flex-col">
                 <SenderList senders={senders!} folders={folders}
                   rowKind={group.kind} categories={categories} onFile={onFile}
                   onAct={onSenderAct!} onProtect={onSenderProtect!}
                   onInspect={setInspect} onSelectedChange={setSenderSel} />
               </div>
-            </>
+            </div>
           ) : (
             <>
               {/* One scroll for header, actions and mails: the tall header
