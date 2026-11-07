@@ -811,6 +811,11 @@ const hueOf = (name: string): string => {
   return ACCOUNT_HUES[Math.abs(h) % ACCOUNT_HUES.length];
 };
 
+/** A solid fill in the same hue as `Avatar` for that name (the avatar's text
+ *  colour as a background): storage-bar segments and legend dots. */
+export const hueFill = (name: string): string =>
+  `${hueOf(name).split(" ")[1]} bg-current`;
+
 /** Letter avatar identifying one account/sender/domain, tinted by a
  *  stable hash of its name so entries stay visually distinct. `size`
  *  controls the diameter: "sm" (account switcher), "md" (group rows) or "lg"

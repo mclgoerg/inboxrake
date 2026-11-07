@@ -96,10 +96,13 @@ export const DE: Record<string, string> = {
   "still.text": "{n} Mails, seit du am {date} abbestellt hast",
   "still.text_one": "1 Mail, seit du am {date} abbestellt hast",
   "still.text_many": "{n} Mails von {senders} Absendern, seit du abbestellt hast (erste am {date})",
-  "qw.title": "Schnelle Erfolge",
-  "qw.free_up": "bis zu {size} frei",
-  "qw.show": "Schnelle Erfolge anzeigen",
-  "qw.hide": "Schnelle Erfolge ausblenden",
+  "overview.storage": "Speicher",
+  "overview.summary": "in {mails} von {senders}",
+  "overview.can_go": "Bis zu {size} können weg",
+  "overview.everyone_else": "Alle anderen",
+  "overview.suggestions": "Vorschläge",
+  "overview.show_all": "Alle {n} anzeigen",
+  "overview.biggest": "Größte Absender",
   "qw.card_meta": "{mails} Mails - {size}",
   "qw.protected_skipped": "{n} geschützte übersprungen",
   "qw.review": "Ansehen",
@@ -818,6 +821,11 @@ export const DE: Record<string, string> = {
   "onboard.step_scan":
     "Auf Scannen klicken - gelöscht wird nur nach Bestätigung, und "
     + "Löschungen landen zuerst im Papierkorb.",
+  "onboard.scanning": "Dein Postfach wird gelesen",
+  "onboard.scanning_text":
+    "Der erste Scan liest nur Kopfzeilen - das kann ein paar Minuten "
+    + "dauern. Du kannst die Seite offen lassen; die Übersicht füllt sich, "
+    + "sobald er fertig ist.",
   "onboard.test": "Verbindung testen",
   "onboard.testing": "Teste Verbindung…",
   "onboard.test_ok": "Verbunden - {n} Ordner sichtbar. Bereit zum Scannen!",
@@ -1311,6 +1319,7 @@ export const DE: Record<string, string> = {
   "menu.more": "Mehr",
   "menu.account_switch": "Konto: {name}",
   "nav.label": "Hauptnavigation",
+  "nav.overview": "Übersicht",
   "nav.senders": "Absender",
   "nav.all_mail": "Alle Mails",
   "nav.activity": "Aktivität",

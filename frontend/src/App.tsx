@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
-import { isTabPage, useNav, useSidebar } from "./nav";
+import { DEFAULT_PAGE, isTabPage, useNav, useSidebar } from "./nav";
 import { TabBar, ToolList, ToolRow } from "./components/TabBar";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { DetailPanel } from "./components/DetailPanel";
@@ -31,7 +31,7 @@ import { TriagePanel } from "./components/TriagePanel";
 import { WrappedStory } from "./components/WrappedStory";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { activeFilterLabel, FilterMenu, FilterToken } from "./components/FilterMenu";
-import { QuickWins } from "./components/QuickWins";
+import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
@@ -106,13 +106,13 @@ export default function App() {
   // `#/all` page (sidebar from 1024 px, the 5th segment below).
   const wide = useSidebar();
   const compactSelect = useMediaQuery("(width < 80rem)");
-  const [navPage, setPage] = useNav(
-    localStorage.getItem("pmc_view") === "mails" ? "all" : "senders");
+  const [navPage, setPage] = useNav();
   // The Clean up / Insights tab pages only exist below 1024 px (the sidebar
   // holds the same items): from there their routes show the default page.
-  const page = wide && isTabPage(navPage) ? "senders" : navPage;
+  const page = wide && isTabPage(navPage) ? DEFAULT_PAGE : navPage;
   const toolPage = isTabPage(page);
   const flat = page === "all";
+  const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
   const pageByApp = useRef(false);
@@ -122,9 +122,6 @@ export default function App() {
     if ((v ? "all" : "senders") !== page) pageByApp.current = true;
     setPage(v ? "all" : "senders");
   };
-  useEffect(() => {
-    localStorage.setItem("pmc_view", flat ? "mails" : "groups");
-  }, [flat]);
   // Phone top bar: sticky; translucent and compact once the page scrolled
   // (body is the scroll container). Publishes --topbar-h for the table head.
   const [scrolled, setScrolled] = useState(false);
@@ -503,6 +500,10 @@ export default function App() {
       : raw;
   }, [state, mode]);
   const allGroups = useMemo(() => Object.values(modeGroups), [modeGroups]);
+  // The Overview always speaks about the Sender groups of the whole mailbox,
+  // whatever grouping the Senders page was left on.
+  const senderGroups = useMemo(
+    () => Object.values(state?.groups?.sender ?? {}), [state]);
   // Smart: every sender behind each pooled row, so the filter reaches all
   // of them (built once per state refresh, not per keystroke).
   const members = useMemo(
@@ -1058,17 +1059,44 @@ export default function App() {
     }
   };
 
-  // Quick-win cards (see quickwins.ts). Review = the chips' second tap:
-  // the card's query in the filter box and its matches selected, so the
-  // list and the BulkBar show exactly what the card counted. Clean up goes
-  // through act(), i.e. the usual trash confirm naming the counts
-  // (protected / pinned handling included) and the Undo toast.
-  const reviewQuickWin = (c: QuickWinCard) => {
-    setFilter(c.def.query);
-    setSelected(new Set(c.keys));
+  // Overview -> Senders (Sender grouping), clean: the page change is the
+  // app's own, so the reset below must not run again after what is set next.
+  const showSenders = () => {
+    pageByApp.current = true;
+    setPage("senders");
+    setMode("sender");
+    setSelected(new Set());
+    setSelectMode(false);
+    setFocusIdx(-1);
+    cancelFollow();
+    setDetail(null);
     setActiveChip(null);
   };
-  const cleanUpQuickWin = (c: QuickWinCard) => { act(c.keys, "trash"); };
+  // A sender from the Overview: its detail on the Senders page, with the
+  // filter cleared so the row is in the list behind it.
+  const openSender = (g: Group) => {
+    showSenders();
+    setFilter("");
+    setDetail(g);
+  };
+
+  // Quick-win cards (see quickwins.ts, shown as the Overview's suggestions).
+  // Review = the chips' second tap: the card's query in the filter box and
+  // its matches selected, so the list and the BulkBar show exactly what the
+  // card counted. Clean up goes through the usual trash confirm naming the
+  // counts (protected / pinned handling included) and the Undo toast; both
+  // land on the Senders page.
+  const reviewQuickWin = (c: QuickWinCard) => {
+    showSenders();
+    setFilter(c.def.query);
+    setSelected(new Set(c.keys));
+  };
+  const cleanUpQuickWin = async (c: QuickWinCard) => {
+    showSenders();
+    // `act` would still read the grouping we are leaving.
+    if (await actOn("sender", state?.groups?.sender ?? {}, c.keys, "trash"))
+      setSelected(new Set());
+  };
 
   // Saved filter presets: unlike selectPreset() above (which ADDS to the
   // selection), tapping one REPLACES the filter query - they are one-tap
@@ -1494,6 +1522,7 @@ export default function App() {
       // Focus inside the pane (a button, a mail row): only list navigation
       // carries over - Enter, x, # and / belong to what has focus.
       if (inPane && !["j", "k"].includes(e.key)) return;
+      if (overview) return;   // the Overview has no list to drive
       if (e.key === "/") {
         e.preventDefault();
         filterRef.current?.focus();
@@ -1562,10 +1591,31 @@ export default function App() {
     return unverified || cfg?.setup_needed ? "" : t("No scan yet - hit “Scan”.");
   };
 
+  const testConnection = async () => {
+    setPending(t("onboard.testing"));
+    try {
+      const r = await api.testConnection();
+      notify(t("onboard.test_ok", { n: r.folders }), "success");
+    } catch (e: any) {
+      notify(`${t("onboard.test_fail")}: ${e.message ?? e}`, "error");
+    }
+    setPending("");
+  };
+  // What the Overview shows: the figures, or first-run guidance while there
+  // is nothing to show (no account / unconfirmed sign-in / no scan yet).
+  const overviewPhase: OverviewPhase = senderGroups.length > 0 ? "data"
+    : scanning ? "scanning"
+    : cfg && (state?.status === "idle" || state?.status === "error")
+      ? (cfg.setup_needed ? "setup" : unverified ? "unverified" : "ready")
+    : "data";
+  const accountLine = acct?.user && acct.user !== account
+    ? `${account} · ${acct.user}` : account;
+
   const statusLine = () => {
     if (!state) return <Spinner />;
     const running = job ?? (pending ? { label: pending, progress: "" } : null);
     if (!running) {
+      if (overview) return null;   // the hero card says it all
       // The "N cached AI verdicts applied" notice lives here as a muted
       // suffix (full sentence as tooltip) instead of a banner of its own.
       const n = state.notice?.key === "cached_verdicts"
@@ -2007,15 +2057,16 @@ export default function App() {
         border-line pb-2">
         {wide && (
           <h1 className="mr-2 type-heading">
-            {t(flat ? "nav.all_mail" : "nav.senders")}
+            {t(overview ? "nav.overview" : flat ? "nav.all_mail"
+              : "nav.senders")}
           </h1>
         )}
         {/* order-last + fill: below 768 the segments get a line of their own. */}
         <div className={`order-last w-full md:order-none md:w-auto
-          ${wide && flat ? "hidden" : ""}`}>
+          ${wide && (flat || overview) ? "hidden" : ""}`}>
           <Segmented label={t("view.group_by")} fill
             className="md:w-auto"
-            value={flat ? "flat" : mode}
+            value={overview ? null : flat ? "flat" : mode}
             options={[
               ...TAB_GROUPINGS.map((g) =>
                 ({ value: g as Grouping | "flat", label: t(GROUPING_LABEL[g]) })),
@@ -2056,7 +2107,7 @@ export default function App() {
           token naming an active quick / saved filter · Filter menu · Sort ·
           More. All mails renders its own filter + sort into the same slot
           (portal), so nothing moves when switching tabs. */}
-      {flat ? (
+      {overview ? null : flat ? (
         <div className={FILTER_ROW}>
           <div ref={setToolbarSlot} className="contents" />
           {moreMenu}
@@ -2116,19 +2167,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Quick wins: suggestions on the Sender tab only, and only while
-          the list is otherwise untouched (no filter typed, nothing
-          selected) - Review fills in both, which hides the strip. */}
-      {!flat && mode === "sender" && !!state?.scanned_ts && !filter.trim()
-        && selected.size === 0 && (
-        <QuickWins groups={allGroups} account={account}
-          onReview={reviewQuickWin} onCleanUp={cleanUpQuickWin} />
-      )}
-
       {/* Inline preset editor: appears only while editing one (Pencil
           above) - a Cancel is always reachable, per the rule of never
           leaving a swapped-in control with no way back. */}
-      {!flat && editingPreset && (
+      {!flat && !overview && editingPreset && (
         <div className="relative mb-3 flex flex-wrap items-center gap-2
           rounded-card border border-accent/50 bg-panel2 p-2">
           <span className="shrink-0 type-meta text-muted">
@@ -2395,58 +2437,22 @@ export default function App() {
         </ToolList>
       ))}
 
-      {/* First-run onboarding: no credentials or no scan yet. */}
-      {!toolPage && cfg && (state?.status === "idle" || state?.status === "error")
-        && allGroups.length === 0
-        && !scanning && (
-        <div className="mx-auto my-10 max-w-md rounded-card border border-line
-          bg-panel p-4 type-body sm:p-5">
-          <div className="mb-3 break-words type-heading">
-            {cfg.setup_needed ? t("wizard.setup_btn")
-              : unverified ? t("onboard.unverified", { account: acct?.user || account })
-              : t("onboard.ready")}
-          </div>
-          <p className="text-muted">
-            {cfg.setup_needed ? t("wizard.setup_text")
-              : unverified ? t("onboard.unverified_text")
-              : t("onboard.step_scan")}
-          </p>
-          {unverified ? (
-            <div className="mt-4">
-              <Button onClick={() => setWizard({ mode: "first",
-                step: "signin", account })}>
-                {t("onboard.unverified_btn")}</Button>
-            </div>
-          ) : cfg.setup_needed ? (<>
-            <div className="mt-4">
-              <Button disabled={demo} title={demo ? demoHint() : undefined}
-                onClick={() => setWizard({ mode: "first" })}>
-                {t("wizard.setup_btn")}</Button>
-            </div>
-          </>) : (
-          <div className="mt-4 flex items-center gap-3">
-            {hasCredentials(acct) && (
-              <Button variant="secondary" onClick={async () => {
-                setPending(t("onboard.testing"));
-                try {
-                  const r = await api.testConnection();
-                  notify(t("onboard.test_ok", { n: r.folders }), "success");
-                } catch (e: any) {
-                  notify(`${t("onboard.test_fail")}: ${e.message ?? e}`,
-                    "error");
-                }
-                setPending("");
-              }}>{t("onboard.test")}</Button>
-            )}
-            <Button onClick={startScan} disabled={!hasCredentials(acct)}>
-              {t("Scan")}
-            </Button>
-          </div>
-          )}
-        </div>
-      )}
-
-      {toolPage ? null : flat ? (
+      {toolPage ? null : overview ? (
+        state && (
+          <Overview phase={overviewPhase} groups={senderGroups}
+            account={account} accountLine={accountLine}
+            unverifiedName={acct?.user || account}
+            progress={progress} progressLabel={job?.label ?? pending}
+            canScan={hasCredentials(acct)}
+            setupHint={demo ? demoHint() : undefined}
+            onSetup={() => setWizard({ mode: "first" })}
+            onVerify={() => setWizard({ mode: "first", step: "signin",
+              account })}
+            onTest={testConnection} onScan={startScan}
+            onReview={reviewQuickWin} onCleanUp={cleanUpQuickWin}
+            onOpenSender={openSender} />
+        )
+      ) : flat ? (
         state && (
           <AllMailsView key={state.account} state={state}
             onChanged={refresh} toolbarSlot={toolbarSlot} />

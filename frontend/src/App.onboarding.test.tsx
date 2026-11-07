@@ -5,7 +5,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 let state: any;
 let cfg: Config;
@@ -71,6 +71,8 @@ const baseState: AppState = {
   presets: [],
 };
 
+// First-run guidance lives on the Overview, the start page (no route).
+beforeEach(() => { window.location.hash = ""; });
 afterEach(() => {
   cleanup();
   localStorage.clear();

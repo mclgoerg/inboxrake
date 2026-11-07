@@ -424,6 +424,7 @@ export const EN: Record<string, string> = {
   "tools.group_insights": "Insights",
   "menu.account_switch": "Account: {name}",
   "nav.label": "Main navigation",
+  "nav.overview": "Overview",
   "nav.senders": "Senders",
   "nav.all_mail": "All mail",
   "nav.activity": "Activity",
@@ -505,10 +506,13 @@ export const EN: Record<string, string> = {
   "still.text": "{n} mails since you unsubscribed on {date}",
   "still.text_one": "1 mail since you unsubscribed on {date}",
   "still.text_many": "{n} mails from {senders} senders since you unsubscribed (first on {date})",
-  "qw.title": "Quick wins",
-  "qw.free_up": "free up to {size}",
-  "qw.show": "Show quick wins",
-  "qw.hide": "Hide quick wins",
+  "overview.storage": "Storage",
+  "overview.summary": "in {mails} from {senders}",
+  "overview.can_go": "Up to {size} can go",
+  "overview.everyone_else": "Everyone else",
+  "overview.suggestions": "Suggestions",
+  "overview.show_all": "Show all {n}",
+  "overview.biggest": "Biggest senders",
   "qw.card_meta": "{mails} mails - {size}",
   "qw.protected_skipped": "{n} protected skipped",
   "qw.review": "Review",
@@ -961,6 +965,10 @@ export const EN: Record<string, string> = {
   "onboard.step_scan":
     "Hit Scan - nothing is ever deleted without your confirmation, and "
     + "deletions go to Trash first.",
+  "onboard.scanning": "Reading your mailbox",
+  "onboard.scanning_text":
+    "The first scan reads headers only - this can take a few minutes. "
+    + "You can keep this page open; the Overview fills in when it is done.",
   "onboard.test": "Test connection",
   "onboard.testing": "Testing connection…",
   "onboard.test_ok": "Connected - {n} folders visible. Ready to scan!",

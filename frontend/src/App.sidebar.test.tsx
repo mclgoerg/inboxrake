@@ -301,10 +301,15 @@ test("a reload on #/all lands on All mail", async () => {
     .getAttribute("aria-current")).toBe("page");
 });
 
-test("fresh load, All mail, Back lands on Senders again (sidebar and segment)",
+test("fresh load lands on Overview; All mail, Back lands on Overview again (sidebar and segment)",
   async () => {
+  window.location.hash = "";
   mount();
   const nav = within(await side());
+  expect(nav.getAllByRole("link")[0].textContent).toContain("Overview");
+  await waitFor(() => expect(
+    nav.getByRole("link", { name: /Overview/ }).getAttribute("aria-current"))
+    .toBe("page"));
   fireEvent.click(nav.getByRole("link", { name: /All mail/ }));
   expect(window.location.hash).toBe("#/all");
   act(() => {
@@ -312,7 +317,7 @@ test("fresh load, All mail, Back lands on Senders again (sidebar and segment)",
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
   await waitFor(() => expect(
-    nav.getByRole("link", { name: /Senders/ }).getAttribute("aria-current"))
+    nav.getByRole("link", { name: /Overview/ }).getAttribute("aria-current"))
     .toBe("page"));
   cleanup();
   mount(false);
@@ -322,9 +327,10 @@ test("fresh load, All mail, Back lands on Senders again (sidebar and segment)",
     window.location.hash = "";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
+  // no grouping segment is current on the Overview
   await waitFor(() => expect(
     screen.getByRole("tab", { name: "Sender" }).getAttribute("aria-selected"))
-    .toBe("true"));
+    .toBe("false"));
 });
 
 test("Welcome and the first-run wizard cover the whole viewport: no sidebar", async () => {

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-/* Quick wins strip (F5): visibility rules, Review, Clean up (always via the
- * confirm), "Not now" per account, phone layout, German. */
+/* Quick wins as the Overview's Suggestions: cards, Review, Clean up (always
+ * via the confirm), "Not now" per account, German; gone from Senders. */
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 let state: any;
 const deleteGroups = vi.fn()
@@ -100,12 +100,24 @@ const setup = (over: Partial<AppState> = {},
   render(<ToastProvider><DialogProvider><App /></DialogProvider>
     </ToastProvider>);
 };
-const strip = () => screen.queryByRole("region", { name: "Quick wins" });
-const ready = () => waitFor(() => expect(
+// No route = the Overview, the start page; Senders is opened by hash.
+beforeEach(() => { window.location.hash = ""; });
+const ready = () => screen.findByRole("region", { name: "Storage" });
+const readySenders = () => waitFor(() => expect(
   screen.getAllByText("Label fresh").length).toBeGreaterThan(0));
-
-const ready0 = () => waitFor(() => expect(
-  screen.getAllByText("Label g1").length).toBeGreaterThan(0));
+const big = () => {
+  const old = { last: "2020-01-01", count: 20 };
+  const done = { n: 1, of: 1, status: "done" as const, link: "", addr: "" };
+  const ai = { verdict: "delete_safe", reason: "" } as Group["ai"];
+  setup({}, [
+    mk("g1@x.example", { ...old, tags: ["newsletter"], unread: 20,
+      size: 60 * MB }),
+    mk("g2@x.example", { ...old, engagement: 5, size: 50 * MB }),
+    mk("g3@x.example", { ...old, unsubscribed: done, size: 40 * MB }),
+    mk("g4@x.example", { ...old, att_size: 30 * MB, size: 30 * MB }),
+    mk("g5@x.example", { ...old, ai, size: 20 * MB }),
+  ]);
+};
 
 afterEach(() => {
   cleanup();
@@ -114,8 +126,7 @@ afterEach(() => {
   setLang("en");
 });
 
-test("the strip lists the cards, with the union size in the header",
-  async () => {
+test("the suggestions list the cards, the hero the union size", async () => {
   setup();
   await ready();
   const cards = screen.getAllByTestId("qw-card");
@@ -124,46 +135,35 @@ test("the strip lists the cards, with the union size in the header",
   expect(cards[0].textContent).toContain("30 mails - 10.0 MB");
   expect(cards[1].textContent).toContain("20 mails - 6.0 MB");
   expect(cards[0].textContent).toContain("1 protected skipped");
-  expect(strip()!.textContent).toContain("free up to 16.0 MB");
+  expect(screen.getByText("Up to 16.0 MB can go")).toBeTruthy();
 });
 
-test("hidden without a scan, on another tab, with a filter, with a " +
-  "selection", async () => {
-  setup({ scanned_ts: null });
+test("no suggestions section without cards; the Senders list has no strip",
+  async () => {
+  setup({}, [fresh]);
   await ready();
-  expect(strip()).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Suggestions" })).toBeNull();
+  expect(screen.queryByText(/can go/)).toBeNull();
   cleanup();
 
+  window.location.hash = "#/senders";
   setup();
-  await ready();
-  expect(strip()).not.toBeNull();
-  fireEvent.click(screen.getByRole("tab", { name: "Smart" }));
-  expect(strip()).toBeNull();
-  fireEvent.click(screen.getByRole("tab", { name: "Sender" }));
-  expect(strip()).not.toBeNull();
-
-  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
-    { target: { value: "fresh" } });
-  expect(strip()).toBeNull();
-  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
-    { target: { value: "" } });
-  expect(strip()).not.toBeNull();
-
-  fireEvent.click(screen.getAllByRole("checkbox")[1]);
-  expect(strip()).toBeNull();
+  await readySenders();
+  expect(screen.queryByTestId("qw-card")).toBeNull();
+  expect(screen.queryByRole("region", { name: "Quick wins" })).toBeNull();
 });
 
-test("Review sets the filter and selects exactly the card's groups",
-  async () => {
+test("Review lands on Senders with the filter set and the card's groups " +
+  "selected", async () => {
   setup();
   await ready();
   fireEvent.click(screen.getAllByRole("button", { name: "Review" })[0]);
-  expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
-    .value).toBe("eng:low age:>1y");
+  expect((await screen.findByPlaceholderText("Search or filter…") as
+    HTMLInputElement).value).toBe("eng:low age:>1y");
+  expect(window.location.hash).toBe("#/senders");
   // exactly the one non-protected match is selected (bar: groups + mails)
   await waitFor(() => expect(screen.getByText(/^1 group · 30 mails( · .+)?$/))
     .toBeTruthy());
-  expect(strip()).toBeNull();                 // list no longer untouched
   expect(deleteGroups).not.toHaveBeenCalled();
 });
 
@@ -175,14 +175,15 @@ test("Clean up opens the trash confirm with the card's counts and does " +
   const dlg = await findDialog();
   expect(dlg.textContent).toContain("30 mails");
   expect(dlg.textContent).not.toContain("40");       // protected skipped
+  expect(window.location.hash).toBe("#/senders");
   expect(deleteGroups).not.toHaveBeenCalled();
   await cancelDialog();
   await expectNoDialog();
   expect(deleteGroups).not.toHaveBeenCalled();
 });
 
-test("confirming Clean up trashes exactly the card's non-protected keys",
-  async () => {
+test("confirming Clean up trashes exactly the card's non-protected keys, " +
+  "in the Sender grouping", async () => {
   setup();
   await ready();
   fireEvent.click(screen.getAllByRole("button", { name: "Clean up" })[0]);
@@ -223,116 +224,44 @@ test("a dismissal of another account does not hide the card", async () => {
   expect(screen.getAllByTestId("qw-card")).toHaveLength(2);
 });
 
-test("collapsing is remembered", async () => {
-  setup();
+test("only the top 3 cards show; Show all reveals the rest; the hero counts " +
+  "all of them", async () => {
+  big();
   await ready();
-  fireEvent.click(screen.getByRole("button", { name: "Hide quick wins" }));
-  expect(screen.queryAllByTestId("qw-card")).toHaveLength(0);
-  expect(localStorage.getItem("pmc_qw_collapsed:proton")).toBe("1");
-  cleanup();
-  setup();
-  await ready();
-  expect(screen.queryAllByTestId("qw-card")).toHaveLength(0);
-  expect(screen.getByRole("button", { name: "Show quick wins" })).toBeTruthy();
-});
-
-test("only the top 3 cards show; More reveals the rest and the union " +
-  "total follows", async () => {
-  const old = { last: "2020-01-01", count: 20 };
-  const done = { n: 1, of: 1, status: "done" as const, link: "", addr: "" };
-  const ai = { verdict: "delete_safe", reason: "" } as Group["ai"];
-  setup({}, [
-    mk("g1@x.example", { ...old, tags: ["newsletter"], unread: 20,
-      size: 60 * MB }),
-    mk("g2@x.example", { ...old, engagement: 5, size: 50 * MB }),
-    mk("g3@x.example", { ...old, unsubscribed: done, size: 40 * MB }),
-    mk("g4@x.example", { ...old, att_size: 30 * MB, size: 30 * MB }),
-    mk("g5@x.example", { ...old, ai, size: 20 * MB }),
-  ]);
-  await ready0();
   expect(screen.getAllByTestId("qw-card")).toHaveLength(3);
-  expect(strip()!.textContent).toContain("free up to 150.0 MB");
-  fireEvent.click(screen.getAllByRole("button", { name: "2 more" })[0]);
+  expect(screen.getByText("Up to 200.0 MB can go")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Show all 5" }));
   expect(screen.getAllByTestId("qw-card")).toHaveLength(5);
-  expect(strip()!.textContent).toContain("free up to 200.0 MB");
+  fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+  expect(screen.getAllByTestId("qw-card")).toHaveLength(3);
 });
 
-test("phone layout: the cards sit in a scroll-snap row", async () => {
+test("a card carries its hint, and Not now is an always-visible icon button",
+  async () => {
   setup();
   await ready();
-  const list = screen.getAllByTestId("qw-card")[0].parentElement!;
-  expect(list.className).toContain("snap-x");
-  expect(list.className).toContain("overflow-x-auto");
-});
-
-test("phone layout is compact: hint only from md up, dismiss is an icon in " +
-  "the card head, More is the scroll row's last tile on phones", async () => {
-  const old = { last: "2020-01-01", count: 20 };
-  const done = { n: 1, of: 1, status: "done" as const, link: "", addr: "" };
-  const ai = { verdict: "delete_safe", reason: "" } as Group["ai"];
-  setup({}, [
-    mk("g1@x.example", { ...old, tags: ["newsletter"], unread: 20,
-      size: 60 * MB }),
-    mk("g2@x.example", { ...old, engagement: 5, size: 50 * MB }),
-    mk("g3@x.example", { ...old, unsubscribed: done, size: 40 * MB }),
-    mk("g4@x.example", { ...old, att_size: 30 * MB, size: 30 * MB }),
-    mk("g5@x.example", { ...old, ai, size: 20 * MB }),
-  ]);
-  await ready0();
   const card = screen.getAllByTestId("qw-card")[0];
-  const hint = within(card).getByTestId("qw-hint");
-  expect(hint.className).toContain("hidden");
-  expect(hint.className).toContain("md:block");
-  // Not now: an icon button (accessible name kept), no text row of its own.
+  expect(within(card).getByTestId("qw-hint").className).not.toContain("hidden");
   const dismiss = within(card).getByRole("button", { name: "Not now" });
   expect(dismiss.textContent).toBe("");
-  // Phones: More is the last tile of the scroll row; desktop: below the grid.
-  const [phoneMore, deskMore] = screen.getAllByRole("button", { name: "2 more" });
-  const tile = phoneMore.closest("li")!;
-  expect(tile.parentElement).toBe(card.parentElement);
-  expect(tile.className).toContain("md:hidden");
-  expect(deskMore.parentElement!.className).toContain("hidden md:block");
+  expect(within(card).getByRole("button", { name: "Review" })).toBeTruthy();
 });
 
 test("German strings", async () => {
   setLang("de");
   setup();
   await waitFor(() => expect(
-    screen.getByRole("region", { name: "Schnelle Erfolge" })).toBeTruthy());
+    screen.getByRole("heading", { name: "Vorschläge" })).toBeTruthy());
   expect(screen.getAllByRole("button", { name: "Aufräumen" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Nicht jetzt" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Ansehen" })).toHaveLength(2);
 });
 
-test("collapsed state is per account; the old global key is only a fallback",
-  async () => {
-    localStorage.removeItem("pmc_qw_collapsed:proton");
-    localStorage.setItem("pmc_qw_collapsed:other", "1");
-    localStorage.removeItem("pmc_qw_collapsed");
-    setup();                                           // account: proton
-    await ready();
-    expect(screen.getAllByTestId("qw-card")).toHaveLength(2);  // other's choice
-    cleanup();
-    localStorage.setItem("pmc_qw_collapsed", "1");     // pre-per-account value
-    setup();
-    await ready();
-    expect(screen.queryAllByTestId("qw-card")).toHaveLength(0);
-    cleanup();
-    localStorage.setItem("pmc_qw_collapsed:proton", "0");   // own entry wins
-    setup();
-    await ready();
-    expect(screen.getAllByTestId("qw-card")).toHaveLength(2);
-    localStorage.removeItem("pmc_qw_collapsed");
-    localStorage.removeItem("pmc_qw_collapsed:proton");
-    localStorage.removeItem("pmc_qw_collapsed:other");
-  });
-
 test("the cached-verdicts notice is a muted status-line suffix, not a banner",
   async () => {
-    localStorage.removeItem("pmc_qw_collapsed:proton");
-    localStorage.removeItem("pmc_qw_collapsed");
+    window.location.hash = "#/senders";
     setup({ notice: { key: "cached_verdicts", params: { n: 12 } } });
-    await ready();
+    await readySenders();
     const suffix = screen.getByTestId("cached-verdicts");
     expect(suffix.textContent).toContain("12 cached AI verdicts");
     expect(suffix.getAttribute("title")).toBe(
@@ -341,14 +270,15 @@ test("the cached-verdicts notice is a muted status-line suffix, not a banner",
     expect(screen.queryByText(/verdicts applied/)).toBeNull();   // no banner
     cleanup();
     setup({ notice: { key: "scan_cancelled", params: {} } });
-    await ready();
+    await readySenders();
     expect(screen.getByText("Scan cancelled.")).toBeTruthy();    // others stay
     expect(screen.queryByTestId("cached-verdicts")).toBeNull();
   });
 
 test("the chip row is gone: quick filters live in the Filter menu", async () => {
+  window.location.hash = "#/senders";
   setup();
-  await ready();
+  await readySenders();
   expect(screen.queryByTestId("chip-row")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
   expect(screen.getByRole("menuitemradio", { name: "AI-safe groups" }))

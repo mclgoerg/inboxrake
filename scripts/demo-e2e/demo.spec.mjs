@@ -48,7 +48,7 @@ const api = (method, url, body) => page.evaluate(async ([method, url, body]) => 
 
 const senders = async () => (await api("GET", "/api/state?account=proton")).json.groups.sender;
 
-test("boots: progress steps, then the app on the demo mailboxes @fast", async () => {
+test("boots: progress steps, then the Overview on the demo mailboxes @fast", async () => {
   const t0 = Date.now();
   await page.goto("/demo/");
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible();
@@ -58,12 +58,14 @@ test("boots: progress steps, then the app on the demo mailboxes @fast", async ()
   }
   await expect(page.getByText("Demo - your changes live only in this tab"))
     .toBeVisible({ timeout: BOOT_BUDGET_MS });
-  await expect(page.locator("[data-gidx]").first()).toBeVisible({ timeout: 30_000 });
+  // The start page is the Overview; the Senders list is one click away.
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Biggest senders" })).toBeVisible();
   bootMs = Date.now() - t0;
   seenDone = await page.evaluate(() => window.__seenDone);
   expect(seenDone, "the boot screen ticked its steps off").toBeGreaterThanOrEqual(3);
   expect(bootMs).toBeLessThan(BOOT_BUDGET_MS);
-  console.log(`boot to first sender row: ${bootMs} ms`);
+  console.log(`boot to the Overview: ${bootMs} ms`);
 });
 
 test("the first /api/state answers (synthetic Host: localhost) @fast", async () => {
@@ -77,7 +79,9 @@ test("the first /api/state answers (synthetic Host: localhost) @fast", async () 
 
 test("Trash and Undo through the UI", async () => {
   const before = await senders();
+  await page.getByRole("link", { name: /^Senders/ }).click();
   const row = page.locator("[data-gidx]").first();
+  await expect(row).toBeVisible();
   // Checkboxes only show on hover / in select mode: enter it like a user.
   await page.getByRole("button", { name: "Select", exact: true }).click();
   await row.locator('input[type="checkbox"]').check();
