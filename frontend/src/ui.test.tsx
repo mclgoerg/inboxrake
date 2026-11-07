@@ -352,7 +352,7 @@ test("toast stack offsets: content column only with a sidebar and no dialog; "
 });
 
 test("only a Modal matches the toast selectors; a popover dialog does not", () => {
-  const { unmount } = render(<RatingChips ratings={{ delete_safe: 3 }} />);
+  const { unmount } = render(<RatingChips ratings={{ delete_safe: 3, review: 0, keep: 0 }} />);
   fireEvent.click(screen.getByRole("button", { name: /AI ratings/ }));
   const pop = screen.getByRole("dialog");
   expect(pop.getAttribute("aria-modal")).toBeNull();
