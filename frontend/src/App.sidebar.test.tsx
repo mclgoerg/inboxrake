@@ -30,6 +30,7 @@ vi.mock("./api", () => ({
     state: () => { stateCalls.n++; return Promise.resolve(state); },
     emptyTrash: () => Promise.resolve({ ok: true }),
     audit: () => Promise.resolve({ entries: [], total: 0 }),
+    undo: () => Promise.resolve({ restored: 1, of: 1, rescan: true }),
     logout: () => Promise.resolve(),
     exportUrl: (mode: string, keys?: string[]) =>
       `/api/export?grouping=${mode}`
@@ -45,12 +46,14 @@ vi.mock("./api", () => ({
     aiReview: (...args: unknown[]) => aiReview(...args),
     mails: () => Promise.resolve({ items: [], total: 0 }),
     folders: () => Promise.resolve({ folders: [], wildcards: [] }),
+    foldersPanel: () => Promise.resolve({ mails: [], total: 0, senders: [] }),
   },
   downloadFile: (...args: unknown[]) => downloadFile(...args),
   setAccount: () => {},
   withAccount: (p: string) => p,
   fmtSize: (b: number) => `${b} B`,
   fmtUsd: (c: number) => `$${c}`,
+  undoLabel: (u: { label: string }) => u.label,
   mailKey: (m: { folder: string; uid: number }) => `${m.folder} ${m.uid}`,
 }));
 
@@ -245,15 +248,79 @@ test("the phone top bar is sticky and turns glass once the page scrolls",
   expect(head.className).toContain("bar-glass");
 });
 
-test("tool items open today's panels; Settings gear too", async () => {
+test("tool items open as pages beside the sidebar; Settings stays a modal",
+  async () => {
   mount();
   const nav = within(await side());
   fireEvent.click(nav.getByRole("button", { name: /Search all mails/ }));
-  expect(await screen.findByRole("dialog")).toBeTruthy();
+  expect(window.location.hash).toBe("#/search");
+  // a page, not a dialog: no overlay, no close button, current item marked
+  expect(await screen.findByRole("heading", { name: /^Search$/ })
+    .catch(() => screen.findByText("Search", { selector: ".type-heading *, .type-heading" })))
+    .toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  expect(nav.getByRole("button", { name: /Search all mails/ })
+    .getAttribute("aria-current")).toBe("page");
+  // Esc on a page does nothing
   fireEvent.keyDown(document.body, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(window.location.hash).toBe("#/search");
   fireEvent.click(nav.getByRole("button", { name: "Settings" }));
   expect(await screen.findByRole("dialog")).toBeTruthy();
+});
+
+test("a tool page survives a reload and Back/forward; leaving refreshes",
+  async () => {
+  window.location.hash = "#/trash";
+  mount();
+  const nav = within(await side());
+  await waitFor(() => expect(nav.getByRole("button", { name: /Trash/ })
+    .getAttribute("aria-current")).toBe("page"));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  const before = stateCalls.n;
+  fireEvent.click(nav.getByRole("link", { name: /Senders/ }));
+  expect(window.location.hash).toBe("#/senders");
+  // the panel's close side effect (refresh) ran on the way out
+  await waitFor(() => expect(stateCalls.n).toBeGreaterThan(before));
+  expect(screen.queryByRole("heading", { name: /Trash/ })).toBeNull();
+  act(() => {
+    window.location.hash = "#/triage";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  await waitFor(() => expect(nav.getByRole("button", { name: /Triage/ })
+    .getAttribute("aria-current")).toBe("page"));
+});
+
+test("< 1024: a tool route shows the default page, tools stay modals",
+  async () => {
+  window.location.hash = "#/rules";
+  mount(false);
+  expect(await screen.findByRole("heading", { level: 1, name: "Overview" }))
+    .toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByLabelText("Search all mails"));
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+  expect(window.location.hash).toBe("#/rules");
+});
+
+test("Activity page: the undo history above the audit log, each restorable",
+  async () => {
+  mount();
+  state = { ...state, undo: [
+    { action: "delete", count: 2, label: "Older", ts: 1 },
+    { action: "delete", count: 5, label: "Newer", ts: 2 }] };
+  fireEvent.click(within(await side()).getByRole("button",
+    { name: /Activity/ }));
+  expect(window.location.hash).toBe("#/activity");
+  const list = await screen.findByRole("list");
+  const items = within(list).getAllByRole("listitem");
+  // newest first
+  expect(items[0].textContent).toContain("Newer");
+  expect(items[1].textContent).toContain("Older");
+  expect(screen.getByText("Audit Log")).toBeTruthy();
+  fireEvent.click(within(items[0]).getByRole("button", { name: "Undo" }));
+  // the same confirm as the status line's menu (a real dialog over the page)
+  expect(await findDialog()).toBeTruthy();
 });
 
 test("All mail is a page: hash follows, back/forward work, selection resets",

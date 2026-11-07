@@ -20,9 +20,12 @@ type Grouping = "sender" | "mails";
  *  days / Empty Junk): always counted live on the server first, confirmed
  *  with the counts, and sent back as the counted UIDVALIDITY + exact UIDs. */
 export function FoldersPanel({ state, initialRole = "trash", onClose,
-  onChanged, onEmptyTrash, onUndo, onProtect }: {
+  onRoleChange, onChanged, onEmptyTrash, onUndo, onProtect }: {
   state: AppState;
+  /** On a page the role follows `initialRole` (the route) when it changes. */
   initialRole?: FolderRole;
+  /** The Junk | Trash switch was used (a page puts it in the URL). */
+  onRoleChange?: (r: FolderRole) => void;
   onClose: () => void;
   onChanged: () => void;
   /** The shared "Empty Trash" flow (confirm + permanent delete), given the
@@ -61,6 +64,14 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       });
   };
   useEffect(() => load(role), [role]);
+  const switchRole = (r: FolderRole) => {
+    setRole(r); setQ(""); setNote("");
+    setGrouping(r === "junk" ? "sender" : "mails");
+  };
+  useEffect(() => {
+    if (initialRole !== role) switchRole(initialRole);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRole]);
 
   const needle = q.trim().toLowerCase();
   const shownMails = useMemo(() => {
@@ -281,10 +292,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
           {/* Own full-width row (phones) / left-aligned segments (desktop) */}
           <div className="border-b border-line px-4 py-2">
             <Segmented value={role} label={t("fp.which")} fill={!wide} tall={!wide} equal
-              onChange={(r) => {
-                setRole(r); setQ(""); setNote("");
-                setGrouping(r === "junk" ? "sender" : "mails");
-              }}
+              onChange={(r) => { switchRole(r); onRoleChange?.(r); }}
               options={[
                 { value: "junk", label: t("Junk") },
                 { value: "trash", label: t("Trash") },

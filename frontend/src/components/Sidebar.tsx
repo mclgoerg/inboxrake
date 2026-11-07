@@ -6,7 +6,8 @@ import type { ReactNode } from "react";
 import { hashOf, type Page } from "../nav";
 import { t } from "../i18n";
 
-/** Tool entry points the sidebar can open (today: the modals). */
+/** Tool entry points the sidebar can open: pages (`ToolPage`) and the
+ *  dialogs that stay modals (Your year in mail, Settings). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "activity" | "settings";
@@ -60,7 +61,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
   );
   const tool = (id: SidebarTool, icon: ReactNode, label: string,
     count?: number | null) => (
-    <button type="button" className={`${ITEM} ${IDLE}`}
+    <button type="button" aria-current={page === id ? "page" : undefined}
+      className={`${ITEM} ${page === id ? CURRENT : IDLE}`}
       disabled={disabled[id]} onClick={() => onOpen(id)}>
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -77,9 +79,11 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         gap-0.5 overflow-y-auto border-r border-line bg-side p-3">
       {account}
       <button type="button" onClick={() => onOpen("search")}
-        className="my-2 flex min-h-9 w-full items-center gap-2 rounded-control
-          bg-chip px-2.5 text-left type-body text-muted transition-colors
-          hover:bg-chiph coarse:min-h-11">
+        aria-current={page === "search" ? "page" : undefined}
+        className={`my-2 flex min-h-9 w-full items-center gap-2 rounded-control
+          px-2.5 text-left type-body transition-colors coarse:min-h-11
+          ${page === "search" ? "bg-accent-tint text-accent"
+            : "bg-chip text-muted hover:bg-chiph"}`}>
         <Search size={16} aria-hidden />
         {t("Search all mails")}
       </button>
@@ -107,7 +111,9 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("trackers", <Eye size={16} aria-hidden />, t("tracker.menu"))}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
-        <button type="button" className={`${ITEM} ${IDLE} flex-1`}
+        <button type="button" aria-current={page === "activity" ? "page"
+          : undefined}
+          className={`${ITEM} ${page === "activity" ? CURRENT : IDLE} flex-1`}
           onClick={() => onOpen("activity")}>
           <ScrollText size={16} aria-hidden />
           {t("nav.activity")}

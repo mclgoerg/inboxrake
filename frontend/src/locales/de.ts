@@ -1323,6 +1323,8 @@ export const DE: Record<string, string> = {
   "nav.senders": "Absender",
   "nav.all_mail": "Alle Mails",
   "nav.activity": "Aktivität",
+  "activity.undo": "Rückgängig-Verlauf",
+  "activity.undo_empty": "Nichts zum Rückgängigmachen.",
   "export.csv": "CSV exportieren",
   "export.csv_tip": "Aktuelle Gruppierung als CSV exportieren",
   "bar.selected": "{n} Gruppen · {mails} Mails",
