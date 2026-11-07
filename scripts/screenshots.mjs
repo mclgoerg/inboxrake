@@ -88,6 +88,11 @@ await page.close();
 page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
 await dismissNotice(page);
 await openGroup(page, "PayBank");
+// Keep the open row clear of the sticky header: no row cut off at the top.
+await page.evaluate(() => [...document.querySelectorAll("[data-gidx]")]
+  .find((e) => e.offsetParent && e.textContent.includes("PayBank"))
+  ?.scrollIntoView({ block: "center" }));
+await settle(page);
 await save(page, "split-pane.png");
 await page.close();
 

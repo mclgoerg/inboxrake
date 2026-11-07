@@ -236,8 +236,8 @@ registration in Microsoft Entra ID.
 
 1. Open the web UI. On a fresh install a welcome screen and the setup walk you
    through provider, sign-in (with a connection test; choosing folders is
-   optional), an optional login password and the first scan. (Settings -> Mail account
-   has the same presets: Gmail, iCloud, Fastmail, GMX, mailbox.org,
+   optional), an optional login password and the first scan. (Settings -> Mail
+   account has the same presets: Gmail, iCloud, Fastmail, GMX, mailbox.org,
    Yahoo, Outlook.)
 2. Hit **Scan** (the setup starts the first one; afterwards it is in the
    toolbar of Overview and Senders).

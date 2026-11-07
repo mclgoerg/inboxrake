@@ -27,7 +27,6 @@ export async function open(browser, base, {
     localStorage.setItem("pmc_account", "proton");
     localStorage.setItem("pmc_theme", th);
     localStorage.setItem("pmc_lang", "en");
-    localStorage.setItem("pmc_view", "groups");
   }, theme);
   await page.goto(`${base.replace(/\/$/, "")}/#/${route}`,
     { waitUntil: "networkidle2" });

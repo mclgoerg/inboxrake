@@ -45,10 +45,11 @@ docker compose up -d
 warning. Keep the key safe and out of your backups - if it is lost you
 re-enter the secrets.
 
-Open <http://localhost:8765>; on a fresh install a welcome screen and a short setup walk you
-through provider, sign-in (folders are optional), an optional login password
-and the first scan. For Proton Mail use `docker-compose.proton.yml` instead (it needs a
-Bridge image you provide - see its header).
+Open <http://localhost:8765>; on a fresh install a welcome screen and a short
+setup walk you through provider, sign-in (folders are optional), an optional
+login password and the first scan. For Proton Mail use
+`docker-compose.proton.yml` instead (it needs a Bridge image you provide - see
+its header).
 
 **Plain `docker run`** with the published image:
 
@@ -78,8 +79,8 @@ docker run --rm -p 127.0.0.1:8765:8765 -v "$PWD":/repo \
   ghcr.io/mclgoerg/inboxrake:latest python /repo/scripts/demo.py
 ```
 
-Add `--empty` to see the welcome screen and first-run setup instead (in the setup any mail
-server name works and the password `demo` signs in).
+Add `--empty` to see the welcome screen and first-run setup instead (in the
+setup any mail server name works and the password `demo` signs in).
 
 **In action** - click a filter together, select the matches, confirm the
 move to Trash (with the count spelled out), undo from the result toast, open
@@ -183,13 +184,13 @@ security; you add user and password.
 ## Features
 
 Five views (Sender, Smart pools of small senders, Subject, Thread, a flat
-list), an Overview start page with cleanup suggestions, a drill-down reader with
-no remote content, a Filter menu and filter builder, optional AI review and a "describe a filter" box, swipe triage,
-rules and a scheduler, one-click and bulk unsubscribe with a watchdog,
-protected senders and mails, a Trash/Junk browser, space map, statistics,
-audit log, multiple strictly separate accounts, system/light/dark appearance, phone layout,
-English and German. Everything is listed in
-**[docs/features.md](docs/features.md)**.
+list), an Overview start page with cleanup suggestions, a drill-down reader
+with no remote content, a Filter menu and filter builder, optional AI review
+and a "describe a filter" box, swipe triage, rules and a scheduler, one-click
+and bulk unsubscribe with a watchdog, protected senders and mails, a
+Trash/Junk browser, space map, statistics, audit log, multiple strictly
+separate accounts, system/light/dark appearance, phone layout, English and
+German. Everything is listed in **[docs/features.md](docs/features.md)**.
 
 ## Security & multi-user
 
