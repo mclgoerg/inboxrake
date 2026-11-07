@@ -1,10 +1,12 @@
-import { BarChart3, ChevronRight, Users, Wand2 } from "lucide-react";
+import { BarChart3, ChevronRight, LayoutDashboard, Users, Wand2 } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { hashOf, type Page } from "../nav";
 import { t } from "../i18n";
 import { useBulkBarHeight } from "./ui";
 
 const TABS: { page: Page; icon: ReactNode; label: string }[] = [
+  { page: "overview", icon: <LayoutDashboard size={18} aria-hidden />,
+    label: "nav.overview" },
   { page: "senders", icon: <Users size={18} aria-hidden />,
     label: "nav.senders" },
   { page: "cleanup", icon: <Wand2 size={18} aria-hidden />,

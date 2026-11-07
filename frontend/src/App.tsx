@@ -2008,6 +2008,7 @@ export default function App() {
             : "type-largetitle"}`}>
             {t(page === "cleanup" ? "tools.group_cleanup"
               : page === "insights" ? "tools.group_insights"
+              : overview ? "nav.overview"
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
           {!toolPage && !!scannedAgo && !scrolled && (
@@ -2050,9 +2051,11 @@ export default function App() {
 
       {/* Row 1 - the page toolbar: title (sidebar layouts) · grouping
           segments · scanned ago + Scan (the quiet secondary button; primary
-          only as the setup entry while there is no account). Below 1024 the
-          old Search / Tools entries stay here until the tab bar replaces
-          them. On phones the segments take a line of their own. */}
+          only as the setup entry while there is no account). The Overview has
+          no grouping segments, and no toolbar at all on phones (the top bar
+          holds its title and Scan). On phones the segments take a line of
+          their own. */}
+      {(wide || !overview) && (
       <div className="mb-2 flex flex-wrap items-center gap-2 border-b
         border-line pb-2">
         {wide && (
@@ -2063,10 +2066,10 @@ export default function App() {
         )}
         {/* order-last + fill: below 768 the segments get a line of their own. */}
         <div className={`order-last w-full md:order-none md:w-auto
-          ${wide && (flat || overview) ? "hidden" : ""}`}>
+          ${overview || (wide && flat) ? "hidden" : ""}`}>
           <Segmented label={t("view.group_by")} fill
             className="md:w-auto"
-            value={overview ? null : flat ? "flat" : mode}
+            value={flat ? "flat" : mode}
             options={[
               ...TAB_GROUPINGS.map((g) =>
                 ({ value: g as Grouping | "flat", label: t(GROUPING_LABEL[g]) })),
@@ -2103,6 +2106,7 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
       {/* Row 2 - search / filter: the filter input (+ clear, QueryBuilder) ·
           token naming an active quick / saved filter · Filter menu · Sort ·
           More. All mails renders its own filter + sort into the same slot

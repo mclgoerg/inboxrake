@@ -159,7 +159,7 @@ test("< 1024: top bar, tab bar and five segments, no sidebar, no Tools menu",
   const tabs = within(screen.getByRole("navigation",
     { name: "Main navigation" }));
   expect(tabs.getAllByRole("link").map((l) => l.textContent))
-    .toEqual(["Senders", "Clean up", "Insights"]);
+    .toEqual(["Overview", "Senders", "Clean up", "Insights"]);
   expect(screen.queryByRole("button", { name: /Tools/ })).toBeNull();
   expect(screen.queryByRole("heading", { name: "Inboxrake" })).toBeNull();
   expect(screen.getByRole("tab", { name: "All mails" })).toBeTruthy();
@@ -192,7 +192,7 @@ test("#/cleanup shows the tool list below 1024 and the default page from 1024",
   window.location.hash = "#/insights";
   mount(true);
   const nav = within(await side());
-  expect(nav.getByRole("link", { name: /Senders/ })
+  expect(nav.getByRole("link", { name: /Overview/ })
     .getAttribute("aria-current")).toBe("page");
   expect(screen.queryByRole("link", { name: "Insights" })).toBeNull();
 });
@@ -225,7 +225,7 @@ test("#/cleanup at >= 1024: the sidebar's Senders rewrites the URL",
   window.location.hash = "#/cleanup";
   mount(true);
   const nav = within(await side());
-  expect(nav.getByRole("link", { name: /Senders/ })
+  expect(nav.getByRole("link", { name: /Overview/ })
     .getAttribute("aria-current")).toBe("page");
   fireEvent.click(nav.getByRole("link", { name: /Senders/ }));
   expect(window.location.hash).toBe("#/senders");
@@ -320,17 +320,25 @@ test("fresh load lands on Overview; All mail, Back lands on Overview again (side
     nav.getByRole("link", { name: /Overview/ }).getAttribute("aria-current"))
     .toBe("page"));
   cleanup();
+  // phones: the Overview has a title and the tab bar, no grouping segments
+  window.location.hash = "";
   mount(false);
+  expect(await screen.findByRole("heading", { level: 1, name: "Overview" }))
+    .toBeTruthy();
+  expect(screen.queryByRole("tab", { name: "Sender" })).toBeNull();
+  const tabs = within(screen.getByRole("navigation",
+    { name: "Main navigation" }));
+  expect(tabs.getByRole("link", { name: "Overview" })
+    .getAttribute("aria-current")).toBe("page");
+  fireEvent.click(tabs.getByRole("link", { name: "Senders" }));
   fireEvent.click(await screen.findByRole("tab", { name: "All mails" }));
   expect(window.location.hash).toBe("#/all");
   act(() => {
     window.location.hash = "";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
-  // no grouping segment is current on the Overview
-  await waitFor(() => expect(
-    screen.getByRole("tab", { name: "Sender" }).getAttribute("aria-selected"))
-    .toBe("false"));
+  expect(await screen.findByRole("heading", { level: 1, name: "Overview" }))
+    .toBeTruthy();
 });
 
 test("Welcome and the first-run wizard cover the whole viewport: no sidebar", async () => {
