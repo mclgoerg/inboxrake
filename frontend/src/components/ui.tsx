@@ -457,8 +457,8 @@ export function Loading({ label, className = "" }: {
  *  faint text, no opacity (a disabled red button must not read as an alarm). */
 const DISABLED = "disabled:cursor-not-allowed disabled:bg-chip disabled:text-faint";
 
-type ButtonVariant = "primary" | "secondary" | "tinted" | "quiet" | "danger"
-  | "danger-quiet" | "danger-tint";
+type ButtonVariant = "primary" | "secondary" | "tinted" | "quiet" | "plain"
+  | "danger" | "danger-quiet" | "danger-tint";
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary: "bg-accent enabled:hover:bg-accenth text-on-accent",
@@ -466,6 +466,8 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   // Secondary call to action ("Review", "Done", an active Filter).
   tinted: "bg-accent-tint enabled:hover:bg-accent/22 enabled:hover:text-accenth text-accent",
   quiet: "bg-transparent enabled:hover:bg-chip text-body",
+  // No box, accent text / icon (the phone toolbar's Filter, Sort, Select).
+  plain: "bg-transparent enabled:hover:bg-chip text-accent disabled:bg-transparent",
   danger: "bg-danger enabled:hover:bg-danger-h text-white",
   "danger-quiet":
     "bg-transparent enabled:hover:bg-keep-bg text-danger-fg",

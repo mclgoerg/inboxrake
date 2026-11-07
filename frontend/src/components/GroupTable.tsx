@@ -44,6 +44,9 @@ interface Props {
   // Always the card layout (a list inside the detail panel, which is narrow
   // beside the list at any viewport width); its checkboxes are always shown.
   cards?: boolean;
+  // First row of the list (the filter's "Select all N matches" banner): in
+  // the table card / the phone card, above the rows. Not a row for j/k.
+  banner?: ReactNode;
 }
 
 /** Thread / subject groups carry an English summary from the backend
@@ -162,7 +165,7 @@ const ROW_ON = "bg-panel2";
 /* Desktop: fixed-layout table so column widths never change when the
    grouping mode (and with it the content) changes. */
 function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, onToggle,
-  onToggleAll, onOpen, blockedKeys, selectMode, cards,
+  onToggleAll, onOpen, blockedKeys, selectMode, cards, banner,
   sortK, sortDir, onSort, groupLabel, grouping, rowNote
 }: PageProps) {
   // Sort indicator, inline after the label: the active column shows an
@@ -242,6 +245,9 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
         </tr>
       </thead>
       <tbody>
+        {banner && (
+          <tr><td colSpan={compact ? 5 : 6} className="p-0">{banner}</td></tr>
+        )}
         {slice.map((g, i) => {
           const on = g.key === openKey || selected.has(g.key);
           const pill = rowPill(g, !!blockedKeys?.has(g.key));
@@ -311,11 +317,12 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
 /* Mobile: a card list - no table semantics, no horizontal squeeze. The
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
-  onOpen, blockedKeys, selectMode, cards, grouping, rowNote
+  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   return (
     <div className="overflow-clip rounded-card bg-panel">
+      {banner}
       {slice.map((g, i) => {
         const pill = rowPill(g, !!blockedKeys?.has(g.key));
         return (

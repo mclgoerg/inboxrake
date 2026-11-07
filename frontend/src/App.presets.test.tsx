@@ -267,17 +267,17 @@ test("an applied saved filter shows as a removable token; picking it again "
   await openSaved();
   const box = screen.getByPlaceholderText("Search or filter…") as
     HTMLInputElement;
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Old parcels" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Old parcels/ }));
   expect(box.value).toBe("from:parcels@shipping.example age:>1y");
   expect(screen.getByTestId("filter-token").textContent).toContain("Old parcels");
 
   await openFilterMenu();
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Old parcels" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Old parcels/ }));
   expect(box.value).toBe("");
   expect(screen.queryByTestId("filter-token")).toBeNull();
 
   await openFilterMenu();
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Old parcels" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Old parcels/ }));
   fireEvent.click(screen.getByRole("button",
     { name: "Remove filter “Old parcels”" }));
   expect(box.value).toBe("");

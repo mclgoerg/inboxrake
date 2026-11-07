@@ -181,6 +181,16 @@ test("Button variants render", () => {
   expect(screen.getByText("danger-quiet").className).toContain("text-danger-fg");
 });
 
+test("Button plain: no box, accent text, stays unboxed when disabled", () => {
+  render(<>
+    <Button variant="plain">on</Button>
+    <Button variant="plain" disabled>off</Button>
+  </>);
+  expect(screen.getByText("on").className).toContain("text-accent");
+  expect(screen.getByText("on").className).toContain("bg-transparent");
+  expect(screen.getByText("off").className).toContain("disabled:bg-transparent");
+});
+
 test("Button sizes carry the touch heights; passes aria-* and type through", () => {
   render(<>
     <Button>md</Button>

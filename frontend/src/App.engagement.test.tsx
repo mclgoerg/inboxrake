@@ -110,7 +110,7 @@ afterEach(() => {
 });
 
 const rowLabels = (container: HTMLElement) =>
-  [...container.querySelectorAll("tbody tr")]
+  [...container.querySelectorAll("tbody tr[data-gidx]")]
     .map((tr) => tr.querySelector("button")!.textContent);
 
 const mountReady = () => localStorage.setItem("pmc_account", "proton");

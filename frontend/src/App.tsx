@@ -31,7 +31,8 @@ import { AiFilterPanel } from "./components/AiFilterPanel";
 import { TriagePanel } from "./components/TriagePanel";
 import { WrappedStory } from "./components/WrappedStory";
 import { QueryBuilder } from "./components/QueryBuilder";
-import { activeFilterLabel, FilterMenu, FilterToken } from "./components/FilterMenu";
+import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterMenu";
+import { SelectMatches } from "./components/SelectMatches";
 import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
 import { FoldersPanel } from "./components/FoldersPanel";
@@ -109,6 +110,7 @@ export default function App() {
   // `#/all` page (sidebar from 1024 px, the 5th segment below).
   const wide = useSidebar();
   const compactSelect = useMediaQuery("(width < 80rem)");
+  const phone = useMediaQuery("(width < 48rem)");
   const [navPage, setPage] = useNav();
   // The Clean up / Insights tab pages only exist below 1024 px (the sidebar
   // holds the same items): from there their routes show the default page.
@@ -160,15 +162,9 @@ export default function App() {
   // Select mode ("Select" / "Done" button): checkboxes on every row. It ends
   // wherever the selection is reset with the view (account, grouping, page).
   const [selectMode, setSelectMode] = useState(false);
-  // Which quick-select chip's 3-tap cycle (filter -> select -> clear,
-  // see selectPreset) is mid-way through, and at which step - tracked
-  // explicitly rather than derived from whether the matches HAPPEN to
-  // already be selected, which breaks the cycle the second time around
-  // (a prior activation - or an unrelated manual selection - can already
-  // satisfy "everything matching is selected", skipping straight to
-  // clearing without a true select step in between).
-  const [activeChip, setActiveChip] =
-    useState<{ key: string; step: "filtered" | "selected" } | null>(null);
+  // The QueryBuilder's panel / sheet (its trigger sits in the filter field;
+  // the Filter menu's "Build a filter…" opens it too).
+  const [qbOpen, setQbOpen] = useState(false);
   const [detail, setDetail] = useState<Group | null>(null);
   // Editing a saved filter preset: a dedicated query (NOT the main filter
   // box - that was confusing, see the chip row below) edited with the
@@ -544,6 +540,12 @@ export default function App() {
     });
   }, [allGroups, members, filter, sortK, sortDir]);
 
+  // "Select all N matches": the groups the active filter matches that can be
+  // selected (protected ones stay out), across all pages.
+  const matchKeys = useMemo(() => filter.trim()
+    ? groups.filter((g) => !g.protected).map((g) => g.key) : [],
+    [groups, filter]);
+
   // Block rules are visible, ordinary rules: a "block:<key>" query is
   // `from:<key>`/`domain:<key>` with origin "block" - derive which group
   // keys are currently blocked (and their rule id, for one-click unblock)
@@ -834,12 +836,11 @@ export default function App() {
   // its confirm dialog take it from there.
   const selectSenders = (keys: string[]) => {
     const live = keys.filter((k) => state?.groups.sender?.[k]);
-    if (filter.trim() || activeChip) notify(t("space.filter_cleared"));
+    if (filter.trim()) notify(t("space.filter_cleared"));
     setSpaceOpen(false);
     setFlat(false);
     setMode("sender");
     setFilter("");
-    setActiveChip(null);
     setFocusIdx(-1);
     cancelFollow();
     setDetail(null);
@@ -1060,50 +1061,23 @@ export default function App() {
     return "";
   };
 
-  // Chips are NOT additive/combinable - each tap always reflects the
-  // full mailbox (allGroups), never "on top of" whatever another chip
-  // left behind. A combination needs a typed or saved filter instead.
-  // Each chip cycles through three VISUALLY DISTINCT taps:
-  //   1. not currently showing this chip's filter -> show it (view only,
-  //      selection untouched - lets you eyeball matches first)
-  //   2. showing it, but not everything matching is selected yet ->
-  //      select every match (except protected ones, same as always)
-  //   3. showing it AND everything matching already selected -> UN-select
-  //      exactly those matches and go back to the full, unfiltered list.
-  // Step 3 deliberately undoes step 2 (rather than leaving the selection
-  // as-is) so a second activation of the same chip starts from the same
-  // clean slate as the first - otherwise steps 1 and 2 look identical
-  // the second time around (the matches are already ticked from last
-  // time), and only step 3 produces a visible change.
+  // Filter rows are NOT additive/combinable - each tap always reflects the
+  // full mailbox (allGroups), never "on top of" whatever another row left
+  // behind. A combination needs a typed or saved filter instead. Tap = apply
+  // (replaces the filter), tap the checked row again = clear. Selecting the
+  // matches is the "Select all N matches" banner's job, not the rows'.
   const selectPreset = (preset: string) => {
-    if (preset === "none") { setSelected(new Set()); setActiveChip(null);
-      return; }
     const query = presetFilterQuery(preset);
-    // Only trust a remembered step for THIS chip if the filter box still
-    // shows what that step left it in - a manual edit, a different chip,
-    // or an account/mode switch all fall back to step 1 automatically.
-    const isActive = activeChip?.key === preset && filter === query;
-    if (!isActive) {
-      setFilter(query);
-      setActiveChip({ key: preset, step: "filtered" });
-      return;
-    }
-    const f = parseFilter(query);
-    const matchingKeys = allGroups
-      .filter((g) => matchGroup(g, f, nowMs(), members) && !g.protected)
-      .map((g) => g.key);
-    const next = new Set(selected);
-    if (activeChip.step === "filtered") {
-      matchingKeys.forEach((k) => next.add(k));
-      setSelected(next);
-      setActiveChip({ key: preset, step: "selected" });
-    } else {
-      matchingKeys.forEach((k) => next.delete(k));
-      setSelected(next);
-      setFilter("");
-      setActiveChip(null);
-    }
+    setFilter(filter === query ? "" : query);
   };
+
+  // What a filter query matches in the current grouping (the Filter rows'
+  // counts): same parser and matcher as the list; protected groups count.
+  const matchCount = useCallback((query: string) => {
+    const f = parseFilter(query);
+    const now = nowMs();
+    return allGroups.filter((g) => matchGroup(g, f, now, members)).length;
+  }, [allGroups, members]);
 
   // Overview -> Senders (Sender grouping), clean: the page change is the
   // app's own, so the reset below must not run again after what is set next.
@@ -1116,7 +1090,6 @@ export default function App() {
     setFocusIdx(-1);
     cancelFollow();
     setDetail(null);
-    setActiveChip(null);
   };
   // A sender from the Overview: its detail on the Senders page, with the
   // filter cleared so the row is in the list behind it.
@@ -1633,7 +1606,8 @@ export default function App() {
       const ago = fmtAgo(state.scanned_ts);
       return `${t("n.groups", { n: groups.length })} · ${t("n.mails", { n: mails })}`
         + ` · ${fmtSize(size)}` + (filter ? ` ${t("(filtered)")}` : "")
-        + (ago ? ` · ${t("scan.age", { ago })}` : "");
+        // (phones: the top bar already says when it was scanned)
+        + (ago && !(phone && sendersToolbar) ? ` · ${t("scan.age", { ago })}` : "");
     }
     // the setup card is the guidance while there is no account or the
     // connection is unconfirmed
@@ -2000,6 +1974,49 @@ export default function App() {
   const tokenLabel = activeFilterLabel(filter, state?.presets ?? [],
     presetFilterQuery, { new: newCount, still: stillCount });
   const scannedAgo = fmtAgo(state?.scanned_ts);
+  // The Senders toolbar (row 2 of the group pages): neither the Overview nor
+  // All mails.
+  const sendersToolbar = !overview && !flat;
+  const allMatchesSelected = matchKeys.length > 0
+    && matchKeys.every((k) => selected.has(k));
+  const selectMatches = () => {
+    const next = new Set(selected);
+    matchKeys.forEach((k) => next.add(k));
+    setSelected(next);
+    setSelectMode(true);
+  };
+  const clearMatches = () => {
+    const next = new Set(selected);
+    matchKeys.forEach((k) => next.delete(k));
+    setSelected(next);
+  };
+  const filterMenu = (
+    <FilterMenu filter={filter} quick={presetFilterQuery}
+      newCount={newCount} stillCount={stillCount}
+      presets={state?.presets ?? []} matchCount={matchCount}
+      onQuick={selectPreset}
+      onApply={(p) => setFilter(filter === p.query ? "" : p.query)}
+      onClear={() => setFilter("")}
+      onEdit={(p) => { setEditingPreset(p); setEditQuery(p.query); }}
+      onDelete={(p) => deleteFilterPreset(p.id, p.name)}
+      onSave={() => saveFilterPreset()}
+      onBuild={() => setQbOpen(true)}
+      onAi={aiEnabled || demo ? { disabled: demo,
+        hint: demo ? demoHint() : undefined,
+        run: () => setAiFilterOpen(true) } : undefined} />
+  );
+  const sortControl = (
+    <SortControl options={SORT_OPTIONS} value={sortK} plain
+      dir={sortDir < 0 ? "desc" : "asc"}
+      onValue={(k) => {
+        setSortK(k);
+        setSortDir(k === "label" ? 1 : -1);
+      }}
+      onDir={(d) => setSortDir(d === "asc" ? 1 : -1)} />
+  );
+  // A job's / pending label owns the status line (and shows it in place of
+  // the summary on phones, where the summary sits in the toolbar).
+  const running = !!(job || pending);
   // Select mode button: an icon below xl (row 2 is tight there, in DE too),
   // text above.
   const toggleSelectMode = () => {
@@ -2007,7 +2024,12 @@ export default function App() {
     setSelectMode(!selectMode);
   };
   const selectLabel = selectMode ? t("select.done") : t("select.enter");
-  const selectBtn = compactSelect ? (
+  const selectBtn = phone ? (
+    <Button variant="plain" aria-pressed={selectMode}
+      className="coarse:min-h-11" onClick={toggleSelectMode}>
+      {selectLabel}
+    </Button>
+  ) : compactSelect ? (
     <Button variant={selectMode ? "tinted" : "secondary"} size="icon"
       label={selectLabel} aria-pressed={selectMode}
       onClick={toggleSelectMode}>
@@ -2021,7 +2043,9 @@ export default function App() {
   );
   // Acts on the current grouping, so only the sender pages carry it.
   const moreMenu = (
-    <Menu variant="secondary" icon label={t("menu.more")}
+    <Menu variant={phone && !flat ? "tinted" : "secondary"} icon
+      triggerClass={phone && !flat ? "rounded-full coarse:size-11" : undefined}
+      label={t("menu.more")}
       trigger={<MoreHorizontal size={18} aria-hidden />}>
       {(aiEnabled || demo) && (
         <MenuItem onClick={() => reviewWithAi()}
@@ -2133,7 +2157,7 @@ export default function App() {
           setTrackersOpen(false);
           setFlat(false); setMode("sender");
           setSelected(new Set()); setFocusIdx(-1); cancelFollow();
-          setDetail(null); setActiveChip(null);
+          setDetail(null);
           setFilter(`from:${key}`);
         }}
       />
@@ -2298,56 +2322,30 @@ export default function App() {
         </div>
       ) : (
         <div className={FILTER_ROW}>
-          {tokenLabel && (
-            <FilterToken label={tokenLabel}
-              onRemove={() => { setFilter(""); setActiveChip(null); }} />
-          )}
           <div className="relative min-w-0 flex-1 max-md:basis-full md:min-w-48">
-            <Input
-              ref={filterRef}
-              className="w-full pr-9 coarse:pr-10"
-              placeholder={t("filter.placeholder")}
-              title={t("filter.syntax_hint")}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-            {!!filter && (
-              <span className="absolute inset-y-0 right-0 flex items-center">
-                {/* The wrapper centres the Button: a transform on the Button
-                    itself is replaced by its pressed translate-y-px. */}
-                <Button variant="quiet" size="icon" label={t("Clear filter")}
-                  className="text-muted hover:text-body"
-                  onClick={() => { setFilter(""); filterRef.current?.focus(); }}>
-                  <X size={16} />
-                </Button>
-              </span>
-            )}
+            <FilterField value={filter} onChange={setFilter}
+              token={tokenLabel} inputRef={filterRef}
+              builder={<QueryBuilder value={filter} onChange={setFilter}
+                plain label={t("qb.title")} open={qbOpen}
+                onOpenChange={setQbOpen} />} />
           </div>
-          {/* Below 768 the input has its own line and the buttons sit
-              right-aligned under it; from 768 the wrapper vanishes. */}
-          <div className="flex items-center gap-2 max-md:ml-auto md:contents">
-          <QueryBuilder value={filter} onChange={setFilter} />
-          <FilterMenu filter={filter} quick={presetFilterQuery}
-            newCount={newCount} stillCount={stillCount}
-            presets={state?.presets ?? []}
-            onQuick={selectPreset}
-            onApply={(p) => setFilter(filter === p.query ? "" : p.query)}
-            onEdit={(p) => { setEditingPreset(p); setEditQuery(p.query); }}
-            onDelete={(p) => deleteFilterPreset(p.id, p.name)}
-            onSave={() => saveFilterPreset()}
-            onAi={aiEnabled || demo ? { disabled: demo,
-              hint: demo ? demoHint() : undefined,
-              run: () => setAiFilterOpen(true) } : undefined} />
-          <SortControl options={SORT_OPTIONS} value={sortK}
-            dir={sortDir < 0 ? "desc" : "asc"}
-            onValue={(k) => {
-              setSortK(k);
-              setSortDir(k === "label" ? 1 : -1);
-            }}
-            onDir={(d) => setSortDir(d === "asc" ? 1 : -1)} />
-          {selectBtn}
-          {moreMenu}
-          </div>
+          {phone ? (
+            // Phones: the summary left, plain accent actions right.
+            <div className="flex basis-full items-center gap-1">
+              <div className="min-w-0 flex-1 type-meta text-muted">
+                {!running && statusLine()}
+              </div>
+              {filterMenu}
+              {sortControl}
+              {selectBtn}
+              {moreMenu}
+            </div>
+          ) : (<>
+            {filterMenu}
+            {sortControl}
+            {selectBtn}
+            {moreMenu}
+          </>)}
         </div>
       )}
 
@@ -2526,9 +2524,11 @@ export default function App() {
           </div>
         )}
       </div>
-      {!bare && <div className="mb-1 flex min-h-5 items-center justify-between gap-2
-        type-meta text-muted">
-        <div>{statusLine()}</div>
+      {!bare && !(phone && sendersToolbar && !running
+        && !(state?.undo.length)) && <div className="mb-1 flex min-h-5
+        items-center justify-between gap-2 type-meta text-muted">
+        {/* Phone Senders pages: the summary sits in the toolbar above. */}
+        <div>{phone && sendersToolbar && !running ? null : statusLine()}</div>
         {(state?.undo.length ?? 0) > 0 && !deleting && (
           <span className="relative shrink-0">
             <Button variant="quiet" size="sm" className="whitespace-nowrap"
@@ -2642,6 +2642,12 @@ export default function App() {
         <GroupTable
           groups={groups}
           selected={selected}
+          banner={matchKeys.length > 0 && (
+            <SelectMatches n={matchKeys.length}
+              skipped={groups.length - matchKeys.length}
+              allSelected={allMatchesSelected}
+              onSelect={selectMatches} onClear={clearMatches} />
+          )}
           compact={paneOpen}
           selectMode={selectMode}
           openKey={paneOpen ? detail.key : null}
@@ -2686,7 +2692,7 @@ export default function App() {
             <EmptyState icon={<Search size={18} />} title={t("no.matches")}
               action={
                 <Button variant="secondary" onClick={() => {
-                  setFilter(""); setActiveChip(null);
+                  setFilter("");
                   filterRef.current?.focus();
                 }}>
                   {t("Clear filter")}
@@ -2712,8 +2718,7 @@ export default function App() {
           onApply={(q) => {
             // Only the list is filtered: nothing is selected or acted on.
             setFilter(q);
-            setActiveChip(null);
-            setAiFilterOpen(false);
+                    setAiFilterOpen(false);
           }}
           onSavePreset={async (q) => {
             if (await saveFilterPreset(q)) notify(t("aif.preset_saved"));

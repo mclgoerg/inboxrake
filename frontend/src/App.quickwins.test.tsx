@@ -349,6 +349,6 @@ test("the chip row is gone: quick filters live in the Filter menu", async () => 
   await readySenders();
   expect(screen.queryByTestId("chip-row")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-  expect(screen.getByRole("menuitemradio", { name: "AI-safe groups" }))
+  expect(screen.getByRole("menuitemradio", { name: /^AI-safe groups/ }))
     .toBeTruthy();
 });
