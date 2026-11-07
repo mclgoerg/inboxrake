@@ -716,6 +716,26 @@ test("toast variants carry an icon; errors are role=alert, others are not", () =
   expect(document.querySelectorAll("[role=alert]")).toHaveLength(1);
 });
 
+test("floating toasts have an opaque panel base under the semantic tint", () => {
+  let api!: ReturnType<typeof useToast>;
+  const Grab = () => { api = useToast(); return null; };
+  render(<ToastProvider><Grab /></ToastProvider>);
+  act(() => {
+    api.show("fine", { variant: "success" });
+    api.show("broke", { variant: "error" });
+    api.show("info!");
+  });
+  const cls = (v: string) =>
+    document.querySelector(`[data-variant=${v}]`)!.className;
+  expect(cls("success")).toMatch(/(^| )bg-panel( |$)/);
+  expect(cls("success")).toContain("from-safe-bg");
+  expect(cls("error")).toMatch(/(^| )bg-panel( |$)/);
+  expect(cls("error")).toContain("from-keep-bg");
+  // no translucent tint as the only background
+  expect(cls("success")).not.toMatch(/(^| )bg-safe-bg/);
+  expect(cls("error")).not.toMatch(/(^| )bg-keep-bg/);
+});
+
 test("ChipGroup is named by its label; segments keep their ring inside the pill", () => {
   render(<ChipGroup label="Inactive:">
     <ChipSegment>6 mo</ChipSegment></ChipGroup>);
