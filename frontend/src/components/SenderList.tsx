@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { FILE_KINDS, smartReason } from "../smart";
 import type { Group } from "../types";
 import { GroupTable } from "./GroupTable";
-import { Button, choiceDialog, Input, LINK, Select } from "./ui";
+import { Button, choiceDialog, Input, LINK, PopupSelect } from "./ui";
 
 type SenderSort = "count" | "last" | "size" | "label";
 // Reasons the panel's own "why" line already says for EVERY sender of the row
@@ -152,14 +152,15 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
           value={query} placeholder={t("senders.search")}
           aria-label={t("senders.search")}
           onChange={(e) => setQuery(e.target.value)} />
-        <Select value={sortBy} className="w-auto shrink-0"
-          aria-label={t("senders.sort")}
-          onChange={(e) => setSortBy(e.target.value as SenderSort)}>
-          <option value="count">{t("senders.sort_count")}</option>
-          <option value="last">{t("senders.sort_last")}</option>
-          <option value="size">{t("senders.sort_size")}</option>
-          <option value="label">{t("senders.sort_label")}</option>
-        </Select>
+        <PopupSelect<SenderSort> className="shrink-0"
+          label={t("senders.sort")} value={sortBy}
+          onChange={setSortBy}
+          options={[
+            { value: "count", label: t("senders.sort_count") },
+            { value: "last", label: t("senders.sort_last") },
+            { value: "size", label: t("senders.sort_size") },
+            { value: "label", label: t("senders.sort_label") },
+          ]} />
         {shown.length > 0 && keys.length < shown.length && (
           <button className={`${LINK} type-meta`}
             onClick={() => setSel(new Set([...sel, ...shown.map((g) => g.key)]))}>
@@ -200,32 +201,26 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* The Action… select stays mounted while the folder picker is
-                open: swapping one select for another in place left stale
-                options in iOS' native list (same lesson as the bulk bar). */}
-            <Select value="" className="min-w-28 flex-1" disabled={working}
-              onChange={(e) => onAction(e.target.value)}>
-              <option value="" disabled>{t("Action…")}</option>
-              <option value="archive">{t("Archive")}</option>
-              <option value="move">{t("Move to folder…")}</option>
-              <option value="mark_read">{t("Mark read")}</option>
-              <option value="protect">{t("senders.protect")}</option>
-              {onFile && (
-                <option value="file" disabled={fileBlocked}>
-                  {t("know.file_action")}
-                </option>
-              )}
-            </Select>
+            <PopupSelect<string> up className="min-w-28 flex-1"
+              disabled={working} placeholder={t("Action…")}
+              onChange={onAction}
+              options={[
+                { value: "archive", label: t("Archive") },
+                { value: "move", label: t("Move to folder…") },
+                { value: "mark_read", label: t("Mark read") },
+                { value: "protect", label: t("senders.protect") },
+                ...(onFile ? [{ value: "file", label: t("know.file_action"),
+                  disabled: fileBlocked }] : []),
+              ]} />
             {moveDest === "?" && (
               <>
-                <Select value="" className="min-w-0 flex-1"
-                  onChange={(e) => {
-                    if (e.target.value) run(onAct(keys, "move", e.target.value));
+                <PopupSelect<string> up className="min-w-0 flex-1"
+                  placeholder={t("Move to folder…")}
+                  onChange={(f) => {
+                    run(onAct(keys, "move", f));
                     setMoveDest("");
-                  }}>
-                  <option value="" disabled>{t("Move to folder…")}</option>
-                  {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-                </Select>
+                  }}
+                  options={folders.map((f) => ({ value: f, label: f }))} />
                 <Button variant="secondary" size="icon" label={t("Cancel")}
                   className="shrink-0" onClick={() => setMoveDest("")}>
                   <X size={18} />
@@ -234,19 +229,15 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
             )}
             {filing && (
               <>
-                <Select value="" className="min-w-28 flex-1"
-                  aria-label={t("know.file_action")}
-                  onChange={(e) => { if (e.target.value) fileAs(e.target.value); }}>
-                  <option value="" disabled>{t("know.file_action")}</option>
-                  {FILE_KINDS.map((k) => (
-                    <option key={k} value={k}>{t(`smart.kind.${k}`)}</option>
-                  ))}
-                  {categories.map((c) => (
-                    <option key={c} value={`cat:${c}`}>
-                      {t("know.kind_category", { name: c })}
-                    </option>
-                  ))}
-                </Select>
+                <PopupSelect<string> up className="min-w-28 flex-1"
+                  placeholder={t("know.file_action")}
+                  onChange={fileAs}
+                  options={[
+                    ...FILE_KINDS.map((k) => ({ value: k,
+                      label: t(`smart.kind.${k}`) })),
+                    ...categories.map((c) => ({ value: `cat:${c}`,
+                      label: t("know.kind_category", { name: c }) })),
+                  ]} />
                 <Button variant="secondary" size="icon" label={t("Cancel")}
                   className="shrink-0" onClick={() => setFiling(false)}>
                   <X size={18} />

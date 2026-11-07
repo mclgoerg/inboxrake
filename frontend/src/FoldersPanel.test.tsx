@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
+import { popupOptions, popupPick } from "./toolTestUtils";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
 
@@ -86,8 +87,7 @@ function panel(over: Partial<React.ComponentProps<typeof FoldersPanel>> = {}) {
 async function restoreOne() {
   panel();
   fireEvent.click(await screen.findByRole("checkbox"));
-  fireEvent.change(screen.getByDisplayValue(/Restore to/),
-    { target: { value: "INBOX" } });
+  popupPick(screen.getByRole("button", { name: /Restore to/ }), "INBOX");
 }
 
 test("restore with a started rescan says the views update by themselves",
@@ -133,11 +133,11 @@ test("rows are MailRows; the restore select only appears with a selection",
     expect(screen.getByText("2 Jan").getAttribute("title")).toBe("2026-01-02");
     expect(screen.getByText("unread")).toBeTruthy();   // seen: false
     expect(screen.getByLabelText("Select Deleted elsewhere")).toBeTruthy();
-    expect(screen.queryByDisplayValue(/Restore to/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Restore to/ })).toBeNull();
     fireEvent.click(screen.getByRole("checkbox"));
-    expect(screen.getByDisplayValue(/Restore to… \(1\)/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Restore to… \(1\)/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox"));
-    expect(screen.queryByDisplayValue(/Restore to/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Restore to/ })).toBeNull();
   });
 
 test("an empty Trash shows the empty state and no Empty Trash footer",
@@ -203,8 +203,8 @@ test("selecting a sender selects all of its mails; actions only with a selection
     // permanent delete lives in the Action select only (P6), never as a
     // button of its own - the primary action stays the safe "Not junk"
     expect(screen.queryByRole("button", { name: /permanently/i })).toBeNull();
-    expect(screen.getByRole("option", { name: "Delete permanently…" }))
-      .toBeTruthy();
+    expect(popupOptions(screen.getByRole("button", { name: "Action…" })))
+      .toContain("Delete permanently…");
     fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
     expect(screen.queryByRole("button", { name: /Not junk/ })).toBeNull();
   });
@@ -248,8 +248,7 @@ test("Move to Trash from Junk; protected mails ask before a forced retry",
     panel({ initialRole: "junk" });
     await screen.findByText("bob@friends.example");
     fireEvent.click(screen.getByLabelText("Select bob@friends.example"));
-    fireEvent.change(screen.getByLabelText("Action…"),
-      { target: { value: "trash" } });
+    popupPick(screen.getByRole("button", { name: "Action…" }), "Move to Trash");
     expect(await screen.findByText("Some are protected.")).toBeTruthy();
     expect(folderMove).toHaveBeenCalledTimes(1);          // nothing forced yet
     expect(folderMove).toHaveBeenLastCalledWith("junk", "trash", [42], 4);

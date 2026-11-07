@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { popupPick } from "./toolTestUtils";
 import { setLang } from "./i18n";
 import { DE } from "./locales/de";
 import { EN } from "./locales/en";
@@ -74,8 +75,8 @@ function panel(initialRole: "junk" | "trash" = "junk",
 }
 
 const pickDelete = async (label = "Action…") => {
-  fireEvent.change(await screen.findByLabelText(label),
-    { target: { value: "delete" } });
+  popupPick(await screen.findByRole("button", { name: label }),
+    /^(Delete permanently|Endgültig löschen)/);
 };
 
 test("a selected sender: live count, danger confirm with counts, then the exact counted uv + UIDs",
@@ -302,8 +303,8 @@ test("unverified in German says nothing was deleted permanently", async () => {
   panel("junk");
   await screen.findByText("win@lottery.example");
   fireEvent.click(screen.getByLabelText("win@lottery.example auswählen"));
-  fireEvent.change(screen.getByLabelText("Aktion…"),
-    { target: { value: "delete" } });
+  popupPick(screen.getByRole("button", { name: "Aktion…" }),
+    /^Endgültig löschen/);
   await pressDialog("Endgültig löschen (2)");
   const msg = await screen.findByText(/Es wurde nichts endgültig gelöscht/);
   expect(msg.textContent).toContain("1 Mail in den Papierkorb verschoben");
@@ -394,8 +395,8 @@ test("German strings", async () => {
   expect(screen.getByRole("button", { name: "Spam leeren (3)…" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Ältere löschen…" })).toBeTruthy();
   fireEvent.click(screen.getByLabelText("win@lottery.example auswählen"));
-  fireEvent.change(screen.getByLabelText("Aktion…"),
-    { target: { value: "delete" } });
+  popupPick(screen.getByRole("button", { name: "Aktion…" }),
+    /^Endgültig löschen/);
   const dlg = await findDialog();
   expect(within(dlg).getByText("Endgültig aus „Spam“ löschen?")).toBeTruthy();
   expect(within(dlg).getByText("2 Mails werden endgültig gelöscht"))

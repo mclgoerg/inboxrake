@@ -20,6 +20,7 @@
   --color-chip: #2f2c29;
   --color-chiph: #3a3632;
   --color-chiptext: #d9d2c6;
+  --color-segment-on: #4a4540;    /* selected pill of a Segmented control */
 
   /* Semantic pairs (bg / fg), dark values; light overrides below. Raw
      palette classes (emerald/amber/rose/...) are never used in components. */
@@ -130,8 +131,10 @@
 :root {
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.35);
   --shadow-bar: 0 -4px 16px rgb(0 0 0 / 0.3);
+  --shadow-segment: 0 1px 3px rgb(0 0 0 / 0.35);
 }
 @utility shadow-popover { box-shadow: var(--shadow-popover); }
+@utility shadow-segment { box-shadow: var(--shadow-segment); }
 @utility shadow-bar { box-shadow: var(--shadow-bar); }
 /* 2 px accent left edge of the row open in the split pane (inset: no layout shift). */
 @utility shadow-open-edge { box-shadow: inset 2px 0 0 var(--color-accent); }
@@ -177,6 +180,7 @@ html[data-theme="light"] {
   --color-chip: #efedea;
   --color-chiph: #e5e2de;
   --color-chiptext: #3d3833;
+  --color-segment-on: #ffffff;
   --color-safe-bg: rgb(20 107 58 / 0.11);
   --color-safe-fg: #146b3a;
   --color-review-bg: rgb(143 76 0 / 0.11);
@@ -194,6 +198,7 @@ html[data-theme="light"] {
   --color-overlay: rgb(40 30 20 / 0.25);
   --shadow-popover: 0 8px 24px rgb(60 40 10 / 0.15);
   --shadow-bar: 0 -2px 12px rgb(60 40 10 / 0.12);
+  --shadow-segment: 0 1px 3px rgb(60 40 10 / 0.18);
   color-scheme: light;
 }
 

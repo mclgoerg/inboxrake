@@ -58,6 +58,7 @@ import { DialogProvider, ToastProvider } from "./components/ui";
 import { expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import type { AppState, Config, Group } from "./types";
+import { popupItem, popupOptions, popupPick } from "./toolTestUtils";
 
 const acct = {
   excluded_folders: [] as string[], host: "h", port: 993,
@@ -454,10 +455,11 @@ test("on a 390 px phone the same rows render as cards with kind icons",
 
 const tick = (addr: string) =>
   fireEvent.click(screen.getByLabelText(`Select ${addr}`));
-const pickAction = (value: string) => fireEvent.change(
-  screen.getAllByRole("combobox").find((c) =>
-    [...(c as HTMLSelectElement).options].some((o) => o.value === value))!,
-  { target: { value } });
+const ACTIONS: Record<string, string> = { file: "File in Smart as…",
+  archive: "Archive", protect: "Protect", mark_read: "Mark read",
+  move: "Move to folder…" };
+const pickAction = (value: string) =>
+  popupPick(screen.getByRole("button", { name: "Action…" }), ACTIONS[value]);
 
 test("a pooled row opens on its senders - with the reason - and the mails "
   + "are one tab away; an own row has no such tabs", async () => {
@@ -942,8 +944,8 @@ const noKnowledge = () => knowledge.mockResolvedValue({ entries: [],
   complete: true, unscanned: [], categories: [], max: 5000, ai_running: false });
 const saved = (previous: Record<string, unknown>) => ({ ok: true, saved: 1,
   removed: 0, previous });
-const fileSelect = () => screen.getAllByRole("combobox").find((c) =>
-  [...(c as HTMLSelectElement).options].some((o) => o.value === "file"))!;
+const kindButton = () => screen.getByRole("button",
+  { name: "File in Smart as…" });
 
 test("filing a ticked sender is one call with its exact address, moves no "
   + "mail, and the toast's Undo restores the previous entry", async () => {
@@ -955,8 +957,7 @@ test("filing a ticked sender is one call with its exact address, moves no "
   tick("promo@lone.example");
   pickAction("file");
   expect(screen.getByText("No mail is moved.")).toBeTruthy();
-  fireEvent.change(screen.getByRole("combobox", { name: "File in Smart as…" }),
-    { target: { value: "orders" } });
+  popupPick(kindButton(), "Orders & deliveries");
   await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
   expect(knowledgePut).toHaveBeenCalledWith({ entries: [
     { key: "a:promo@lone.example", kind: "orders" }] });
@@ -982,8 +983,7 @@ test("Undo puts a previous entry back exactly as it was", async () => {
   await screen.findByRole("tab", { name: "Senders (2)" });
   tick("promo@lone.example");
   pickAction("file");
-  fireEvent.change(screen.getByRole("combobox", { name: "File in Smart as…" }),
-    { target: { value: "jobs" } });
+  popupPick(kindButton(), "Job applications");
   await screen.findByText("Filed 1 sender under Job applications.");
   knowledgePut.mockResolvedValueOnce(saved({}));
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -1001,8 +1001,7 @@ test("a refused filing says why in words, not as a code", async () => {
   await screen.findByRole("tab", { name: "Senders (2)" });
   tick("promo@lone.example");
   pickAction("file");
-  fireEvent.change(screen.getByRole("combobox", { name: "File in Smart as…" }),
-    { target: { value: "support" } });
+  popupPick(kindButton(), "Support & inquiries");
   expect(await screen.findByText(/That kind is not available/)).toBeTruthy();
   expect(screen.getByText("1 of 2 senders selected (3 mails)")).toBeTruthy();
 });
@@ -1025,8 +1024,7 @@ test("a ticked sender of a company group asks: just it, or the whole company",
     await screen.findByRole("tab", { name: /^Senders/ });
     tick("amy@acme.example");
     pickAction("file");
-    fireEvent.change(screen.getByRole("combobox", { name: "File in Smart as…" }),
-      { target: { value: "accounts" } });
+    popupPick(kindButton(), "Accounts & security");
     const dlg = await findDialog();
     expect(within(dlg).getByText("File only the ticked senders, or whole companies?"))
       .toBeTruthy();
@@ -1040,8 +1038,8 @@ test("in a company row the action is disabled and says why", async () => {
   openRow("payco.example");
   await screen.findByRole("tab", { name: /^Senders/ });
   tick("a@payco.example");
-  expect([...(fileSelect() as HTMLSelectElement).options]
-    .find((o) => o.value === "file")!.disabled).toBe(true);
+  expect(popupItem(screen.getByRole("button", { name: "Action…" }),
+    "File in Smart as…").disabled).toBe(true);
   expect(screen.getByText("Company rows are placed by their structure, so "
     + "filing has no effect here.")).toBeTruthy();
 });
@@ -1060,8 +1058,8 @@ test("one sender opens with the box 'How Inboxrake files this sender'; "
   expect(await screen.findByText("How Inboxrake files this sender")).toBeTruthy();
   expect(screen.getByText(/^Now in “Newsletters”\. /)).toBeTruthy();
   await screen.findByText("Filed by you");
-  const sel = screen.getByRole("combobox", { name: "File this sender under" });
-  fireEvent.change(sel, { target: { value: "support" } });
+  popupPick(screen.getByRole("button", { name: /^File this sender under/ }),
+    "Support & inquiries");
   await waitFor(() => expect(knowledgePut).toHaveBeenCalledWith({ entries: [
     { key: "a:hello@zine.example", kind: "support" }] }));
   const before = { kind: "newsletter", src: "user", ts: 1, note: "" };
@@ -1100,12 +1098,9 @@ test("the user's own categories can be filed into", async () => {
   await screen.findByRole("tab", { name: "Senders (2)" });
   tick("promo@lone.example");
   pickAction("file");
-  const picker = screen.getByRole("combobox", { name: "File in Smart as…" });
-  expect([...(picker as HTMLSelectElement).options].map((o) => o.value))
-    .toContain("cat:hobby");
-  expect([...(picker as HTMLSelectElement).options].map((o) => o.value))
-    .not.toContain("cat:empty");
-  fireEvent.change(picker, { target: { value: "cat:hobby" } });
+  expect(popupOptions(kindButton())).toContain("Category “hobby”");
+  expect(popupOptions(kindButton())).not.toContain("Category “empty”");
+  popupPick(kindButton(), "Category “hobby”");
   await waitFor(() => expect(knowledgePut).toHaveBeenCalledWith({ entries: [
     { key: "a:promo@lone.example", kind: "cat:hobby" }] }));
   expect(await screen.findByText("Filed 1 sender under Category “hobby”."))

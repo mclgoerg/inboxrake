@@ -5,12 +5,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor }
   from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip, ChipGroup, ChipSegment,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
-  MenuGroup, MenuHeading, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
+  MenuGroup, MenuHeading, PopupSelect, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar,
@@ -770,7 +770,7 @@ test("ChipGroup is named by its label; segments keep their ring inside the pill"
 
 // The selected segment's inset ring follows its own corners; the end
 // segments must round like the pill, or the ring shows square and clipped.
-test("end segments round with their group so the selected ring isn't clipped", () => {
+test("segments are raised pills on a track, not ringed", () => {
   render(<ChipGroup label="Inactive:">
     <ChipSegment>6 mo</ChipSegment><ChipSegment on>2 yr</ChipSegment></ChipGroup>);
   expect(screen.getByText("2 yr").className).toContain("last:rounded-r-full");
@@ -778,8 +778,7 @@ test("end segments round with their group so the selected ring isn't clipped", (
   render(<Segmented label="View" value="b" onChange={() => {}}
     options={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
   const tab = screen.getByRole("tab", { name: "B" });
-  expect(tab.className).toContain("last:rounded-r-control");
-  expect(tab.className).toContain("first:rounded-l-control");
+  expect(tab.className).toContain("rounded-badge");
 });
 
 test("DialogProvider returns focus to the opener and settles pending on unmount", async () => {
@@ -1448,4 +1447,98 @@ test("a Menu that overflows after flipping is shifted into the viewport", () => 
   expect(260 + shift + 298).toBeLessThanOrEqual(352);
   spy.mockRestore();
   vi.unstubAllGlobals();
+});
+
+describe("PopupSelect", () => {
+  const opts = [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" },
+    "divider" as const, { value: "g", label: "Gamma" }];
+
+  test("shows label + value, opens a menu with a check on the current one",
+    () => {
+      render(<PopupSelect label="Sort:" value="b" options={opts}
+        onChange={() => {}} />);
+      const btn = screen.getByRole("button", { name: "Sort: Beta" });
+      expect(btn.getAttribute("aria-haspopup")).toBe("menu");
+      fireEvent.click(btn);
+      expect(screen.getByRole("menuitemradio", { name: "Beta" })
+        .getAttribute("aria-checked")).toBe("true");
+      expect(screen.getByRole("menuitemradio", { name: "Alpha" })
+        .getAttribute("aria-checked")).toBe("false");
+      expect(screen.getByRole("separator")).toBeTruthy();
+    });
+
+  test("picking an item calls onChange and closes the menu", () => {
+    const onChange = vi.fn();
+    render(<PopupSelect value="a" options={opts} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Gamma" }));
+    expect(onChange).toHaveBeenCalledWith("g");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  test("placeholder style: shows the placeholder, items run the action",
+    () => {
+      const onChange = vi.fn();
+      render(<PopupSelect placeholder="Action…" options={opts}
+        onChange={onChange} />);
+      const btn = screen.getByRole("button", { name: "Action…" });
+      fireEvent.click(btn);
+      expect(screen.getAllByRole("menuitemradio").every(
+        (o) => o.getAttribute("aria-checked") === "false")).toBe(true);
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Alpha" }));
+      expect(onChange).toHaveBeenCalledWith("a");
+      expect(screen.getByRole("button", { name: "Action…" })).toBeTruthy();
+    });
+
+  test("an explicit `checked` wins (a menu holding two settings)", () => {
+    render(<PopupSelect label="Sort:" valueLabel="Mails ↓" onChange={() => {}}
+      options={[{ value: "k", label: "Mails", checked: true },
+        { value: "d", label: "Descending", checked: true },
+        { value: "a", label: "Ascending", checked: false }]} />);
+    expect(screen.getByRole("button", { name: "Sort: Mails ↓" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getAllByRole("menuitemradio").map(
+      (o) => o.getAttribute("aria-checked"))).toEqual(["true", "true", "false"]);
+  });
+
+  test("keyboard: ArrowDown opens on the first item, a letter jumps, Esc "
+    + "closes and returns focus", () => {
+    render(<PopupSelect value="a" options={opts} onChange={() => {}} />);
+    const btn = screen.getByRole("button", { name: "Alpha" });
+    btn.focus();
+    fireEvent.keyDown(btn, { key: "ArrowDown" });
+    expect(document.activeElement)
+      .toBe(screen.getByRole("menuitemradio", { name: "Alpha" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "g" });
+    expect(document.activeElement)
+      .toBe(screen.getByRole("menuitemradio", { name: "Gamma" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(btn);
+  });
+
+  test("disabled: no menu, a disabled option is not selectable", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<PopupSelect value="a" options={opts}
+      disabled onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    rerender(<PopupSelect value="a" onChange={onChange}
+      options={[{ value: "a", label: "Alpha", disabled: true }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Alpha" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("passes data attributes and title to the button; long lists scroll",
+    () => {
+      render(<PopupSelect value="a" options={opts} onChange={() => {}}
+        triggerProps={{ "data-bar-field": "", title: "Help" }} />);
+      const btn = screen.getByRole("button", { name: "Alpha" });
+      expect(btn.hasAttribute("data-bar-field")).toBe(true);
+      expect(btn.getAttribute("title")).toBe("Help");
+      fireEvent.click(btn);
+      expect(screen.getByRole("menuitemradio", { name: "Alpha" }).parentElement!
+        .className).toContain("overflow-y-auto");
+    });
 });

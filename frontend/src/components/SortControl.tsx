@@ -1,10 +1,12 @@
-import { ArrowDown, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { t } from "../i18n";
-import { Button, Menu, MenuDivider, MenuItem, Select, useMediaQuery }
+import { Menu, MenuDivider, MenuItem, PopupSelect, useMediaQuery }
   from "./ui";
 
-/** Sort field + direction. From 768 px: a select with a direction toggle as
- *  one segmented control. On a phone: one icon button opening a Menu with
+/** Sort field + direction. From 768 px: a pop-up button ("Sort: Mails ↓")
+ *  whose menu
+ *  holds the keys and Descending / Ascending (the column header keeps its
+ *  one-click toggle). On a phone: one icon button opening a Menu with
  *  the sort keys (active one marked) and Ascending / Descending, so the
  *  filter box keeps the row. Shared by the group list and All mails. */
 export function SortControl<K extends string>({ options, value, dir,
@@ -40,25 +42,29 @@ export function SortControl<K extends string>({ options, value, dir,
       </Menu>
     );
   }
+  // The labels read "Sort: mails"; inside the pop-up the key alone is enough.
+  const short = (l: string) => {
+    const x = t(l).replace(/^[^:]*:\s*/, "");
+    return x.charAt(0).toUpperCase() + x.slice(1);
+  };
   return (
-    <div className="flex shrink-0 items-stretch overflow-hidden
-      rounded-control border border-line">
-      <Select className="min-w-0 flex-1 !rounded-none !border-0"
-        value={value}
-        onChange={(e) => onValue(e.target.value as K)}>
-        {options.map((o) => (
-          <option key={o.k} value={o.k}>{t(o.label)}</option>
-        ))}
-      </Select>
-      {/* !rounded-none: the segment's corners belong to the wrapper. */}
-      <Button variant="secondary" size="icon"
-        label={t(dir === "desc" ? "sort.desc_tip" : "sort.asc_tip")}
-        className="shrink-0 !rounded-none border-l border-line"
-        onClick={() => onDir(dir === "desc" ? "asc" : "desc")}>
-        <ArrowDown aria-hidden size={16}
-          className={`text-accent transition-transform duration-200
-            ${dir === "asc" ? "rotate-180" : ""}`} />
-      </Button>
-    </div>
+    <PopupSelect<string> className="shrink-0"
+      label={`${t("sort.menu")}:`}
+      valueLabel={`${short(options.find((o) => o.k === value)?.label ?? "")} ${
+        dir === "desc" ? "↓" : "↑"}`}
+      options={[
+        ...options.map((o) => ({ value: `k:${o.k}`, label: short(o.label),
+          checked: o.k === value })),
+        "divider" as const,
+        { value: "d:desc", label: t("sort.descending"),
+          icon: <ArrowDown size={14} aria-hidden />, checked: dir === "desc" },
+        { value: "d:asc", label: t("sort.ascending"),
+          icon: <ArrowUp size={14} aria-hidden />, checked: dir === "asc" },
+      ]}
+      onChange={(v) => {
+        if (v === "d:desc") onDir("desc");
+        else if (v === "d:asc") onDir("asc");
+        else onValue(v.slice(2) as K);
+      }} />
   );
 }

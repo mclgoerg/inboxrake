@@ -6,7 +6,7 @@ import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp }
   from "../types";
 import { MessageView } from "./MailList";
 import { Button, confirmDialog, EmptyState, Input, Loading, MailRow, Modal,
-  PanelHeader, promptDialog, Segmented, Select, Spinner, Toolbar,
+  PanelHeader, promptDialog, PopupSelect, Segmented, Spinner, Toolbar,
   useMediaQuery, useToast } from "./ui";
 
 type Grouping = "sender" | "mails";
@@ -19,6 +19,9 @@ type Grouping = "sender" | "mails";
  *  irreversible "Delete permanently…" (selection / sender / older than N
  *  days / Empty Junk): always counted live on the server first, confirmed
  *  with the counts, and sent back as the counted UIDVALIDITY + exact UIDs. */
+/** Phone-sized touch height for the toolbar's pop-up buttons. */
+const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
+
 export function FoldersPanel({ state, initialRole = "trash", onClose,
   onRoleChange, onChanged, onEmptyTrash, onUndo, onProtect }: {
   state: AppState;
@@ -311,23 +314,17 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                 ]} />
               {sel.size > 0 && role === "trash" && (
                 <>
-                  <Select value="" disabled={busy}
-                    className="max-sm:min-h-11 max-sm:coarse:min-h-11"
-                    onChange={(e) => restore(e.target.value)}>
-                    <option value="" disabled>
-                      {t("trash.restore_to")} ({sel.size})
-                    </option>
-                    {(state.folders_raw ?? []).map((f, i) => (
-                      <option key={f} value={f}>{state.folders[i] ?? f}</option>
-                    ))}
-                  </Select>
-                  <Select value="" disabled={busy} aria-label={t("fp.action")}
-                    className="max-sm:min-h-11 max-sm:coarse:min-h-11"
-                    onChange={(e) => e.target.value === "delete"
-                      && purgeSelection()}>
-                    <option value="" disabled>{t("fp.action")}</option>
-                    <option value="delete">{t("fp.delete_permanently")}</option>
-                  </Select>
+                  <PopupSelect<string> disabled={busy}
+                    triggerClass={TALL}
+                    placeholder={`${t("trash.restore_to")} (${sel.size})`}
+                    onChange={restore}
+                    options={(state.folders_raw ?? []).map((f, i) => ({
+                      value: f, label: state.folders[i] ?? f }))} />
+                  <PopupSelect<string> disabled={busy} triggerClass={TALL}
+                    placeholder={t("fp.action")}
+                    onChange={() => purgeSelection()}
+                    options={[{ value: "delete",
+                      label: t("fp.delete_permanently") }]} />
                 </>
               )}
               {sel.size > 0 && role === "junk" && (
@@ -336,16 +333,16 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                     onClick={() => moveJunk("not_junk")}>
                     {t("fp.not_junk")} ({sel.size})
                   </Button>
-                  <Select value="" disabled={busy} aria-label={t("fp.action")}
-                    className="max-sm:min-h-11 max-sm:coarse:min-h-11"
-                    onChange={(e) => {
-                      if (e.target.value === "trash") void moveJunk("trash");
-                      if (e.target.value === "delete") purgeSelection();
-                    }}>
-                    <option value="" disabled>{t("fp.action")}</option>
-                    <option value="trash">{t("fp.to_trash")}</option>
-                    <option value="delete">{t("fp.delete_permanently")}</option>
-                  </Select>
+                  <PopupSelect<string> disabled={busy} triggerClass={TALL}
+                    placeholder={t("fp.action")}
+                    onChange={(v) => {
+                      if (v === "trash") void moveJunk("trash");
+                      if (v === "delete") purgeSelection();
+                    }}
+                    options={[
+                      { value: "trash", label: t("fp.to_trash") },
+                      { value: "delete", label: t("fp.delete_permanently") },
+                    ]} />
                 </>
               )}
               {busy && <Spinner />}

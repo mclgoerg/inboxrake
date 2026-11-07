@@ -7,7 +7,7 @@
 import { barAction, barMore, openLimit } from "./barTestUtil";
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
-import { openTool } from "./toolTestUtils";
+import { openTool, popupPick } from "./toolTestUtils";
 import { afterEach, expect, test, vi } from "vitest";
 
 const stateCalls = { n: 0 };
@@ -427,8 +427,7 @@ const renderMovable = (over: Record<string, unknown> = {}) => {
 const moveTo = async (dest: string) => {
   await openDetail();
   fireEvent.click(await screen.findByRole("button", { name: "Move" }));
-  fireEvent.change(screen.getByDisplayValue("Move to folder…"),
-    { target: { value: dest } });
+  popupPick("Move to folder…", dest);
 };
 
 test("the detail's Move sends the whole group to the group path", async () => {
@@ -563,7 +562,7 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
 
   barAction("move");
-  await waitFor(() => expect(screen.getByDisplayValue("Move to folder…"))
+  await waitFor(() => expect(screen.getByRole("button", { name: "Move to folder…" }))
     .toBeTruthy());
 
   // Cancel goes back to the plain action buttons, not stuck mid-move.
@@ -575,7 +574,7 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   // cancelling - the bar disappears, and selecting again must NOT reopen
   // mid-move.
   barAction("move");
-  await waitFor(() => expect(screen.getByDisplayValue("Move to folder…"))
+  await waitFor(() => expect(screen.getByRole("button", { name: "Move to folder…" }))
     .toBeTruthy());
   fireEvent.click(screen.getByText("Clear selection"));
   await waitFor(() => expect(screen.queryByText(/^Trash \d+$/)).toBeNull());
@@ -583,7 +582,7 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   await selectRowCheckbox();
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
   expect(screen.getByRole("button", { name: "Move" })).toBeTruthy();
-  expect(screen.queryByDisplayValue("Move to folder…")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
 });
 
 // Selection-scoped AI review + CSV export: the overflow menu's versions
@@ -675,7 +674,7 @@ test("the folder picker takes focus, and Cancel hands it back to Move",
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
   barAction("move");
   await waitFor(() => expect(document.activeElement)
-    .toBe(screen.getByDisplayValue("Move to folder…")));
+    .toBe(screen.getByRole("button", { name: "Move to folder…" })));
   fireEvent.click(screen.getByTitle("Cancel"));
   await waitFor(() => expect(document.activeElement)
     .toBe(screen.getByRole("button", { name: "Move" })));

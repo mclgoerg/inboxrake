@@ -10,7 +10,11 @@ import { filterSenders, SenderList, sortSenders } from "./components/SenderList"
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { popupItem, popupOptions, popupPick } from "./toolTestUtils";
 import type { Group, SmartWhy } from "./types";
+
+const actionBtn = () => screen.getByRole("button",
+  { name: /^(Action…|Aktion…)$/ });
 
 const sender = (addr: string, over: Partial<Group> = {}): Group => ({
   key: addr, label: addr.split("@")[0], sub: addr, count: 3, size: 3000,
@@ -174,10 +178,8 @@ describe("acting on ticked senders", () => {
   it("archive, mark read and protect act on the ticked senders", async () => {
     mount(trio);
     fireEvent.click(row("b@y.example"));
-    const action = (v: string) => fireEvent.change(
-      screen.getAllByRole("combobox").find((s) =>
-        [...(s as HTMLSelectElement).options].some((o) => o.value === v))!,
-      { target: { value: v } });
+    const action = (v: string) => popupPick(actionBtn(), {
+      archive: "Archive", mark_read: "Mark read", protect: "Protect" }[v]!);
     action("archive");
     expect(onAct).toHaveBeenLastCalledWith(["b@y.example"], "archive");
     await vi.waitFor(() => expect(screen.queryByText(/senders selected/)).toBeNull());
@@ -193,12 +195,9 @@ describe("acting on ticked senders", () => {
   it("move asks for the folder, then moves exactly these senders", async () => {
     mount(trio);
     fireEvent.click(row("a@x.example"));
-    const sel = screen.getAllByRole("combobox").find((s) =>
-      [...(s as HTMLSelectElement).options].some((o) => o.value === "move"))!;
-    fireEvent.change(sel, { target: { value: "move" } });
-    const folder = screen.getAllByRole("combobox").find((s) =>
-      [...(s as HTMLSelectElement).options].some((o) => o.value === "Promotions"))!;
-    fireEvent.change(folder, { target: { value: "Promotions" } });
+    popupPick(actionBtn(), "Move to folder…");
+    popupPick(screen.getAllByRole("button", { name: "Move to folder…" })[0],
+      "Promotions");
     expect(onAct).toHaveBeenCalledWith(["a@x.example"], "move", "Promotions");
   });
 
@@ -285,13 +284,13 @@ describe("File in Smart as...", () => {
       <SenderList senders={senders} {...props} rowKind={rowKind}
         categories={categories} onFile={onFile} />
     </DialogProvider>);
-  const fileSelect = () => screen.getAllByRole("combobox").find((s) =>
-    [...(s as HTMLSelectElement).options].some((o) => o.value === "file"))!;
-  const kindSelect = () => screen.getByRole("combobox",
-    { name: "File in Smart as…" });
+  const fileItem = () => popupItem(actionBtn(), /^(File in Smart as…|In Smart einordnen als…)$/);
+  const kindSelect = () => screen.getByRole("button",
+    { name: /^(File in Smart as…|In Smart einordnen als…)$/ });
+  const pickKind = (label: string) => popupPick(kindSelect(), label);
   const tickAndFile = (addr: string) => {
     fireEvent.click(row(addr));
-    fireEvent.change(fileSelect(), { target: { value: "file" } });
+    fireEvent.click(fileItem());
   };
 
   const lone = sender("solo@solo.example");
@@ -305,13 +304,11 @@ describe("File in Smart as...", () => {
   it("is offered only where filing can happen", () => {
     mount([lone]);                                  // no onFile: no action
     fireEvent.click(row("solo@solo.example"));
-    expect([...(screen.getAllByRole("combobox")[0] as HTMLSelectElement).options]
-      .map((o) => o.value)).not.toContain("file");
+    expect(popupOptions(actionBtn())).not.toContain("File in Smart as…");
     cleanup();
     mountFile([lone]);
     fireEvent.click(row("solo@solo.example"));
-    const opt = [...(fileSelect() as HTMLSelectElement).options]
-      .find((o) => o.value === "file")!;
+    const opt = fileItem();
     expect(opt.textContent).toBe("File in Smart as…");
     expect(opt.disabled).toBe(false);
   });
@@ -326,8 +323,7 @@ describe("File in Smart as...", () => {
   ])("is disabled, with the reason, in %s rows", (kind, reason) => {
     mountFile([lone], kind);
     fireEvent.click(row("solo@solo.example"));
-    const opt = [...(fileSelect() as HTMLSelectElement).options]
-      .find((o) => o.value === "file")!;
+    const opt = fileItem();
     expect(opt.disabled).toBe(true);
     expect(screen.getByText(reason)).toBeTruthy();
   });
@@ -336,8 +332,7 @@ describe("File in Smart as...", () => {
     for (const kind of ["category", "other", "orders", "newsletter"]) {
       const { unmount } = mountFile([lone], kind);
       fireEvent.click(row("solo@solo.example"));
-      expect([...(fileSelect() as HTMLSelectElement).options]
-        .find((o) => o.value === "file")!.disabled, kind).toBe(false);
+      expect(fileItem().disabled, kind).toBe(false);
       unmount();
     }
   });
@@ -347,12 +342,11 @@ describe("File in Smart as...", () => {
     mountFile([lone, sender("other@solo2.example")], "other", ["hobby"]);
     tickAndFile("solo@solo.example");
     expect(screen.getByText("No mail is moved.")).toBeTruthy();
-    expect([...(kindSelect() as HTMLSelectElement).options].map((o) =>
-      o.textContent)).toEqual(["File in Smart as…", "Orders & deliveries",
+    expect(popupOptions(kindSelect())).toEqual(["Orders & deliveries",
       "Appointments & bookings", "Job applications", "Support & inquiries",
       "Accounts & security", "Newsletters", "Individuals", "Other senders",
       "Category “hobby”"]);
-    fireEvent.change(kindSelect(), { target: { value: "support" } });
+    pickKind("Support & inquiries");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "a:solo@solo.example", kind: "support" }], 1));
     expect(onAct).not.toHaveBeenCalled();           // no mail is moved
@@ -362,7 +356,7 @@ describe("File in Smart as...", () => {
   it("files into an own category as cat:<name>", async () => {
     mountFile([lone], "other", ["hobby"]);
     tickAndFile("solo@solo.example");
-    fireEvent.change(kindSelect(), { target: { value: "cat:hobby" } });
+    pickKind("Category “hobby”");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "a:solo@solo.example", kind: "cat:hobby" }], 1));
   });
@@ -380,7 +374,7 @@ describe("File in Smart as...", () => {
     + "just the ticked ones ...", async () => {
     mountFile(pair);
     tickAndFile("amy@acme.example");
-    fireEvent.change(kindSelect(), { target: { value: "newsletter" } });
+    pickKind("Newsletters");
     await pressDialog("Just the ticked senders");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "a:amy@acme.example", kind: "newsletter" }], 1));
@@ -389,7 +383,7 @@ describe("File in Smart as...", () => {
   it("... or the whole company", async () => {
     mountFile(pair);
     tickAndFile("amy@acme.example");
-    fireEvent.change(kindSelect(), { target: { value: "newsletter" } });
+    pickKind("Newsletters");
     await pressDialog("The whole company (2 senders)");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "co:acme.example", kind: "newsletter" }], 1));
@@ -400,8 +394,8 @@ describe("File in Smart as...", () => {
     fireEvent.click(row("amy@acme.example"));
     fireEvent.click(row("bob@acme.example"));
     fireEvent.click(row("solo@solo.example"));
-    fireEvent.change(fileSelect(), { target: { value: "file" } });
-    fireEvent.change(kindSelect(), { target: { value: "jobs" } });
+    fireEvent.click(fileItem());
+    pickKind("Job applications");
     await pressDialog("The whole company (2 senders)");
     await waitFor(() => expect(onFile).toHaveBeenCalled());
     expect(onFile.mock.calls[0][0]).toEqual([
@@ -413,7 +407,7 @@ describe("File in Smart as...", () => {
   it("a cancelled question files nothing and keeps the selection", async () => {
     mountFile(pair);
     tickAndFile("amy@acme.example");
-    fireEvent.change(kindSelect(), { target: { value: "newsletter" } });
+    pickKind("Newsletters");
     await cancelDialog();
     await expectNoDialog();
     expect(onFile).not.toHaveBeenCalled();
@@ -423,7 +417,7 @@ describe("File in Smart as...", () => {
   it("a lone sender is filed without a question", async () => {
     mountFile(pair);
     tickAndFile("solo@solo.example");
-    fireEvent.change(kindSelect(), { target: { value: "accounts" } });
+    pickKind("Accounts & security");
     await waitFor(() => expect(onFile).toHaveBeenCalled());
     await expectNoDialog();
   });
@@ -432,7 +426,7 @@ describe("File in Smart as...", () => {
     onFile.mockResolvedValue(false);
     mountFile([lone]);
     tickAndFile("solo@solo.example");
-    fireEvent.change(kindSelect(), { target: { value: "jobs" } });
+    pickKind("Job applications");
     await waitFor(() => expect(onFile).toHaveBeenCalled());
     expect(screen.getByText("1 of 1 senders selected (3 mails)")).toBeTruthy();
   });
@@ -441,16 +435,11 @@ describe("File in Smart as...", () => {
     setLang("de");
     mountFile([lone], "other", ["hobby"]);
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
-    const sel = screen.getAllByRole("combobox").find((c) =>
-      [...(c as HTMLSelectElement).options].some((o) => o.value === "file"))!;
-    expect([...(sel as HTMLSelectElement).options].find((o) => o.value === "file")!
-      .textContent).toBe("In Smart einordnen als…");
-    fireEvent.change(sel, { target: { value: "file" } });
+    const item = fileItem();
+    expect(item.textContent).toBe("In Smart einordnen als…");
+    fireEvent.click(item);
     expect(screen.getByText("Es wird keine Mail verschoben.")).toBeTruthy();
-    const kinds = screen.getByRole("combobox",
-      { name: "In Smart einordnen als…" }) as HTMLSelectElement;
-    expect([...kinds.options].map((o) => o.textContent))
-      .toContain("Kategorie „hobby“");
+    expect(popupOptions(kindSelect())).toContain("Kategorie „hobby“");
   });
 
   it("says in a sender's card that it was filed - or kept from an AI answer", () => {

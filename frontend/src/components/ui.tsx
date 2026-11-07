@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CheckCircle2, Eye, Info, MousePointerClick, Pin,
+import { AlertCircle, Check, CheckCircle2, ChevronsUpDown, Eye, Info, MousePointerClick, Pin,
   Shield, TriangleAlert, X }
   from "lucide-react";
 import { createPortal } from "react-dom";
@@ -656,8 +656,13 @@ export function placeMenu(wrap: { left: number; right: number }, width: number,
 }
 
 export function Menu({ trigger, label, variant, icon, up, triggerClass,
-  triggerSize = "md", className = "", align, children }: {
+  triggerSize = "md", className = "", align, disabled, triggerProps,
+  children }: {
   trigger: ReactNode;
+  /** Disables a `variant` trigger (a busy form). */
+  disabled?: boolean;
+  /** Extra attributes for a labelled `variant` trigger (`data-bar-field`). */
+  triggerProps?: Partial<Record<`data-${string}` | "title", string>>;
   children: ReactNode;
   /** Variant-less trigger: replaces the compact header look (e.g. the
    *  `ActionButton` "More" in the sender detail's action row). With a
@@ -726,6 +731,16 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
     if (e.key === "Tab") { close(); return; }
     const list = items();
     const i = list.indexOf(document.activeElement as HTMLElement);
+    // Type-ahead: a printable key jumps to the next item starting with it.
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey
+      && e.key !== " ") {
+      const k = e.key.toLowerCase();
+      const at = (j: number) => list[(i + 1 + j) % list.length];
+      const hit = list.map((_, j) => at(j)).find(
+        (el) => el.textContent?.trim().toLowerCase().startsWith(k));
+      if (hit) { e.preventDefault(); hit.focus(); }
+      return;
+    }
     const to = e.key === "ArrowDown" ? list[(i + 1) % list.length]
       : e.key === "ArrowUp" ? list[(i - 1 + list.length) % list.length]
       : e.key === "Home" ? list[0]
@@ -733,17 +748,27 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
     if (to) { e.preventDefault(); to.focus(); }
   };
   return (
-    <div className={`relative ${className}`} ref={ref}>
+    <div className={`relative ${className}`} ref={ref}
+      onKeyDown={(e) => {
+        // ArrowDown on the closed trigger opens the menu (the effect above
+        // then focuses the first item).
+        if (!open && e.key === "ArrowDown"
+          && e.target === ref.current?.firstElementChild) {
+          e.preventDefault();
+          setOpen(true);
+        }
+      }}>
       {variant && icon ? (
         <Button variant={variant} size="icon" label={label}
-          className={triggerClass}
+          className={triggerClass} disabled={disabled}
           aria-haspopup="menu" aria-expanded={open}
           onClick={() => setOpen(!open)}>
           {trigger}
         </Button>
       ) : variant ? (
         <Button variant={variant} size={triggerSize} aria-haspopup="menu"
-          aria-expanded={open} aria-label={label}
+          aria-expanded={open} aria-label={label} disabled={disabled}
+          {...triggerProps}
           className={`inline-flex items-center gap-1.5 ${triggerClass ?? ""}`}
           onClick={() => setOpen(!open)}>
           {trigger}
@@ -799,6 +824,82 @@ export function MenuItem({ children, onClick, disabled, active, sub,
       </span>
       {active && <Check size={16} aria-hidden className="text-accent" />}
     </button>
+  );
+}
+
+export type PopupOption<T extends string = string> =
+  | "divider"
+  | { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean;
+      /** Overrides the default check (`value === current`): a menu that
+       *  holds two settings (sort key + direction) checks one of each. */
+      checked?: boolean };
+
+/** A pop-up button instead of a native `<select>`: a quiet filled button
+ *  showing `label` + the current value + a chevrons icon, which opens the
+ *  app's `Menu` with one item per option and a check on the current one.
+ *  Enter / Space / ArrowDown open it, arrows move, Esc closes and returns
+ *  focus, a letter jumps to the next item starting with it. Long lists
+ *  scroll. Placeholder style: without a `value` the button shows
+ *  `placeholder` and `onChange` runs the action directly. The accessible
+ *  name is "label value". Native `<Select>` stays in settings forms. */
+export function PopupSelect<T extends string>({ value, onChange, options,
+  label, placeholder, valueLabel, disabled, up, align, className = "",
+  triggerClass = "", triggerProps }: {
+  value?: T | null;
+  onChange: (v: T) => void;
+  options: PopupOption<T>[];
+  /** Caption before the value ("Sort:") and the base of the accessible name. */
+  label?: string;
+  /** Shown while no option is current (placeholder-style selects). */
+  placeholder?: string;
+  /** Overrides the shown value text (e.g. "Mails ↓"). */
+  valueLabel?: ReactNode;
+  disabled?: boolean;
+  up?: boolean;
+  align?: "left";
+  /** Wrapper classes (width / flex). */
+  className?: string;
+  triggerClass?: string;
+  /** Extra attributes for the button (`data-bar-field` in a BulkBar). */
+  triggerProps?: Partial<Record<`data-${string}` | "title", string>>;
+}) {
+  const cur = options.find((o) => o !== "divider" && o.value === value);
+  const hasValue = valueLabel != null || (cur != null && cur !== "divider");
+  const shown = valueLabel ?? (cur && cur !== "divider" ? cur.label
+    : placeholder);
+  const name = [label, typeof shown === "string" ? shown : null]
+    .filter(Boolean).join(" ") || undefined;
+  return (
+    <Menu variant="secondary" label={name} up={up} align={align}
+      disabled={disabled}
+      triggerProps={{ "data-popup-select": "", ...triggerProps }}
+      className={className}
+      triggerClass={`w-full justify-between ${triggerClass}`}
+      trigger={<>
+        <span className="min-w-0 flex-1 truncate text-left">
+          {label && hasValue && (
+            <span className="text-muted">{label} </span>
+          )}
+          {shown}
+        </span>
+        <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-muted" />
+      </>}>
+      <div className="max-h-96 overflow-y-auto">
+        {options.map((o, i) => o === "divider"
+          ? <MenuDivider key={`d${i}`} />
+          : (
+            <MenuItem key={o.value} disabled={o.disabled}
+              active={o.checked ?? (o.value === value)}
+              onClick={() => onChange(o.value)}>
+              {o.icon ? (
+                <span className="flex items-center gap-2">
+                  {o.icon}{o.label}
+                </span>
+              ) : o.label}
+            </MenuItem>
+          ))}
+      </div>
+    </Menu>
   );
 }
 
@@ -1238,9 +1339,9 @@ export function ChipSegment({ on = false, children, className = "", ...rest }:
   );
 }
 
-/** Segmented control for mutually exclusive views (tablist). The selected
- *  segment is the quiet "current" style (chiph + accent inset ring), never
- *  the solid accent that belongs to the one primary Button. `fill` makes
+/** Segmented control for mutually exclusive views (tablist), iOS look: a
+ *  tinted track, the selected segment a raised pill (`segment-on` + small
+ *  shadow, semibold), no accent ring, no dividers. `fill` makes
  *  the row full-width, segments sized to their content (`flex-auto`).
  *  `equal` gives every segment the width of the widest one (a short label
  *  next to a long one no longer looks small). */
@@ -1280,9 +1381,9 @@ export function Segmented<T extends string>({ value, onChange, options,
   return (
     <div role="tablist" aria-label={label} onKeyDown={onKey}
       className={`${equal ? "inline-grid grid-flow-col auto-cols-fr"
-        : "inline-flex items-stretch"} overflow-hidden rounded-control
-        border border-line bg-panel2 ${fill ? "w-full" : ""} ${className}`}>
-      {options.map((o, i) => {
+        : "inline-flex items-stretch"} gap-0.5 rounded-control bg-chip p-0.5
+        ${fill ? "w-full" : ""} ${className}`}>
+      {options.map((o) => {
         const on = o.value === value;
         return (
           <button key={o.value} type="button" role="tab" aria-selected={on}
@@ -1294,10 +1395,9 @@ export function Segmented<T extends string>({ value, onChange, options,
               : "min-h-9 coarse:min-h-10"} min-w-0 whitespace-nowrap
               px-1.5 transition-colors type-meta md:type-body md:px-2 lg:px-3
               focus-visible:-outline-offset-2 enabled:active:translate-y-px
-              first:rounded-l-control last:rounded-r-control
-              ${fill && !equal ? "flex-auto" : ""} ${i > 0 ? "border-l border-line" : ""}
-              ${on ? "bg-chiph font-medium text-body ring-1 ring-inset ring-accent"
-                : "text-muted hover:bg-chip"}`}>
+              rounded-badge ${fill && !equal ? "flex-auto" : ""}
+              ${on ? "bg-segment-on font-semibold text-body shadow-segment"
+                : "text-muted hover:text-body"}`}>
             {o.label}
           </button>
         );
