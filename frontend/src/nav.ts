@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMediaQuery } from "./components/ui";
 
-/** Pages of the app shell. Later tasks add more (tool pages). */
-export type Page = "overview" | "senders" | "all" | "cleanup" | "insights";
+/** Tools that open as a page beside the sidebar (from 1024 px; below it they
+ *  stay modals). */
+export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
+  | "rules" | "junk" | "trash" | "stats" | "space" | "trackers" | "activity";
+
+export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
+  "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
+  "trackers", "activity"];
+
+/** Pages of the app shell. */
+export type Page = "overview" | "senders" | "all" | "cleanup" | "insights"
+  | ToolPage;
 
 export const PAGES: readonly Page[] = ["overview", "senders", "all", "cleanup",
-  "insights"];
+  "insights", ...TOOL_PAGES];
+export const isToolPage = (p: Page): p is ToolPage =>
+  (TOOL_PAGES as readonly Page[]).includes(p);
 /** The phone / tablet tab pages: lists of tools. The sidebar shows the same
  *  items, so from 1024 px these routes fall back to the default page. */
 export const TAB_PAGES: readonly Page[] = ["cleanup", "insights"];

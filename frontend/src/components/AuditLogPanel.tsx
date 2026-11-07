@@ -1,9 +1,10 @@
 import { ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, downloadFile, errorText, fmtSize } from "../api";
 import { t } from "../i18n";
 import type { AuditEntry, Rule } from "../types";
-import { Button, EmptyState, Loading, PanelHeader, Modal } from "./ui";
+import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel }
+  from "./ui";
 
 const PAGE_SIZE = 50;
 
@@ -28,8 +29,12 @@ const tOr = (prefix: string, key: string): string => {
 /** Append-only history of every action Inboxrake took on this mailbox:
  *  bulk/rule trash-archive-move-mark_read, rule runs, unsubscribes, undo,
  *  empty-trash. Paged, newest first, CSV export. */
-export function AuditLogPanel({ rules, onClose }: {
+export function AuditLogPanel({ rules, onClose, above, reloadKey }: {
   rules: Rule[]; onClose: () => void;
+  /** The Activity page puts the undo history here, above the log. */
+  above?: ReactNode;
+  /** Changes when something new was logged behind the panel (an undo). */
+  reloadKey?: number;
 }) {
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -42,13 +47,14 @@ export function AuditLogPanel({ rules, onClose }: {
       .then((r) => { setEntries(r.entries); setTotal(r.total); })
       .catch((e) => setError(String(e.message ?? e)));
   };
-  useEffect(() => load(offset), [offset]);
+  useEffect(() => load(offset), [offset, reloadKey]);
 
   return (
-    <Modal onClose={onClose} size="lg" full={!entries || entries.length > 0}>
+    <Modal onClose={onClose} size="lg"
+      full={!!above || !entries || entries.length > 0}>
       <PanelHeader
         title={<span className="inline-flex items-center gap-2">
-          <ScrollText size={18} /> {t("Audit Log")}
+          <ScrollText size={18} /> {t(above ? "nav.activity" : "Audit Log")}
         </span>}
         sub={total == null ? t("loading…") : total === 0 ? "" : t("audit.page", {
           from: offset + 1, to: Math.min(offset + PAGE_SIZE, total), total })}
@@ -59,6 +65,9 @@ export function AuditLogPanel({ rules, onClose }: {
         onClose={onClose}
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {above}
+        {above && <SectionLabel className="px-1 pb-1 pt-4">
+          {t("Audit Log")}</SectionLabel>}
         {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
         {!entries && !error && <Loading />}
         {entries && entries.length === 0 && (

@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
-import { DEFAULT_PAGE, isTabPage, useNav, useSidebar } from "./nav";
+import { DEFAULT_PAGE, isTabPage, isToolPage, useNav, useSidebar, type Page,
+  type ToolPage } from "./nav";
 import { TabBar, ToolList, ToolRow } from "./components/TabBar";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { DetailPanel } from "./components/DetailPanel";
@@ -38,7 +39,8 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuDivider, MenuGroup, MenuHeading, MenuItem, Notice, ProgressBar,
   promptDialog, Segmented, Select, Spinner, useAppearance, useMediaQuery, useToast,
-  type ToastVariant, useBulkBarHeight } from "./components/ui";
+  PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
+  from "./components/ui";
 import { nowMs } from "./clock";
 import { demoHint, setDemo, useDemo } from "./demoMode";
 import { t } from "./i18n";
@@ -109,7 +111,10 @@ export default function App() {
   const [navPage, setPage] = useNav();
   // The Clean up / Insights tab pages only exist below 1024 px (the sidebar
   // holds the same items): from there their routes show the default page.
-  const page = wide && isTabPage(navPage) ? DEFAULT_PAGE : navPage;
+  // Tools are pages from 1024 px and modals below; the page behind a tool
+  // route is the default one below 1024.
+  const page = (wide ? isTabPage(navPage) : isToolPage(navPage))
+    ? DEFAULT_PAGE : navPage;
   const toolPage = isTabPage(page);
   const flat = page === "all";
   const overview = page === "overview";
@@ -197,6 +202,23 @@ export default function App() {
   const [triageOpen, setTriageOpen] = useState(false);
   // Folders panel (Junk | Trash): which folder it opens on, null = closed
   const [foldersOpen, setFoldersOpen] = useState<FolderRole | null>(null);
+  // Bumped after a restore: the Activity page reloads its audit log.
+  const [undoRev, setUndoRev] = useState(0);
+  // The open tool, in either presentation: its route (the truth from 1024
+  // px, and a deep link below) or the modal flag the tab pages / menus set
+  // below 1024. A panel stays mounted when a resize flips the presentation,
+  // so what the user did in it survives; `PageSlot` switches the look.
+  const routeTool = isToolPage(navPage) ? navPage : null;
+  const flagTool: ToolPage | null = searchOpen ? "search"
+    : triageOpen ? "triage" : dupsOpen ? "duplicates"
+    : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
+    : statsOpen ? "stats" : spaceOpen ? "space"
+    : trackersOpen ? "trackers" : auditOpen ? "activity" : null;
+  const shownTool = routeTool ?? flagTool;
+  // A tool open as a page in the content column (>= 1024).
+  const routed = wide && shownTool !== null;
+  // Pages that replace the sender list / toolbar.
+  const bare = toolPage || routed;
   const [undoOpen, setUndoOpen] = useState(false);
   const [moveDest, setMoveDest] = useState("");
   // The "Limit to…" editor swapped into the capsule (Done closes it).
@@ -711,6 +733,28 @@ export default function App() {
     setDetail(null);
   }, [page]);
   useEffect(() => { if (!paneOpen) cancelFollow(); }, [paneOpen]);
+  // Leaving a tool page (sidebar, Back) runs what closing its modal did.
+  const toolWas = useRef(page);
+  useEffect(() => {
+    const was = toolWas.current;
+    toolWas.current = page;
+    if (was === page) return;
+    if (["search", "triage", "duplicates", "attachments", "junk", "trash"]
+      .includes(was)) refresh();
+    if (was === "rules") setRulesSeed("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+  // Widening to the sidebar layout: the open tool modal becomes its page
+  // (same panel instance, see `shownTool`).
+  useEffect(() => {
+    if (!wide || !flagTool) return;
+    setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
+    setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
+    setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
+    setAuditOpen(false);
+    if (!routeTool) goPage(flagTool);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wide]);
   const swapDetail = (g: Group) => {
     if (focusInPane()) focusPane.current = true;
     setDetail(g);
@@ -929,6 +973,7 @@ export default function App() {
         : t(partial ? "toast.restored_partial" : "toast.restored", params),
       partial || rescan ? "info" : "success");
       await clearRestoreNotice();
+      setUndoRev((n) => n + 1);
       refresh();
     }
     catch (e: any) {
@@ -1527,7 +1572,7 @@ export default function App() {
         filterRef.current?.focus();
         return;
       }
-      if (flat || toolPage || !groups.length) return;
+      if (flat || bare || !groups.length) return;
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         move(Math.min(focusRef.current + 1, groups.length - 1));
@@ -1797,7 +1842,9 @@ export default function App() {
     }
     setPage(p);
   };
-  const openTool = (tool: SidebarTool) => ({
+  // Tools: a page beside the sidebar (>= 1024), a modal below.
+  const openTool = (tool: SidebarTool) => wide && isToolPage(tool as Page)
+    ? goPage(tool as ToolPage) : ({
     search: () => setSearchOpen(true),
     triage: () => setTriageOpen(true),
     duplicates: () => setDupsOpen(true),
@@ -1812,6 +1859,14 @@ export default function App() {
     activity: () => setAuditOpen(true),
     settings: () => setSettingsOpen(true),
   })[tool]();
+  // Closing a tool: back to the start page (Triage: to the list its changes
+  // show up in), or drop its modal.
+  const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
+    if (wide) { goPage(to); return; }
+    modal();
+    if (routeTool) goPage(to);   // a modal opened by a deep link / a resize
+  };
+  const toolShown = (id: ToolPage) => shownTool === id;
 
   // The profile menu: the header trigger below 1024, the sidebar's account
   // switcher from there (same items).
@@ -1978,6 +2033,122 @@ export default function App() {
     </Menu>
   );
 
+  // The undo history (the status line's Undo menu, newest first): the top of
+  // the Activity page.
+  const undoHistory = (
+    <div>
+      <SectionLabel className="px-1 pb-1 pt-3">
+        {t("activity.undo")}
+      </SectionLabel>
+      {state?.undo.length ? (
+        <ul className="divide-y divide-line">
+          {[...state.undo].map((u, i) => ({ u, i })).reverse()
+            .map(({ u, i }) => (
+            <li key={i} className="flex items-center gap-3 px-1 py-2">
+              <span className="min-w-0 flex-1 type-body">
+                {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
+                {" "}- <span className="text-muted">{undoLabel(u)}</span>
+              </span>
+              <Button variant="secondary" size="sm" disabled={deleting}
+                onClick={() => undo(i)}>
+                {t("Undo")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-1 py-2 type-meta text-muted">
+          {t("activity.undo_empty")}
+        </p>
+      )}
+    </div>
+  );
+
+  // The tool panels: modals below 1024 px, pages in the content column from
+  // there (`toolShown`; each panel's own close then leaves the page).
+  const toolPanels = (<>
+    {toolShown("search") && (
+      <SearchPanel key={account}
+        bodySearch={acct?.body_search !== "disabled"}
+        bodyMode={acct?.body_search === "local" ? "local" : "server"}
+        onClose={() => closeTool(() => { setSearchOpen(false); refresh(); })}
+        onDeleted={refresh}
+      />
+    )}
+    {toolShown("stats") && (
+      <StatsPanel key={account} onClose={() => closeTool(() => setStatsOpen(false))}
+        onWrapped={() => {
+          if (!wide) setStatsOpen(false);
+          setWrappedOpen(true);
+        }} />
+    )}
+    {toolShown("space") && state && (
+      <SpaceMapPanel key={account} groups={state.groups.sender}
+        onClose={() => closeTool(() => setSpaceOpen(false))}
+        onDone={selectSenders} />
+    )}
+    {toolShown("triage") && state && (
+      <TriagePanel key={account} groups={groups} grouping={mode} onApply={applyTriage}
+        onClose={() => closeTool(() => { setTriageOpen(false); refresh(); },
+          "senders")} />
+    )}
+    {toolShown("activity") && (
+      <AuditLogPanel key={account} rules={state?.rules ?? []}
+        above={wide ? undoHistory : undefined} reloadKey={undoRev}
+        onClose={() => closeTool(() => setAuditOpen(false))} />
+    )}
+    {(shownTool === "junk" || shownTool === "trash") && state && (
+      <FoldersPanel
+        key={account}
+        state={state}
+        initialRole={routeTool === "junk" || routeTool === "trash"
+          ? routeTool : foldersOpen ?? "trash"}
+        onRoleChange={(r) => { if (routeTool) goPage(r); }}
+        onClose={() => closeTool(() => { setFoldersOpen(null); refresh(); })}
+        onChanged={refresh}
+        onEmptyTrash={emptyTrash}
+        onUndo={undoEntry}
+        onProtect={protectSenders}
+      />
+    )}
+    {toolShown("duplicates") && (
+      <DuplicatesPanel key={account}
+        onClose={() => closeTool(() => { setDupsOpen(false); refresh(); })}
+        onDeleted={refresh}
+      />
+    )}
+    {toolShown("trackers") && (
+      <TrackersPanel key={account}
+        account={account}
+        onClose={() => closeTool(() => setTrackersOpen(false))}
+        onPickSender={(key) => {
+          // from: is an exact sender address: show the Sender tab.
+          setTrackersOpen(false);
+          setFlat(false); setMode("sender");
+          setSelected(new Set()); setFocusIdx(-1); cancelFollow();
+          setDetail(null); setActiveChip(null);
+          setFilter(`from:${key}`);
+        }}
+      />
+    )}
+    {toolShown("attachments") && state && (
+      <AttachmentsPanel key={account}
+        state={state}
+        onClose={() => closeTool(() => { setAttsOpen(false); refresh(); })}
+        onDeleted={refresh}
+      />
+    )}
+    {toolShown("rules") && state && (
+      <RulesModal key={account}
+        state={state} initialQuery={rulesSeed}
+        onClose={() => closeTool(() => {
+          setRulesOpen(false); setRulesSeed("");
+        })}
+        onChanged={refresh}
+      />
+    )}
+  </>);
+
   return (
     <div className={wide ? "pl-61" : undefined}>
     {wide && (
@@ -1992,8 +2163,11 @@ export default function App() {
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
     )}
-    <div className="mx-auto max-w-6xl p-3 xl:max-w-360 pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+0.75rem)]
-      sm:p-5 sm:pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+1.25rem)]">
+    <div className={routed
+      // A tool page: the column's full height, the panel scrolls inside.
+      ? "flex h-dvh min-w-0 flex-col"
+      : `mx-auto max-w-6xl p-3 xl:max-w-360 pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+0.75rem)]
+      sm:p-5 sm:pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+1.25rem)]`}>
       {/* Below 1024: the phone / tablet top bar - large page title (+ when
           it was scanned), Search all mail, Scan and the account menu. The
           tab bar at the bottom replaces the Tools menu and the Junk / Trash
@@ -2031,8 +2205,8 @@ export default function App() {
       </header>}
 
       {updateAvailable && (
-        <div className="mb-3 flex items-center justify-between gap-2
-          rounded-control border border-accent/40 bg-panel2 px-3 py-2 type-body">
+        <div className={`${routed ? "mx-3 mt-3" : ""} mb-3 flex items-center justify-between gap-2
+          rounded-control border border-accent/40 bg-panel2 px-3 py-2 type-body`}>
           <span className="inline-flex items-center gap-1.5">
             <Sparkles size={16} /> {t("update.available")}
           </span>
@@ -2042,7 +2216,7 @@ export default function App() {
         </div>
       )}
 
-      {!toolPage && (<>
+      {!bare && (<>
       {mode === "smart" && !flat && !overview && smartHelp && <Notice className="mb-2"
         onClose={() => { setSmartHelp(false); localStorage.setItem("pmc_smart_help_seen", "1"); }}>
         {t("smart.first_use")}
@@ -2350,7 +2524,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {!toolPage && <div className="mb-1 flex min-h-5 items-center justify-between gap-2
+      {!bare && <div className="mb-1 flex min-h-5 items-center justify-between gap-2
         type-meta text-muted">
         <div>{statusLine()}</div>
         {(state?.undo.length ?? 0) > 0 && !deleting && (
@@ -2383,7 +2557,7 @@ export default function App() {
       {state?.notice && state.notice.key !== "cached_verdicts"
         && state.notice.key !== "restored"
         && state.notice.key !== "restored_rescan" && (
-        <Notice className="mb-2" icon={<Info size={14} />}
+        <Notice className={routed ? "mx-3 mt-3" : "mb-2"} icon={<Info size={14} />}
           onClose={dismissNotice}>
           {t(`notice.${state.notice.key}`, noticeParams(state.notice.params))}
           {/* a finished AI sorting run: the answers can be kept right here */}
@@ -2440,7 +2614,7 @@ export default function App() {
         </ToolList>
       ))}
 
-      {toolPage ? null : overview ? (
+      {bare ? null : overview ? (
         state && (
           <Overview phase={overviewPhase} groups={senderGroups}
             account={account} accountLine={accountLine}
@@ -2527,70 +2701,8 @@ export default function App() {
       )}
 
       {detail && !splitPane && renderDetail("modal")}
-      {searchOpen && (
-        <SearchPanel
-          bodySearch={acct?.body_search !== "disabled"}
-          bodyMode={acct?.body_search === "local" ? "local" : "server"}
-          onClose={() => { setSearchOpen(false); refresh(); }}
-          onDeleted={refresh}
-        />
-      )}
-      {statsOpen && (
-        <StatsPanel onClose={() => setStatsOpen(false)}
-          onWrapped={() => { setStatsOpen(false); setWrappedOpen(true); }} />
-      )}
-      {spaceOpen && state && (
-        <SpaceMapPanel groups={state.groups.sender}
-          onClose={() => setSpaceOpen(false)}
-          onDone={selectSenders} />
-      )}
-      {triageOpen && (
-        <TriagePanel groups={groups} grouping={mode} onApply={applyTriage}
-          onClose={() => { setTriageOpen(false); refresh(); }} />
-      )}
+      <PageSlot page={wide}>{toolPanels}</PageSlot>
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
-      {auditOpen && (
-        <AuditLogPanel rules={state?.rules ?? []}
-          onClose={() => setAuditOpen(false)} />
-      )}
-      {foldersOpen && state && (
-        <FoldersPanel
-          state={state}
-          initialRole={foldersOpen}
-          onClose={() => { setFoldersOpen(null); refresh(); }}
-          onChanged={refresh}
-          onEmptyTrash={emptyTrash}
-          onUndo={undoEntry}
-          onProtect={protectSenders}
-        />
-      )}
-      {dupsOpen && (
-        <DuplicatesPanel
-          onClose={() => { setDupsOpen(false); refresh(); }}
-          onDeleted={refresh}
-        />
-      )}
-      {trackersOpen && (
-        <TrackersPanel
-          account={account}
-          onClose={() => setTrackersOpen(false)}
-          onPickSender={(key) => {
-            // from: is an exact sender address: show the Sender tab.
-            setTrackersOpen(false);
-            setFlat(false); setMode("sender");
-            setSelected(new Set()); setFocusIdx(-1); cancelFollow();
-            setDetail(null); setActiveChip(null);
-            setFilter(`from:${key}`);
-          }}
-        />
-      )}
-      {attsOpen && state && (
-        <AttachmentsPanel
-          state={state}
-          onClose={() => { setAttsOpen(false); refresh(); }}
-          onDeleted={refresh}
-        />
-      )}
       {aiFilterOpen && (
         <AiFilterPanel
           groups={allGroups} members={members}
@@ -2607,15 +2719,8 @@ export default function App() {
           onSaveRule={(q) => {
             setAiFilterOpen(false);
             setRulesSeed(q);
-            setRulesOpen(true);
+            openTool("rules");
           }} />
-      )}
-      {rulesOpen && state && (
-        <RulesModal
-          state={state} initialQuery={rulesSeed}
-          onClose={() => { setRulesOpen(false); setRulesSeed(""); }}
-          onChanged={refresh}
-        />
       )}
       {wizardEl}
       {!wide && <TabBar page={page} onPage={goPage} />}

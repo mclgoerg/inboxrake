@@ -547,8 +547,37 @@ export function Field({ label, children }: {
 
 /* --------------------------- layout primitives --------------------------- */
 
+/** How the next top-level `Modal` presents itself. "slot" (set by
+ *  `PageSlot`): inline as a page in the content column - no overlay, not on
+ *  the modal stack, no focus trap, no Esc. "page": inside such a page, where
+ *  `PanelHeader` has nothing to close. "modal" (default, and inside every
+ *  real modal): a dialog; dialogs opened from a page stay real modals. */
+type Presentation = "modal" | "slot" | "page";
+const PresentationContext = createContext<Presentation>("modal");
+
+/** Presents the panels inside as pages filling the content column (`page`)
+ *  or as dialogs. The element tree stays the same either way, so a panel
+ *  keeps its state when the presentation changes (a window crossing 1024 px). */
+export function PageSlot({ page, children }: {
+  page: boolean; children: ReactNode;
+}) {
+  return (
+    <PresentationContext.Provider value={page ? "slot" : "modal"}>
+      {children}
+    </PresentationContext.Provider>
+  );
+}
+
+/** True for a panel rendered under a page `PageSlot` (read outside its Modal). */
+export const useIsPage = (): boolean =>
+  useContext(PresentationContext) === "slot";
+
+/** How many dialogs are open right now (a page is none). */
+export const modalCount = (): number => openModals.length;
+
 /** Standard panel/modal header: title (+optional subtitle) left, optional
- *  action elements, close button right. Used by every modal. */
+ *  action elements, close button right. Used by every modal. On a page there
+ *  is nothing to close (the sidebar navigates), but a back button stays. */
 export function PanelHeader({ title, sub, actions, onClose, closeLabel,
   closeIcon }: {
   title: ReactNode; sub?: ReactNode; actions?: ReactNode;
@@ -556,6 +585,8 @@ export function PanelHeader({ title, sub, actions, onClose, closeLabel,
   /** A panel that opens inside another goes BACK instead of closing. */
   closeLabel?: string; closeIcon?: ReactNode;
 }) {
+  const onPage = useContext(PresentationContext) === "page"
+    && closeLabel === undefined;
   return (
     <div className="flex items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -565,10 +596,12 @@ export function PanelHeader({ title, sub, actions, onClose, closeLabel,
         )}
       </div>
       {actions}
-      <Button variant="secondary" size="icon" label={closeLabel ?? t("Close")}
-        onClick={onClose}>
-        {closeIcon ?? <X size={18} />}
-      </Button>
+      {!onPage && (
+        <Button variant="secondary" size="icon"
+          label={closeLabel ?? t("Close")} onClick={onClose}>
+          {closeIcon ?? <X size={18} />}
+        </Button>
+      )}
     </div>
   );
 }
@@ -990,6 +1023,7 @@ export function Modal({ children, onClose, full = false, size, label,
   labelledBy?: string; describedBy?: string;
 }) {
   const sz = size ?? (full ? "lg" : "md");
+  const slot = useContext(PresentationContext) === "slot";
   const id = useRef(Symbol("modal")).current;
   const dialog = useRef<HTMLDivElement>(null);
   // Whatever had focus when the modal opened (read during the first render,
@@ -1004,6 +1038,7 @@ export function Modal({ children, onClose, full = false, size, label,
   // Layout effect: the stack is current as soon as the modal is in the DOM,
   // before any key event can arrive.
   useLayoutEffect(() => {
+    if (slot) return;   // a page: not on the stack, no Esc, no focus trap
     openModals.push(id);
     const onKey = (e: KeyboardEvent) => {
       // Only the topmost modal reacts, so Esc on a confirm that sits over
@@ -1034,8 +1069,9 @@ export function Modal({ children, onClose, full = false, size, label,
       window.removeEventListener("keydown", onKey);
       openModals.splice(openModals.indexOf(id), 1);
     };
-  }, [id]);
+  }, [id, slot]);
   useEffect(() => {
+    if (slot) return;   // pages keep focus where the user is (the sidebar)
     const d = dialog.current;
     // Children that asked for focus (autoFocus, ConfirmDialog) already have
     // it; otherwise start on the dialog itself so Tab goes to its first
@@ -1053,7 +1089,7 @@ export function Modal({ children, onClose, full = false, size, label,
       // page to its top (an Undo picked from the menu, whose item is gone).
       refocus(to, to === back);
     };
-  }, []);
+  }, [slot]);
   const shape = sz === "sm"
     ? `max-h-[88dvh] rounded-t-dialog border-t max-sm:pb-[env(safe-area-inset-bottom)]
        sm:rounded-dialog`
@@ -1064,27 +1100,42 @@ export function Modal({ children, onClose, full = false, size, label,
   // padding of the dialog stays put (a scrolling dialog would carry it away).
   // iPhone (viewport-fit=cover): full-screen modals keep their header below
   // the status bar.
-  const scrolls = sz !== "sm" && !full;
+  const scrolls = (sz !== "sm" || slot) && !full;
   // Full panels place their own footers above the home indicator.
   const inset = sz === "sm" ? "" : " max-sm:pt-[env(safe-area-inset-top)]"
     + (scrolls ? " max-sm:pb-[env(safe-area-inset-bottom)]" : "");
+  // One element tree for both presentations (only classes and attributes
+  // differ), so the panel inside keeps its state when `slot` flips.
   return (
     <div
-      className={`fixed inset-0 z-(--z-modal) flex justify-center bg-overlay
-        backdrop-blur-sm p-0 sm:p-6 ${sz === "sm" ? "items-end sm:items-center"
-          : "items-center"}`}
-      onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true"
+      className={slot ? "contents" : `fixed inset-0 z-(--z-modal) flex
+        justify-center bg-overlay backdrop-blur-sm p-0 sm:p-6
+        ${sz === "sm" ? "items-end sm:items-center" : "items-center"}`}
+      onClick={slot ? undefined
+        : (e) => e.target === e.currentTarget && onClose()}>
+      <div ref={dialog} tabIndex={slot ? undefined : -1}
+        role={slot ? "region" : "dialog"}
+        aria-modal={slot ? undefined : true}
         aria-label={label}
         aria-labelledby={labelledBy} aria-describedby={describedBy}
         data-size={sz}
-        className={`flex w-full flex-col overflow-hidden border-line bg-panel outline-none
+        className={slot
+          // A page: fills the content column, scrolls inside like a `full`
+          // panel.
+          ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+          : `flex w-full flex-col overflow-hidden border-line bg-panel outline-none
         sm:rounded-dialog sm:border ${MODAL_WIDTH[sz]} ${shape}${inset}`}>
         {/* Always rendered (`contents` when not scrolling): `full` can flip
             while open, and a changing tree would remount the content. */}
-        <div className={scrolls ? `flex min-h-0 flex-1 flex-col
-          overflow-y-auto sm:flex-initial` : "contents"}>
-          {children}
+        <div className={scrolls ? (slot ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
+          : `flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-initial`)
+          : "contents"}>
+          {/* Children see "page" on a page (PanelHeader drops its close
+              button) and "modal" in a dialog, so a dialog opened from a page
+              is a real modal again. */}
+          <PresentationContext.Provider value={slot ? "page" : "modal"}>
+            {children}
+          </PresentationContext.Provider>
         </div>
       </div>
     </div>

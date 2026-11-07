@@ -9,8 +9,9 @@ import {
 import type { Group, Grouping } from "../types";
 import { localizedSub } from "./GroupTable";
 import {
-  AiTag, Avatar, Button, confirmDialog, EngagementMeter, Modal, PanelHeader,
-  ProgressBar, SectionLabel, ShortDate, Tag, useMediaQuery,
+  AiTag, Avatar, Button, confirmDialog, EngagementMeter, modalCount, Modal,
+  PanelHeader, ProgressBar, SectionLabel, ShortDate, Tag, useIsPage,
+  useMediaQuery,
 } from "./ui";
 
 const EXIT_MS = 180;
@@ -203,6 +204,7 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
   const [history, setHistory] = useState<string[]>([]);
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
+  const isPage = useIsPage();
   const reduced = useMediaQuery(REDUCED);
   const phone = useMediaQuery("(width < 40rem)");
 
@@ -254,6 +256,12 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
     if (e.defaultPrevented || summaryOpen || busy || prompting.current
         || e.ctrlKey || e.metaKey
         || e.altKey) return;
+    // Not for a dialog opened over this panel (its own Modal is the one
+    // entry on the stack unless it is a page), nor for a text field.
+    if (modalCount() > (isPage ? 0 : 1)) return;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest?.('input, select, textarea, [contenteditable]'
+      + ':not([contenteditable="false"])')) return;
     const map: Record<string, Decision | "undo"> = {
       ArrowLeft: "trash", ArrowRight: "keep", ArrowUp: "unsub",
       Backspace: "undo",
@@ -339,7 +347,7 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
         max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         {summaryOpen ? (
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" disabled={busy}
+            <Button variant="secondary" disabled={busy || !deck.length}
               onClick={() => {
                 // At the end: reopen the last card, keeping its decision.
                 if (finished) setIdx(deck.length - 1);

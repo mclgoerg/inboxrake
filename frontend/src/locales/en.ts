@@ -428,6 +428,8 @@ export const EN: Record<string, string> = {
   "nav.senders": "Senders",
   "nav.all_mail": "All mail",
   "nav.activity": "Activity",
+  "activity.undo": "Undo history",
+  "activity.undo_empty": "Nothing to undo.",
   "col.status_tags": "Status & tags",
   "tracker.title": "Trackers",
   "tracker.sub": "Who tracks your opens and clicks",
