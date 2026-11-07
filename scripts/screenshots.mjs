@@ -15,7 +15,7 @@
  *     ghcr.io/mclgoerg/inboxrake:latest python /repo/scripts/demo.py
  *   docker run --rm --network mb-docs-net -v "$PWD":/repo -w /tmp node:26 \
  *     bash -c "apt-get update -q && apt-get install -yq --no-install-recommends \
- *       chromium fonts-noto-color-emoji fonts-noto-core || exit 1; \
+ *       chromium fonts-noto-color-emoji fonts-noto-core fonts-roboto || exit 1; \
  *       mkdir rig && cd rig && npm i -s puppeteer-core \
  *       && cp /repo/scripts/*.mjs . && node screenshots.mjs \
  *            http://mb-docs-demo:8765 \
@@ -88,11 +88,20 @@ await page.close();
 page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
 await dismissNotice(page);
 await openGroup(page, "PayBank");
-// Keep the open row clear of the sticky header: no row cut off at the top.
-await page.evaluate(() => [...document.querySelectorAll("[data-gidx]")]
-  .find((e) => e.offsetParent && e.textContent.includes("PayBank"))
-  ?.scrollIntoView({ block: "center" }));
+// Keep every row clear of the sticky header: after the pane has settled,
+// scroll so the first row below the header sits flush under it (no row cut).
 await settle(page);
+await page.evaluate(() => {
+  const th = document.querySelector("thead th");
+  const headerBottom = th ? th.getBoundingClientRect().bottom : 0;
+  const first = [...document.querySelectorAll("[data-gidx]")]
+    .filter((e) => e.offsetParent)
+    .find((e) => e.getBoundingClientRect().bottom > headerBottom + 4);
+  // The page scrolls inside <body>, not the window.
+  if (first) document.body.scrollBy(0, first.getBoundingClientRect().top
+    - headerBottom);
+});
+await sleep(400);
 await save(page, "split-pane.png");
 await page.close();
 

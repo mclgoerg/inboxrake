@@ -38,10 +38,10 @@ the short version; [install.md](install.md) covers running it and
   reader (HTML mails rendered as plain text - no remote content, no tracking
   pixels), per-mail selection and deletion ("Trash this mail", or "Move N
   mails to Trash" for the whole group, the button at the bottom). The actions
-  for the sender as a whole - Unsubscribe, Block, Protect, Move, More - are a
-  row at the top. On screens 1280 px and wider the group opens in a **side
-  pane** next to the list, so you can keep scanning the list while you read;
-  below that it is a dialog.
+  for the sender as a whole - Unsubscribe (when the sender offers it), Block,
+  Protect, Move, More - are a row at the top. On screens 1280 px and wider the
+  group opens in a **side pane** next to the list, so you can keep scanning
+  the list while you read; below that it is a dialog.
 - **AI review (optional)** - coarse verdicts per group
   (delete-safe/review/keep) and a fine-grained mode that rates every mail
   *inside* a group, with selection by rating. Verdicts are cached (by group

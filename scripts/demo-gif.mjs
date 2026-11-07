@@ -8,7 +8,7 @@
  *
  *   docker run --rm --network mb-docs-net -v "$PWD":/repo -w /tmp node:26 \
  *     bash -c "apt-get update -q && apt-get install -yq --no-install-recommends \
- *       chromium ffmpeg fonts-noto-color-emoji fonts-noto-core || exit 1; \
+ *       chromium ffmpeg fonts-noto-color-emoji fonts-noto-core fonts-roboto || exit 1; \
  *       mkdir rig && cd rig && npm i -s puppeteer-core \
  *       && cp /repo/scripts/*.mjs . && node demo-gif.mjs \
  *            http://mb-docs-demo:8765 \
