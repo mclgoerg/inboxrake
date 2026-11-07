@@ -596,7 +596,6 @@ export const DE: Record<string, string> = {
     "diesen Monat endgültig gelöscht: {n} Mails · {size} frei",
   "stats.freed_month_one":
     "diesen Monat endgültig gelöscht: 1 Mail · {size} frei",
-  "fp.menu": "Spam & Papierkorb",
   "fp.which": "Ordner",
   "fp.grouping": "Gruppieren nach",
   "fp.by_sender": "Nach Absender",

@@ -198,6 +198,23 @@ test("clicking a different account switches; clicking the active one " +
   expect(localStorage.getItem("pmc_account")).toBe("icloud");
 });
 
+test("the avatar is never named 'Account: ' - without an account it is the profile button",
+  async () => {
+  cfg = singleCfg;
+  state = { ...baseState };
+  localStorage.removeItem("pmc_account");
+  const seen = new Set<string>();
+  const watch = new MutationObserver(() => document
+    .querySelectorAll("header button[aria-haspopup]")
+    .forEach((b) => seen.add(b.getAttribute("aria-label") ?? "")));
+  watch.observe(document.body, { subtree: true, childList: true, attributes: true });
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  await settleStateCalls();
+  watch.disconnect();
+  expect(screen.getByLabelText(/^(Account: .+|Profile & settings)$/)).toBeTruthy();
+  expect(seen.has("Account: ")).toBe(false);
+});
+
 test("single account: no Accounts section, header keeps the plain " +
   "profile trigger", async () => {
   cfg = singleCfg;

@@ -754,7 +754,6 @@ export const EN: Record<string, string> = {
     "permanently deleted this month: {n} mails · {size} freed",
   "stats.freed_month_one":
     "permanently deleted this month: 1 mail · {size} freed",
-  "fp.menu": "Junk & Trash",
   "fp.which": "Folder",
   "fp.grouping": "Group by",
   "fp.by_sender": "By sender",

@@ -1767,7 +1767,8 @@ export default function App() {
   // The profile menu: the header trigger below 1024, the sidebar's account
   // switcher from there (same items).
   const profileMenu = (
-    <Menu label={t("menu.account_switch", { name: account })}
+    <Menu label={account ? t("menu.account_switch", { name: account })
+      : t("menu.profile")}
       {...(wide ? { variant: "quiet" as const, align: "left" as const,
         className: "w-full", triggerClass: "w-full justify-start" }
         : { variant: "quiet" as const, icon: true as const,
