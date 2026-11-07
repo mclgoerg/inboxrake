@@ -311,17 +311,17 @@ body {
   bottom: calc(var(--bulkbar-h, 0px) + var(--tabbar-h, 0px) + env(safe-area-inset-bottom) + 1rem);
 }
 @media (width >= 64rem) {
-  :root:has([data-sidebar]):not(:has([role="dialog"])) .pmc-toasts {
+  :root:has([data-sidebar]):not(:has([role="dialog"][aria-modal="true"])) .pmc-toasts {
     left: 15.25rem; /* the sidebar's width (w-61) */
   }
 }
 /* A modal's overlay covers the tab bar and the selection bar: no offset. */
-:root:has([role="dialog"]) .pmc-toasts {
+:root:has([role="dialog"][aria-modal="true"]) .pmc-toasts {
   bottom: calc(env(safe-area-inset-bottom) + 1rem);
 }
 /* A phone bottom sheet (Modal sm) owns the bottom edge: toasts go to the top. */
 @media (width < 40rem) {
-  :root:has([role="dialog"][data-size="sm"]) .pmc-toasts {
+  :root:has([role="dialog"][aria-modal="true"][data-size="sm"]) .pmc-toasts {
     top: calc(env(safe-area-inset-top) + 1rem);
     bottom: auto;
   }

@@ -347,8 +347,20 @@ test("toast stack offsets: content column only with a sidebar and no dialog; "
   // @ts-expect-error node builtins have no types in this project
   const { readFileSync } = await import("node:fs");
   const css = readFileSync("src/index.css", "utf8") as string;
-  expect(css).toMatch(/:root:has\(\[data-sidebar\]\):not\(:has\(\[role="dialog"\]\)\) \.pmc-toasts \{\s*left: 15\.25rem/);
-  expect(css).toMatch(/:root:has\(\[role="dialog"\]\) \.pmc-toasts \{\s*bottom: calc\(env\(safe-area-inset-bottom\) \+ 1rem\)/);
+  expect(css).toMatch(/:root:has\(\[data-sidebar\]\):not\(:has\(\[role="dialog"\]\[aria-modal="true"\]\)\) \.pmc-toasts \{\s*left: 15\.25rem/);
+  expect(css).toMatch(/:root:has\(\[role="dialog"\]\[aria-modal="true"\]\) \.pmc-toasts \{\s*bottom: calc\(env\(safe-area-inset-bottom\) \+ 1rem\)/);
+});
+
+test("only a Modal matches the toast selectors; a popover dialog does not", () => {
+  const { unmount } = render(<RatingChips ratings={{ delete_safe: 3 }} />);
+  fireEvent.click(screen.getByRole("button", { name: /AI ratings/ }));
+  const pop = screen.getByRole("dialog");
+  expect(pop.getAttribute("aria-modal")).toBeNull();
+  expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
+  unmount();
+  render(<Modal onClose={() => {}} label="m"><p>x</p></Modal>);
+  expect(screen.getByRole("dialog").getAttribute("aria-modal")).toBe("true");
+  expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
 });
 
 test("confirmDialog resolves true on confirm, false on Cancel / Esc / backdrop", async () => {
