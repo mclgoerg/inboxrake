@@ -8,6 +8,11 @@ Everything Inboxrake can do, in one list. The [README](../README.md) has
 the short version; [install.md](install.md) covers running it and
 [security.md](security.md) the login, multi-user and secrets options.
 
+- **Overview** - the start page: how much space your mail takes, how much
+  of it could go, your biggest senders and a few suggestions (see "Suggestions"
+  below). Everything else is one click away in the sidebar (on screens 1024 px
+  and wider) or the tab bar at the bottom (phones and tablets: Overview,
+  Senders, Clean up, Insights).
 - **Views** - five of them: Sender, Smart (every big sender keeps
   its own row; the long tail of small senders is pooled by company - all
   `noreply@`, `news@`, … of one domain - and by what their mails are
@@ -18,13 +23,14 @@ the short version; [install.md](install.md) covers running it and
   them. The per-account threshold is "Own row from N mails", default 10),
   Subject (normalized: merges
   `Order 123` / `Order 456`, strips Re:/Fwd:), Thread (whole
-  conversations) and a flat "All mails" list. The All mails view is
-  remembered; the grouping starts at Sender.
+  conversations) and a flat "All mails" list. The grouping control sits in
+  the Senders toolbar; "All mail" is its own sidebar item on wide screens.
+  The All mails view is remembered; the grouping starts at Sender.
 - **Cleanup signals** - mail count, total size (find attachment hogs),
   unread percentage, first->last date range (short dates, e.g. "7 Oct"), category tags
   (shipping, finance, shopping, social, travel, newsletters,
   automated…).
-- **Swipe triage** - Tools -> Triage deals out the
+- **Swipe triage** - Triage (sidebar: Clean up; phones: the Clean up tab) deals out the
   groups of the current list one card at a time: swipe left to Trash,
   right to Keep, up to Unsubscribe - or use the buttons or the arrow keys.
   Nothing happens while you decide; at the end one confirm names every
@@ -32,7 +38,8 @@ the short version; [install.md](install.md) covers running it and
 - **Drill-down** - every mail of a group with date/size/unread, full-text
   reader (HTML mails rendered as plain text - no remote content, no
   tracking pixels), per-mail selection and deletion ("Trash this mail",
-  or "Trash all N" for the whole group). On screens 1280 px and wider the
+  or "Move N mails to Trash" for the whole group, next to Unsubscribe, Block,
+  Protect and Move at the top). On screens 1280 px and wider the
   group opens in a **side pane** next to the list, so you can keep
   scanning the list while you read; below that it is a dialog.
 - **AI review (optional)** - coarse verdicts per group
@@ -66,17 +73,17 @@ the short version; [install.md](install.md) covers running it and
   names, adds a 📎 aggregate to groups, and enables the `att:>10m` filter.
   IMAP can't strip single attachments, so cleanup means deleting
   the whole mail (reversible as always).
-- **Statistics** (Tools -> Statistics) - mails-per-year histogram, top
+- **Statistics** (sidebar: Insights -> Statistics) - mails-per-year histogram, top
   domains by size, scan history and per-month cleanup tallies ("moved to
   Trash" and, for permanent deletes only, "freed"), persisted across restarts.
-- **Space map** (Tools -> Space map) - a treemap of the whole mailbox by
+- **Space map** (sidebar: Insights -> Space map) - a treemap of the whole mailbox by
   size: tiles are domains, tap one to see its senders; tiny ones fold into
   an "Other" tile. Color by engagement, age of the last mail or AI
   verdict. "Select" ticks tiles (protected senders are skipped), and "Done"
   hands exactly those senders to the Sender list's normal selection for
   Trash / Archive with the usual confirmation - the map itself never moves
   mail.
-- **Your year in mail** (Tools -> Your year in mail, or from Statistics) -
+- **Your year in mail** (sidebar: Insights -> Your year in mail, or from Statistics) -
   a full-screen story of one calendar year: how many mails you received,
   your loudest senders, the month that buried you, your busiest weekday
   and hour, ghost senders (10+ mails, none ever opened), your biggest mail
@@ -119,18 +126,18 @@ the short version; [install.md](install.md) covers running it and
   time by unblocking, which just deletes the rule; protected senders
   can't be blocked.
 - **Saved filter presets** - save the current filter query under a name
-  and recall it with one tap from an outlined chip next to the built-in
-  quick-select ones; edit a saved preset's query later with the same
+  and recall it with one tap from the Filter menu, next to the built-in
+  quick filters; edit a saved preset's query later with the same
   filter builder, or delete it. Account-scoped like everything else.
 - **New-sender review** - a sender new to the mailbox since your last few
-  scans gets a 🆕 badge and shows up under a one-tap `is:new` chip, so it
+  scans gets a 🆕 badge and shows up under a one-tap "New" entry in the Filter menu (`is:new`), so it
   doesn't get lost among a thousand others - block, protect or
   unsubscribe right from there. Purely a read-only signal (first scan
   seeds silently, nothing is ever auto-actioned); the window it stays
   flagged for (default 7 days) is configurable in settings.
 - **Unsubscribe watchdog** - a sender you unsubscribed from successfully
   that still delivers mail more than two days later is flagged "Still
-  mailing" on its row, collected under a one-tap chip and the filter
+  mailing" on its row, collected under a one-tap Filter-menu entry and the filter
   `is:still-mailing`, and can be blocked from its detail view. Based on
   when the mail arrived, not its Date header; the digest counts them.
 - **Activity digest email** - an optional daily/weekly summary per
@@ -168,7 +175,7 @@ the short version; [install.md](install.md) covers running it and
   via "Sort: engagement", and filters with `eng:low` / `eng:medium` /
   `eng:high` (tiers <=33 / 34-66 / >=67) - usable in rules and saved
   presets, e.g. `eng:low age:>1y`. The score is never sent to the AI.
-- **Tracker report** - Tools -> Trackers shows which senders put tracking
+- **Tracker report** - Insights -> Trackers (sidebar, or the Insights tab on a phone) shows which senders put tracking
   pixels or click-tracking links in their mail: the share of checked mails
   that carry a pixel, the senders that track most and the hosts they use,
   plus a small eye badge on each row (tap for the breakdown) and the
@@ -193,14 +200,15 @@ the short version; [install.md](install.md) covers running it and
   again.
 - **Undo** - every move to Trash ends in a toast ("Moved 618 mails to
   Trash") with an **Undo** button; older deletions can be restored from
-  the Undo list in the status line above the list (destination UID and
+  the Undo list in the status line above the list or from the Activity page
+  ("Undo history", above the audit log) (destination UID and
   UIDVALIDITY tracking). If a server cannot identify a moved copy safely,
   its Undo entry is kept for manual recovery from the destination.
-- **Trash browser** - the Trash button in the header (shown while the
-  Trash has mail; the count is as of the last scan) opens the real Trash
+- **Trash browser** - Trash in the sidebar (Clean up; on a phone the Clean up
+  tab), with the count as of the last scan, opens the real Trash
   (also mail deleted outside the app): search it, restore selected mails
-  to any folder, or empty it. "Empty Trash…" is also in the profile menu
-  while the Trash isn't empty, and always asks first, naming how many
+  to any folder, or empty it. "Empty Trash…" is also in the account menu
+  (top of the sidebar; the avatar on a phone) while the Trash isn't empty, and always asks first, naming how many
   mails will be deleted permanently.
 - **Delete permanently (Trash and Junk)** - in the Folders panel, select
   mails or a sender, delete everything received more than N days ago, or
@@ -235,56 +243,67 @@ the short version; [install.md](install.md) covers running it and
   mark-read, incl. rule-triggered ones, rule runs, unsubscribes, undo,
   empty-trash) is recorded with a timestamp, actor, outcome and bytes
   freed - browsable in-app and exportable as CSV.
-- **Selection bar** - appears at the bottom only once something is
-  selected, showing how many groups and mails you picked, with Clear
-  selection, Export CSV, the retention limiter ("Limit to:"), an
-  "Action…" picker (Archive/Move/Mark read/Unsubscribe/AI review) and the
-  red **Trash N** button. Destructive actions ask first in an in-app
+- **Selection bar** - a floating capsule at the bottom, there only once
+  something is selected: how many groups and mails you picked, Clear
+  selection, Unsubscribe, Archive, Move, a More menu (Mark read, AI review,
+  Export CSV, "Limit to…" - the retention limiter, shown as a removable
+  token while active) and the **Trash N** button. Tick rows with **Select**
+  in the Senders toolbar (checkboxes appear until you press Done), or press
+  `x` on the focused row. Destructive actions ask first in an in-app
   confirmation that names what they affect (e.g. "618 mails from 6
   groups will be affected"), mentions skipped protected senders and
   mails, and focuses Cancel; on a phone it is a bottom sheet.
-- **Quick chips** - one-tap chips under the filter box: AI-safe groups,
-  **Inactive: 6 mo | 1 yr | 2 yr**, and Not yet unsubscribed (plus
-  new senders when there are any). A chip narrows the list down to its
-  own matches and, on the next tap, selects them; a third tap un-selects
-  and clears. Chips never combine - use the filter box for that.
-- **Quick wins** - after a scan, a strip above the Sender list suggests a
+- **Filter menu** - the Filter button in the Senders toolbar holds the
+  one-tap filters: AI-safe groups, **Inactive: 6 mo | 1 yr | 2 yr**, Not yet
+  unsubscribed (plus New and Still mailing when there are any), your saved
+  filters, "Save current filter…" and "Describe a filter (AI)…". The active
+  one shows as a removable token next to the filter box; filters never
+  combine - use the filter box for that. Choosing the same one again selects
+  its matches; a third time un-selects them and clears the filter.
+- **Suggestions** - after a scan, the Overview suggests a
   few cleanups (old newsletters you never open, quiet low-engagement
   senders, mail from senders you already unsubscribed from, big old
   attachments, what the AI rated safe) with how much each frees. Review
-  puts the card's filter in the box and selects its matches; Clean up goes
+  opens the Senders page with the card's filter in the box and its matches
+  selected; Clean up goes
   straight to the usual Trash confirm (protected senders skipped, Undo
   afterwards); Not now hides a card until a later scan finds 25 % more.
-- **Filter builder** - the sliders button next to the filter box opens a
+- **Filter builder** - the sliders button next to the filter box (Senders toolbar) opens a
   click-together builder (category, AI verdict, age, unread %,
   attachments, flags such as "not yet unsubscribed" or "rarely engaged
   with"); on phones it opens as a bottom sheet. It writes the same
   filter syntax you can type, and the result can be saved as a preset.
-- **Describe a filter** - with an AI provider set up, the sparkles button
-  next to the filter box turns a sentence ("shop newsletters I have not
+- **Describe a filter** - with an AI provider set up, "Describe a filter (AI)…" in the
+  Filter menu turns a sentence ("shop newsletters I have not
   opened in a year") into a filter you can read and edit, with a live
   preview of how many groups, mails and how much space it matches. Apply it,
   save it as a preset, or start a rule from it (rules still begin in report
   mode). Only your sentence, the filter syntax and your tag names are sent
   to the provider - no mail data - and nothing is selected or changed.
-- **Tools menu** - Rules, Attachments, Duplicates, Statistics, Space map,
-  Your year in mail, Audit Log, AI review (once AI is set up) and Export CSV
-  live under one Tools
-  button. AI review and CSV export scope to the current selection once
-  something is selected; the Tools versions (nothing selected) act on
-  everything, as before.
+- **Sidebar and tabs** - on screens 1024 px and wider a sidebar holds the
+  account menu, "Search all mail", Overview, Senders, All mail, **Clean up**
+  (Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
+  (Statistics, Space map, Your year in mail, Trackers) and, at the bottom,
+  Activity (the undo history and the audit log) and Settings. On wide
+  screens each tool opens as a page in the content column next to the
+  sidebar (and has its own address, e.g. `#/triage`); below 1024 px they open
+  full screen. On phones and tablets the same things sit behind a
+  bottom tab bar (Overview, Senders, Clean up, Insights), with search and the
+  account menu in the top bar. AI review and Export CSV live in the Senders
+  toolbar's More (…) menu; once something is selected they scope to the
+  selection, otherwise they act on everything.
 - **Bulk workflows** - background deletion queue with live progress and
   cancel, global mail search (optionally inside the message text, a
   per-account setting: your mail server does that search per query and
   nothing is stored, or an opt-in local word index for instant searches -
-  see below), Empty Trash (profile menu or Trash panel), cancellable scans
+  see below), Empty Trash (account menu or Trash panel), cancellable scans
   and AI runs. Results and errors arrive as toasts instead of a status
   line you have to scroll back to.
 - **Multiple accounts** - connect several providers at once (e.g. Proton
   Bridge + Gmail). Every account is strictly separate: its own scans,
   groups, rules, saved presets, digest settings, statistics, folder
   exclusions and replied/verdict/known-senders caches - nothing is ever
-  mixed or aggregated. The profile menu (top right) switches the whole
+  mixed or aggregated. The account menu (top of the sidebar; the avatar on a phone) switches the whole
   view between accounts; accounts can be added, renamed (all their data
   follows) and removed in settings, and each has its own folder-discovery picker.
 - **Fast to open** - each account's last scan is cached on disk and shown
@@ -297,22 +316,25 @@ the short version; [install.md](install.md) covers running it and
   counts. UIDVALIDITY is checked before every move, scans are read-only,
   UID bookkeeping stays server-side, the container runs as a non-root
   user.
-- **Keyboard shortcuts** - in the grouped views, `j`/`k` (or ↑/↓) move
+- **Keyboard shortcuts** - on the Senders page (grouped views), `j`/`k` (or ↑/↓) move
   through the list, `Enter` or `o` opens the group, `x` selects it, `#` trashes the
   selection (or the focused group; it still asks first), `/` jumps to the
   filter box and `Esc` closes the side pane. In the All mails view only
   `/` and `Esc` apply.
-- **Light and dark theme** - toggle in the profile menu; remembered per
+- **Appearance** - System (the default: follows your device), Light or
+  Dark, in the account menu and under Settings -> General; remembered per
   browser.
 - **Phone layout** - the same app on a small screen: touch-sized
-  controls, filters and confirmations as bottom sheets, a compact list.
+  controls, a bottom tab bar, filters and confirmations as bottom sheets, a
+  compact list.
 - **Settings** - Mail account, General, AI, Filed senders and (for the
   admin) Server; **Backup & restore** (config and AI verdict export +
   import; all passwords, tokens and API keys are left out) is on the General tab.
 - **Polish** - installable as a PWA (manifest + icon), optional desktop
   notifications when background jobs finish, monthly AI budget cap,
-  a first-run setup wizard (provider -> sign in and test -> folders ->
-  optional password -> first scan; also behind "Add account"), and error
+  a welcome screen and a short first-run setup (provider -> sign in and
+  test, with folders as an optional step -> optional password -> first scan;
+  also behind "Add account"), and error
   messages that are translated rather than raw server text.
 - **Languages** - English and German. Translations live in
   `frontend/src/locales/`; to contribute one, copy `de.ts`, translate the

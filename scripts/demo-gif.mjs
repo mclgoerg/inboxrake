@@ -1,6 +1,6 @@
-/* README demo GIF: the main workflow in eight frames - list, filter builder,
- * a condition added, filtered list, select, confirm, result toast with Undo,
- * group in the split pane - assembled with ffmpeg at 1280 px wide.
+/* README demo GIF: the main workflow in nine frames - Overview, Senders list,
+ * filter builder, a condition added, filtered list, Select mode + selection,
+ * confirm, result toast with Undo, group in the split pane - assembled with ffmpeg at 1280 px wide.
  *
  * Same demo setup as screenshots.mjs (see its header for the demo
  * container). This script really trashes mails in the demo, so use a FRESH
@@ -22,8 +22,8 @@
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
-  byRole, click, dismissNotice, hideCaret, launch, open, openGroup, settle,
-  sleep, waitText,
+  byRole, click, dismissNotice, goNav, hideCaret, launch, open, openGroup,
+  settle, sleep, waitText,
 } from "./capture-lib.mjs";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8765";
@@ -33,8 +33,11 @@ rmSync(FRAMES, { recursive: true, force: true });
 mkdirSync(FRAMES, { recursive: true });
 
 const browser = await launch();
-const page = await open(browser, BASE, { width: 1280, height: 800, scale: 2 });
+const page = await open(browser, BASE, {
+  width: 1280, height: 800, scale: 2, route: "overview",
+});
 await dismissNotice(page);
+await waitText(page, /Biggest senders/);
 await settle(page);
 
 let n = 0;
@@ -45,11 +48,16 @@ const shot = async (what) => {
   console.log("frame", n, what);
 };
 
-await shot("1 group list");
+await shot("1 Overview");
+
+await goNav(page, "Senders");
+await page.waitForSelector("[data-gidx]", { timeout: 30000 });
+await settle(page);
+await shot("2 Senders list");
 
 await click(page, "button", "Build a filter - click conditions together");
 await byRole(page, "button", "Done");
-await shot("2 filter builder");
+await shot("3 filter builder");
 
 // The builder's "Category" row (newsletter is preselected): its Add button.
 const addCategory = await page.evaluateHandle(() => {
@@ -63,24 +71,26 @@ const addCategory = await page.evaluateHandle(() => {
 await addCategory.asElement().click();
 await page.waitForFunction(
   (ph) => document.querySelector(`input[placeholder="${ph}"]`)
-    ?.value.includes("newsletter"), { timeout: 10000 }, "filter groups…");
+    ?.value.includes("newsletter"), { timeout: 10000 }, "Search or filter…");
 await settle(page);
-await shot("3 condition added, list filtered");
+await shot("4 condition added, list filtered");
 
 await click(page, "button", "Done");
 await settle(page);
-await shot("4 filtered list");
+await shot("5 filtered list");
 
-// Header checkbox: select every group in the filtered list.
+// Select mode shows the checkboxes; the header one ticks every group in the
+// filtered list and brings up the selection capsule.
+await click(page, "button", "Select");
 await page.click('thead input[type="checkbox"]');
 const trash = await byRole(page, "button", /^Trash \d+$/);
 await settle(page);
-await shot("5 selection bar");
+await shot("6 selection bar");
 
 await trash.click();
 await byRole(page, "dialog", /Trash/);
 await settle(page);
-await shot("6 confirm dialog");
+await shot("7 confirm dialog");
 
 const confirm = await byRole(page, "button", /^Move to Trash \(\d+\)$/);
 await confirm.click();
@@ -90,11 +100,12 @@ await byRole(page, "button", "Undo");
 // rest of the list instead of an empty result.
 await click(page, "button", "Clear filter");
 await settle(page);
-await shot("7 result toast with undo");
+await sleep(900);                        // let the toast finish sliding in
+await shot("8 result toast with undo");
 
 await click(page, "button", "Dismiss");  // keep the toast off the pane footer
 await openGroup(page, "PayBank");       // beside the list (>= 1280 px)
-await shot("8 group in the split pane");
+await shot("9 group in the split pane");
 await browser.close();
 
 // ffmpeg: ~1.2 s per frame, a palette tuned to the frames, 1280 px wide.

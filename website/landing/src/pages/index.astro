@@ -22,7 +22,7 @@ const jsonLd = {
   sameAs: [GITHUB],
 };
 const heroAlt =
-  "The group list: senders with mail counts, sizes, AI verdicts and quick filters";
+  "The Senders page: a sidebar, and senders with mail counts, sizes and AI verdicts";
 ---
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -111,9 +111,10 @@ cp .env.example .env        # optional edits - account setup happens in the UI
 sed -i "s|^INBOXRAKE_SECRET_KEY=.*|INBOXRAKE_SECRET_KEY=$(openssl rand -base64 32)|" .env
 docker compose up -d</code></pre>
         <p>
-          Open <code>http://localhost:8765</code>; on a fresh install a setup
-          wizard walks you through provider, sign-in, folders, an optional
-          login password and the first scan. Platform guides (Synology,
+          Open <code>http://localhost:8765</code>; on a fresh install a welcome
+          screen and a short setup walk you through provider, sign-in
+          (folders are optional), an optional login password and the first
+          scan. Platform guides (Synology,
           Unraid, TrueNAS, Portainer, Raspberry Pi), plain{" "}
           <code>docker run</code> and every setting are in the{" "}
           <a href="/docs/install/">install guide</a>.

@@ -13,9 +13,11 @@ export const launch = () => puppeteer.launch({
          "--force-color-profile=srgb"],
 });
 
-/** New page with a pinned account, theme and language (English). */
+/** New page with a pinned account, theme and language (English). The app
+ *  starts on the Overview; `route` picks the page by its hash ("overview",
+ *  "senders", ...), and for "senders" this waits for the list. */
 export async function open(browser, base, {
-  width, height, scale, theme = "dark", mobile = false,
+  width, height, scale, theme = "dark", mobile = false, route = "senders",
 }) {
   const page = await browser.newPage();
   await page.setViewport({
@@ -27,8 +29,11 @@ export async function open(browser, base, {
     localStorage.setItem("pmc_lang", "en");
     localStorage.setItem("pmc_view", "groups");
   }, theme);
-  await page.goto(base, { waitUntil: "networkidle2" });
-  await page.waitForSelector("[data-gidx]", { timeout: 30000 });
+  await page.goto(`${base.replace(/\/$/, "")}/#/${route}`,
+    { waitUntil: "networkidle2" });
+  if (route === "senders")
+    await page.waitForSelector("[data-gidx]", { timeout: 30000 });
+  else await page.waitForSelector("h1, h2", { timeout: 30000 });
   await settle(page);
   return page;
 }
@@ -46,7 +51,8 @@ export async function settle(page) {
  *  (string = exact, RegExp = test). */
 export async function byRole(page, role, name, timeout = 15000) {
   const sel = {
-    button: "button", tab: '[role="tab"]', menuitem: '[role="menuitem"]',
+    button: "button", link: "a", tab: '[role="tab"]', menuitem: '[role="menuitem"]',
+    menuitemradio: '[role="menuitemradio"]',
     checkbox: 'input[type="checkbox"]', dialog: '[role="dialog"]',
     status: '[role="status"]',
   }[role];
@@ -73,6 +79,21 @@ export async function click(page, role, name) {
   await sleep(250);
 }
 
+/** Click an item of the main navigation (the sidebar from 1024 px wide) by
+ *  its visible name, whether it is a link or a button - tools open as
+ *  panels or pages depending on the app version. Counts after the name
+ *  ("Trash 70") are ignored. */
+export async function goNav(page, name) {
+  const handle = await page.waitForFunction((name) => {
+    const nav = document.querySelector('nav[aria-label="Main navigation"]');
+    return [...(nav?.querySelectorAll("a, button") ?? [])].find((e) =>
+      (e.getAttribute("aria-label") || e.textContent || "")
+        .replace(/\s*\d+$/, "").replace(/\s+/g, " ").trim() === name) ?? null;
+  }, { timeout: 15000 }, name);
+  await handle.asElement().click();
+  await sleep(250);
+}
+
 /** Wait until visible page text matches. */
 export const waitText = (page, re, timeout = 20000) =>
   page.waitForFunction((src, flags) => new RegExp(src, flags)
@@ -88,9 +109,22 @@ export async function dismissNotice(page) {
 /** Open the first group of the current list the way a keyboard user would
  *  (j, Enter) and wait for its mails and footer actions. */
 export async function openGroup(page, label) {
-  if (label) await click(page, "button", label);
-  else { await page.keyboard.press("j"); await page.keyboard.press("Enter"); }
-  await byRole(page, "button", /^Trash (all \d+|1 mail)$/);
+  if (label) {
+    // Table rows have a button named after the sender; the phone cards are
+    // whole-row targets, so find the row by its text.
+    const row = await page.waitForFunction((l) => [...document
+      .querySelectorAll("[data-gidx]")].find((e) => e.offsetParent
+        && e.textContent.includes(l))
+      ?? null, { timeout: 15000 }, label);
+    const el = row.asElement();
+    await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await el.click();
+    await sleep(250);
+  } else {
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+  }
+  await byRole(page, "button", /^Move (\d+ mails|1 mail) to Trash$/);
   await page.waitForFunction(() => document.querySelector(
     '[data-split-pane] input[type="checkbox"], '
     + '[role="dialog"] input[type="checkbox"]'), { timeout: 20000 });
