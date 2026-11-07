@@ -29,10 +29,12 @@ const tOr = (prefix: string, key: string): string => {
 /** Append-only history of every action Inboxrake took on this mailbox:
  *  bulk/rule trash-archive-move-mark_read, rule runs, unsubscribes, undo,
  *  empty-trash. Paged, newest first, CSV export. */
-export function AuditLogPanel({ rules, onClose, above }: {
+export function AuditLogPanel({ rules, onClose, above, reloadKey }: {
   rules: Rule[]; onClose: () => void;
   /** The Activity page puts the undo history here, above the log. */
   above?: ReactNode;
+  /** Changes when something new was logged behind the panel (an undo). */
+  reloadKey?: number;
 }) {
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -45,7 +47,7 @@ export function AuditLogPanel({ rules, onClose, above }: {
       .then((r) => { setEntries(r.entries); setTotal(r.total); })
       .catch((e) => setError(String(e.message ?? e)));
   };
-  useEffect(() => load(offset), [offset]);
+  useEffect(() => load(offset), [offset, reloadKey]);
 
   return (
     <Modal onClose={onClose} size="lg"

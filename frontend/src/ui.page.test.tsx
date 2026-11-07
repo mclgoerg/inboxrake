@@ -10,7 +10,7 @@ afterEach(cleanup);
 test("a Modal under PageSlot renders inline: no dialog, not on the stack, "
   + "no close button, Esc does nothing", () => {
   const onClose = vi.fn();
-  render(<PageSlot>
+  render(<PageSlot page>
     <Modal onClose={onClose} label="Things" full>
       <PanelHeader title="Things" onClose={onClose} />
       <p>body</p>
@@ -27,7 +27,7 @@ test("a Modal under PageSlot renders inline: no dialog, not on the stack, "
 
 test("a header with its own back label keeps its button on a page", () => {
   const back = vi.fn();
-  render(<PageSlot>
+  render(<PageSlot page>
     <Modal onClose={() => {}}>
       <PanelHeader title="Mail" onClose={back} closeLabel="Back" />
     </Modal>
@@ -38,7 +38,7 @@ test("a header with its own back label keeps its button on a page", () => {
 
 test("a Modal opened from inside a page is a real dialog again", () => {
   const inner = vi.fn();
-  render(<PageSlot>
+  render(<PageSlot page>
     <Modal onClose={() => {}} full>
       <PanelHeader title="Page" onClose={() => {}} />
       <Modal size="sm" onClose={inner} label="Sure?">

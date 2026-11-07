@@ -111,15 +111,11 @@ export default function App() {
   const [navPage, setPage] = useNav();
   // The Clean up / Insights tab pages only exist below 1024 px (the sidebar
   // holds the same items): from there their routes show the default page.
-  // Tools are pages only from 1024 px; below it they stay modals (a tool
-  // route then shows the default page, like the tab routes above).
+  // Tools are pages from 1024 px and modals below; the page behind a tool
+  // route is the default one below 1024.
   const page = (wide ? isTabPage(navPage) : isToolPage(navPage))
     ? DEFAULT_PAGE : navPage;
   const toolPage = isTabPage(page);
-  // A tool open as a page in the content column (>= 1024).
-  const routed = wide && isToolPage(page);
-  // Pages that replace the sender list / toolbar.
-  const bare = toolPage || routed;
   const flat = page === "all";
   const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
@@ -206,6 +202,23 @@ export default function App() {
   const [triageOpen, setTriageOpen] = useState(false);
   // Folders panel (Junk | Trash): which folder it opens on, null = closed
   const [foldersOpen, setFoldersOpen] = useState<FolderRole | null>(null);
+  // Bumped after a restore: the Activity page reloads its audit log.
+  const [undoRev, setUndoRev] = useState(0);
+  // The open tool, in either presentation: its route (the truth from 1024
+  // px, and a deep link below) or the modal flag the tab pages / menus set
+  // below 1024. A panel stays mounted when a resize flips the presentation,
+  // so what the user did in it survives; `PageSlot` switches the look.
+  const routeTool = isToolPage(navPage) ? navPage : null;
+  const flagTool: ToolPage | null = searchOpen ? "search"
+    : triageOpen ? "triage" : dupsOpen ? "duplicates"
+    : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
+    : statsOpen ? "stats" : spaceOpen ? "space"
+    : trackersOpen ? "trackers" : auditOpen ? "activity" : null;
+  const shownTool = routeTool ?? flagTool;
+  // A tool open as a page in the content column (>= 1024).
+  const routed = wide && shownTool !== null;
+  // Pages that replace the sender list / toolbar.
+  const bare = toolPage || routed;
   const [undoOpen, setUndoOpen] = useState(false);
   const [moveDest, setMoveDest] = useState("");
   // The "Limit to…" editor swapped into the capsule (Done closes it).
@@ -731,13 +744,16 @@ export default function App() {
     if (was === "rules") setRulesSeed("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
-  // Widening to the sidebar layout turns open tool modals into pages.
+  // Widening to the sidebar layout: the open tool modal becomes its page
+  // (same panel instance, see `shownTool`).
   useEffect(() => {
-    if (!wide) return;
+    if (!wide || !flagTool) return;
     setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
     setAuditOpen(false);
+    if (!routeTool) goPage(flagTool);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
   const swapDetail = (g: Group) => {
     if (focusInPane()) focusPane.current = true;
@@ -957,6 +973,7 @@ export default function App() {
         : t(partial ? "toast.restored_partial" : "toast.restored", params),
       partial || rescan ? "info" : "success");
       await clearRestoreNotice();
+      setUndoRev((n) => n + 1);
       refresh();
     }
     catch (e: any) {
@@ -1844,10 +1861,12 @@ export default function App() {
   })[tool]();
   // Closing a tool: back to the start page (Triage: to the list its changes
   // show up in), or drop its modal.
-  const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) =>
-    wide ? goPage(to) : modal();
-  const toolShown = (id: ToolPage, modal: boolean) =>
-    wide ? page === id : modal;
+  const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
+    if (wide) { goPage(to); return; }
+    modal();
+    if (routeTool) goPage(to);   // a modal opened by a deep link / a resize
+  };
+  const toolShown = (id: ToolPage) => shownTool === id;
 
   // The profile menu: the header trigger below 1024, the sidebar's account
   // switcher from there (same items).
@@ -2048,42 +2067,43 @@ export default function App() {
   // The tool panels: modals below 1024 px, pages in the content column from
   // there (`toolShown`; each panel's own close then leaves the page).
   const toolPanels = (<>
-    {toolShown("search", searchOpen) && (
-      <SearchPanel
+    {toolShown("search") && (
+      <SearchPanel key={account}
         bodySearch={acct?.body_search !== "disabled"}
         bodyMode={acct?.body_search === "local" ? "local" : "server"}
         onClose={() => closeTool(() => { setSearchOpen(false); refresh(); })}
         onDeleted={refresh}
       />
     )}
-    {toolShown("stats", statsOpen) && (
-      <StatsPanel onClose={() => closeTool(() => setStatsOpen(false))}
+    {toolShown("stats") && (
+      <StatsPanel key={account} onClose={() => closeTool(() => setStatsOpen(false))}
         onWrapped={() => {
           if (!wide) setStatsOpen(false);
           setWrappedOpen(true);
         }} />
     )}
-    {toolShown("space", spaceOpen) && state && (
-      <SpaceMapPanel groups={state.groups.sender}
+    {toolShown("space") && state && (
+      <SpaceMapPanel key={account} groups={state.groups.sender}
         onClose={() => closeTool(() => setSpaceOpen(false))}
         onDone={selectSenders} />
     )}
-    {toolShown("triage", triageOpen) && (
-      <TriagePanel groups={groups} grouping={mode} onApply={applyTriage}
+    {toolShown("triage") && state && (
+      <TriagePanel key={account} groups={groups} grouping={mode} onApply={applyTriage}
         onClose={() => closeTool(() => { setTriageOpen(false); refresh(); },
           "senders")} />
     )}
-    {toolShown("activity", auditOpen) && (
-      <AuditLogPanel rules={state?.rules ?? []}
-        above={wide ? undoHistory : undefined}
+    {toolShown("activity") && (
+      <AuditLogPanel key={account} rules={state?.rules ?? []}
+        above={wide ? undoHistory : undefined} reloadKey={undoRev}
         onClose={() => closeTool(() => setAuditOpen(false))} />
     )}
-    {(wide ? (page === "junk" || page === "trash" ? page : null)
-      : foldersOpen) && state && (
+    {(shownTool === "junk" || shownTool === "trash") && state && (
       <FoldersPanel
+        key={account}
         state={state}
-        initialRole={wide ? (page as FolderRole) : foldersOpen!}
-        onRoleChange={(r) => { if (wide) goPage(r); }}
+        initialRole={routeTool === "junk" || routeTool === "trash"
+          ? routeTool : foldersOpen ?? "trash"}
+        onRoleChange={(r) => { if (routeTool) goPage(r); }}
         onClose={() => closeTool(() => { setFoldersOpen(null); refresh(); })}
         onChanged={refresh}
         onEmptyTrash={emptyTrash}
@@ -2091,14 +2111,14 @@ export default function App() {
         onProtect={protectSenders}
       />
     )}
-    {toolShown("duplicates", dupsOpen) && (
-      <DuplicatesPanel
+    {toolShown("duplicates") && (
+      <DuplicatesPanel key={account}
         onClose={() => closeTool(() => { setDupsOpen(false); refresh(); })}
         onDeleted={refresh}
       />
     )}
-    {toolShown("trackers", trackersOpen) && (
-      <TrackersPanel
+    {toolShown("trackers") && (
+      <TrackersPanel key={account}
         account={account}
         onClose={() => closeTool(() => setTrackersOpen(false))}
         onPickSender={(key) => {
@@ -2111,15 +2131,15 @@ export default function App() {
         }}
       />
     )}
-    {toolShown("attachments", attsOpen) && state && (
-      <AttachmentsPanel
+    {toolShown("attachments") && state && (
+      <AttachmentsPanel key={account}
         state={state}
         onClose={() => closeTool(() => { setAttsOpen(false); refresh(); })}
         onDeleted={refresh}
       />
     )}
-    {toolShown("rules", rulesOpen) && state && (
-      <RulesModal
+    {toolShown("rules") && state && (
+      <RulesModal key={account}
         state={state} initialQuery={rulesSeed}
         onClose={() => closeTool(() => {
           setRulesOpen(false); setRulesSeed("");
@@ -2681,7 +2701,7 @@ export default function App() {
       )}
 
       {detail && !splitPane && renderDetail("modal")}
-      {routed && <PageSlot key={account}>{toolPanels}</PageSlot>}
+      <PageSlot page={wide}>{toolPanels}</PageSlot>
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
       {aiFilterOpen && (
         <AiFilterPanel
@@ -2702,7 +2722,6 @@ export default function App() {
             openTool("rules");
           }} />
       )}
-      {!routed && toolPanels}
       {wizardEl}
       {!wide && <TabBar page={page} onPage={goPage} />}
       {settingsOpen && cfg && (

@@ -555,14 +555,25 @@ export function Field({ label, children }: {
 type Presentation = "modal" | "slot" | "page";
 const PresentationContext = createContext<Presentation>("modal");
 
-/** Renders the panel inside as a page filling the content column. */
-export function PageSlot({ children }: { children: ReactNode }) {
+/** Presents the panels inside as pages filling the content column (`page`)
+ *  or as dialogs. The element tree stays the same either way, so a panel
+ *  keeps its state when the presentation changes (a window crossing 1024 px). */
+export function PageSlot({ page, children }: {
+  page: boolean; children: ReactNode;
+}) {
   return (
-    <PresentationContext.Provider value="slot">
+    <PresentationContext.Provider value={page ? "slot" : "modal"}>
       {children}
     </PresentationContext.Provider>
   );
 }
+
+/** True for a panel rendered under a page `PageSlot` (read outside its Modal). */
+export const useIsPage = (): boolean =>
+  useContext(PresentationContext) === "slot";
+
+/** How many dialogs are open right now (a page is none). */
+export const modalCount = (): number => openModals.length;
 
 /** Standard panel/modal header: title (+optional subtitle) left, optional
  *  action elements, close button right. Used by every modal. On a page there
@@ -1093,40 +1104,36 @@ export function Modal({ children, onClose, full = false, size, label,
   // Full panels place their own footers above the home indicator.
   const inset = sz === "sm" ? "" : " max-sm:pt-[env(safe-area-inset-top)]"
     + (scrolls ? " max-sm:pb-[env(safe-area-inset-bottom)]" : "");
-  if (slot) {
-    // Inline as a page: fills the content column, scrolls inside like a
-    // `full` panel; children see "page" so PanelHeader drops its close
-    // button, and a dialog opened from here is a real modal again.
-    return (
-      <PresentationContext.Provider value="page">
-        <section aria-label={label} aria-labelledby={labelledBy}
-          data-size={sz}
-          className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          <div className={scrolls ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
-            : "contents"}>
-            {children}
-          </div>
-        </section>
-      </PresentationContext.Provider>
-    );
-  }
+  // One element tree for both presentations (only classes and attributes
+  // differ), so the panel inside keeps its state when `slot` flips.
   return (
     <div
-      className={`fixed inset-0 z-(--z-modal) flex justify-center bg-overlay
-        backdrop-blur-sm p-0 sm:p-6 ${sz === "sm" ? "items-end sm:items-center"
-          : "items-center"}`}
-      onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true"
+      className={slot ? "contents" : `fixed inset-0 z-(--z-modal) flex
+        justify-center bg-overlay backdrop-blur-sm p-0 sm:p-6
+        ${sz === "sm" ? "items-end sm:items-center" : "items-center"}`}
+      onClick={slot ? undefined
+        : (e) => e.target === e.currentTarget && onClose()}>
+      <div ref={dialog} tabIndex={slot ? undefined : -1}
+        role={slot ? "region" : "dialog"}
+        aria-modal={slot ? undefined : true}
         aria-label={label}
         aria-labelledby={labelledBy} aria-describedby={describedBy}
         data-size={sz}
-        className={`flex w-full flex-col overflow-hidden border-line bg-panel outline-none
+        className={slot
+          // A page: fills the content column, scrolls inside like a `full`
+          // panel.
+          ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+          : `flex w-full flex-col overflow-hidden border-line bg-panel outline-none
         sm:rounded-dialog sm:border ${MODAL_WIDTH[sz]} ${shape}${inset}`}>
         {/* Always rendered (`contents` when not scrolling): `full` can flip
             while open, and a changing tree would remount the content. */}
-        <div className={scrolls ? `flex min-h-0 flex-1 flex-col
-          overflow-y-auto sm:flex-initial` : "contents"}>
-          <PresentationContext.Provider value="modal">
+        <div className={scrolls ? (slot ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
+          : `flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-initial`)
+          : "contents"}>
+          {/* Children see "page" on a page (PanelHeader drops its close
+              button) and "modal" in a dialog, so a dialog opened from a page
+              is a real modal again. */}
+          <PresentationContext.Provider value={slot ? "page" : "modal"}>
             {children}
           </PresentationContext.Provider>
         </div>

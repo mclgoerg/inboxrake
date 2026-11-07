@@ -255,8 +255,8 @@ test("tool items open as pages beside the sidebar; Settings stays a modal",
   fireEvent.click(nav.getByRole("button", { name: /Search all mails/ }));
   expect(window.location.hash).toBe("#/search");
   // a page, not a dialog: no overlay, no close button, current item marked
-  expect(await screen.findByRole("heading", { name: /^Search$/ })
-    .catch(() => screen.findByText("Search", { selector: ".type-heading *, .type-heading" })))
+  expect(await screen.findByRole("region")).toBeTruthy();
+  expect(await screen.findByPlaceholderText(/Search subject or sender/))
     .toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
@@ -291,16 +291,11 @@ test("a tool page survives a reload and Back/forward; leaving refreshes",
     .getAttribute("aria-current")).toBe("page"));
 });
 
-test("< 1024: a tool route shows the default page, tools stay modals",
-  async () => {
-  window.location.hash = "#/rules";
+test("< 1024: tools stay modals", async () => {
   mount(false);
-  expect(await screen.findByRole("heading", { level: 1, name: "Overview" }))
-    .toBeTruthy();
-  expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(screen.getByLabelText("Search all mails"));
+  fireEvent.click(await screen.findByLabelText("Search all mails"));
   expect(await screen.findByRole("dialog")).toBeTruthy();
-  expect(window.location.hash).toBe("#/rules");
+  expect(window.location.hash).not.toMatch(/search/);
 });
 
 test("Activity page: the undo history above the audit log, each restorable",
