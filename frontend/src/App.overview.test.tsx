@@ -193,3 +193,17 @@ test("no account (after Set up later): the setup call to action", async () => {
   expect(btn.length).toBeGreaterThan(0);
   expect(screen.queryByRole("region", { name: "Storage" })).toBeNull();
 });
+
+test("phone suggestion rows state the protected-skipped count like the cards",
+  async () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: q.includes("767"), media: q,
+    addEventListener: () => {}, removeEventListener: () => {} }));
+  try {
+    setup();
+    await ready();
+    const row = screen.getAllByRole("button", { name: /^Review: / })
+      .find((b) => b.textContent?.includes("protected skipped"));
+    expect(row?.textContent).toContain("1 protected skipped");
+  } finally { vi.unstubAllGlobals(); }
+});

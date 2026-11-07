@@ -244,7 +244,45 @@ test("below 1024 a tool route opens the full-screen modal; closing leaves it",
   const dlg = await screen.findByRole("dialog");
   fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(window.location.hash).toBe("#/overview");
+  // back on the tab page that lists the tool
+  expect(window.location.hash).toBe("#/cleanup");
+  expect(await screen.findByRole("heading", { level: 1, name: "Clean up" }))
+    .toBeTruthy();
+});
+
+test("a tool reached by resize returns to its tab page on close (Insights)",
+  async () => {
+  mount(true);
+  window.location.hash = "#/trackers";
+  goto("#/trackers");
+  resize(false);
+  const dlg = await screen.findByRole("dialog");
+  fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(window.location.hash).toBe("#/insights"));
+});
+
+test("a tool modal opened from the Clean up tab returns there", async () => {
+  mount(false);
+  fireEvent.click(await screen.findByRole("link", { name: "Clean up" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Rules/ }));
+  const dlg = await screen.findByRole("dialog");
+  fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(window.location.hash).toBe("#/cleanup");
+});
+
+test("widening on #/cleanup replaces the history entry with #/overview",
+  async () => {
+  window.location.hash = "#/cleanup";
+  const replace = vi.spyOn(window.history, "replaceState");
+  mount(false);
+  await screen.findByRole("heading", { level: 1, name: "Clean up" });
+  const len = window.history.length;
+  resize(true);
+  await waitFor(() => expect(window.location.hash).toBe("#/overview"));
+  expect(replace).toHaveBeenCalled();
+  expect(window.history.length).toBe(len);
+  replace.mockRestore();
 });
 
 test("the Junk | Trash switch updates the URL and follows it", async () => {

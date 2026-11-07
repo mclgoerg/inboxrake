@@ -1588,7 +1588,7 @@ export function BulkBar({ summary, onClear, token, actions, primary, swap }: {
 
 /** Mount once at the app root; `useToast()` anywhere below. Toasts stack
  *  bottom-centre above the bulk bar (`--bulkbar-h`) and the safe area, and
- *  above modals; they never take focus. */
+ *  above modals (index.css `.pmc-toasts` for the offsets); they never take focus. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
@@ -1604,7 +1604,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div aria-live="polite" className="pmc-toasts pointer-events-none fixed
-        inset-x-0 lg:left-61 z-(--z-toast) flex flex-col items-center gap-2 px-3">
+        inset-x-0 z-(--z-toast) flex flex-col items-center gap-2 px-3">
         {items.map((x) => (
           <ToastView key={x.id} toast={x} dismiss={dismiss} />
         ))}

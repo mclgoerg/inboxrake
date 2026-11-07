@@ -340,8 +340,15 @@ test("toast stack sits on the toast layer above the bulk bar", () => {
   const stack = document.querySelector("[aria-live=polite]") as HTMLElement;
   expect(stack.className).toContain("z-(--z-toast)");
   expect(stack.className).toContain("pmc-toasts");
-  // centred over the content column beside the sidebar, like the bulk bar
-  expect(stack.className).toContain("lg:left-61");
+});
+
+test("toast stack offsets: content column only with a sidebar and no dialog; "
+  + "no bar offset under a modal", async () => {
+  // @ts-expect-error node builtins have no types in this project
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync("src/index.css", "utf8") as string;
+  expect(css).toMatch(/:root:has\(\[data-sidebar\]\):not\(:has\(\[role="dialog"\]\)\) \.pmc-toasts \{\s*left: 15\.25rem/);
+  expect(css).toMatch(/:root:has\(\[role="dialog"\]\) \.pmc-toasts \{\s*bottom: calc\(env\(safe-area-inset-bottom\) \+ 1rem\)/);
 });
 
 test("confirmDialog resolves true on confirm, false on Cancel / Esc / backdrop", async () => {
