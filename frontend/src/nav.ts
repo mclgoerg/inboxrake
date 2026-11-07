@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMediaQuery } from "./components/ui";
 
-/** Pages of the app shell. Later tasks add more (overview, tool pages). */
-export type Page = "senders" | "all" | "cleanup" | "insights";
+/** Pages of the app shell. Later tasks add more (tool pages). */
+export type Page = "overview" | "senders" | "all" | "cleanup" | "insights";
 
-export const PAGES: readonly Page[] = ["senders", "all", "cleanup", "insights"];
+export const PAGES: readonly Page[] = ["overview", "senders", "all", "cleanup",
+  "insights"];
 /** The phone / tablet tab pages: lists of tools. The sidebar shows the same
  *  items, so from 1024 px these routes fall back to the default page. */
 export const TAB_PAGES: readonly Page[] = ["cleanup", "insights"];
 export const isTabPage = (p: Page): boolean => TAB_PAGES.includes(p);
-export const DEFAULT_PAGE: Page = "senders";
+/** The start page for everyone: a fresh load without a route lands here. */
+export const DEFAULT_PAGE: Page = "overview";
 
 /** `#/senders` -> "senders"; anything else (empty, unknown) -> null. */
 export function parseHash(hash: string): Page | null {

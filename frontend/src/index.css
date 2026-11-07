@@ -53,6 +53,9 @@
 @custom-variant coarse (@media (pointer: coarse));
 /* Mouse / trackpad: hover reveals row controls (touch has sticky hover). */
 @custom-variant hoverable (@media (hover: hover) and (pointer: fine));
+/* The light theme, for the few places that need
+   a different palette tone per theme (storage-bar segments). */
+@custom-variant light (:root[data-theme="light"] &);
 
 /* Typography layers. Size / line-height / weight only: the colour (meta ->
    text-muted, ...) is applied by the component, so a layer can be combined

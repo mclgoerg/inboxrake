@@ -1,4 +1,5 @@
-import { BarChart3, ClipboardList, Copy, Eye, Layers, LayoutGrid, Mails,
+import { BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
+  LayoutGrid, Mails,
   Paperclip, Search, ScrollText, Settings as SettingsIcon, ShieldAlert,
   Sparkles, Trash2, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -82,6 +83,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         <Search size={16} aria-hidden />
         {t("Search all mails")}
       </button>
+      {pageLink("overview", <LayoutDashboard size={16} aria-hidden />,
+        t("nav.overview"))}
       {pageLink("senders", <Users size={16} aria-hidden />,
         t("nav.senders"), senderCount)}
       {pageLink("all", <Mails size={16} aria-hidden />,

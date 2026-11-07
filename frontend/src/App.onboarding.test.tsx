@@ -5,7 +5,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 let state: any;
 let cfg: Config;
@@ -71,6 +71,8 @@ const baseState: AppState = {
   presets: [],
 };
 
+// First-run guidance lives on the Overview, the start page (no route).
+beforeEach(() => { window.location.hash = ""; });
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -242,10 +244,12 @@ test("with no account the toolbar offers setup, not Scan, and the status " +
     setup_needed: true });
   const btns = await screen.findAllByRole("button",
     { name: "Set up your mailbox" });
-  expect(btns).toHaveLength(2);                    // toolbar + card
+  // the card only: the phone Overview has no toolbar (see App.overview tests
+  // for the wide toolbar's setup button)
+  expect(btns).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Scan" })).toBeNull();
   expect(screen.queryByText(/hit “Scan”/)).toBeNull();
-  fireEvent.click(btns[0]);                        // the toolbar's
+  fireEvent.click(btns[0]);
   expect(await screen.findByText(/Where is your mail/)).toBeTruthy();
   sessionStorage.clear();
 });

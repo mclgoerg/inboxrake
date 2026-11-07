@@ -86,16 +86,14 @@ test("All mails swaps the group chrome for the flat list and back",
     expect(screen.getByPlaceholderText("filter mails…")).toBeTruthy();
     expect(screen.queryByPlaceholderText("Search or filter…")).toBeNull();
     expect(screen.queryByText("6 mo")).toBeNull();  // chips
-    expect(localStorage.getItem("pmc_view")).toBe("mails");
 
     fireEvent.click(screen.getByRole("tab", { name: "Sender" }));
     await screen.findByPlaceholderText("Search or filter…");
     expect(screen.queryByText("Flat mail")).toBeNull();
-    expect(localStorage.getItem("pmc_view")).toBe("groups");
   });
 
-test("the chosen view is restored on reload", async () => {
-  localStorage.setItem("pmc_view", "mails");
+test("a reload on #/all keeps the flat list", async () => {
+  window.location.hash = "#/all";
   state = { ...baseState };
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await screen.findByText("Flat mail");
