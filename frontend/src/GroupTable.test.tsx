@@ -70,15 +70,21 @@ describe("GroupTable pagination", () => {
       .toContain("Sender 0");
   });
 
+  // The smallest page size (25) over 60 groups: three pages like the default
+  // 50 over 120, at half the rendered rows. Each page change re-renders the
+  // table AND the mobile cards in jsdom, so with 50-row pages this test took
+  // ~1.4 s alone and over 5 s on a busy CI runner.
   it("navigates with next / last / first", () => {
-    const { container, getByText, getByRole } = renderTable();
+    localStorage.setItem("pmc_page_size", "25");
+    const { container, getByText, getByRole } = renderTable({
+      groups: groups.slice(0, 60) });
     fireEvent.click(getByRole("button", { name: "Next page" }));
     getByText("Page 2 / 3");
     expect(container.querySelector("tbody tr")!.textContent)
-      .toContain("Sender 50");
+      .toContain("Sender 25");
     fireEvent.click(getByRole("button", { name: "Last page" }));
     getByText("Page 3 / 3");
-    expect(rows(container)).toBe(20);
+    expect(rows(container)).toBe(10);
     fireEvent.click(getByRole("button", { name: "First page" }));
     getByText("Page 1 / 3");
   });

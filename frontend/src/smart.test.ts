@@ -4,7 +4,7 @@ import { setLang, t } from "./i18n";
 import { DE } from "./locales/de";
 import { EN } from "./locales/en";
 import { filedKindName, FILE_KINDS, isPooled, purposeSummary, smartContent,
-  smartLabel, smartReason, smartView, smartWhy } from "./smart";
+  smartLabel, smartReason, smartView, smartWhy, unsubscribableKeys } from "./smart";
 import type { Group, SmartKind } from "./types";
 
 const row = (over: Partial<Group>): Group => ({
@@ -159,5 +159,21 @@ describe("what the user filed", () => {
       }
       expect(filedKindName("cat:hobby")).toContain("hobby");
     }
+  });
+});
+
+describe("bulk Unsubscribe keys", () => {
+  const groups = { own: row({ key: "own" }),
+    pool: row({ key: "pool", kind: "company" }) };
+  it("Smart keeps own rows and drops pooled ones", () => {
+    expect(unsubscribableKeys(true, ["own", "pool", "gone"], groups))
+      .toEqual(["own", "gone"]);
+  });
+  it("a pooled-only selection leaves nothing to send", () => {
+    expect(unsubscribableKeys(true, ["pool"], groups)).toEqual([]);
+  });
+  it("other groupings pass every key through", () => {
+    expect(unsubscribableKeys(false, ["own", "pool"], groups))
+      .toEqual(["own", "pool"]);
   });
 });

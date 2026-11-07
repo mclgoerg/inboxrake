@@ -291,6 +291,10 @@ test("setting the password saves it, signs in, then scans", async () => {
   type(/Repeat the password/, "long enough pw");
   pick("Set password");
   await screen.findByText(/Reading your mailbox/);
+  // The step shows before its effect's /api/scan request is sent, so wait
+  // for the request instead of assuming it is already recorded.
+  await waitFor(() => expect(
+    calls.some((c) => c.url.includes("/api/scan"))).toBe(true));
   const order = calls.map((c) => c.url.replace(/\?.*/, ""));
   expect(saves().pop()!.body).toEqual({ auth: { mode: "password",
     password: "long enough pw" } });

@@ -306,18 +306,21 @@ def test_admin_stats_are_usage_only_and_admin_only(bridge):
     alice.post("/api/config", json={
         "rename_account": {"from": "default", "to": "supersecret-acct"}})
     assert alice.post("/api/scan?account=supersecret-acct").status_code == 200
-    for _ in range(200):
-        if alice.get("/api/state?account=supersecret-acct").json()[
-                "status"] == "done":
+    # The scan flips to "done" BEFORE it records its stats and snapshot
+    # (run_scan does that afterwards, still in the worker thread), so
+    # "done" alone is not enough - wait for the recorded scan itself.
+    admin = _client_as(ADMIN)
+    for _ in range(500):
+        r = admin.get("/api/admin/stats")
+        rows = r.json()["tenants"]
+        if any(t_["id"].startswith("alice") and t_["scans"] for t_ in rows):
             break
         time.sleep(0.02)
 
     # not for tenants
     assert alice.get("/api/admin/stats").status_code == 403
 
-    r = _client_as(ADMIN).get("/api/admin/stats")
     assert r.status_code == 200
-    rows = r.json()["tenants"]
     assert rows[0]["is_admin_workspace"]           # admin sorts first
     assert rows[0]["label"] == ADMIN               # not the raw "default" id
     arow = next(t_ for t_ in rows if t_["id"].startswith("alice"))

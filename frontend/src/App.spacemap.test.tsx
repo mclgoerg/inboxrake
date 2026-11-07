@@ -142,7 +142,7 @@ test("Done: Sender tab, exactly the non-protected senders selected, Trash "
   await waitFor(() => expect(screen.queryByTestId("space-map")).toBeNull());
   expect(screen.getByRole("tab", { name: "Sender" })
     .getAttribute("aria-selected")).toBe("true");
-  await waitFor(() => expect(screen.getByText(/^2 groups · 42 mails( · .+)?$/))
+  await waitFor(() => expect(screen.getByText(/^2 groups · 42 mails · 762\.9 MB$/))
     .toBeTruthy());
   fireEvent.click(screen.getByText("Trash 42"));
   const dlg = await findDialog();
@@ -161,7 +161,7 @@ test("Done replaces a selection made in another tab", async () => {
   const map = await openMap();
   tickDomain(map, /^other\.example/);
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  await waitFor(() => expect(screen.getByText(/^1 group · 99 mails( · .+)?$/)).toBeTruthy());
+  await waitFor(() => expect(screen.getByText(/^1 group · 99 mails · 858\.3 MB$/)).toBeTruthy());
 });
 
 test("Done clears an active filter and says so", async () => {

@@ -162,7 +162,7 @@ test("Review lands on Senders with the filter set and the card's groups " +
     HTMLInputElement).value).toBe("eng:low age:>1y");
   expect(window.location.hash).toBe("#/senders");
   // exactly the one non-protected match is selected (bar: groups + mails)
-  await waitFor(() => expect(screen.getByText(/^1 group · 30 mails( · .+)?$/))
+  await waitFor(() => expect(screen.getByText(/^1 group · 30 mails · 10\.0 MB$/))
     .toBeTruthy());
   expect(deleteGroups).not.toHaveBeenCalled();
 });
@@ -221,7 +221,7 @@ test("Clean up and Review work on the Sender groups whatever grouping " +
       HTMLInputElement).value).toBe("eng:low age:>1y");
     expect(screen.getByRole("tab", { name: "Sender" })
       .getAttribute("aria-selected")).toBe("true");
-    await waitFor(() => expect(screen.getByText(/^1 group · 30 mails( · .+)?$/))
+    await waitFor(() => expect(screen.getByText(/^1 group · 30 mails · 10\.0 MB$/))
       .toBeTruthy());
     cleanup();
     localStorage.clear();

@@ -48,7 +48,8 @@ import { usePaneHeight, useSplitPane } from "./splitPane";
 import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
   parseFilter,
   parseProgress, retainedMailKeys, shortcutTarget, smartMembers } from "./lib";
-import { filedKindName, isPooled, keptMessage, smartLabel, smartView }
+import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
+  unsubscribableKeys }
   from "./smart";
 import { protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
@@ -1341,8 +1342,8 @@ export default function App() {
   // Smart: a pooled row is not ONE sender, so a selection unsubscribes only
   // from its own rows (single big senders); a pool's senders are unsubscribed
   // one by one, in their own detail view.
-  const unsubKeys = (keys: string[]) => mode !== "smart" ? keys
-    : keys.filter((k) => !modeGroups[k] || !isPooled(modeGroups[k]));
+  const unsubKeys = (keys: string[]) =>
+    unsubscribableKeys(mode === "smart", keys, modeGroups);
   const unsubscribeSelected = async () => {
     const keys = unsubKeys([...selected]);
     const pooled = selected.size - keys.length;

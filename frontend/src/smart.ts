@@ -10,6 +10,12 @@ import type { Group, SmartWhy } from "./types";
 export const isPooled = (g: Group): boolean =>
   !!g.kind && g.kind !== "sender";
 
+/** The selected keys a bulk Unsubscribe may act on: outside Smart all of
+ *  them; in Smart only own rows (a pool is not one sender). */
+export const unsubscribableKeys = (smart: boolean, keys: string[],
+    groups: Record<string, Group>): string[] =>
+  !smart ? keys : keys.filter((k) => !groups[k] || !isPooled(groups[k]));
+
 export function smartLabel(g: Group): string {
   switch (g.kind) {
     case "company": return g.label;            // the domain itself
