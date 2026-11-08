@@ -146,11 +146,11 @@ test("an ambiguous role shows the candidates with counts and a Select", () => {
     .toBeTruthy();
   expect(screen.getByText(/refuses to delete permanently or empty it/))
     .toBeTruthy();
-  const select = screen.getByLabelText("Which folder is your Trash folder?");
-  expect((select as HTMLSelectElement).value).toBe("");     // unconfirmed
-  const opts = within(select).getAllByRole("option").map((o) => o.textContent);
-  expect(opts).toEqual(["Not confirmed yet - choose…", "Deleted Items (3 mails)",
-    "Trash (1 mail)"]);
+  const pop = screen.getByRole("button", { name: /Which folder is your Trash folder\?/ });
+  expect(pop.textContent).toContain("Not confirmed yet - choose…");  // unconfirmed
+  fireEvent.click(pop);
+  const opts = screen.getAllByRole("menuitemradio").map((o) => o.textContent);
+  expect(opts).toEqual(["Deleted Items (3 mails)", "Trash (1 mail)"]);
   expect(screen.getByText(/the one permanent actions will use/)).toBeTruthy();
 });
 
@@ -158,8 +158,9 @@ test("choosing a candidate saves it and reloads the list", async () => {
   setRole.mockResolvedValue({ role: "trash", folder: "Trash",
     source: "override" });
   mount(ambiguous());
-  fireEvent.change(screen.getByLabelText("Which folder is your Trash folder?"),
-    { target: { value: "Trash" } });
+  fireEvent.click(screen.getByRole("button",
+    { name: /Which folder is your Trash folder\?/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Trash/ }));
   await waitFor(() => expect(setRole).toHaveBeenCalledWith("trash", "Trash", "default"));
   await waitFor(() => expect(reload).toHaveBeenCalled());
   expect(await screen.findByText(/Trash folder set to/)).toBeTruthy();
@@ -168,8 +169,9 @@ test("choosing a candidate saves it and reloads the list", async () => {
 test("a rejected choice is reported and nothing is reloaded", async () => {
   setRole.mockRejectedValue(new Error("That folder cannot be chosen"));
   mount(ambiguous());
-  fireEvent.change(screen.getByLabelText("Which folder is your Trash folder?"),
-    { target: { value: "Trash" } });
+  fireEvent.click(screen.getByRole("button",
+    { name: /Which folder is your Trash folder\?/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Trash/ }));
   expect(await screen.findByText("That folder cannot be chosen")).toBeTruthy();
   expect(reload).not.toHaveBeenCalled();
 });
@@ -181,8 +183,9 @@ test("a confirmed role says permanent actions use it and can be reset",
       name: "Trash" }));
     expect(screen.getByText(/Permanent actions on Trash \(such as Empty Trash\) use exactly this one/))
       .toBeTruthy();
-    expect((screen.getByLabelText("Which folder is your Trash folder?") as
-      HTMLSelectElement).value).toBe("Trash");
+    expect(screen.getByRole("button",
+      { name: /Which folder is your Trash folder\?/ }).textContent)
+      .toContain("Trash");
     fireEvent.click(screen.getByRole("button", { name: "Use automatic choice" }));
     await waitFor(() => expect(setRole).toHaveBeenCalledWith("trash", "", "default"));
   });
@@ -290,8 +293,9 @@ test("every call is pinned to the account being edited", async () => {
       { raw: "Trash", name: "Trash", count: 1 },
       { raw: "Bin", name: "Bin", count: 1 }] })] },
   new Set(), "icloud");
-  fireEvent.change(screen.getByLabelText("Which folder is your Trash folder?"),
-    { target: { value: "Bin" } });
+  fireEvent.click(screen.getByRole("button",
+    { name: /Which folder is your Trash folder\?/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Bin/ }));
   await waitFor(() => expect(setRole)
     .toHaveBeenCalledWith("trash", "Bin", "icloud"));
   cleanup();
@@ -310,11 +314,11 @@ test("every call is pinned to the account being edited", async () => {
 test("confirming the folder Inboxrake already picked saves it", async () => {
   setRole.mockResolvedValue({});
   mount(ambiguous());          // pick = "Deleted Items", not confirmed yet
-  const select = screen.getByLabelText(
-    "Which folder is your Trash folder?") as HTMLSelectElement;
-  expect(select.value).toBe("");
-  expect(within(select).getByText(/Not confirmed yet/)).toBeTruthy();
-  fireEvent.change(select, { target: { value: "Deleted Items" } });
+  const pop = screen.getByRole("button",
+    { name: /Which folder is your Trash folder\?/ });
+  expect(pop.textContent).toContain("Not confirmed yet");
+  fireEvent.click(pop);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Deleted Items/ }));
   await waitFor(() => expect(setRole)
     .toHaveBeenCalledWith("trash", "Deleted Items", "default"));
 });

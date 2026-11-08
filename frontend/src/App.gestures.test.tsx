@@ -266,8 +266,18 @@ test("More > Select starts Select mode with that row ticked, and swiping is off 
 
 test("the Scan header subline names the scan's progress", async () => {
   await mount({ status: "scanning", progress: "Inbox: 640/1623" });
-  expect(screen.getByText("Scanning… 640 of 1,623 mails")).toBeTruthy();
+  expect(screen.getByText("Scanning Inbox… 640 of 1,623")).toBeTruthy();
   expect(screen.queryByText(/scanned .* ago/)).toBeNull();
+});
+
+test("the subline names the folder being scanned, as the counter is per folder", async () => {
+  await mount({ status: "scanning", progress: "Archive/2023: 12/340" });
+  expect(screen.getByText("Scanning Archive/2023… 12 of 340")).toBeTruthy();
+});
+
+test("a counter without a folder keeps the plain mails wording", async () => {
+  await mount({ status: "scanning", progress: "640/1623" });
+  expect(screen.getByText("Scanning… 640 of 1,623 mails")).toBeTruthy();
 });
 
 test("the subline says just Scanning… while there is no count yet", async () => {

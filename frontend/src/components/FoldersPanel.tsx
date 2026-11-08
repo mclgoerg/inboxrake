@@ -595,6 +595,8 @@ function JunkSenderRow({ g, known, blocked, canBlock, busy, selecting, checked,
         </div>
         <div className="type-meta text-muted">{meta}</div>
         {!selecting && (
+          // Block / Trash are icon-only below sm so the three fit one line at
+          // 390 (the aria-labels name them)
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" variant={known ? "tinted" : "secondary"}
               disabled={busy} aria-label={act(t("fp.not_junk"))}
@@ -606,12 +608,14 @@ function JunkSenderRow({ g, known, blocked, canBlock, busy, selecting, checked,
             ) : canBlock && (
               <Button size="sm" variant="secondary" disabled={busy}
                 aria-label={act(t("fp.block"))} onClick={onBlock}>
-                <Ban size={14} className="mr-1 inline align-text-bottom" />{t("fp.block")}
+                <Ban size={14} className="inline align-text-bottom sm:mr-1" />
+                <span className="sr-only sm:not-sr-only">{t("fp.block")}</span>
               </Button>
             )}
             <Button size="sm" variant="secondary" disabled={busy}
               aria-label={act(t("Trash"))} onClick={onTrash}>
-              <Trash2 size={14} className="mr-1 inline align-text-bottom" />{t("Trash")}
+              <Trash2 size={14} className="inline align-text-bottom sm:mr-1" />
+              <span className="sr-only sm:not-sr-only">{t("Trash")}</span>
             </Button>
           </div>
         )}

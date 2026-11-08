@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyStatus, fmtDate, ENGAGEMENT_HIGH_MIN, ENGAGEMENT_LOW_MAX,
   engagementTier, fmtAgo, fmtSize, fmtUsd, mailKey, matchGroup, olderThan,
-  parseFilter, parseProgress, retainedMailKeys, shortcutTarget,
+  parseFilter, parseProgress, progressFolder, retainedMailKeys, shortcutTarget,
   sieveSnippet, smartMembers } from "./lib";
 import type { Group } from "./types";
 
@@ -586,4 +586,11 @@ describe("the in: window (mirrors backend test_window_filter.py)", () => {
   it("a window alone changes nothing", () => {
     expect(at("in:1min", {})).toBe(true);
   });
+});
+
+it("progressFolder names the folder of a per-folder progress only", () => {
+  expect(progressFolder("INBOX: 5/20")).toBe("INBOX");
+  expect(progressFolder("Archive/2023/2024: 120/800")).toBe("Archive/2023/2024");
+  expect(progressFolder("5/20")).toBeNull();
+  expect(progressFolder("connecting…")).toBeNull();
 });

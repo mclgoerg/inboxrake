@@ -8,7 +8,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip, ChipGroup, ChipSegment,
+  isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
   MenuGroup, MenuHeading, PopupSelect, SettingsGroup, SettingsRow, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
@@ -273,7 +273,7 @@ test("Checkbox toggles, forwards aria-label/disabled, label is the hit area", ()
   expect(labelled.disabled).toBe(true);
 });
 
-test("Chip toggles aria-pressed and shows the on style; ChipGroup segments", () => {
+test("Chip toggles aria-pressed and shows the on style", () => {
   const onClick = vi.fn();
   const { rerender } = render(<Chip on={false} onClick={onClick}>AI</Chip>);
   const chip = screen.getByRole("button", { name: "AI" });
@@ -285,17 +285,6 @@ test("Chip toggles aria-pressed and shows the on style; ChipGroup segments", () 
   expect(chip.getAttribute("aria-pressed")).toBe("true");
   expect(chip.className).toContain("border-accent");
   expect(chip.className).toContain("rounded-full");
-
-  const pick = vi.fn();
-  render(
-    <ChipGroup label="Inactive:">
-      <ChipSegment onClick={() => pick("6")}>6 mo</ChipSegment>
-      <ChipSegment on onClick={() => pick("12")}>1 yr</ChipSegment>
-    </ChipGroup>);
-  expect(screen.getByRole("group")).toBeTruthy();
-  fireEvent.click(screen.getByText("6 mo"));
-  expect(pick).toHaveBeenCalledWith("6");
-  expect(screen.getByText("1 yr").getAttribute("aria-pressed")).toBe("true");
 });
 
 test("Notice shows its text and icon and can be dismissed", () => {
@@ -781,13 +770,7 @@ test("floating toasts have an opaque panel base under the semantic tint", () => 
   expect(cls("error")).not.toMatch(/(^| )bg-keep-bg/);
 });
 
-test("ChipGroup is named by its label; segments keep their ring inside the pill", () => {
-  render(<ChipGroup label="Inactive:">
-    <ChipSegment>6 mo</ChipSegment></ChipGroup>);
-  expect(screen.getByRole("group", { name: "Inactive:" })).toBeTruthy();
-  const seg = screen.getByText("6 mo");
-  expect(seg.className).toContain("focus-visible:-outline-offset-2");
-  expect(seg.className).toContain("whitespace-nowrap");
+test("Chips never wrap their label", () => {
   render(<Chip>One</Chip>);
   expect(screen.getByText("One").className).toContain("whitespace-nowrap");
 });
@@ -795,10 +778,6 @@ test("ChipGroup is named by its label; segments keep their ring inside the pill"
 // The selected segment's inset ring follows its own corners; the end
 // segments must round like the pill, or the ring shows square and clipped.
 test("segments are raised pills on a track, not ringed", () => {
-  render(<ChipGroup label="Inactive:">
-    <ChipSegment>6 mo</ChipSegment><ChipSegment on>2 yr</ChipSegment></ChipGroup>);
-  expect(screen.getByText("2 yr").className).toContain("last:rounded-r-full");
-  expect(screen.getByText("6 mo").className).toContain("first:rounded-l-full");
   render(<Segmented label="View" value="b" onChange={() => {}}
     options={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
   const tab = screen.getByRole("tab", { name: "B" });

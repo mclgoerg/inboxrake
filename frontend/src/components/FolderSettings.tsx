@@ -3,13 +3,13 @@ import { useState, type ReactNode } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { FolderInfo, FoldersResp, SpecialRole } from "../types";
-import { Button, Checkbox, confirmDialog, Select, SectionLabel,
+import { Button, Checkbox, confirmDialog, PopupSelect, SectionLabel,
   SettingsGroup, SettingsRow, Switch, Tag, useToast } from "./ui";
 
 /* Settings > Folders: "Folders to scan" (ordinary folders, nested by the
  * server's hierarchy delimiter) and "Special folders" (one row per role:
  * translated name, the server folder it maps to, how it was found; tied
- * candidates get a Select to confirm one; look-alikes offer a one-time,
+ * candidates get a pop-up to confirm one; look-alikes offer a one-time,
  * undoable move of their mail into the real role folder). */
 
 const ROLE_ORDER = ["trash", "junk", "sent", "drafts", "archive", "all"];
@@ -196,23 +196,19 @@ export function FolderSettings({ account, data, included, setIncluded,
                         : t("folder.confirmed", { role: roleName(r.role) })}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Select value={r.ambiguous ? "" : r.raw} disabled={busy}
-                        aria-label={t("folder.choose_label",
+                      <PopupSelect value={r.ambiguous ? null : r.raw}
+                        disabled={busy}
+                        name={t("folder.choose_label",
                           { role: roleName(r.role) })}
+                        placeholder={t("folder.choose")}
                         // any pick is saved - also the folder Inboxrake
                         // already uses by default: that is how it is confirmed
-                        onChange={(e) => e.target.value
-                          && choose(r, e.target.value)}>
-                        {r.ambiguous && (
-                          <option value="" disabled>{t("folder.choose")}</option>
-                        )}
-                        {r.choices.map((c) => (
-                          <option key={c.raw} value={c.raw}>
-                            {c.name}{c.count != null
-                              ? ` (${t("n.mails", { n: c.count })})` : ""}
-                          </option>
-                        ))}
-                      </Select>
+                        onChange={(v) => choose(r, v)}
+                        options={r.choices.map((c) => ({
+                          value: c.raw,
+                          label: `${c.name}${c.count != null
+                            ? ` (${t("n.mails", { n: c.count })})` : ""}`,
+                        }))} />
                       {r.source === "override" && (
                         <Button variant="secondary" size="sm" disabled={busy}
                           onClick={() => choose(r, "")}>
