@@ -22,6 +22,7 @@ import { TrackersPanel } from "./components/TrackersPanel";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
+import { FolderPicker } from "./components/FolderPicker";
 import { RulesModal } from "./components/RulesModal";
 import { AllMailsView } from "./components/AllMailsView";
 import { SearchPanel } from "./components/SearchPanel";
@@ -1780,6 +1781,11 @@ export default function App() {
       onLogin={() => setAuth({ ...auth, authed: true })} />;
   }
 
+  // What the folder picker needs next to the raw folder names.
+  const openRules = () => openTool("rules");
+  const pickEnv = { labels: state?.folders, account: state?.account ?? "",
+    onOpenRules: openRules };
+
   // One sender of a pooled Smart row, opened inside the pool's own panel:
   // the full Sender-tab detail (mails, trash, protect, block, Sieve and the
   // explicit single-sender Unsubscribe) with a header that goes back.
@@ -1801,7 +1807,7 @@ export default function App() {
           blockRuleIds.get(`sender:${g.key}`))}
         blocked={blockRuleIds.has(`sender:${sender.key}`)}
         smartMin={acct?.smart_min ?? 10}
-        folders={state?.folders_raw ?? []}
+        folders={state?.folders_raw ?? []} pickEnv={pickEnv}
         sieve={(acct?.preset ?? "proton") === "proton"}
         filingBox={state?.groups.smart?.[(live ?? sender).smart_key ?? ""] && (
           <SenderFiling sender={live ?? sender} categories={ownCategories}
@@ -1862,7 +1868,7 @@ export default function App() {
       onUnblock={shortcutTarget(mode, detail) ? unblockGroup : undefined}
       blocked={blockedRules.has(detail.key)}
       smartMin={acct?.smart_min ?? 10}
-      folders={state?.folders_raw ?? []}
+      folders={state?.folders_raw ?? []} pickEnv={pickEnv}
       sieve={(acct?.preset ?? "proton") === "proton"}
       senders={mode === "smart" && isPooled(detail)
         ? members?.get(detail.key) : undefined}
@@ -2615,7 +2621,7 @@ export default function App() {
             )}
           </>}
           onClear={() => setSelected(new Set())}
-          swap={moveDest === "?" ? "move" : limitOpen ? "limit" : null}
+          swap={limitOpen ? "limit" : null}
           token={retention !== "none" && retentionParams().some(Boolean) && (
             <span className="inline-flex shrink-0 items-center gap-0.5
               rounded-full bg-accent-tint py-0.5 pl-2.5 pr-0.5 type-meta
@@ -2634,24 +2640,7 @@ export default function App() {
               </button>
             </span>
           )}
-          actions={moveDest === "?" ? (
-            <>
-              <PopupSelect<string> up triggerProps={{ "data-bar-field": "" }}
-                className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"
-                placeholder={t("Move to folder…")}
-                onChange={(f) => {
-                  act([...selected], "move", f, ...retentionParams());
-                  setMoveDest("");
-                }}
-                options={(state?.folders_raw ?? []).map((f, i) => ({
-                  value: f, label: state?.folders[i] ?? f }))} />
-              <Button variant="secondary" size="icon" label={t("Cancel")}
-                data-bar-cancel="" className="shrink-0 rounded-full"
-                onClick={() => setMoveDest("")}>
-                <X size={18} />
-              </Button>
-            </>
-          ) : limitOpen ? (
+          actions={limitOpen ? (
             <div className="flex w-full flex-wrap items-center gap-1.5
               md:w-auto md:flex-nowrap md:gap-2">
               <div className="flex w-full min-w-0 items-center gap-1.5
@@ -2735,6 +2724,21 @@ export default function App() {
             </Button>
           } />
       )}
+      {moveDest === "?" && selected.size > 0 && (() => {
+        // One plain sender / domain row, no limit: the picker may also offer
+        // a rule for it.
+        const only = selected.size === 1 && retention === "none"
+          ? groups.find((g) => g.key === [...selected][0]) : undefined;
+        const tg = only && shortcutTarget(mode, only);
+        return (
+          <FolderPicker count={selCount || selected.size}
+            folders={state?.folders_raw ?? []} labels={state?.folders}
+            account={state?.account ?? ""} onOpenRules={openRules}
+            rule={tg && only ? { ...tg, label: only.label } : undefined}
+            onPick={(f) => act([...selected], "move", f, ...retentionParams())}
+            onClose={() => setMoveDest("")} />
+        );
+      })()}
       </>)}
 
       {/* 2 px strip overlaid on the gap under the toolbar while a job runs
