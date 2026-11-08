@@ -61,7 +61,9 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   const [grouping, setGrouping] = useState<Grouping>(
     initialRole === "junk" ? "sender" : "mails");
   const [selecting, setSelecting] = useState(false);
-  const [sel, setSel] = useState<Set<number>>(new Set());
+  // `selRaw` may still hold mails a search / view / filter hides; everything
+  // that acts or counts uses `sel`, the part of it you can actually see.
+  const [selRaw, setSel] = useState<Set<number>>(new Set());
   const [knownOnly, setKnownOnly] = useState(false);
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
@@ -104,20 +106,37 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // the mail the Restore button sends to
   const inbox = (state.folders_raw ?? []).find((f) => /^inbox$/i.test(f));
 
+  // on only while there is still someone to show (no flash of "no match")
+  const onlyKnown = knownOnly && knownSenders.length > 0;
   const needle = q.trim().toLowerCase();
   const shownMails = useMemo(() => {
     if (!list) return null;
     return list.mails.filter((m) =>
-      (!knownOnly || known.has(m.addr))
+      (!onlyKnown || known.has(m.addr))
       && (!needle || m.subject.toLowerCase().includes(needle)
         || m.addr.includes(needle)));
-  }, [list, needle, knownOnly, known]);
+  }, [list, needle, onlyKnown, known]);
   const shownSenders = useMemo(() => {
     if (!list) return null;
     return (list.senders ?? []).filter((g) =>
-      (!knownOnly || known.has(g.addr)) && (!needle || g.addr.includes(needle)));
-  }, [list, needle, knownOnly, known]);
+      (!onlyKnown || known.has(g.addr)) && (!needle || g.addr.includes(needle)));
+  }, [list, needle, onlyKnown, known]);
   const shown = grouping === "sender" ? shownSenders : shownMails;
+
+  const sel = useMemo(() => {
+    if (!shown) return selRaw;
+    const visible = new Set<number>(grouping === "sender"
+      ? (shownSenders ?? []).flatMap((g) => g.uids)
+      : (shownMails ?? []).map((m) => m.uid));
+    const keep = [...selRaw].filter((u) => visible.has(u));
+    return keep.length === selRaw.size ? selRaw : new Set(keep);
+  }, [selRaw, shown, grouping, shownSenders, shownMails]);
+  // a hidden mail never comes back ticked when the filter is cleared
+  useEffect(() => { if (sel !== selRaw) setSel(sel); }, [sel, selRaw]);
+  // the "senders you know" filter ends with the last known sender
+  useEffect(() => {
+    if (knownOnly && list && knownSenders.length === 0) setKnownOnly(false);
+  }, [knownOnly, list, knownSenders]);
 
   const toggle = (uids: number[]) => {
     const next = new Set(sel);
@@ -134,7 +153,14 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       senders: (l.senders ?? []).map((g) => {
         const uidList = g.uids.filter((u) => !uids.has(u));
         const gone = g.uids.length - uidList.length;
-        return gone ? { ...g, uids: uidList, count: g.count - gone } : g;
+        if (!gone) return g;
+        // the size card follows: exact for mails of the listing, the sender's
+        // average for the few beyond its newest 1000
+        const known = new Map(l.mails.map((m) => [m.uid, m.size]));
+        const freed = g.uids.filter((u) => uids.has(u)).reduce(
+          (sum, u) => sum + (known.get(u) ?? g.size / g.uids.length), 0);
+        return { ...g, uids: uidList, count: g.count - gone,
+          size: Math.max(0, Math.round(g.size - freed)) };
       }).filter((g) => g.count > 0),
     });
     setSel(new Set());
@@ -288,6 +314,19 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       void purge({ senders: whole.map((g) => g.addr) });
     } else {
       void purge({ uids: [...sel] });
+    }
+  };
+
+  // Block only creates the block rule; the sender's mail already in Junk
+  // stays unless you say so (the same second question as the group Block).
+  const blockRow = async (g: SenderGroup) => {
+    if (!onBlock || !await onBlock(g.addr)) return;
+    if (await confirmDialog({
+      title: t("fp.block_trash", { n: g.uids.length }), tone: "danger",
+      cancelLabel: t("fp.block_keep"),
+      confirmLabel: t("confirm.btn_n",
+        { verb: t("fp.to_trash"), n: g.uids.length }) })) {
+      await moveJunk("trash", g.uids);
     }
   };
 
@@ -447,7 +486,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       }}
                       onNotJunk={() => void moveJunk("not_junk", g.uids)}
                       onTrash={() => void moveJunk("trash", g.uids)}
-                      onBlock={() => void onBlock?.(g.addr)} />
+                      onBlock={() => void blockRow(g)} />
                   ) : (
                     <MailRow key={g.addr}
                       checked={g.uids.every((u) => sel.has(u))}

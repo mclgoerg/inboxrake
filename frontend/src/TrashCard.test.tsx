@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /* "Empty automatically" on the Trash page = a purge rule that deletes mail
- * for good, so the order of rules.py is part of the contract: created in
- * report mode, one report run, the preview in a danger confirm, armed only on
- * that confirm (never by itself), a declined confirm leaves nothing armed. */
+ * for good, so the order of rules.py is part of the contract: a live preview
+ * first (nothing written), the danger confirm, and only after it the rule is
+ * written, reported and armed (never by itself). Declining leaves everything
+ * exactly as it was. */
 
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
@@ -55,7 +56,7 @@ beforeEach(() => {
     Promise.resolve(rule({ ...body })));
   deleteRule.mockResolvedValue(undefined);
   runRule.mockResolvedValue(report());
-  purgePreview.mockResolvedValue({ count: 4, size: 900 });
+  purgePreview.mockResolvedValue(preview());
 });
 afterEach(() => {
   cleanup();
@@ -64,6 +65,17 @@ afterEach(() => {
   }
   setLang("en");
 });
+
+const preview = (over: Record<string, number> = {}) => ({
+  count: 9, size: 2100, skipped_protected: 0, skipped_pinned: 0, ...over });
+
+/** No write of any kind happened. */
+const untouched = () => {
+  expect(createRule).not.toHaveBeenCalled();
+  expect(updateRule).not.toHaveBeenCalled();
+  expect(deleteRule).not.toHaveBeenCalled();
+  expect(runRule).not.toHaveBeenCalled();
+};
 
 const onChanged = vi.fn();
 const card = (rules: Rule[] = []) => render(<ToastProvider><DialogProvider>
@@ -80,67 +92,107 @@ test("the card shows what Trash holds", () => {
   expect(screen.getByText("Mails older than 30 days, once a day")).toBeTruthy();
 });
 
-test("turning it on: a rule in report mode, a report run, the preview, then armed only on confirm",
+test("turning it on: preview first, nothing written, then rule + report + arm only after the confirm",
   async () => {
     card();
     fireEvent.click(sw());
-    await findDialog();
-    // 1. created as a purge rule (the server starts it in report mode) ...
-    expect(createRule).toHaveBeenCalledWith(expect.objectContaining({
-      scope: "trash", action: "purge", grouping: "sender", query: "",
-      schedule: "daily", older_than_days: 30 }));
-    expect(createRule.mock.calls[0][0]).not.toHaveProperty("mode");
-    // 2. ... one report run says what it would delete right now ...
-    expect(runRule).toHaveBeenCalledWith("r1");
     const dlg = await findDialog();
+    // the live preview of exactly what the rule selects ...
+    expect(purgePreview).toHaveBeenCalledWith("trash",
+      { older_than_days: 30 }, 30);
     expect(within(dlg).getByText("Empty Trash automatically?")).toBeTruthy();
     expect(within(dlg).getByText("Right now this would delete 9 mails · 2100 B"))
       .toBeTruthy();
     expect(within(dlg).getByText(/up to 500 per run/)).toBeTruthy();
-    // 3. ... and nothing is armed before the explicit confirm
-    expect(updateRule).not.toHaveBeenCalled();
+    // ... and nothing was created, edited, run or armed before the confirm
+    untouched();
     await pressDialog("Turn on");
     await waitFor(() => expect(updateRule).toHaveBeenCalledWith("r1",
       { mode: "execute" }));
+    // created without a mode (the server starts it in report mode), reported
+    expect(createRule).toHaveBeenCalledWith(expect.objectContaining({
+      scope: "trash", action: "purge", grouping: "sender", query: "",
+      schedule: "daily", older_than_days: 30 }));
+    expect(createRule.mock.calls[0][0]).not.toHaveProperty("mode");
+    expect(runRule).toHaveBeenCalledWith("r1");
+    expect(runRule.mock.invocationCallOrder[0])
+      .toBeLessThan(updateRule.mock.invocationCallOrder[0]);
     expect(deleteRule).not.toHaveBeenCalled();
   });
 
-test("declining the preview removes the rule this click created and arms nothing",
+test("declining the preview writes nothing at all", async () => {
+  card();
+  fireEvent.click(sw());
+  await findDialog();
+  await cancelDialog();
+  await expectNoDialog();
+  untouched();
+});
+
+test("cancel after Apply leaves an armed rule exactly as it was", async () => {
+  card([rule()]);
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Older than" }),
+    { key: "ArrowUp" });                                   // 31
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+  await findDialog();
+  expect(purgePreview).toHaveBeenLastCalledWith("trash",
+    { older_than_days: 31 }, 31);
+  await cancelDialog();
+  await expectNoDialog();
+  untouched();                       // still armed at 30 days, nothing edited
+  expect(sw().getAttribute("aria-checked")).toBe("true");
+});
+
+test("cancel on a report-only rule made on the Rules page leaves it untouched",
   async () => {
-    card();
+    card([rule({ mode: "report", report_runs: 0, name: "My own sweep",
+      older_than_days: 45 })]);
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText(/Not active yet/)).toBeTruthy();
     fireEvent.click(sw());
     await findDialog();
     await cancelDialog();
-    await waitFor(() => expect(deleteRule).toHaveBeenCalledWith("r1"));
-    expect(updateRule).not.toHaveBeenCalled();
     await expectNoDialog();
+    untouched();
   });
 
-test("the preview names what protected senders and pinned mails keep",
+test("the preview names what protected senders and pinned mails keep, and why nothing is due",
   async () => {
-    runRule.mockResolvedValue(report({ mails: 0, size: 0,
+    purgePreview.mockResolvedValue(preview({ count: 0, size: 0,
       skipped_protected: 2, skipped_pinned: 1 }));
     card();
     fireEvent.click(sw());
     const dlg = await findDialog();
     expect(within(dlg).getByText("Right now there is nothing to delete"))
       .toBeTruthy();
+    expect(within(dlg).getByText(
+      "Mails count once they have been in Trash for 30 days.")).toBeTruthy();
     expect(within(dlg).getByText("2 mails from protected senders are skipped"))
       .toBeTruthy();
     expect(within(dlg).getByText("1 protected mail is skipped")).toBeTruthy();
     await cancelDialog();
   });
 
-test("a refused report run (ambiguous folder ...) shows the error, nothing stays behind",
+test("a refused report run (ambiguous folder ...) shows the error, the new rule is removed, nothing armed",
   async () => {
     runRule.mockRejectedValue(new Error("Trash is ambiguous"));
     card();
     fireEvent.click(sw());
+    await findDialog();
+    await pressDialog("Turn on");
     expect(await screen.findByText(/Trash is ambiguous/)).toBeTruthy();
     expect(deleteRule).toHaveBeenCalledWith("r1");
     expect(updateRule).not.toHaveBeenCalled();
     expect(sw().getAttribute("aria-checked")).toBe("false");
   });
+
+test("a refused preview shows the error and writes nothing", async () => {
+  purgePreview.mockRejectedValue(new Error("Trash is ambiguous"));
+  card();
+  fireEvent.click(sw());
+  expect(await screen.findByText(/Trash is ambiguous/)).toBeTruthy();
+  untouched();
+});
 
 test("the days are editable before turning it on and go into the rule",
   async () => {
@@ -151,24 +203,34 @@ test("the days are editable before turning it on and go into the rule",
     expect(screen.getByText("Mails older than 28 days, once a day"))
       .toBeTruthy();
     fireEvent.click(sw());
-    await findDialog();
-    expect(createRule).toHaveBeenCalledWith(
-      expect.objectContaining({ older_than_days: 28 }));
-    expect(within(await findDialog()).getByText(/more than 28 days ago/))
-      .toBeTruthy();
-    await cancelDialog();
+    const dlg = await findDialog();
+    expect(purgePreview).toHaveBeenCalledWith("trash",
+      { older_than_days: 28 }, 28);
+    expect(within(dlg).getByText(/more than 28 days ago/)).toBeTruthy();
+    await pressDialog("Turn on");
+    await waitFor(() => expect(createRule).toHaveBeenCalledWith(
+      expect.objectContaining({ older_than_days: 28 })));
   });
 
 test("an existing matching rule reads as on, with the live next-run numbers",
   async () => {
+    purgePreview.mockResolvedValue(preview({ count: 4, size: 900 }));
     card([rule()]);
     expect(sw().getAttribute("aria-checked")).toBe("true");
     // the same selection the rule's report counts: old enough AND long enough here
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("trash",
       { older_than_days: 30 }, 30));
     expect(await screen.findByText("Next run: 4 mails · 900 B")).toBeTruthy();
-    expect(createRule).not.toHaveBeenCalled();
+    untouched();
   });
+
+test("nothing due yet says why", async () => {
+  purgePreview.mockResolvedValue(preview({ count: 0, size: 0 }));
+  card([rule()]);
+  expect(await screen.findByText(
+    "Next run: nothing to delete yet. Mails count once they have been in "
+    + "Trash for 30 days.")).toBeTruthy();
+});
 
 test("the last run is reported, an error of it stays visible", async () => {
   card([rule({ last_run: report({ mode: "execute", acted: 3 }) })]);
@@ -178,22 +240,20 @@ test("the last run is reported, an error of it stays visible", async () => {
   expect(await screen.findByText("Trash changed")).toBeTruthy();
 });
 
-test("a rule that is only reporting is NOT shown as on; turning it on goes through the preview",
+test("turning on a report-only rule previews first, then reports and arms it",
   async () => {
     card([rule({ mode: "report", report_runs: 0 })]);
-    expect(sw().getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText(/Not active yet/)).toBeTruthy();
     fireEvent.click(sw());
     await findDialog();
+    untouched();
+    await pressDialog("Turn on");
+    await waitFor(() => expect(updateRule).toHaveBeenCalledWith("r1",
+      { mode: "execute" }));
     expect(createRule).not.toHaveBeenCalled();       // the rule exists already
     expect(runRule).toHaveBeenCalledWith("r1");
-    expect(updateRule).not.toHaveBeenCalled();
-    await cancelDialog();
-    await expectNoDialog();
-    expect(deleteRule).not.toHaveBeenCalled();        // not ours to remove
   });
 
-test("off removes the rule", async () => {
+test("off removes a rule this switch made", async () => {
   card([rule()]);
   fireEvent.click(sw());
   await waitFor(() => expect(deleteRule).toHaveBeenCalledWith("r1"));
@@ -201,23 +261,33 @@ test("off removes the rule", async () => {
   expect(onChanged).toHaveBeenCalled();
 });
 
-test("a changed age on an armed rule needs Apply, and Apply re-previews before arming again",
+test("off only disarms a rule made elsewhere (Rules page) and says so",
+  async () => {
+    card([rule({ name: "My own sweep" })]);
+    fireEvent.click(sw());
+    await waitFor(() => expect(updateRule).toHaveBeenCalledWith("r1",
+      { mode: "report" }));
+    expect(deleteRule).not.toHaveBeenCalled();
+    expect(await screen.findByText(
+      "Automatic emptying is off - the rule stays in Rules, report only"))
+      .toBeTruthy();
+  });
+
+test("a changed age on an armed rule needs Apply; only the confirm edits, reports and arms again",
   async () => {
     card([rule()]);
     const days = screen.getByRole("spinbutton", { name: "Older than" });
     expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
     fireEvent.keyDown(days, { key: "ArrowUp" });             // 31
-    expect(updateRule).not.toHaveBeenCalled();               // only a draft
+    untouched();                                             // only a draft
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await findDialog();
-    // the edit sends the rule back to report on the server ...
-    expect(updateRule).toHaveBeenCalledWith("r1", { older_than_days: 31 });
-    expect(runRule).toHaveBeenCalledWith("r1");
-    // ... and only the confirm arms it again
-    expect(updateRule).toHaveBeenCalledTimes(1);
+    untouched();                                             // preview only
     await pressDialog("Turn on");
     await waitFor(() => expect(updateRule).toHaveBeenLastCalledWith("r1",
       { mode: "execute" }));
+    expect(updateRule).toHaveBeenNthCalledWith(1, "r1", { older_than_days: 31 });
+    expect(runRule).toHaveBeenCalledWith("r1");
   });
 
 test("Rules that are not this switch (other schedule, a filter, Junk, keep-latest) are ignored",

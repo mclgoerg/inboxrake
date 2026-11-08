@@ -2,6 +2,8 @@ import { Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, fmtSize } from "../api";
 import { t } from "../i18n";
+import { DE } from "../locales/de";
+import { EN } from "../locales/en";
 import type { Rule, TrashResp } from "../types";
 import { Button, confirmDialog, IconTile, SettingsGroup, SettingsRow,
   Stepper, Switch, useToast } from "./ui";
@@ -19,18 +21,24 @@ export function autoEmptyRule(rules: Rule[]): Rule | undefined {
   return same.find((r) => r.mode === "execute") ?? same[0];
 }
 
+/** Rules this switch created carry its name (in the language it was made in). */
+const isOurs = (r: Rule) =>
+  r.name === EN["fp.auto_rule_name"] || r.name === DE["fp.auto_rule_name"];
+
 /** The size card of the Trash page: how much the folder holds, and the
  *  "Empty automatically" switch.
  *
  *  The switch is a purge rule (scope trash, `older_than_days`, daily) made
  *  through the rules API and it deletes mail for good, so it keeps the
- *  safety order of rules.py: the rule is created in REPORT mode, one report
- *  run says what it would delete right now, and only an explicit confirm of
- *  that preview arms it (`mode: "execute"`). Nothing here ever arms a rule
- *  by itself: changing the age sends an armed rule back to report on the
- *  server, and "Apply" goes through the same preview + confirm again; a
- *  declined confirm leaves a report-only rule (switch off), or removes the
- *  rule this click just created. Off = the rule is deleted. */
+ *  safety order of rules.py: first a live preview of what it would select
+ *  (nothing is created or edited yet), and only an explicit confirm of that
+ *  preview writes the rule (created without a mode = report), runs its
+ *  report and arms it (`mode: "execute"`). Nothing here arms a rule by
+ *  itself, and declining leaves everything exactly as it was: changing the
+ *  age of an armed rule ("Apply") goes through the same preview + confirm
+ *  (the server sends the edited rule back to report before it is armed
+ *  again). Off removes a rule this switch made and only disarms one made on
+ *  the Rules page. */
 export function TrashCard({ list, rules, onChanged }: {
   list: TrashResp | null; rules: Rule[]; onChanged: () => void;
 }) {
@@ -64,8 +72,33 @@ export function TrashCard({ list, rules, onChanged }: {
       || list.mails.reduce((n, m) => n + m.size, 0)
     : 0;
 
-  /** Report first, then arm on an explicit confirm of the preview. */
+  /** Preview first, then (only after the confirm) write, report and arm.
+   *  Declining touches nothing - an armed rule or a report-only rule made on
+   *  the Rules page stays exactly as it was. */
   const enable = async () => {
+    // the live count of exactly what the rule would select (old enough AND
+    // long enough in Trash) - nothing is created or edited yet
+    const [pv, cap] = await Promise.all([
+      api.purgePreview("trash", { older_than_days: days }, days),
+      api.rules().then((r) => r.cap).catch(() => 500),
+    ]);
+    const skipped = [
+      pv.skipped_protected > 0
+        && t("fp.purge_b_protected", { n: pv.skipped_protected }),
+      pv.skipped_pinned > 0
+        && t("fp.purge_b_pinned", { n: pv.skipped_pinned }),
+    ].filter(Boolean) as string[];
+    const sure = await confirmDialog({
+      title: t("fp.auto_confirm_title"), tone: "danger",
+      body: t("fp.auto_confirm_body", { n: days, cap }),
+      bullets: [
+        pv.count > 0
+          ? t("fp.auto_now", { n: pv.count, size: fmtSize(pv.size) })
+          : t("fp.auto_now_none"),
+        ...(pv.count > 0 ? [] : [t("fp.auto_hint", { n: days })]),
+        ...skipped],
+      confirmLabel: t("fp.auto_confirm_btn") });
+    if (!sure) return;
     let r = rule;
     let created = false;
     if (!r) {
@@ -77,39 +110,27 @@ export function TrashCard({ list, rules, onChanged }: {
     } else if (r.older_than_days !== days) {
       r = await api.updateRule(r.id, { older_than_days: days });
     }
-    const undo = async () => { if (created) await api.deleteRule(r!.id); };
-    let report;
-    let cap = 500;
     try {
-      report = await api.runRule(r.id);
-      cap = (await api.rules()).cap;
+      await api.runRule(r.id);          // the report of the CURRENT definition
     } catch (e) {
-      await undo().catch(() => {});
+      if (created) await api.deleteRule(r.id).catch(() => {});
       throw e;
     }
-    const skipped = [
-      report.skipped_protected > 0
-        && t("fp.purge_b_protected", { n: report.skipped_protected }),
-      report.skipped_pinned > 0
-        && t("fp.purge_b_pinned", { n: report.skipped_pinned }),
-    ].filter(Boolean) as string[];
-    const sure = await confirmDialog({
-      title: t("fp.auto_confirm_title"), tone: "danger",
-      body: t("fp.auto_confirm_body", { n: days, cap }),
-      bullets: [
-        report.mails > 0
-          ? t("fp.auto_now", { n: report.mails, size: fmtSize(report.size ?? 0) })
-          : t("fp.auto_now_none"),
-        ...skipped],
-      confirmLabel: t("fp.auto_confirm_btn") });
-    if (!sure) { await undo(); return; }
     await api.updateRule(r.id, { mode: "execute" });
     toast.show(t("fp.auto_on"), { variant: "success" });
   };
 
+  /** Off. A rule this switch made is removed; one made on the Rules page is
+   *  only disarmed (back to report mode) and stays there. */
   const disable = async () => {
-    if (rule) await api.deleteRule(rule.id);
-    toast.show(t("fp.auto_off"));
+    if (!rule) return;
+    if (isOurs(rule)) {
+      await api.deleteRule(rule.id);
+      toast.show(t("fp.auto_off"));
+    } else {
+      await api.updateRule(rule.id, { mode: "report" });
+      toast.show(t("fp.auto_off_kept"));
+    }
   };
 
   const run = async (go: () => Promise<void>) => {
@@ -160,7 +181,8 @@ export function TrashCard({ list, rules, onChanged }: {
           {next && (
             <div>{next.count > 0
               ? t("fp.auto_next", { n: next.count, size: fmtSize(next.size) })
-              : t("fp.auto_next_none")}</div>
+              : `${t("fp.auto_next_none")}. ${t("fp.auto_hint",
+                { n: ruleDays ?? days })}`}</div>
           )}
           {last && !last.error && last.mode === "execute" && (
             <div>{last.acted > 0

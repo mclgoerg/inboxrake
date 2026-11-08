@@ -918,6 +918,13 @@ export const DE: Record<string, string> = {
   "fp.auto_now_none": "Jetzt gibt es nichts zu löschen",
   "fp.auto_confirm_btn": "Einschalten",
   "fp.auto_on": "Der Papierkorb wird jetzt automatisch geleert",
+  "fp.auto_hint": "Mails zählen, sobald sie {n} Tage im Papierkorb liegen.",
+  "fp.auto_hint_one": "Mails zählen, sobald sie 1 Tag im Papierkorb liegen.",
+  "fp.auto_off_kept":
+    "Automatisches Leeren ist aus - die Regel bleibt unter Regeln, nur Bericht",
+  "fp.block_keep": "Im Spam lassen",
+  "fp.block_trash": "Auch die {n} Mails im Spam jetzt in den Papierkorb verschieben?",
+  "fp.block_trash_one": "Auch die 1 Mail im Spam jetzt in den Papierkorb verschieben?",
   "fp.auto_off": "Automatisches Leeren ist aus",
   "fp.auto_rule_name": "Papierkorb automatisch leeren",
   "fp.purge_title": "Endgültig aus „{folder}“ löschen?",

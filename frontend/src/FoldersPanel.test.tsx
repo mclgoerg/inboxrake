@@ -4,18 +4,20 @@
  * with its actions, "Not junk" with an Undo + Protect toast, restore (the note
  * says whether the views refresh by themselves), the bottom bar. */
 
-import { cleanup, fireEvent, render, screen, waitFor }
+import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { popupOptions, popupPick } from "./toolTestUtils";
+import { findDialog, pressDialog, cancelDialog, expectNoDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
 
 const trashRestore = vi.fn();
 const folderMove = vi.fn();
 const foldersPanel = vi.fn();
+const fmtSize = vi.fn((_b: number) => "1 KB");
 
 vi.mock("./api", () => ({
   api: {
@@ -25,7 +27,7 @@ vi.mock("./api", () => ({
     purgePreview: vi.fn().mockResolvedValue({ count: 0, size: 0 }),
   },
   errorText: (s: string) => s,
-  fmtSize: () => "1 KB",
+  fmtSize: (b: number) => fmtSize(b),
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
 }));
 
@@ -80,6 +82,7 @@ afterEach(() => {
   total = 1;
   emptyList = false;
   setLang("en");
+  fmtSize.mockImplementation(() => "1 KB");
 });
 
 const onUndo = vi.fn();
@@ -403,4 +406,133 @@ test("phone layout: the select actions are >= 44px targets",
       .toContain("max-sm:coarse:min-h-11");
     expect(screen.getByLabelText("Action…").className)
       .toContain("max-sm:coarse:min-h-11");
+  });
+
+
+/* -------------------- selection only ever covers what you see ------------- */
+
+test("a selection hidden by a search is not acted on (Restore to…)",
+  async () => {
+    foldersPanel.mockResolvedValue({ ...trashListing(), total: 2,
+      mails: [
+        { uid: 30, folder: "Trash", date: "2026-01-02", ts: 2,
+          subject: "Cancelled order", addr: "a@gone.example", size: 700,
+          seen: true, ai: null },
+        { uid: 31, folder: "Trash", date: "2026-01-02", ts: 1,
+          subject: "Weekly news", addr: "b@gone.example", size: 700,
+          seen: true, ai: null }],
+      senders: [] });
+    trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+    panel();
+    await screen.findByText("Cancelled order");
+    await selectMode();
+    fireEvent.click(screen.getByLabelText("Select Cancelled order"));
+    fireEvent.click(screen.getByLabelText("Select Weekly news"));
+    expect(screen.getByRole("button", { name: /Restore to… \(2\)/ }))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByPlaceholderText("Search subject or sender"),
+      { target: { value: "cancelled" } });
+    // only the visible one counts and is sent
+    popupPick(screen.getByRole("button", { name: /Restore to… \(1\)/ }),
+      "INBOX");
+    await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([30],
+      "INBOX", 1));
+    // clearing the search does not bring the hidden tick back
+    fireEvent.change(screen.getByPlaceholderText("Search subject or sender"),
+      { target: { value: "" } });
+    expect((screen.getByLabelText("Select Weekly news") as HTMLInputElement)
+      .checked).toBe(false);
+  });
+
+test("Delete permanently counts only the visible selected mails",
+  async () => {
+    const purgePreview = (await import("./api")).api.purgePreview as
+      ReturnType<typeof vi.fn>;
+    purgePreview.mockResolvedValue({ role: "trash", folder: "Trash", uv: 1,
+      trash_folder: null, uids: [], count: 0, total: 2, size: 0,
+      skipped_protected: 0, skipped_pinned: 0, via_trash: false });
+    foldersPanel.mockResolvedValue({ ...trashListing(), total: 2,
+      mails: [
+        { uid: 30, folder: "Trash", date: "2026-01-02", ts: 2,
+          subject: "Cancelled order", addr: "a@gone.example", size: 700,
+          seen: true, ai: null },
+        { uid: 31, folder: "Trash", date: "2026-01-02", ts: 1,
+          subject: "Weekly news", addr: "b@gone.example", size: 700,
+          seen: true, ai: null }],
+      senders: [] });
+    panel();
+    await screen.findByText("Cancelled order");
+    await selectMode();
+    fireEvent.click(screen.getByLabelText("Select Cancelled order"));
+    fireEvent.click(screen.getByLabelText("Select Weekly news"));
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByPlaceholderText("Search subject or sender"),
+      { target: { value: "cancelled" } });
+    popupPick(screen.getByRole("button", { name: "Action…" }),
+      "Delete permanently…");
+    await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("trash",
+      { uids: [30] }));
+  });
+
+test("the known-senders filter ends when the last known sender is handled",
+  async () => {
+    folderMove.mockResolvedValue({ moved: 1, rescan: false, senders: [],
+      undo: null });
+    panel({ initialRole: "junk" });
+    await screen.findByText("win@lottery.example");
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(screen.queryByText("win@lottery.example")).toBeNull();
+    fireEvent.click(screen.getByRole("button",
+      { name: "Not junk: bob@friends.example" }));
+    await screen.findByText("Moved 1 mail to your inbox");
+    // banner gone AND the filter with it: the 2 remaining mails show again
+    expect(screen.queryByText(/senders? you know/)).toBeNull();
+    expect(screen.getByText("win@lottery.example")).toBeTruthy();
+    expect(screen.queryByText("No matching mails")).toBeNull();
+  });
+
+test("the size card follows a Restore (and every other removal)", async () => {
+  fmtSize.mockImplementation((b: number) => `${b} B`);
+  trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+  foldersPanel.mockResolvedValue({ ...trashListing(), total: 2,
+    mails: [
+      { uid: 30, folder: "Trash", date: "2026-01-02", ts: 2, subject: "One",
+        addr: "a@gone.example", size: 700, seen: true, ai: null },
+      { uid: 31, folder: "Trash", date: "2026-01-02", ts: 1, subject: "Two",
+        addr: "b@gone.example", size: 300, seen: true, ai: null }],
+    senders: [
+      { addr: "a@gone.example", count: 1, size: 700, unread: 0, ts: 2,
+        date: "2026-01-02", uids: [30] },
+      { addr: "b@gone.example", count: 1, size: 300, unread: 0, ts: 1,
+        date: "2026-01-02", uids: [31] }] });
+  panel();
+  expect(await screen.findByText("1000 B")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Restore: One" }));
+  expect(await screen.findByText("300 B")).toBeTruthy();
+  expect(screen.getByText("in 1 mail")).toBeTruthy();
+});
+
+test("Block asks whether the sender's mails in Junk should go to Trash too",
+  async () => {
+    const onBlock = vi.fn().mockResolvedValue(true);
+    folderMove.mockResolvedValue({ moved: 2, rescan: false, senders: [],
+      undo: null });
+    panel({ initialRole: "junk", onBlock });
+    await screen.findByText("win@lottery.example");
+    fireEvent.click(screen.getByRole("button",
+      { name: "Block: win@lottery.example" }));
+    const dlg = await findDialog();
+    expect(within(dlg).getByText("Also move its 2 mails in Junk to Trash now?"))
+      .toBeTruthy();
+    await pressDialog("Keep them in Junk");
+    await expectNoDialog();
+    expect(onBlock).toHaveBeenCalledWith("win@lottery.example");
+    expect(folderMove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",
+      { name: "Block: win@lottery.example" }));
+    await findDialog();
+    await pressDialog("Move to Trash (2)");
+    await waitFor(() => expect(folderMove).toHaveBeenCalledWith("junk",
+      "trash", [40, 41], 4));
   });

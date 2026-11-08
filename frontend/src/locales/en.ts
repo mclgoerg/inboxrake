@@ -1184,6 +1184,13 @@ export const EN: Record<string, string> = {
   "fp.auto_now_none": "Right now there is nothing to delete",
   "fp.auto_confirm_btn": "Turn on",
   "fp.auto_on": "Trash is now emptied automatically",
+  "fp.auto_hint": "Mails count once they have been in Trash for {n} days.",
+  "fp.auto_hint_one": "Mails count once they have been in Trash for 1 day.",
+  "fp.auto_off_kept":
+    "Automatic emptying is off - the rule stays in Rules, report only",
+  "fp.block_keep": "Keep them in Junk",
+  "fp.block_trash": "Also move its {n} mails in Junk to Trash now?",
+  "fp.block_trash_one": "Also move its 1 mail in Junk to Trash now?",
   "fp.auto_off": "Automatic emptying is off",
   "fp.auto_rule_name": "Empty Trash automatically",
   "fp.purge_title": "Permanently delete from {folder}?",
