@@ -54,3 +54,13 @@ test("a Modal opened from inside a page is a real dialog again", () => {
   fireEvent.keyDown(window, { key: "Escape" });
   expect(inner).toHaveBeenCalledTimes(1);
 });
+
+test("a scrolling page Modal body is a scroll-memory scroller; a dialog's is not", () => {
+  const { container, unmount } = render(<PageSlot page>
+    <Modal onClose={() => {}} label="Things"><p>body</p></Modal>
+  </PageSlot>);
+  expect(container.querySelector('[data-scroll-id="page"]')).toBeTruthy();
+  unmount();
+  render(<Modal onClose={() => {}} label="Dlg" size="lg"><p>body</p></Modal>);
+  expect(document.querySelector("[data-scroll-id]")).toBeNull();
+});

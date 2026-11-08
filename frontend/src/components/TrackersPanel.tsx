@@ -212,7 +212,7 @@ export function TrackersPanel({ account, onClose, onPickSender }: {
           <Eye size={18} /> {t("tracker.title")}
         </span>}
         sub={t("tracker.sub")} onClose={onClose} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto">
         {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
         {body()}
       </div>

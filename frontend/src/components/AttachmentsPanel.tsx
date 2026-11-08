@@ -119,7 +119,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
               {note && <span className="type-meta text-muted">{note}</span>}
             </Toolbar>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto pb-4">
             {!mails && !running && atts?.status !== "done" && (
               <EmptyState icon={<Paperclip size={18} />}
                 title={t("atts.not_analyzed")} hint={t("atts.intro")} />

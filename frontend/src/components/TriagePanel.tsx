@@ -354,7 +354,7 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
         <span aria-hidden className="contents lg:hidden">{tally}</span>
       </div>
       {summaryOpen ? (
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+        <div data-scroll-id="panel" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
           <SectionLabel>{t("triage.summary_title")}</SectionLabel>
           {sum.actions === 0 ? (
             <p className="type-body text-muted">{t("triage.nothing_to_apply")}</p>
