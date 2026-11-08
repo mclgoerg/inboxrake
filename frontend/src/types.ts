@@ -204,6 +204,18 @@ export interface AttMail extends Mail {
   atts: { name: string; size: number }[];
 }
 
+/** Full counts behind the duplicate lists (GET /api/duplicates/summary). */
+export interface DupSummary {
+  /** Identical-copy sets. */
+  sets: number;
+  /** What deleting all but the newest of each identical set would free. */
+  wasted: number;
+  /** Sets of the same mail in different versions. */
+  versions: number;
+  /** Likely double-sends to compare. */
+  possible: number;
+}
+
 export interface DupSet {
   wasted: number;
   mails: Mail[];    // newest first

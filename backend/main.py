@@ -1121,6 +1121,11 @@ def get_duplicates(account: str | None = Query(None)):
     return mailops.duplicates_list(acc=_acc(account))
 
 
+@app.get("/api/duplicates/summary")
+def get_duplicates_summary(account: str | None = Query(None)):
+    return mailops.duplicates_summary(acc=_acc(account))
+
+
 @app.get("/api/duplicates/versions")
 def get_duplicate_versions(account: str | None = Query(None)):
     return mailops.versions_list(acc=_acc(account))
