@@ -1193,6 +1193,9 @@ export const DE: Record<string, string> = {
   "reader.copied": "Adresse kopiert",
   "reader.copy_failed": "Adresse konnte nicht kopiert werden",
   "reader.mail": "Mail",
+  "reader.target": "Diese Mail",
+  "reader.pick_single": "Öffne genau eine Mail, um sie zu bearbeiten.",
+  "reader.sent_locked": "Deine eigene gesendete Mail kann hier nicht geändert werden.",
   "reader.unsub_in_mail": "In dieser Mail: {method}",
   "reader.open_sender": "Absender öffnen",
   "reader.copy_address": "Adresse kopieren",
@@ -1206,7 +1209,7 @@ export const DE: Record<string, string> = {
   "reader.quoted_lines": "{n} Zeilen",
   "reader.quoted_lines_one": "1 Zeile",
   "reader.unsub_title": "Abmelde-Link gefunden",
-  "reader.unsub_one_click": "ein Klick - sofort erledigt",
+  "reader.unsub_one_click": "ein Klick - sofort erledigt, nachdem du bestätigt hast",
   "reader.unsub_mailto": "sendet eine Mail von deiner Adresse",
   "reader.unsub_http": "Webseite - du bestätigst auf der Seite des Absenders",
   "thread.note.sent_unavailable":

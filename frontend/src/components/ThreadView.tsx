@@ -40,7 +40,6 @@ export function ThreadView(props: ThreadViewProps) {
 function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
   backLabel }: ThreadViewProps) {
   const host = useReaderHost();
-  const ownPin = useReaderPin(mail, initial, actions);
   const [conv, setConv] = useState<ConversationResp | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set([mailKey(mail)]));
@@ -111,9 +110,28 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
   const allOpen = keys.length > 0 && keys.every((k) => open.has(k));
   const replies = conv?.mails.filter((m) => m.sent).length ?? 0;
 
+  // Trash / Pin / Move act on the ONE open card (marked on screen); with none
+  // or several open there is no single mail, so they are off - and your own
+  // Sent mails are not changed from here.
+  const openMails = (conv?.mails ?? []).filter((m) => open.has(mailKey(m)));
+  const target: Mail | null = !conv ? mail
+    : openMails.length === 1
+      ? (mailKey(openMails[0]) === mailKey(mail) ? mail : openMails[0]) : null;
+  const targetKey = target ? mailKey(target) : "";
+  const targetBody = targetKey ? bodies[targetKey] : undefined;
+  const targetDetail = targetKey === mailKey(mail) && initial ? initial
+    : targetBody && targetBody !== "loading" && !("error" in targetBody)
+      ? targetBody : null;
+  const ownPin = useReaderPin(target ?? mail, targetDetail, actions);
+  const lockHint = target === null ? t("reader.pick_single")
+    : target.sent ? t("reader.sent_locked") : undefined;
+
   return (
-    <ReaderFrame mail={mail} detail={initial} actions={actions} nav={nav}
-      pin={pin ?? ownPin} backLabel={backLabel} onBack={onBack}
+    <ReaderFrame mail={target ?? mail} navFrom={mail} detail={targetDetail}
+      actions={actions} nav={nav} locked={lockHint !== undefined}
+      lockHint={lockHint}
+      pin={pin && targetKey === mailKey(mail) ? pin : ownPin}
+      backLabel={backLabel} onBack={onBack}
       trailing={conv && conv.mails.length > 1 ? (
         <Button variant="plain" size="sm"
           onClick={() => setOpen(allOpen ? new Set() : new Set(keys))}>
@@ -160,7 +178,8 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
           return (
             <div key={k} ref={k === mailKey(mail) ? focusRef : undefined}
               className={`mb-2 overflow-hidden rounded-card border ${
-                m.sent ? "border-accent/40" : "border-line"} bg-panel`}>
+                k === targetKey ? "border-accent"
+                  : m.sent ? "border-accent/40" : "border-line"} bg-panel`}>
               <button
                 className="flex w-full min-w-0 cursor-pointer items-start
                   gap-3 px-3 py-3 text-left hover:bg-chip"
@@ -177,6 +196,9 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
                       md:type-body ${!m.seen && !m.sent ? "font-semibold"
                         : "font-medium"}`}>{name}</span>
                     {m.sent && <Tag tone="info">{t("thread.from_sent")}</Tag>}
+                    {k === targetKey && !target?.sent && (
+                      <Tag tone="accent">{t("reader.target")}</Tag>
+                    )}
                     <span className="ml-auto shrink-0 type-meta text-muted">
                       {readerDate(m, loaded)}
                     </span>

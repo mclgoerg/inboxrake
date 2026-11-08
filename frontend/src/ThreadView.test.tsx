@@ -274,3 +274,66 @@ test("another mail (previous / next) restarts the conversation: the open "
   fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
   expect(trash).toHaveBeenCalledWith(a2);                   // ... and it is the target
 });
+
+// ----------------------------------- which mail the toolbar acts on
+
+const cards = () => [...document.querySelectorAll(
+  "[aria-expanded]:not([aria-haspopup])")] as HTMLElement[];
+const trashBtn = () => screen.getByRole("button", { name: "Trash this mail" }) as HTMLButtonElement;
+
+test("the toolbar acts on the ONE open card, which is marked; collapsing the "
+  + "target and opening another moves the target", async () => {
+  thread.mockResolvedValue(conv([], [a1, a2]));
+  serve();
+  const trash = vi.fn();
+  render(<ThreadView mail={a2} initial={bodyOf("opened")} onBack={() => {}}
+    actions={{ trash }} />);
+  await screen.findByText("2 mails");
+  expect(screen.getAllByText("This mail")).toHaveLength(1);
+  fireEvent.click(trashBtn());
+  expect(trash).toHaveBeenLastCalledWith(a2);
+
+  fireEvent.click(cards()[1]);                          // collapse a2 (the target)
+  expect(trashBtn().disabled).toBe(true);               // nothing open: off, with a hint
+  expect(screen.getByText("Open one mail to act on it.")).toBeTruthy();
+  expect(screen.queryByText("This mail")).toBeNull();
+  fireEvent.click(cards()[0]);                          // open a1
+  await screen.findByText("body of 1");
+  expect(trashBtn().disabled).toBe(false);
+  expect(screen.queryByText("Open one mail to act on it.")).toBeNull();
+  fireEvent.click(trashBtn());
+  expect(trash).toHaveBeenLastCalledWith(a1);           // it names the OPEN one
+  expect(screen.getAllByText("This mail")).toHaveLength(1);
+  expect(cards()[0].closest("div.mb-2")!.className).toContain("border-accent");
+});
+
+test("Collapse all and Expand all switch Trash / Pin / Move off", async () => {
+  thread.mockResolvedValue(conv([], [a1, a2]));
+  serve();
+  render(<ThreadView mail={a2} initial={bodyOf("opened")} onBack={() => {}}
+    actions={{ trash: vi.fn(), move: vi.fn(), pin: vi.fn() }} />);
+  await screen.findByText("2 mails");
+  fireEvent.click(screen.getByText("Expand all"));
+  await screen.findByText("body of 1");
+  expect(trashBtn().disabled).toBe(true);               // several open: no target
+  expect((screen.getByRole("button", { name: "Pin" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByText("This mail")).toBeNull();
+  expect(screen.getByText("Open one mail to act on it.")).toBeTruthy();
+  fireEvent.click(screen.getByText("Collapse all"));
+  expect(trashBtn().disabled).toBe(true);               // none open
+  expect(screen.getByText("Open one mail to act on it.")).toBeTruthy();
+});
+
+test("your own Sent mail is never a target: actions are off with a reason",
+  async () => {
+    thread.mockResolvedValue(conv());
+    serve();
+    render(<ThreadView mail={a2} initial={bodyOf("opened")} onBack={() => {}}
+      actions={{ trash: vi.fn() }} />);
+    await screen.findByText("3 mails");
+    fireEvent.click(cards()[2]);                        // fold a2
+    fireEvent.click(cards()[1]);                        // open the reply from Sent
+    await screen.findByText("body of 2");
+    expect(trashBtn().disabled).toBe(true);
+    expect(screen.getByText("Your own sent mail cannot be changed here.")).toBeTruthy();
+  });

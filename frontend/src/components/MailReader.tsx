@@ -173,6 +173,9 @@ interface ToolbarProps {
   headersShown?: boolean;
   onToggleHeaders?: () => void;
   onBack: () => void;
+  /** Trash / Pin / Move act on `mail`; set while there is no single mail
+   *  they could act on (a conversation with none / several cards open). */
+  locked?: boolean;
   variant: "top" | "bottom";
 }
 
@@ -180,8 +183,8 @@ interface ToolbarProps {
  *  address, Show headers, Block sender): a row of buttons on top at >= 768
  *  px, a bar of icon + caption columns at the bottom of a phone. */
 function ReaderToolbar({ mail, detail, actions, pin, onConversation,
-  conversationCount, headersShown, onToggleHeaders, onBack, variant }:
-  ToolbarProps) {
+  conversationCount, headersShown, onToggleHeaders, onBack, locked = false,
+  variant }: ToolbarProps) {
   const host = useReaderHost();
   const toast = useOptionalToast();
   const addr = mail.addr;
@@ -211,16 +214,16 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
   );
   const btn = (key: string, icon: ReactNode, label: string,
     onClick: () => void, opts: { aria?: string; title?: string;
-      pressed?: boolean; danger?: boolean } = {}) => top ? (
+      pressed?: boolean; danger?: boolean; off?: boolean } = {}) => top ? (
     <Button key={key} size="sm" aria-label={opts.aria} title={opts.title}
-      aria-pressed={opts.pressed}
+      aria-pressed={opts.pressed} disabled={opts.off}
       variant={opts.danger ? "danger-quiet" : "secondary"}
       className="inline-flex items-center gap-1.5" onClick={onClick}>
       {face(icon, label)}
     </Button>
   ) : (
     <button key={key} type="button" aria-label={opts.aria} title={opts.title}
-      aria-pressed={opts.pressed} onClick={onClick}
+      aria-pressed={opts.pressed} onClick={onClick} disabled={opts.off}
       className={`${BAR_ITEM} ${opts.danger ? "text-danger-fg" : ""}`}>
       {face(icon, label)}
     </button>
@@ -267,14 +270,14 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
       : "flex items-stretch gap-1"}>
       {actions?.trash && btn("trash", ico(Trash2),
         t("Trash"), () => void actions.trash!(mail),
-        { aria: t("trash_this.btn"), danger: true })}
-      {pin.can && btn("pin", ico(Pin, pin.on ? "currentColor" : "none"),
+        { aria: t("trash_this.btn"), danger: true, off: locked })}
+      {(pin.can || locked) && btn("pin", ico(Pin, pin.on ? "currentColor" : "none"),
         t(pin.on ? "reader.unpin" : "reader.pin"), pin.toggle,
         { aria: t(pin.on ? "reader.unpin" : "reader.pin"),
           title: t(pin.on ? "pin.unprotect_tip" : "pin.protect_tip"),
-          pressed: pin.on })}
+          pressed: pin.on, off: locked })}
       {canMove && btn("move", ico(FolderInput), t("detail.move"),
-        () => setPicking(true), { aria: t("reader.move_label") })}
+        () => setPicking(true), { aria: t("reader.move_label"), off: locked })}
       {onConversation && btn("conversation",
         ico(MessagesSquare), convLabel,
         onConversation, { aria: t("thread.read") })}
@@ -293,20 +296,25 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
  *  content. `trailing` sits next to the arrows (e.g. "Expand all"). */
 export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
   onBack, onConversation, conversationCount, headersShown, onToggleHeaders,
-  trailing, children }: Omit<ToolbarProps, "variant"> & {
+  trailing, locked, lockHint, navFrom, children }: Omit<ToolbarProps, "variant"> & {
   nav?: ReaderNav;
+  /** Why Trash / Pin / Move are off (shown under the bar). */
+  lockHint?: string;
+  /** The mail whose place in `nav` the arrows move from (default `mail`). */
+  navFrom?: Mail;
   backLabel?: string;
   trailing?: ReactNode;
   children: ReactNode;
 }) {
   const wide = useMediaQuery("(min-width: 768px)");
-  const idx = nav ? nav.list.findIndex((m) => mailKey(m) === mailKey(mail)) : -1;
+  const idx = nav ? nav.list.findIndex((m) =>
+    mailKey(m) === mailKey(navFrom ?? mail)) : -1;
   const arrows = !!nav && idx >= 0 && nav.list.length > 1;
   const toolbar = (variant: "top" | "bottom") => (
     <ReaderToolbar variant={variant} mail={mail} detail={detail}
       actions={actions} pin={pin} onConversation={onConversation}
       conversationCount={conversationCount} headersShown={headersShown}
-      onToggleHeaders={onToggleHeaders} onBack={onBack} />
+      onToggleHeaders={onToggleHeaders} onBack={onBack} locked={locked} />
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -337,6 +345,10 @@ export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
         )}
         {wide && toolbar("top")}
       </div>
+      {locked && lockHint && (
+        <div role="status" className="border-b border-line bg-panel2 px-4 py-1.5
+          type-meta text-muted">{lockHint}</div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       {!wide && (
         <div className="border-t border-line bg-panel px-2 py-1

@@ -222,7 +222,7 @@ test("the unsubscribe card of a mail opens the unsubscribe sheet for that "
   await settle();
   fireEvent.click(screen.getByText("Mail 1"));
   await screen.findByText("Unsubscribe link found");
-  await screen.findByText("one click - done right away");   // the sheet's method
+  await screen.findByText("one click - done right away after you confirm");   // the sheet's method
   fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
   await waitFor(() => expect(previewCall).toHaveBeenCalledWith(
     "sender", ["alpha@x.example"], true));

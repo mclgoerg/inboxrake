@@ -177,7 +177,7 @@ const previewOf = (via: string | null) => Promise.resolve({
   trash: { groups: [], mails: 0, size: 0, pinned: 0 } });
 
 test.each([
-  ["one_click", "one click - done right away"],
+  ["one_click", "one click - done right away after you confirm"],
   ["mailto", "sends a mail from your address"],
   ["http", "web page - you confirm on the sender's page"],
 ] as const)("unsubscribe card (%s) says what the sheet will do and opens it",
