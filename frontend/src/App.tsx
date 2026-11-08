@@ -1558,13 +1558,16 @@ export default function App() {
     archive: (g) => { void act([g.key], "archive"); },
     select: (g) => { setSelectMode(true); setSelected(new Set([g.key])); },
     canTarget: (g) => !!shortcutTarget(mode, g),
-    // Protecting changes nothing on the row, so say so (with an Undo).
+    // Protecting changes nothing on the row, so say so (with an Undo). The
+    // toast is worded by the direction of THIS toggle, so the Undo (which
+    // toggles back through the same path) says "no longer protected" /
+    // "is protected" correctly and can itself be undone.
     protect: async (g) => {
       const was = !!g.protected;
       if (!await toggleProtect(g)) return;
       toast.show(t(was ? "swipe.unprotected" : "swipe.protected",
         { label: g.label }), { action: { label: t("Undo"),
-          onClick: () => { void toggleProtect({ ...g, protected: !was }); } } });
+          onClick: () => { void groupSwipe.protect({ ...g, protected: !was }); } } });
     },
     block: (g) => { void blockGroup(g); },
     unblock: (g) => { void unblockGroup(g); },

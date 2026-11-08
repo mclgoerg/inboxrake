@@ -201,6 +201,16 @@ test("a full swipe right protects through the Protect handler and offers Undo", 
   expect(await screen.findByText("Bravo is protected")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
   await waitFor(() => expect(protect).toHaveBeenLastCalledWith("bravo@x.example", false));
+  // the undo says what happened: the direction of ITS toggle
+  expect(await screen.findByText("Bravo is no longer protected")).toBeTruthy();
+  // ... and the same wording holds for a swiped Unprotect and its Undo
+  protect.mockClear();
+  swipe(body("Charlie"), FULL_RIGHT);
+  await waitFor(() => expect(protect).toHaveBeenCalledWith("charlie@x.example", false));
+  expect(await screen.findByText("Charlie is no longer protected")).toBeTruthy();
+  fireEvent.click(screen.getAllByRole("button", { name: "Undo" }).at(-1)!);
+  await waitFor(() => expect(protect).toHaveBeenLastCalledWith("charlie@x.example", true));
+  expect(await screen.findByText("Charlie is protected")).toBeTruthy();
 });
 
 test("a protected sender offers Unprotect instead of Protect", async () => {

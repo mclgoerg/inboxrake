@@ -222,6 +222,26 @@ test("a tap on an open row only closes it - what is under it is not clicked", ()
   expect(open).toHaveBeenCalledTimes(2);          // closed again
 });
 
+test("the tap that closes an open row is swallowed - it does not open another row", () => {
+  const openOther = vi.fn();
+  render(<>
+    <SwipeRow trailing={[act1("Trash", () => {})]}>
+      <button type="button">One</button>
+    </SwipeRow>
+    <SwipeRow trailing={[act1("Trash", () => {})]}>
+      <button type="button" onClick={openOther}>Two</button>
+    </SwipeRow></>);
+  swipe(bodyOf(0), [300, 200, 100]);
+  const two = screen.getByRole("button", { name: "Two" });
+  fire(two, "pointerdown", { x: 100, t: 5000 });   // the tap: closes row one ...
+  fire(two, "pointerup", { x: 100, t: 5050 });
+  expect(bodyOf(0).style.transform).toBe("");
+  fireEvent.click(two);                             // ... and is not a tap on Two
+  expect(openOther).not.toHaveBeenCalled();
+  fireEvent.click(two);                             // the next tap is a normal one
+  expect(openOther).toHaveBeenCalledTimes(1);
+});
+
 test("the click that ends a drag is not a tap on the row", () => {
   const open = vi.fn();
   render(

@@ -2501,8 +2501,29 @@ const SWIPE_FLICK = 0.5;         // px/ms
 // One open row at a time; a touch anywhere else (or a scroll) closes it.
 type OpenSwipe = { el: HTMLElement; close: () => void };
 let openSwipe: OpenSwipe | null = null;
+// The touch that closes an open row is not a tap on what it landed on (iOS
+// Mail): the click that follows it, on that same spot, is swallowed before
+// React sees it.
+let swipeTouched: Node | null = null;
+const swipeSwallowClick = (e: Event) => {
+  const to = swipeTouched, at = e.target as Node;
+  swipeTouched = null;
+  if (to && (to.contains(at) || at.contains(to))) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+};
 const swipeOutside = (e: Event) => {
-  if (openSwipe && !openSwipe.el.contains(e.target as Node)) openSwipe.close();
+  if (!openSwipe || openSwipe.el.contains(e.target as Node)) return;
+  openSwipe.close();
+  swipeTouched = e.target as Node;
+  document.addEventListener("click", swipeSwallowClick,
+    { capture: true, once: true });
+  // (a touch that never clicks - a scroll - must not arm the next tap)
+  setTimeout(() => {
+    document.removeEventListener("click", swipeSwallowClick, { capture: true });
+    swipeTouched = null;
+  }, 600);
 };
 const swipeScroll = () => openSwipe?.close();
 function markSwipeOpen(row: OpenSwipe) {
