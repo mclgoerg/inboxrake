@@ -675,9 +675,14 @@ def _undo_summaries(acc) -> list[dict]:
 
 
 def clear_ai_marks() -> None:
-    """Drop in-memory AI marks of EVERY account (verdict cache cleared)."""
+    """Drop in-memory AI marks of the CURRENT TENANT's accounts (its verdict
+    cache was cleared). Another tenant's accounts are left alone: the labels
+    and protected list applied below are this tenant's."""
     plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    tid = tenants.current().id
     for acc in accounts.all_instantiated():
+        if acc.tenant.id != tid:
+            continue
         with acc.lock:
             for recs in acc.state["groups"].values():
                 for rec in recs.values():
