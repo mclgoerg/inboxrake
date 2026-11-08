@@ -144,6 +144,12 @@ const mount = async (over: Partial<AppState> = {}, hash = "#/senders",
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await waitFor(() => expect(screen.getAllByText(ready).length)
     .toBeGreaterThan(0));
+  // The rows appear in the commit that follows the state fetch, outside act():
+  // React runs that commit's effects (SwipeRow's pointerdown listener, the
+  // pull-to-scan wiring) as a separate task, which a loaded machine delays
+  // past the first gesture. A gesture on a row whose listener isn't attached
+  // yet is silently dropped, so flush them before the test starts.
+  await act(async () => {});
 };
 /** The sliding part of a Senders card (the table twin has none). */
 const body = (label: string) => screen.getAllByText(label)
