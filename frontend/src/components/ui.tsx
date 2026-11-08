@@ -2,7 +2,7 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, ChevronsUp
   MousePointerClick, Pin, Plus, Shield, TriangleAlert, X }
   from "lucide-react";
 import { createPortal } from "react-dom";
-import { createContext, useCallback, useContext, useEffect, useId,
+import { createContext, Fragment, useCallback, useContext, useEffect, useId,
   useLayoutEffect, useMemo, useRef, useState, type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject }
   from "react";
@@ -1006,6 +1006,16 @@ export function PopupSelect<T extends string>({ value, onChange, options,
 }) {
   const cur = options.find((o): o is Extract<typeof o, { value: T }> =>
     o !== "divider" && "value" in o && o.value === value);
+  // A `{ heading }` option starts a labelled MenuGroup (role=group) that runs
+  // to the next heading.
+  const groups: { heading?: string; items: PopupOption<T>[] }[] = [];
+  for (const o of options) {
+    if (o !== "divider" && "heading" in o) groups.push({ heading: o.heading, items: [] });
+    else {
+      if (!groups.length) groups.push({ items: [] });
+      groups[groups.length - 1].items.push(o);
+    }
+  }
   const hasValue = valueLabel != null || cur != null;
   const shown = valueLabel ?? (cur ? cur.label : placeholder);
   const name = [label ?? nameBase, typeof shown === "string" ? shown : null]
@@ -1026,20 +1036,25 @@ export function PopupSelect<T extends string>({ value, onChange, options,
         <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-muted" />
       </>}>
       <>
-        {options.map((o, i) => o === "divider"
-          ? <MenuDivider key={`d${i}`} />
-          : "heading" in o ? <MenuLabel key={`h${i}`}>{o.heading}</MenuLabel>
-          : (
-            <MenuItem key={o.value} disabled={o.disabled}
-              active={o.checked ?? (o.value === value)}
-              onClick={() => onChange(o.value)}>
-              {o.icon ? (
-                <span className="flex items-center gap-2">
-                  {o.icon}{o.label}
-                </span>
-              ) : o.label}
-            </MenuItem>
-          ))}
+        {groups.map((g, gi) => {
+          const items = g.items.map((o, i) => o === "divider"
+            ? <MenuDivider key={`d${i}`} />
+            : "heading" in o ? null
+            : (
+              <MenuItem key={o.value} disabled={o.disabled}
+                active={o.checked ?? (o.value === value)}
+                onClick={() => onChange(o.value)}>
+                {o.icon ? (
+                  <span className="flex items-center gap-2">
+                    {o.icon}{o.label}
+                  </span>
+                ) : o.label}
+              </MenuItem>
+            ));
+          return g.heading
+            ? <MenuGroup key={`g${gi}`} label={g.heading}>{items}</MenuGroup>
+            : <Fragment key={`g${gi}`}>{items}</Fragment>;
+        })}
       </>
     </Menu>
   );
@@ -1048,17 +1063,6 @@ export function PopupSelect<T extends string>({ value, onChange, options,
 /** Hairline between groups of MenuItems. */
 export function MenuDivider() {
   return <div role="separator" className="my-1 border-t border-line" />;
-}
-
-/** Quiet caption above a run of MenuItems ("Sort by", "Order"): visual only,
- *  not a menuitem, so arrow-key navigation skips it. */
-export function MenuLabel({ children }: { children: ReactNode }) {
-  return (
-    <div role="presentation" className="px-3 pb-0.5 pt-1.5 type-caption
-      font-semibold uppercase tracking-wide text-muted">
-      {children}
-    </div>
-  );
 }
 
 /** A labelled section of MenuItems. The label is a visual caption of the
@@ -1072,7 +1076,9 @@ export function MenuGroup({ label, children }: {
     <div role="group" aria-label={label}
       className="[&:not(:first-child)]:mt-1 [&:not(:first-child)]:border-t
         [&:not(:first-child)]:border-line [&:not(:first-child)]:pt-1">
-      <div aria-hidden className="px-3 pb-0.5 pt-1.5 type-caption
+      {/* stopPropagation: a click on the caption must not close the Menu */}
+      <div aria-hidden onClick={(e) => e.stopPropagation()}
+        className="px-3 pb-0.5 pt-1.5 type-caption
         font-semibold uppercase tracking-wide text-muted">
         {label}
       </div>

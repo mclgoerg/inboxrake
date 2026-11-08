@@ -2,9 +2,10 @@
 /* Menu: opens on trigger click, runs the item action and closes, and
  * closes on Escape / outside click. */
 
-import { act, cleanup, fireEvent, render, screen, waitFor }
+import { act, cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { useState } from "react";
+import { SortControl } from "./components/SortControl";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -1598,6 +1599,23 @@ describe("PopupSelect", () => {
       expect(screen.getByRole("button", { name: "Action…" })).toBeTruthy();
     });
 
+  test("`{ heading }` options start labelled groups; a caption click keeps " +
+    "the menu open", () => {
+    const onChange = vi.fn();
+    render(<PopupSelect label="Sort:" valueLabel="Mails" onChange={onChange}
+      options={[{ heading: "Sort by" }, { value: "k", label: "Mails" },
+        { heading: "Order" }, { value: "d", label: "Descending" }]} />);
+    fireEvent.click(screen.getByRole("button"));
+    const by = screen.getByRole("group", { name: "Sort by" });
+    const order = screen.getByRole("group", { name: "Order" });
+    expect(within(by).getByRole("menuitemradio", { name: "Mails" })).toBeTruthy();
+    expect(within(order).getByRole("menuitemradio",
+      { name: "Descending" })).toBeTruthy();
+    fireEvent.click(screen.getByText("Order"));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   test("an explicit `checked` wins (a menu holding two settings)", () => {
     render(<PopupSelect label="Sort:" valueLabel="Mails ↓" onChange={() => {}}
       options={[{ value: "k", label: "Mails", checked: true },
@@ -1699,4 +1717,18 @@ test("Segmented role=radio is a radiogroup with aria-checked; a disabled " +
   expect(onChange).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("radio", { name: "C" }));
   expect(onChange).toHaveBeenCalledWith("c");
+});
+
+test("the desktop sort menu has Sort by / Order groups with short keys", () => {
+  render(<SortControl value="count" dir="desc" onValue={() => {}}
+    onDir={() => {}}
+    options={[{ k: "count", label: "Sort: mails" },
+      { k: "size", label: "Sort: size" }]} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Sort:/ }));
+  const by = within(screen.getByRole("group", { name: "Sort by" }));
+  expect(by.getAllByRole("menuitemradio").map((o) => o.textContent))
+    .toEqual(["Mails", "Size"]);
+  expect(within(screen.getByRole("group", { name: "Order" }))
+    .getAllByRole("menuitemradio").map((o) => o.textContent))
+    .toEqual(["Descending", "Ascending"]);
 });

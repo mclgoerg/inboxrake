@@ -273,9 +273,10 @@ test("on a phone the sort control is a menu for key and direction",
     expect(trigger().getAttribute("aria-label")).toBe("Sort: mails, descending");
     fireEvent.click(trigger());
     // Sections instead of "Sort:" on every row.
-    const menu = screen.getByRole("menu");
-    expect(menu.textContent).toContain("Sort by");
-    expect(menu.textContent).toContain("Order");
+    expect(within(screen.getByRole("group", { name: "Sort by" }))
+      .getByRole("menuitemradio", { name: "Size" })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Order" }))
+      .getByRole("menuitemradio", { name: "Ascending" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Size" }));
     expect(localStorage.getItem("pmc_sort_k")).toBe("size");
     fireEvent.click(trigger());

@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { t } from "../i18n";
-import { Menu, MenuItem, MenuLabel, PopupSelect, useMediaQuery }
+import { Menu, MenuGroup, MenuItem, PopupSelect, useMediaQuery }
   from "./ui";
 
 /** Sort field + direction. From 768 px: a pop-up button ("Sort: Mails ↓")
@@ -34,20 +34,22 @@ export function SortControl<K extends string>({ options, value, dir,
           dir: t(dir === "asc" ? "sort.ascending" : "sort.descending")
             .toLowerCase() })}
         trigger={<ArrowUpDown size={18} />}>
-        <MenuLabel>{t("sort.by")}</MenuLabel>
-        {options.map((o) => (
-          <MenuItem key={o.k} active={o.k === value}
-            onClick={() => onValue(o.k)}>
-            {short(o.label)}
+        <MenuGroup label={t("sort.by")}>
+          {options.map((o) => (
+            <MenuItem key={o.k} active={o.k === value}
+              onClick={() => onValue(o.k)}>
+              {short(o.label)}
+            </MenuItem>
+          ))}
+        </MenuGroup>
+        <MenuGroup label={t("sort.order")}>
+          <MenuItem active={dir === "desc"} onClick={() => onDir("desc")}>
+            {t("sort.descending")}
           </MenuItem>
-        ))}
-        <MenuLabel>{t("sort.order")}</MenuLabel>
-        <MenuItem active={dir === "desc"} onClick={() => onDir("desc")}>
-          {t("sort.descending")}
-        </MenuItem>
-        <MenuItem active={dir === "asc"} onClick={() => onDir("asc")}>
-          {t("sort.ascending")}
-        </MenuItem>
+          <MenuItem active={dir === "asc"} onClick={() => onDir("asc")}>
+            {t("sort.ascending")}
+          </MenuItem>
+        </MenuGroup>
       </Menu>
     );
   }
