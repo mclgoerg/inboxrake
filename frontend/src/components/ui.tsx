@@ -1584,7 +1584,9 @@ export function Segmented<T extends string>({ value, onChange, options,
   value: T | null;
   onChange: (v: T) => void;
   /** `disabled` greys one segment out (a state the user cannot pick yet). */
-  options: { value: T; label: ReactNode; disabled?: boolean }[];
+  options: { value: T; label: ReactNode; disabled?: boolean;
+    /** id of text that explains the option (why it is disabled). */
+    describedBy?: string }[];
   label: string;
   fill?: boolean;
   /** 44 px tall segments (phone sheets with big touch targets). */
@@ -1633,7 +1635,7 @@ export function Segmented<T extends string>({ value, onChange, options,
             aria-controls={idPrefix && on && !radio
               ? `${idPrefix}-panel` : undefined}
             tabIndex={o.value === tabStop ? 0 : -1}
-            disabled={o.disabled}
+            disabled={o.disabled} aria-describedby={o.describedBy}
             onClick={() => onChange(o.value)}
             className={`${tall ? "min-h-11 coarse:min-h-11"
               : "min-h-9 coarse:min-h-10"} min-w-0 whitespace-nowrap

@@ -87,7 +87,7 @@ test("creating a rule with keep-latest sends the field, leaves the other " +
   renderNew();
   fireEvent.change(screen.getByLabelText("Name"),
     { target: { value: "My rule" } });
-  choose("Apply to", "Keep newest N, act on the rest");
+  choose("Apply to", "keep newest N, act on the rest");
   fireEvent.change(screen.getByPlaceholderText("N"),
     { target: { value: "5" } });
   fireEvent.click(screen.getByText("Create rule (report only)"));
@@ -102,7 +102,7 @@ test("editing a rule prefills the retention selector and shows its tag",
     expect(screen.getByText("if older than 30 days")).toBeTruthy();
     fireEvent.click(screen.getByText("Edit"));
     expect(popup("Apply to").textContent)
-      .toContain("Only mails older than N days");
+      .toContain("only mails older than N days");
     expect(screen.getByDisplayValue("30")).toBeTruthy();
   });
 
@@ -122,7 +122,7 @@ test("the live match count leaves pinned mails out (mark_read excepted)",
   openNew();
   const preview = () => screen.getByText("Preview").parentElement!.textContent;
   expect(preview()).toMatch(/2groups12mails0protected skipped/);
-  choose("Action", "Mark as read");
+  choose("Action", "mark as read");
   expect(preview()).toMatch(/2groups15mails/);
 });
 
@@ -195,21 +195,21 @@ test("and in German, with the right case and word order", () => {
   setLang("de");
   expect(sentenceOf({ action: "trash", older_than_days: 30, query: "" }))
     .toBe("Wenn Gruppen nach Absender zu allem passen, dann in den "
-      + "Papierkorb verschieben wenn älter als 30 Tage · manuell");
+      + "Papierkorb verschieben, wenn älter als 30 Tage · manuell");
   expect(sentenceOf({ action: "move", dest: "Pakete", keep_latest: 3,
     older_than_days: null, schedule: "daily", query: "tag:a" }))
     .toBe("Wenn Gruppen nach Absender zu tag:a passen, dann in Pakete "
-      + "verschieben außer den neuesten 3 · täglich");
+      + "verschieben, außer den neuesten 3 · täglich");
   expect(sentenceOf({ action: "mark_read", older_than_days: null,
     query: "tag:a" })).toBe("Wenn Gruppen nach Absender zu tag:a passen, "
       + "dann als gelesen markieren · manuell");
   expect(sentenceOf({ scope: "junk", action: "purge", query: "",
-    schedule: "weekly" })).toBe("Wenn Gruppen nach Absender im Spam zu allen "
-      + "Absendern passen, dann endgültig löschen wenn älter als 30 Tage · "
+    schedule: "weekly" })).toBe("Wenn Gruppen nach Absender im Spam-Ordner zu allen "
+      + "Absendern passen, dann endgültig löschen, wenn älter als 30 Tage · "
       + "wöchentlich");
   expect(sentenceOf({ scope: "trash", action: "purge", query: "from:a",
     older_than_days: 1, schedule: "weekly" })).toContain("im Papierkorb zu "
-      + "from:a passen, dann endgültig löschen wenn älter als 1 Tag");
+      + "from:a passen, dann endgültig löschen, wenn älter als 1 Tag");
 });
 
 test("the editor's first row follows each language's word order", () => {
@@ -244,7 +244,7 @@ test("Esc in an open pop-up closes the menu, not the editor; Esc again " +
   renderNew();
   fireEvent.click(popup("Action"));
   expect(screen.getByRole("menu")).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "Archive" }),
+  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "archive" }),
     { key: "Escape" });
   expect(screen.getByLabelText("Name")).toBeTruthy();
 });
@@ -340,7 +340,7 @@ test("choosing Junk fixes the action, shows the warning and offers the " +
     .closest('[role="status"]')!.className).toContain("bg-keep-bg");
   const action = popup("Action") as HTMLButtonElement;
   expect(action.disabled).toBe(true);
-  expect(action.textContent).toContain("Delete permanently");
+  expect(action.textContent).toContain("delete permanently");
   expect(screen.getByLabelText("In Trash/Junk for more than this many days"))
     .toHaveProperty("value", "30");
   expect(popup("Schedule").textContent).toContain("weekly");
@@ -384,9 +384,9 @@ test("switching back to Inbox & folders restores an ordinary rule form", () => {
   pickScope("junk");
   pickScope("mail");
   expect(screen.queryByText(/on the server, permanently/)).toBeNull();
-  expect(popup("Action").textContent).toContain("Move to Trash");
+  expect(popup("Action").textContent).toContain("move to Trash");
   expect(popup("Schedule").textContent).toContain("manual");
-  expect(popup("Apply to").textContent).toContain("All mails");
+  expect(popup("Apply to").textContent).toContain("all mails");
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "m" } });
   fireEvent.click(screen.getByText("Create rule (report only)"));
   expect(createRule).toHaveBeenCalledWith(expect.objectContaining(
@@ -633,7 +633,7 @@ test("the preview line has no plural trap for one mail or one sender", () => {
 test("the folder select is labelled apart from the Move destination", () => {
   renderNew();
   expect(popup("Applies to")).toBeTruthy();
-  choose("Action", "Move to folder");
+  choose("Action", "move to folder");
   expect(popup("Folder")).toBeTruthy();    // the target
   expect(popup("Applies to")).toBeTruthy();
   setLang("de");
@@ -641,7 +641,7 @@ test("the folder select is labelled apart from the Move destination", () => {
   renderNew();
   fireEvent.click(popup("Gilt für"));
   expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent))
-    .toEqual(["Posteingang & Ordner", "Spam", "Papierkorb"]);
+    .toEqual(["Posteingang & Ordner", "Spam-Ordner", "Papierkorb"]);
 });
 
 test("the query builder of a purge rule says the age is the sender's " +
@@ -716,7 +716,7 @@ test("German: the editor help says an empty filter means ALL senders and " +
   "lists the refused filters", () => {
   setLang("de");
   renderNew();
-  choose("Gilt für", "Spam");
+  choose("Gilt für", "Spam-Ordner");
   const help = screen.getByText(/Ein leerer Filter bedeutet ALLE Absender/);
   for (const fam of ["tag:", "ai:", "eng:", "att:", "is:", "has:", "domain:"]) {
     expect(help.textContent, fam).toContain(fam);
@@ -865,7 +865,7 @@ test("on a page too, Esc in a pop-up leaves the panel open", () => {
     onChanged={() => {}} /></PageSlot>);
   openNew();
   fireEvent.click(popup("Action"));
-  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "Archive" }),
+  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "archive" }),
     { key: "Escape" });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(screen.getByRole("complementary")).toBeTruthy();
@@ -897,4 +897,31 @@ test("the side panel takes focus on open and gives it back on every close",
   fireEvent.click(screen.getByText("Create rule (report only)"));
   await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
   expect(document.activeElement).toBe(newBtn);
+});
+
+test("Esc inside the nested filter-builder sheet leaves the editor open", () => {
+  // a phone: the builder opens as its own sheet inside the editor
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: true, media: q,
+    addEventListener() {}, removeEventListener() {} }));
+  renderNew();
+  fireEvent.click(screen.getByRole("button", { name: EN["qb.tip"] }));
+  const editorDialog = screen.getByLabelText("Name").closest('[role="dialog"]')!;
+  const inner = [...editorDialog.querySelectorAll('[role="dialog"]')].at(-1)!;
+  expect(inner).toBeTruthy();
+  fireEvent.keyDown(inner, { key: "Escape" });
+  expect(screen.getByLabelText("Name")).toBeTruthy();
+  vi.unstubAllGlobals();
+});
+
+test("the disabled Active option points at its reason; one timestamp in the " +
+  "report", () => {
+  renderCards([{ ...rule, report_runs: 0, last_run: {
+    ts: 86400 * 365, mode: "report", groups: 1, mails: 1, acted: 0, capped: 0,
+    skipped_protected: 0, skipped_pinned: 0, preview: [], error: "" } }]);
+  const hint = screen.getByText("Run at least one report first");
+  expect(tab("Active").getAttribute("aria-describedby")).toBe(hint.id);
+  fireEvent.click(screen.getByText("See last report"));
+  const dlg = screen.getByRole("dialog", { name: "Last report" });
+  const stamp = new Date(86400 * 365 * 1000).toLocaleString();
+  expect(dlg.textContent!.split(stamp).length - 1).toBe(1);
 });

@@ -124,7 +124,6 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
         <div className="flex flex-wrap items-center gap-2 type-meta text-muted">
           <Tag tone={r.mode === "execute" ? "keep" : "safe"}>
             {t(`mode.${r.mode}`)}</Tag>
-          {new Date(r.ts * 1000).toLocaleString()}
         </div>
         <div className="type-body"><RunSummary rule={rule} preview={false} />
         </div>
@@ -178,11 +177,12 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
           options={[
             { value: "report", label: t("rule.seg_report") },
             { value: "execute", label: t("rule.seg_active"),
-              disabled: needReport },
+              disabled: needReport, describedBy: `rule-need-${rule.id}` },
           ]} />
       </div>
       {needReport && (
-        <div className="mt-1 text-right type-meta text-muted">
+        <div id={`rule-need-${rule.id}`}
+          className="mt-1 text-right type-meta text-muted">
           {t("rule.need_report")}
         </div>
       )}
@@ -191,7 +191,7 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
           parts={{
             grouping: <Part>{t(GROUPING_KEY[rule.grouping])}</Part>,
             scope: purge ? <Part tone="danger">
-              {t(rule.scope === "junk" ? "Junk" : "Trash")}</Part> : null,
+              {t(`rule.scope_${rule.scope}`)}</Part> : null,
             filter: rule.query
               ? <code className="rounded-control bg-chip px-2 py-0.5 type-meta
                   text-chiptext">{rule.query}</code>
@@ -199,9 +199,11 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
             action: <Part tone={danger ? "danger" : "neutral"}>
               {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
             retention: rule.keep_latest != null
-              ? <Part>{t("rule.ret_keep", { n: rule.keep_latest })}</Part>
+              ? <>{t("rule.ret_pre")}<Part>
+                  {t("rule.ret_keep", { n: rule.keep_latest })}</Part></>
               : rule.older_than_days != null
-                ? <Part>{t("rule.ret_older", { n: rule.older_than_days })}</Part>
+                ? <>{t("rule.ret_pre")}<Part>
+                    {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
                 : null,
             schedule: <Part><CalendarClock size={14} aria-hidden
               className="mr-1 inline align-text-bottom" />
@@ -434,11 +436,15 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     setEditing(true);
   };
 
+  const panelBox = useRef<HTMLDivElement>(null);
   const editor = (
-    <div onKeyDown={(e) => {
-      // an open pop-up menu takes this Esc (it closes just the menu)
+    <div ref={panelBox} onKeyDown={(e) => {
+      // A pop-up menu or a dialog opened from this panel (the filter
+      // builder sheet) takes this Esc; only the panel itself closes on it.
+      const inner = (e.target as Element).closest('[role="dialog"]');
       if (e.key === "Escape" && !e.defaultPrevented
-          && !document.querySelector('[role="menu"]')) {
+          && !document.querySelector('[role="menu"]')
+          && !(inner && panelBox.current?.contains(inner))) {
         e.preventDefault(); closeEditor();
       }
     }}>
@@ -469,8 +475,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
               scope: <PopupSelect value={form.scope} onChange={setScope}
                 name={t("rule.f_scope")} options={[
                   { value: "mail", label: t("rule.scope_mail") },
-                  { value: "junk", label: t("Junk") },
-                  { value: "trash", label: t("Trash") }]} />,
+                  { value: "junk", label: t("rule.scope_junk") },
+                  { value: "trash", label: t("rule.scope_trash") }]} />,
             }} />
           {purge && (
             <Notice tone="danger" icon={<TriangleAlert size={16} />}>
@@ -509,13 +515,13 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
               ? <PopupSelect value="purge" onChange={() => {}} disabled
                   name={t("rule.f_action")}
                   options={[{ value: "purge",
-                    label: t("action.purge") }]} />
+                    label: t("rule.act_purge") }]} />
               : <PopupSelect value={form.action} onChange={pick("action")}
                   name={t("rule.f_action")} options={[
-                    { value: "trash", label: t("action.trash") },
-                    { value: "archive", label: t("action.archive") },
-                    { value: "move", label: t("action.move") },
-                    { value: "mark_read", label: t("action.mark_read") }]} />}
+                    { value: "trash", label: t("rule.act_trash") },
+                    { value: "archive", label: t("rule.act_archive") },
+                    { value: "move", label: t("rule.act_move_pick") },
+                    { value: "mark_read", label: t("rule.act_mark_read") }]} />}
             {!purge && form.action === "move" && (
               <PopupSelect value={form.dest || null} onChange={pick("dest")}
                 name={t("rule.f_dest")} placeholder={t("Move to folder…")}
@@ -536,10 +542,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
             ) : <>
               <PopupSelect value={form.retention} onChange={pick("retention")}
                 name={t("rule.f_apply")} options={[
-                  { value: "none", label: t("retention.none") },
-                  { value: "keep_latest", label: t("retention.keep_latest") },
-                  { value: "older_than_days",
-                    label: t("retention.older_than_days") }]} />
+                  { value: "none", label: t("rule.apply_none") },
+                  { value: "keep_latest", label: t("rule.apply_keep") },
+                  { value: "older_than_days", label: t("rule.apply_older") }]} />
               {form.retention !== "none" && (
                 <Input className="w-24" type="number" min={1}
                   aria-label={t("rule.f_retention_n")}
