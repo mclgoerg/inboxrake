@@ -1948,6 +1948,7 @@ export const EN: Record<string, string> = {
   "triage.unsub": "Unsubscribe",
   "triage.protect": "Protect",
   "triage.undo": "Undo last decision",
+  "triage.undo_short": "Undo",
   "triage.done": "Done",
   "triage.mails": "mails",
   "triage.size": "size",
@@ -1973,6 +1974,9 @@ export const EN: Record<string, string> = {
   "triage.nothing_to_apply":
     "Nothing to apply - every group stays as it is.",
   "triage.back": "Back to cards",
+  "triage.apply_decisions": "Apply {n} decisions",
+  "triage.apply_decisions_one": "Apply 1 decision",
+  "triage.latest": "Latest mails",
   "triage.apply": "Apply",
   "triage.discard_title": "Discard {n} decisions?",
   "triage.discard_title_one": "Discard 1 decision?",

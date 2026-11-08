@@ -2199,6 +2199,7 @@ export const DE: Record<string, string> = {
   "triage.unsub": "Abbestellen",
   "triage.protect": "Schützen",
   "triage.undo": "Letzte Entscheidung rückgängig",
+  "triage.undo_short": "Zurück",
   "triage.done": "Fertig",
   "triage.mails": "Mails",
   "triage.size": "Größe",
@@ -2224,6 +2225,9 @@ export const DE: Record<string, string> = {
   "triage.nothing_to_apply":
     "Nichts anzuwenden - jede Gruppe bleibt, wie sie ist.",
   "triage.back": "Zurück zu den Karten",
+  "triage.apply_decisions": "{n} Entscheidungen anwenden",
+  "triage.apply_decisions_one": "1 Entscheidung anwenden",
+  "triage.latest": "Letzte Mails",
   "triage.apply": "Anwenden",
   "triage.discard_title": "{n} Entscheidungen verwerfen?",
   "triage.discard_title_one": "1 Entscheidung verwerfen?",
