@@ -124,7 +124,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
               {t(`search.note.${n.key}`, n.params)}
             </p>
           ))}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto pb-4">
             {mails === null && (
               <EmptyState icon={<Search size={18} />}
                 title={t("search.empty_title")}

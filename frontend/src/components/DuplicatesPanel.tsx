@@ -190,7 +190,7 @@ export function DuplicatesPanel({ onClose, onDeleted }: {
               {note && <span className="type-meta text-muted">{note}</span>}
             </Toolbar>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto pb-4">
             {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
             {!sets && !error && <Loading />}
             {sets && sets.length === 0 && versions.length === 0

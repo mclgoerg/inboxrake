@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMediaQuery } from "./components/ui";
 
 /** Tools that open as a page beside the sidebar (from 1024 px; below it they
@@ -147,6 +147,85 @@ export function useNav(initial: Page = DEFAULT_PAGE,
       window.location.hash = hashOf(p);
   }, []);
   return [page, setPage];
+}
+
+/** Scroll positions per page (iOS-like). Opening a page - a tool, a settings
+ *  section, a tab - starts at the top; Back (browser, in-app, Esc) restores
+ *  the position the page you return to had. The scrollers are `body` and
+ *  every element tagged `data-scroll-id` (wide Settings, tool panels, lists);
+ *  positions live in memory, per page route. */
+const SCROLL_BODY = "body";
+let restoreNext = false;
+let entrySeq = 0;
+
+/** The next route change is a return (Esc / close button), not a fresh
+ *  open: restore the position that page had. Browser Back / Forward need no
+ *  hint - their history entries are recognised. */
+export const restoreScrollOnNext = (): void => { restoreNext = true; };
+
+const scrollers = (): [string, HTMLElement][] => {
+  const out: [string, HTMLElement][] = [[SCROLL_BODY, document.body]];
+  const seen = new Set<string>();
+  document.querySelectorAll<HTMLElement>("[data-scroll-id]").forEach((el) => {
+    const id = el.dataset.scrollId!;
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push([id, el]);
+  });
+  return out;
+};
+
+/** Call with a key that changes whenever the page / section changes. */
+export function useScrollPerPage(routeKey: string): void {
+  const positions = useRef(new Map<string, Map<string, number>>());
+  const current = useRef(routeKey);
+  // While a restore is settling (lists load late), clamped scroll events
+  // must not overwrite what is being restored.
+  const settling = useRef(false);
+  useEffect(() => {
+    const on = (e: Event) => {
+      if (settling.current) return;
+      const el = e.target as HTMLElement | null;
+      if (!el || !(el instanceof HTMLElement)) return;
+      const id = el === document.body ? SCROLL_BODY
+        : el.closest<HTMLElement>("[data-scroll-id]") === el
+          ? el.dataset.scrollId! : null;
+      if (!id) return;
+      let m = positions.current.get(current.current);
+      if (!m) positions.current.set(current.current, m = new Map());
+      m.set(id, el.scrollTop);
+    };
+    document.addEventListener("scroll", on, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", on, true);
+  }, []);
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    // An entry carries a mark once it has been shown; a fresh push has none.
+    const st = (window.history.state ?? {}) as { scrollEntry?: number };
+    const revisit = st.scrollEntry !== undefined || restoreNext;
+    restoreNext = false;
+    if (st.scrollEntry === undefined)
+      window.history.replaceState({ ...st, scrollEntry: ++entrySeq }, "");
+    const was = current.current;
+    current.current = routeKey;
+    if (first.current) { first.current = false; return; }
+    if (was === routeKey) return;
+    const want = revisit ? positions.current.get(routeKey) : undefined;
+    const apply = () => {
+      for (const [id, el] of scrollers()) el.scrollTop = want?.get(id) ?? 0;
+    };
+    apply();
+    settling.current = true;
+    let n = 0;
+    let raf = 0;
+    const tick = () => {
+      apply();
+      if (++n < 4) raf = requestAnimationFrame(tick);
+      else settling.current = false;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); settling.current = false; };
+  }, [routeKey]);
 }
 
 /** From here the sidebar is the navigation (Tailwind `lg`); below it the

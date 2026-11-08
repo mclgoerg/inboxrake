@@ -349,7 +349,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
               {note && <span className="w-full type-meta text-muted">{note}</span>}
             </Toolbar>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto pb-4">
             {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
             {!shown && !error && <Loading />}
             {shown && shown.length === 0 && (

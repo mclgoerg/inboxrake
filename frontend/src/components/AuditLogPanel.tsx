@@ -261,7 +261,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           </Button>)}
         onClose={onClose}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
+      <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
         <div className="mx-auto flex max-w-180 flex-col gap-4">
           {total !== 0 && <MonthCard recent={recent} rules={rules} />}
           {above}

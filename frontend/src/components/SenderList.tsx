@@ -169,7 +169,7 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
         )}
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto pb-2">
+      <div data-scroll-id="list" className="relative min-h-0 flex-1 overflow-y-auto pb-2">
         {shown.length === 0 ? (
           <div className="p-4 type-body text-muted">{t("senders.none")}</div>
         ) : (

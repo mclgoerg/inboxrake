@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { hashOf, isTabPage, parseHash, parseSettingsRoute, settingsHash, useNav,
+import { restoreScrollOnNext, useScrollPerPage, hashOf, isTabPage, parseHash, parseSettingsRoute, settingsHash, useNav,
   type Page } from "./nav";
 
 beforeEach(() => { window.location.hash = ""; });
@@ -96,4 +96,47 @@ test("a guard can keep the page when the hash leaves it (Back / Forward)", () =>
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
   expect(result.current[0]).toBe("senders");
+});
+
+// Scroll memory: a fresh open starts at the top, a return restores.
+const scrollTo = (el: HTMLElement, top: number) => {
+  el.scrollTop = top;
+  el.dispatchEvent(new Event("scroll"));
+};
+
+test("scroll: forward navigation resets, history Back restores", () => {
+  const inner = document.createElement("div");
+  inner.dataset.scrollId = "settings";
+  document.body.append(inner);
+  const { rerender } = renderHook(({ k }) => useScrollPerPage(k),
+    { initialProps: { k: "settings/general" } });
+  scrollTo(document.body, 120);
+  scrollTo(inner, 40);
+  window.history.replaceState({ scrollEntry: 900 }, "");
+  // Fresh push to another section: top.
+  window.history.pushState(null, "", "#/settings/signin");
+  rerender({ k: "settings/signin" });
+  expect(document.body.scrollTop).toBe(0);
+  expect(inner.scrollTop).toBe(0);
+  scrollTo(document.body, 300);
+  // Back to the entry that was shown before: its position returns.
+  window.history.back();
+  window.history.replaceState({ scrollEntry: 900 }, "");
+  rerender({ k: "settings/general" });
+  expect(document.body.scrollTop).toBe(120);
+  expect(inner.scrollTop).toBe(40);
+  inner.remove();
+});
+
+test("scroll: an Esc-style return restores without a history entry", () => {
+  const { rerender } = renderHook(({ k }) => useScrollPerPage(k),
+    { initialProps: { k: "senders//" } });
+  scrollTo(document.body, 75);
+  window.history.pushState(null, "", "#/settings");
+  rerender({ k: "settings//" });
+  expect(document.body.scrollTop).toBe(0);
+  restoreScrollOnNext();
+  window.history.pushState(null, "", "#/senders");
+  rerender({ k: "senders//" });
+  expect(document.body.scrollTop).toBe(75);
 });

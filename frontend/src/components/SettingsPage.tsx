@@ -1772,7 +1772,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     return (
       <div className="flex min-h-0 flex-1">
         {sectionColumn}
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <div data-scroll-id="settings" className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-5 pb-28 pt-5">
             <h1 className="mb-4 type-title2">{title}</h1>
             {content}

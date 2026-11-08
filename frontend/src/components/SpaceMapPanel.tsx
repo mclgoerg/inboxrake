@@ -142,7 +142,7 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
         <div className="p-4"><EmptyState>{t("space.empty")}</EmptyState></div>
       ) : (
         <>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+          <div data-scroll-id="panel" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
               <Segmented label={t("space.color_by")} value={mode}
                 options={modes} onChange={setBy} />

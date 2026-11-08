@@ -1524,7 +1524,8 @@ export function Modal({ children, onClose, full = false, size, label,
         </div>}
         {/* Always rendered (`contents` when not scrolling): `full` can flip
             while open, and a changing tree would remount the content. */}
-        <div className={scrolls ? (slot ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
+        <div data-scroll-id={scrolls && slot ? "page" : undefined}
+          className={scrolls ? (slot ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
           : `flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-initial`)
           : "contents"}>
           {/* Children see "page" on a page (PanelHeader drops its close

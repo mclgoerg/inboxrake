@@ -9,7 +9,7 @@ import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
-  useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
+  restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
@@ -126,6 +126,7 @@ export default function App() {
     return false;
   };
   const settingsRoute = useSettingsRoute();
+  useScrollPerPage(`${navPage}/${settingsRoute.section ?? ""}/${settingsRoute.account ?? ""}`);
   // Where Settings was opened from (Esc / Back return there), and whether
   // the open section was pushed on top of the root list (phone drill-down).
   const settingsFrom = useRef<Page | null>(null);
@@ -1875,7 +1876,7 @@ export default function App() {
     },
   })[tool]();
   /** Esc / Back from Settings: where it was opened from. */
-  const closeSettings = () => goPage(settingsFrom.current ?? DEFAULT_PAGE);
+  const closeSettings = () => { restoreScrollOnNext(); goPage(settingsFrom.current ?? DEFAULT_PAGE); };
   const openSettingsSection = (s: Parameters<typeof gotoSettings>[0],
     acct?: string | null, push = false) => {
     if (s === null && settingsPushed.current) {
@@ -1889,7 +1890,7 @@ export default function App() {
   // Closing a tool: back to the start page (Triage: to the list its changes
   // show up in), or drop its modal.
   const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
-    if (wide) { goPage(to); return; }
+    if (wide) { restoreScrollOnNext(); goPage(to); return; }
     modal();
     // A modal opened by a deep link / a resize returns to the tab page that
     // lists the tool (Search has none: `to`).
