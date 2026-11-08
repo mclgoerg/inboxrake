@@ -24,6 +24,10 @@ export interface MapItem {
   last: string;             // newest mail, YYYY-MM-DD ("" = unknown)
   engagement: number;       // mail-weighted mean score, 0-100
   verdict: Verdict | null;  // the AI verdict covering most mails, if any
+  /** Mails covered by `verdict` / by any verdict ("12 of 12 mails"). */
+  verdictMails: number;
+  ratedMails: number;
+  unread: number;           // for the "opened" share (the engagement backbone)
   senders: number;          // sender groups inside
   /** Sender keys a tick selects: everything inside except protected. */
   keys: string[];
@@ -53,6 +57,9 @@ const senderItem = (g: Group): MapItem => ({
   size: g.size, count: g.count, last: g.last || "",
   engagement: g.engagement ?? 0,
   verdict: g.ai?.verdict ?? null,
+  verdictMails: g.ai ? g.count : 0,
+  ratedMails: g.ai ? g.count : 0,
+  unread: g.unread ?? 0,
   senders: 1,
   keys: g.protected ? [] : [g.key],
   protectedSenders: g.protected ? 1 : 0,
@@ -62,17 +69,20 @@ const senderItem = (g: Group): MapItem => ({
 /** Combine items under one parent tile (domain or other). */
 function parent(id: string, kind: "domain" | "other", label: string,
                 kids: MapItem[]): MapItem {
-  let size = 0, count = 0, eng = 0, last = "";
+  let size = 0, count = 0, eng = 0, last = "", unread = 0, rated = 0;
   const votes: Partial<Record<Verdict, number>> = {};
   for (const k of kids) {
     size += k.size; count += k.count; eng += k.engagement * k.count;
     if (k.last > last) last = k.last;
-    if (k.verdict) votes[k.verdict] = (votes[k.verdict] ?? 0) + k.count;
+    unread += k.unread; rated += k.ratedMails;
+    if (k.verdict) votes[k.verdict] = (votes[k.verdict] ?? 0) + k.verdictMails;
   }
+  const verdict = dominantVerdict(votes);
   return {
     id, kind, label, size, count, last,
     engagement: count ? eng / count : 0,
-    verdict: dominantVerdict(votes),
+    verdict, verdictMails: verdict ? votes[verdict] ?? 0 : 0,
+    ratedMails: rated, unread,
     senders: kids.reduce((a, k) => a + k.senders, 0),
     keys: kids.flatMap((k) => k.keys),
     protectedSenders: kids.reduce((a, k) => a + k.protectedSenders, 0),
@@ -158,3 +168,89 @@ export function heatOf(it: MapItem, by: Exclude<ColorBy, "ai">,
   if (!it.last) return 1;
   return it.last < cut(24) ? 2 : it.last < cut(6) ? 1 : 0;
 }
+
+/** What a tile's colour stands for. The three heat steps are named by what
+ *  they mean for cleaning up (strong = a candidate), the AI ones by verdict. */
+export type Tone = "strong" | "mid" | "quiet" | Verdict | "none";
+
+/** Legend / stacked-bar order of the tones of each colour mode. */
+export const TONES: Record<ColorBy, Tone[]> = {
+  engagement: ["strong", "mid", "quiet"],
+  age: ["strong", "mid", "quiet"],
+  ai: ["delete_safe", "review", "keep", "none"],
+};
+
+const HEAT_TONE: Tone[] = ["quiet", "mid", "strong"];
+
+export const toneOf = (it: MapItem, by: ColorBy, now = nowMs()): Tone =>
+  by === "ai" ? (it.verdict ?? "none") : HEAT_TONE[heatOf(it, by, now)];
+
+/** Size per tone of `items` (every tone of the mode, zero ones included)
+ *  and the total. The headline sentence and the stacked bar read this. */
+export function toneSums(items: MapItem[], by: ColorBy, now = nowMs()):
+    { total: number; sums: { tone: Tone; size: number }[] } {
+  const sums = TONES[by].map((tone) => ({ tone, size: 0 }));
+  let total = 0;
+  for (const it of items) {
+    total += it.size;
+    sums[TONES[by].indexOf(toneOf(it, by, now))].size += it.size;
+  }
+  return { total, sums };
+}
+
+/** Percentage 0..100 of `part` in `whole`, rounded; a sliver shows as 1
+ *  rather than 0 (the number sits in "<n> % of your space ..."). */
+export function pct(part: number, whole: number): number {
+  if (!(whole > 0) || !(part > 0)) return 0;
+  return Math.max(1, Math.round((part / whole) * 100));
+}
+
+/** How much of a tile gets text: name + size + share, a short name, none. */
+export type LabelLevel = "full" | "short" | "none";
+export const labelLevel = (w: number, h: number): LabelLevel =>
+  w >= 120 && h >= 52 ? "full" : w >= 56 && h >= 30 ? "short" : "none";
+
+const SECOND_LEVEL = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
+
+/** The recognisable bit of a name: `chirper` for `news@chirper.example` and
+ *  for `chirper.example` (a sender inside a domain level keeps its local
+ *  part, `news`). Falls back to the whole label. */
+export function shortName(it: MapItem, inDomain = false): string {
+  if (it.kind === "other") return "";
+  if (it.kind === "sender" && inDomain) {
+    const at = it.label.indexOf("@");
+    return at > 0 ? it.label.slice(0, at) : it.label;
+  }
+  const host = it.kind === "sender" ? domainOf(it.label) : it.label;
+  const parts = host.split(".");
+  if (parts.length < 2) return host;
+  parts.pop();                                  // the TLD
+  let name = parts.pop()!;
+  if (SECOND_LEVEL.has(name) && parts.length) name = parts.pop()!;
+  return name;
+}
+
+/** A domain with exactly ONE sender has nothing to zoom into: its card is
+ *  the sender's. */
+export const soleSender = (it: MapItem): MapItem | null =>
+  it.kind === "domain" && it.children.length === 1 ? it.children[0] : null;
+
+/** The items one level below `it` (what zooming in would show). */
+export const childTiles = (it: MapItem): MapItem[] =>
+  it.kind === "sender" ? [] : levelTiles(it.children, it.kind === "domain");
+
+/** Whole months from `iso` (YYYY-MM-DD) to `now`; null when unknown. */
+export function monthsSince(iso: string, now = nowMs()): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  const d = new Date(now);
+  const months = (d.getUTCFullYear() - Number(m[1])) * 12
+    + (d.getUTCMonth() + 1 - Number(m[2]))
+    - (d.getUTCDate() < Number(m[3]) ? 1 : 0);
+  return Math.max(0, months);
+}
+
+/** Share of the mails read, 0..100 (the backbone of the engagement score). */
+export const openedPct = (it: MapItem): number =>
+  it.count > 0
+    ? Math.round((100 * (it.count - Math.min(it.unread, it.count))) / it.count) : 0;

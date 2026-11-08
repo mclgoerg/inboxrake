@@ -1,66 +1,49 @@
-import { Check, ChevronRight, LayoutGrid, ShieldCheck } from "lucide-react";
+import { ChevronRight, LayoutGrid } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
-import { fmtBig, heatOf, levelTiles, buildDomains, senderIndex, tickState,
-  toggleItem, type ColorBy, type Heat, type MapItem } from "../spacemap";
-import { squarify } from "../treemap";
-import type { Group, Verdict } from "../types";
-import { Button, Checkbox, Chip, EmptyState, Modal, PanelHeader, SectionLabel,
-  Segmented, useMediaQuery } from "./ui";
+import { fmtBig, buildDomains, childTiles, levelTiles, pct, senderIndex,
+  soleSender, toggleItem, toneSums, type ColorBy, type MapItem }
+  from "../spacemap";
+import type { Group } from "../types";
+import { BulkBar, Button, Chip, EmptyState, Modal, PanelHeader,
+  Segmented, useIsPage, useMediaQuery } from "./ui";
+import { SpaceDetails, SpaceList } from "./SpaceDetails";
+import { SpaceRings } from "./SpaceRings";
+import { SpaceTiles } from "./SpaceTiles";
+import { nameOf, SpaceHeadline } from "./spaceUi";
 
-const HEAT: Record<Heat, string> = {
-  0: "bg-chip text-body",
-  1: "bg-accent/45 text-body",
-  2: "bg-accent text-on-accent",
-};
-const VERDICT_CLS: Record<Verdict, string> = {
-  delete_safe: "bg-safe-bg text-safe-fg",
-  review: "bg-review-bg text-review-fg",
-  keep: "bg-keep-bg text-keep-fg",
-};
-const VERDICT_KEY: Record<Verdict, string> = {
-  delete_safe: "space.ai_safe", review: "space.ai_review",
-  keep: "space.ai_keep",
-};
+type View = "tiles" | "rings";
+const VIEW_KEY = "pmc_space_view";
+/** Two taps on the same tile within this are a double-tap (zoom in). */
+const DOUBLE_TAP_MS = 350;
 
-const tileClass = (it: MapItem, by: ColorBy): string =>
-  by === "ai"
-    ? (it.verdict ? VERDICT_CLS[it.verdict] : "bg-chip text-muted")
-    : HEAT[heatOf(it, by)];   // narrowed: "ai" is handled above
+const loadView = (): View =>
+  localStorage.getItem(VIEW_KEY) === "rings" ? "rings" : "tiles";
 
-const nameOf = (it: MapItem): string =>
-  it.kind === "other" ? t("space.other", { n: it.children.length }) : it.label;
-
-const MAX_LIST = 20;
-const MAP_W_FALLBACK = 600;
-
-/** Treemap of the mailbox by size: domains first, tap one to see its
- *  senders. A "Select" mode ticks tiles; Done hands the ticked sender keys
+/** The mailbox by size, as readable tiles or as rings: domains first, tap
+ *  one for its details, double-tap (or the zoom button) to see its senders.
+ *  A "Select" mode ticks senders; "Review in Senders" hands the ticked keys
  *  to the main list (the usual bulk bar, confirm and undo do the rest) -
- *  nothing is moved from in here. */
-export function SpaceMapPanel({ groups, onDone, onClose }: {
+ *  nothing is moved from in here. "Show in Senders" hands over a filter. */
+export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
   groups: Record<string, Group>;
   onDone: (keys: string[]) => void;
+  /** Open the Senders list filtered by this query. */
+  onShow: (query: string) => void;
   onClose: () => void;
 }) {
   const [path, setPath] = useState<string[]>([]);
   const [by, setBy] = useState<ColorBy>("engagement");
+  const [view, setView] = useState<View>(loadView);
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const wide = useMediaQuery("(min-width: 640px)");
-  const box = useRef<HTMLDivElement>(null);
-  const [cw, setCw] = useState(MAP_W_FALLBACK);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0) setCw(el.clientWidth);
-    });
-    ro.observe(el);
-    if (el.clientWidth > 0) setCw(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
+  // The item whose details are shown (by id; resolved again on every render).
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const page = useIsPage();
+  const coarse = useMediaQuery("(pointer: coarse)");
+  const lastTap = useRef({ id: "", at: 0 });
+  const mapTop = useRef<HTMLDivElement>(null);
 
   const domains = useMemo(() => buildDomains(groups), [groups]);
   const hasAi = useMemo(
@@ -82,45 +65,85 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
     }
     return { trail, level };
   }, [domains, path]);
+  const trailIds = trail.map((i) => i.id);
 
-  const H = cw * (wide ? 0.6 : 1.15);
-  const rects = useMemo(() => new Map(squarify(
-    level.map((it) => ({ key: it.id, value: it.size })),
-    { x: 0, y: 0, w: cw, h: H }).map((r) => [r.key, r])), [level, cw, H]);
-
-  const drill = (it: MapItem) => setPath([...trail.map((i) => i.id), it.id]);
-  const tick = (it: MapItem) => setSel((s) => toggleItem(it, s));
-  const press = (it: MapItem) => {
-    if (selecting) { tick(it); return; }
-    if (it.kind === "sender") { setSelecting(true); tick(it); return; }
-    drill(it);
+  // Everything a tap can land on: the level and (rings) what is inside it,
+  // each with the item it sits in.
+  const known = useMemo(() => {
+    const m = new Map<string, { it: MapItem; parent: MapItem | null }>();
+    for (const it of level) {
+      m.set(it.id, { it, parent: null });
+      for (const c of childTiles(it)) m.set(c.id, { it: c, parent: it });
+    }
+    return m;
+  }, [level]);
+  const focus = focusId ? known.get(focusId)?.it ?? null : null;
+  const chainOf = (it: MapItem): MapItem[] => {
+    const p = known.get(it.id)?.parent;
+    return p ? [p, it] : [it];
   };
 
-  const picked = [...sel].filter((k) => index.has(k));
+  // A selection only ever covers what is on this level (DESIGN, UX6).
+  const visibleKeys = useMemo(
+    () => new Set(level.flatMap((it) => it.keys)), [level]);
+  useEffect(() => {
+    setSel((s) => {
+      const keep = [...s].filter((k) => visibleKeys.has(k));
+      return keep.length === s.size ? s : new Set(keep);
+    });
+  }, [visibleKeys]);
+  const picked = [...sel].filter((k) => visibleKeys.has(k) && index.has(k));
   const pickedSize = picked.reduce((a, k) => a + index.get(k)!.size, 0);
-  const done = () => { if (picked.length) onDone(picked); };
-  const protectedHere = level.some((it) => it.protectedSenders > 0);
 
-  const label = (it: MapItem): string => {
-    const p = it.protectedSenders;
-    return [t("space.tile", { name: nameOf(it), size: fmtBig(it.size),
-      mails: fmtNum(it.count), n: it.count }),
-      ...(p ? [t("space.tile_protected", { n: p })] : []),
-      ...(tickState(it, sel) === "all" ? [t("space.tile_selected")] : []),
-    ].join(", ");
+  const goTo = (ids: string[]) => { setPath(ids); setFocusId(null); };
+  const tick = (it: MapItem) => setSel((s) => toggleItem(it, s));
+  /** Zoom into `chain` (parent first). A domain with a single sender has
+   *  nothing to zoom into: its card is the sender's. */
+  const zoom = (it: MapItem, chain: MapItem[] = chainOf(it)) => {
+    if (it.kind === "sender") return;
+    const sole = soleSender(it);
+    if (sole) {
+      setPath([...trailIds, ...chain.slice(0, -1).map((i) => i.id)]);
+      setFocusId(sole.id);
+      return;
+    }
+    goTo([...trailIds, ...chain.map((i) => i.id)]);
   };
-
-  const legend: { cls: string; text: string }[] = by === "ai"
-    ? [...(["delete_safe", "review", "keep"] as Verdict[]).map((v) =>
-        ({ cls: VERDICT_CLS[v], text: t(VERDICT_KEY[v]) })),
-      { cls: "bg-chip", text: t("space.ai_none") }]
-    : by === "age"
-      ? [{ cls: HEAT[2], text: t("space.age_old") },
-        { cls: HEAT[1], text: t("space.age_mid") },
-        { cls: HEAT[0], text: t("space.age_new") }]
-      : [{ cls: HEAT[2], text: t("space.eng_low") },
-        { cls: HEAT[1], text: t("space.eng_mid") },
-        { cls: HEAT[0], text: t("space.eng_high") }];
+  const press = (it: MapItem, chain: MapItem[] = [it]) => {
+    if (selecting) { tick(it); return; }
+    const now = Date.now();
+    if (lastTap.current.id === it.id && now - lastTap.current.at < DOUBLE_TAP_MS) {
+      lastTap.current = { id: "", at: 0 };
+      zoom(it, chain);
+      return;
+    }
+    lastTap.current = { id: it.id, at: now };
+    setFocusId(it.id);
+  };
+  // A row opens what is behind it (also while selecting: its checkbox ticks);
+  // a sender has nothing behind it, so selecting ticks it, else its card.
+  const openRow = (it: MapItem) => {
+    if (it.kind !== "sender") zoom(it);
+    else if (selecting) tick(it);
+    else setFocusId(it.id);
+  };
+  const toggleSelecting = () => { setSelecting(!selecting); setFocusId(null); };
+  const setViewKeep = (v: View) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ }
+  };
+  const selectItem = (it: MapItem) => {
+    setSelecting(true);
+    setFocusId(null);
+    setSel((s) => {
+      const next = new Set(s);
+      for (const k of it.keys) next.add(k);
+      return next;
+    });
+  };
+  const showQuery = (it: MapItem): string | null =>
+    it.kind === "sender" ? `from:${it.label}`
+      : it.kind === "domain" ? `@${it.label}` : null;
 
   const modes: { value: ColorBy; label: string }[] = [
     { value: "engagement", label: t("space.by_engagement") },
@@ -129,170 +152,130 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
   ];
   const mode = modes.some((m) => m.value === by) ? by : "engagement";
 
+  const protectedHere = level.some((it) => it.protectedSenders > 0);
+  const where = trail.length ? nameOf(trail[trail.length - 1]) : null;
+  const headline = <SpaceHeadline items={level} by={mode} where={where} />;
+  const { total: levelTotal, sums } = toneSums(level, mode);
+  const caption = t(`space.ring_${mode}`, { p: pct(sums[0].size, levelTotal) });
+  const docked = !!focus && !selecting && !page;
+  // The docked phone card covers the lower half: bring the map to the top
+  // of the screen so the tapped tile stays in view above it.
+  const focusShown = docked ? focus?.id : null;
+  useEffect(() => {
+    if (focusShown) mapTop.current?.scrollIntoView?.({ block: "start" });
+  }, [focusShown]);
+  const card = focus && !selecting && (
+    <SpaceDetails item={focus} hasAi={hasAi} totalSize={totals.size}
+      docked={!page}
+      canShow={showQuery(focus) !== null}
+      onShow={() => { const q = showQuery(focus); if (q) onShow(q); }}
+      onSelect={() => selectItem(focus)}
+      onZoom={focus.kind === "sender" ? undefined : () => zoom(focus)}
+      onClose={() => setFocusId(null)} />
+  );
+  const list = (
+    <SpaceList level={level} by={mode} sel={sel} selecting={selecting}
+      focusId={focus?.id ?? null} onOpen={openRow} onTick={tick} />
+  );
+  const lastTrail = trail[trail.length - 1];
+  const domainLevel = lastTrail?.kind === "domain";
+  const map = view === "tiles" ? (
+    <SpaceTiles level={level} by={mode} wide={page} sel={sel}
+      selecting={selecting} focusId={focus?.id ?? null}
+      domainLevel={domainLevel} onPress={(it) => press(it)} />
+  ) : (
+    <SpaceRings level={level} trail={trail} by={mode} sel={sel}
+      selecting={selecting} focus={focus} totals={totals} caption={caption}
+      onPress={press} onZoom={zoom} />
+  );
+
   return (
     <Modal full onClose={onClose} label={t("space.title")}>
       <PanelHeader title={<span className="inline-flex items-center gap-2">
         <LayoutGrid size={18} /> {t("space.title")}
       </span>}
-        sub={domains.length ? t("space.total", {
+        sub={domains.length ? `${t("space.total", {
           size: fmtBig(totals.size), mails: fmtNum(totals.count),
-          n: totals.count }) : undefined}
+          n: totals.count })} · ${t(view === "tiles" ? "space.sub_tiles"
+          : "space.sub_rings")}` : undefined}
         onClose={onClose} />
       {!domains.length ? (
         <div className="p-4"><EmptyState>{t("space.empty")}</EmptyState></div>
       ) : (
         <>
-          <div data-scroll-id="panel" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+          <div data-scroll-id="panel"
+            className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5
+              ${picked.length ? "pb-28" : ""}`}>
+            {!(page && view === "rings") && headline}
             <div className="flex flex-wrap items-center gap-2">
               <Segmented label={t("space.color_by")} value={mode}
                 options={modes} onChange={setBy} />
-              <Chip on={selecting} onClick={() => setSelecting(!selecting)}>
+              <Segmented label={t("space.view")} role="radio" value={view}
+                options={[{ value: "tiles", label: t("space.view_tiles") },
+                  { value: "rings", label: t("space.view_rings") }]}
+                onChange={setViewKeep} />
+              <Chip on={selecting} onClick={toggleSelecting}>
                 {t("space.select")}
               </Chip>
             </div>
-            <nav aria-label={t("space.crumbs")}
-              className="flex flex-wrap items-center gap-x-1 type-meta">
-              {trail.length === 0
-                ? <span className="font-medium">{t("space.all")}</span>
-                : <Button variant="quiet" size="sm" onClick={() => setPath([])}>
-                  {t("space.all")}
-                </Button>}
-              {trail.map((it, i) => (
-                <span key={it.id} className="inline-flex items-center gap-1">
-                  <ChevronRight size={14} className="text-faint" aria-hidden />
-                  {i === trail.length - 1
-                    ? <span aria-current="page" className="font-medium">
-                      {nameOf(it)}</span>
-                    : <Button variant="quiet" size="sm"
-                      onClick={() => setPath(path.slice(0, i + 1))}>
-                      {nameOf(it)}
-                    </Button>}
-                </span>
-              ))}
-            </nav>
-            <div ref={box} data-testid="space-map" role="group"
-              aria-label={t("space.map")}
-              className="relative w-full overflow-hidden rounded-card
-                border border-line bg-panel2" style={{ height: H }}>
-              {level.map((it) => {
-                const r = rects.get(it.id);
-                if (!r || r.w < 1 || r.h < 1) return null;
-                const ts = tickState(it, sel);
-                const full = r.w >= 84 && r.h >= 48;
-                const mini = r.w >= 56 && r.h >= 28;
-                const locked = selecting && it.keys.length === 0;
-                return (
-                  <button key={it.id} type="button"
-                    aria-label={label(it)}
-                    aria-pressed={selecting
-                      ? (ts === "some" ? "mixed" : ts === "all") : undefined}
-                    aria-disabled={locked || undefined}
-                    onClick={() => { if (!locked) press(it); }}
-                    style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
-                    className={`absolute box-border overflow-hidden border
-                      border-panel p-1.5 text-left transition-colors
-                      hover:brightness-110 enabled:active:translate-y-px
-                      focus-visible:z-(--z-sticky)
-                      focus-visible:-outline-offset-2
-                      ${tileClass(it, mode)}
-                      ${ts !== "none" ? "ring-2 ring-inset ring-body" : ""}
-                      ${locked ? "cursor-not-allowed" : ""}`}>
-                    {ts !== "none" && (
-                      <Check size={14} aria-hidden
-                        className="absolute right-1 top-1" />
-                    )}
-                    {it.protectedSenders > 0 && mini && (
-                      <ShieldCheck size={14} aria-hidden
-                        className={`absolute right-1
-                          ${ts !== "none" ? "top-5" : "top-1"}`} />
-                    )}
-                    {mini && (
-                      <span className="block truncate pr-4 type-meta
-                        font-medium">{nameOf(it)}</span>
-                    )}
-                    {full && (
-                      <span className="block truncate type-meta
-                        tabular-nums opacity-80">{fmtBig(it.size)}</span>
-                    )}
-                  </button>
-                );
-              })}
+            {/* main column + a fixed-width side column (details, list) */}
+            <div className={page ? "grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-4"
+              : "space-y-3"}>
+              <div ref={mapTop} className="min-w-0 scroll-mt-2 space-y-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <nav aria-label={t("space.crumbs")}
+                    className="flex flex-wrap items-center gap-x-1 type-meta">
+                    {trail.length === 0
+                      ? <span className="font-medium">{t("space.all")}</span>
+                      : <Button variant="quiet" size="sm"
+                        onClick={() => goTo([])}>{t("space.all")}</Button>}
+                    {trail.map((it, i) => (
+                      <span key={it.id} className="inline-flex items-center gap-1">
+                        <ChevronRight size={14} className="text-faint" aria-hidden />
+                        {i === trail.length - 1
+                          ? <span aria-current="page" className="font-medium">
+                            {nameOf(it)}</span>
+                          : <Button variant="quiet" size="sm"
+                            onClick={() => goTo(path.slice(0, i + 1))}>
+                            {nameOf(it)}
+                          </Button>}
+                      </span>
+                    ))}
+                  </nav>
+                  <span className="type-meta text-muted">
+                    {selecting ? t("space.select_hint")
+                      : t(coarse ? "space.hint_touch" : "space.hint_mouse")}
+                  </span>
+                </div>
+                {map}
+                {selecting && protectedHere && (
+                  <p className="type-meta text-muted">{t("space.protected_note")}</p>
+                )}
+              </div>
+              <div className="min-w-0 space-y-3">
+                {page && view === "rings" && headline}
+                {page && card}
+                {list}
+              </div>
             </div>
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 type-meta text-muted"
-              aria-label={t("space.legend")}>
-              {legend.map((l) => (
-                <li key={l.text} className="inline-flex items-center gap-1.5">
-                  <span className={`size-3 rounded-badge border border-line
-                    ${l.cls}`} aria-hidden />
-                  {l.text}
-                </li>
-              ))}
-            </ul>
-            {selecting && protectedHere && (
-              <p className="type-meta text-muted">
-                <ShieldCheck size={14} aria-hidden
-                  className="mr-1 inline align-text-bottom" />
-                {t("space.protected_note")}
-              </p>
-            )}
-            <div>
-              <SectionLabel>{t("space.top")}</SectionLabel>
-              <ol className="divide-y divide-line">
-                {level.slice(0, MAX_LIST).map((it) => (
-                  <li key={it.id} className="flex items-center gap-2 py-1">
-                    {selecting && (
-                      <Checkbox aria-label={t("space.tick", { name:
-                        nameOf(it) })}
-                        disabled={it.keys.length === 0}
-                        checked={tickState(it, sel) === "all"}
-                        ref={(el) => {
-                          if (el) el.indeterminate = tickState(it, sel) === "some";
-                        }}
-                        onChange={() => tick(it)} />
-                    )}
-                    {it.kind === "sender"
-                      ? <span className="min-w-0 flex-1 truncate type-body">
-                        {it.label}</span>
-                      : <button type="button" onClick={() => drill(it)}
-                        className="min-h-8 coarse:min-h-11 min-w-0 flex-1
-                          truncate text-left type-body underline
-                          hover:text-body">
-                        {nameOf(it)}
-                      </button>}
-                    {it.protectedSenders > 0 && (
-                      <ShieldCheck size={14} className="shrink-0 text-muted"
-                        aria-label={t("space.tile_protected",
-                          { n: it.protectedSenders })} />
-                    )}
-                    <span className="shrink-0 type-meta tabular-nums
-                      text-muted">
-                      {fmtNum(it.count)} · {fmtBig(it.size)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            {!page && card}
           </div>
-          {selecting && (
-            <div className="flex items-center gap-3 border-t border-line
-              bg-panel px-4 py-3 shadow-bar max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]
-              sm:px-5">
-              <span className="min-w-0 flex-1 type-body" aria-live="polite">
-                {t("space.selected", { n: picked.length,
-                  size: fmtBig(pickedSize) })}
-              </span>
-              {picked.length > 0 && (
-                <Button variant="quiet" onClick={() => setSel(new Set())}>
-                  {t("bar.clear")}
-                </Button>
-              )}
-              <Button disabled={!picked.length} onClick={done}>
-                {t("qb.done")}
-              </Button>
-            </div>
+          {picked.length > 0 && (
+            <BulkBar
+              summary={t("space.selected", { n: picked.length,
+                size: fmtBig(pickedSize) })}
+              onClear={() => setSel(new Set())}
+              actions={null}
+              primary={
+                <Button size="sm" onClick={() => onDone(picked)}
+                  className="inline-flex min-h-9 items-center gap-1.5
+                    whitespace-nowrap rounded-full">
+                  {t("space.review")}
+                </Button>} />
           )}
         </>
       )}
     </Modal>
   );
 }
+

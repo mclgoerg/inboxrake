@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { MAX_TILES, buildDomains, dominantVerdict, fmtBig, heatOf,
-  levelTiles, senderIndex, tickState, toggleItem } from "./spacemap";
+import { MAX_TILES, buildDomains, childTiles, dominantVerdict, fmtBig, heatOf,
+  labelLevel, levelTiles, monthsSince, openedPct, pct, senderIndex, shortName,
+  soleSender, tickState, toggleItem, toneOf, toneSums } from "./spacemap";
 import type { Group } from "./types";
 
 const MB = 1048576;
@@ -149,5 +150,127 @@ describe("colour + size helpers", () => {
     expect(fmtBig(512)).toBe("512 B");
     expect(fmtBig(5 * MB)).toBe("5.0 MB");
     expect(fmtBig(1.2 * 1024 * MB)).toBe("1.2 GB");
+  });
+});
+
+describe("colours: tones and sums", () => {
+  const NOW = Date.UTC(2026, 5, 15);
+  const ai = (verdict: "delete_safe" | "keep") => ({ verdict, reason: "" });
+  const items = buildDomains(groups(
+    g("a@old.example", 60 * MB, { engagement: 10, last: "2020-01-01",
+      ai: ai("delete_safe") }),
+    g("b@mid.example", 10 * MB, { engagement: 50, last: "2025-12-01" }),
+    g("c@busy.example", 30 * MB, { engagement: 90, last: "2026-06-01",
+      ai: ai("keep") })));
+
+  test("engagement: the sizes per tone and their total", () => {
+    const { total, sums } = toneSums(items, "engagement", NOW);
+    expect(total).toBe(100 * MB);
+    expect(sums).toEqual([{ tone: "strong", size: 60 * MB },
+      { tone: "mid", size: 10 * MB }, { tone: "quiet", size: 30 * MB }]);
+  });
+
+  test("age uses the last mail", () => {
+    const { sums } = toneSums(items, "age", NOW);
+    expect(sums.map((s) => s.size)).toEqual([60 * MB, 10 * MB, 30 * MB]);
+    expect(toneOf(items[0], "age", NOW)).toBe("strong");
+  });
+
+  test("AI: verdicts, with the unrated in their own tone", () => {
+    const { sums } = toneSums(items, "ai", NOW);
+    expect(sums).toEqual([{ tone: "delete_safe", size: 60 * MB },
+      { tone: "review", size: 0 }, { tone: "keep", size: 30 * MB },
+      { tone: "none", size: 10 * MB }]);
+  });
+
+  test("an empty level sums to nothing", () => {
+    expect(toneSums([], "engagement", NOW).total).toBe(0);
+  });
+});
+
+describe("pct", () => {
+  test("rounds, shows a sliver as 1, and is 0 without a whole", () => {
+    expect(pct(59, 100)).toBe(59);
+    expect(pct(1, 1000)).toBe(1);
+    expect(pct(0, 100)).toBe(0);
+    expect(pct(5, 0)).toBe(0);
+  });
+});
+
+describe("labelLevel", () => {
+  test("big tiles get name + size + share, middle ones a short name, "
+    + "small ones nothing", () => {
+    expect(labelLevel(300, 200)).toBe("full");
+    expect(labelLevel(120, 52)).toBe("full");
+    expect(labelLevel(119, 200)).toBe("short");
+    expect(labelLevel(300, 51)).toBe("short");
+    expect(labelLevel(56, 30)).toBe("short");
+    expect(labelLevel(55, 200)).toBe("none");
+    expect(labelLevel(200, 29)).toBe("none");
+  });
+});
+
+describe("shortName", () => {
+  const [d] = buildDomains(groups(g("News.Team@chirper.example", MB),
+    g("x@shop.co.uk", MB)));
+  const named = (label: string) => buildDomains(groups(g(label, MB)))[0];
+  test("a domain without its TLD, second-level suffixes skipped", () => {
+    expect(shortName(d)).toBeTruthy();
+    expect(shortName(named("a@chirper.example"))).toBe("chirper");
+    expect(shortName(named("a@mail.chirper.example"))).toBe("chirper");
+    expect(shortName(named("x@shop.co.uk"))).toBe("shop");
+    expect(shortName(named("x@localhost"))).toBe("localhost");
+  });
+  test("a sender: its domain on a domain level the local part", () => {
+    const s = named("news@chirper.example").children[0];
+    expect(shortName(s)).toBe("chirper");
+    expect(shortName(s, true)).toBe("news");
+  });
+});
+
+describe("zooming", () => {
+  const tree = buildDomains(groups(g("a@one.example", 50 * MB),
+    g("a@two.example", 30 * MB), g("b@two.example", 20 * MB)));
+  test("a domain with one sender has a sole sender to show instead", () => {
+    const one = tree.find((d) => d.label === "one.example")!;
+    const two = tree.find((d) => d.label === "two.example")!;
+    expect(soleSender(one)?.label).toBe("a@one.example");
+    expect(soleSender(two)).toBeNull();
+    expect(soleSender(one.children[0])).toBeNull();
+  });
+  test("what is inside an item: its senders; a sender has none", () => {
+    const two = tree.find((d) => d.label === "two.example")!;
+    expect(childTiles(two).map((c) => c.label))
+      .toEqual(["a@two.example", "b@two.example"]);
+    expect(childTiles(two.children[0])).toEqual([]);
+  });
+});
+
+describe("details figures", () => {
+  test("opened = the read share of all mails of the item", () => {
+    const [d] = buildDomains(groups(
+      g("a@x.example", MB, { count: 30, unread: 27 }),
+      g("b@x.example", MB, { count: 10, unread: 0 })));
+    expect(d.count).toBe(40);
+    expect(d.unread).toBe(27);
+    expect(openedPct(d)).toBe(33);
+  });
+  test("AI counts: mails behind the dominant verdict, and the rated ones", () => {
+    const ai = (verdict: "delete_safe" | "keep") => ({ verdict, reason: "" });
+    const [d] = buildDomains(groups(
+      g("a@x.example", MB, { count: 30, ai: ai("delete_safe") }),
+      g("b@x.example", MB, { count: 10, ai: ai("keep") }),
+      g("c@x.example", MB, { count: 5 })));
+    expect(d.verdict).toBe("delete_safe");
+    expect(d.verdictMails).toBe(30);
+    expect(d.ratedMails).toBe(40);
+    expect(d.count).toBe(45);
+  });
+  test("months since the last mail", () => {
+    const now = Date.UTC(2026, 5, 15);
+    expect(monthsSince("2025-04-15", now)).toBe(14);
+    expect(monthsSince("2025-04-16", now)).toBe(13);
+    expect(monthsSince("2026-06-01", now)).toBe(0);
+    expect(monthsSince("", now)).toBeNull();
   });
 });
