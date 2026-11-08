@@ -5,9 +5,10 @@ import { api, mailKey } from "../api";
 import { t } from "../i18n";
 import { actionVerb, itemsOf, planMailAction } from "../mailActions";
 import type { AppState, Mail } from "../types";
+import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
 import { SortControl } from "./SortControl";
-import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal, PopupSelect,
+import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
   useToast }
   from "./ui";
 
@@ -252,22 +253,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
         <BulkBar
           summary={t("detail.n_selected", { n: sel.size })}
           onClear={() => setSel(new Set())}
-          swap={moveDest === "?" ? "move" : null}
-          actions={moveDest === "?" ? (
-            <>
-              <PopupSelect<string> up triggerProps={{ "data-bar-field": "" }}
-                className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"
-                placeholder={t("Move to folder…")}
-                onChange={(f) => { act("move", f); setMoveDest(""); }}
-                options={(state.folders_raw ?? []).map((f, i) => ({
-                  value: f, label: state.folders[i] ?? f }))} />
-              <Button variant="secondary" size="icon" label={t("Cancel")}
-                data-bar-cancel="" className="shrink-0 rounded-full"
-                onClick={() => setMoveDest("")}>
-                <X size={18} />
-              </Button>
-            </>
-          ) : (
+          actions={(
             <>
               <BarButton icon={<Archive size={16} aria-hidden />}
                 disabled={busy} onClick={() => onAction("archive")}>
@@ -291,6 +277,12 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
               {t("Trash selected")} ({sel.size})
             </Button>
           } />
+      )}
+      {moveDest === "?" && sel.size > 0 && (
+        <FolderPicker count={sel.size} folders={state.folders_raw ?? []}
+          labels={state.folders} account={state.account}
+          onPick={(f) => act("move", f)}
+          onClose={() => setMoveDest("")} />
       )}
 
       {view && (

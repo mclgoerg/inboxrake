@@ -10,6 +10,7 @@ import { filterSenders, SenderList, sortSenders } from "./components/SenderList"
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { pickFolder } from "./folderPickerTestUtil";
 import { popupItem, popupOptions, popupPick } from "./toolTestUtils";
 import type { Group, SmartWhy } from "./types";
 
@@ -196,8 +197,7 @@ describe("acting on ticked senders", () => {
     mount(trio);
     fireEvent.click(row("a@x.example"));
     popupPick(actionBtn(), "Move to folder…");
-    popupPick(screen.getAllByRole("button", { name: "Move to folder…" })[0],
-      "Promotions");
+    await pickFolder("Promotions");
     expect(onAct).toHaveBeenCalledWith(["a@x.example"], "move", "Promotions");
   });
 

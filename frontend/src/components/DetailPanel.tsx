@@ -14,6 +14,7 @@ import { fmtDate, fmtSize, fmtUsd, mailKey, olderThan, shortcutTarget, sieveSnip
 import { isPooled, smartContent, smartWhy } from "../smart";
 import type { AppState, Group, Grouping, GroupUnsub, Mail } from "../types";
 import { EditLabels } from "./EditLabels";
+import { FolderPicker, type PickEnv } from "./FolderPicker";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { MailRows, MessageView } from "./MailList";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
@@ -44,7 +45,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   sieve = true, smartMin = 10, onClose, onEmptied, onDeleted, variant = "modal", hideGroupActions = false,
   senders, onSenderAct, onSenderProtect, renderSender, backLabel,
   aiSort, onFile, onUnfile, categories, filingBox, onLabelsSaved,
-  labelSender }: {
+  labelSender, pickEnv }: {
   grouping: Grouping;
   group: Group;
   aiEnabled: boolean;
@@ -64,6 +65,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   onUnblock?: (g: Group) => void;
   blocked?: boolean;
   folders: AppState["folders_raw"];
+  /** Folder picker context (readable names, account, link to Rules). */
+  pickEnv?: PickEnv;
   sieve?: boolean;                       // Sieve export is Proton-only
   smartMin?: number;                     // Smart rows: the account's threshold
   onClose: () => void;
@@ -648,22 +651,17 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
 
   // Move: the whole group to one folder (the selection bar below keeps its
   // own picker for ticked mails). Always with a way back.
+  const moveTarget = shortcutTarget(grouping, group);
   const movePicker = moveOpen && canMove && (
-    <div className="flex items-center gap-2 px-4 pt-3">
-      <PopupSelect<string> className="min-w-0 flex-1"
-        placeholder={t("Move to folder…")}
-        onChange={(dest) => {
-          setMoveOpen(false);
-          onMove!(group, dest).then((ok) => {
-            if (ok) (onEmptied ?? onClose)();
-          });
-        }}
-        options={folders.map((f) => ({ value: f, label: f }))} />
-      <Button variant="secondary" size="icon" label={t("Cancel")}
-        className="shrink-0" onClick={() => setMoveOpen(false)}>
-        <X size={18} />
-      </Button>
-    </div>
+    <FolderPicker count={group.count} folders={folders}
+      labels={pickEnv?.labels} account={pickEnv?.account ?? ""}
+      rule={moveTarget ? { ...moveTarget, label: group.label } : undefined}
+      onOpenRules={pickEnv?.onOpenRules}
+      onPick={(dest) => onMove!(group, dest).then((ok) => {
+        if (ok) (onEmptied ?? onClose)();
+        return ok;
+      })}
+      onClose={() => setMoveOpen(false)} />
   );
 
   const stillCallout = group.still_mailing && (
@@ -928,7 +926,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
               </div>
               <div {...tabPanelProps("pool", "senders")}
                 className="flex min-h-64 flex-1 flex-col">
-                <SenderList senders={senders!} folders={folders}
+                <SenderList senders={senders!} folders={folders} pick={pickEnv}
                   rowKind={group.kind} categories={categories} onFile={onFile}
                   onAct={onSenderAct!} onProtect={onSenderProtect!}
                   onInspect={setInspect} onSelectedChange={setSenderSel} />
@@ -974,16 +972,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
                           disabled: demo }] : []),
                       ]} />
                     {moveDest === "?" && (
-                      <>
-                        <PopupSelect<string> up className="min-w-0 flex-1"
-                          placeholder={t("Move to folder…")}
-                          onChange={(f) => { act("move", f); setMoveDest(""); }}
-                          options={folders.map((f) => ({ value: f, label: f }))} />
-                        <Button variant="secondary" size="icon" label={t("Cancel")}
-                          className="shrink-0" onClick={() => setMoveDest("")}>
-                          <X size={18} />
-                        </Button>
-                      </>
+                      <FolderPicker count={sel.size} folders={folders}
+                        labels={pickEnv?.labels} account={pickEnv?.account ?? ""}
+                        onPick={(f) => act("move", f)}
+                        onClose={() => setMoveDest("")} />
                     )}
                     <Button variant="danger" disabled={busy}
                       className="ml-auto shrink-0"

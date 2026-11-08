@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AllMailsView } from "./components/AllMailsView";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { pickFolder } from "./folderPickerTestUtil";
 import { popupPick } from "./toolTestUtils";
 import type { AppState, Mail, MailsResp } from "./types";
 
@@ -21,6 +22,7 @@ vi.mock("./api", () => ({
     mails: (...a: unknown[]) => mails(...a),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a),
     pin: (...a: unknown[]) => pin(...a),
+    folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
       subject: "s", text: "body text" }),
   },
@@ -157,7 +159,7 @@ test("Move to folder asks for a folder and sends it", async () => {
   await screen.findByText("Subject 1");
   fireEvent.click(tick(1));
   barAction("move");
-  popupPick("Move to folder…", "Archive");
+  await pickFolder("Archive");
   await pressDialog(/^Move → Archive \(1\)$/);
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));

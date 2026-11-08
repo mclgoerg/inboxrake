@@ -1,8 +1,10 @@
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { t } from "../i18n";
+import { shortcutTarget } from "../lib";
 import { FILE_KINDS, smartReason } from "../smart";
 import type { Group } from "../types";
+import { FolderPicker, type PickEnv } from "./FolderPicker";
 import { GroupTable } from "./GroupTable";
 import { Button, choiceDialog, Input, LINK, PopupSelect } from "./ui";
 
@@ -54,10 +56,11 @@ export function filterSenders(list: Group[], query: string): Group[] {
  *  senders that are gone, and ends with the panel (so with a group or
  *  account change). Unsubscribe is NOT offered here: it stays an explicit
  *  single-sender action inside one sender's own detail view. */
-export function SenderList({ senders, folders, onAct, onProtect, onInspect,
+export function SenderList({ senders, folders, pick, onAct, onProtect, onInspect,
   onSelectedChange, rowKind, categories = [], onFile }: {
   senders: Group[];                      // live sender records of this row
   folders: string[];
+  pick?: PickEnv;
   onAct: (keys: string[], action: SenderAction, dest?: string) => Promise<boolean>;
   onProtect: (keys: string[]) => Promise<boolean>;
   onInspect: (g: Group) => void;
@@ -96,6 +99,11 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
     () => new Map(senders.map((g) => [g.key, g])), [senders]);
   const keys = useMemo(() => [...sel].filter((k) => byKey.has(k)), [sel, byKey]);
   const mails = keys.reduce((n, k) => n + (byKey.get(k)?.count ?? 0), 0);
+  // One ticked sender: the picker may also offer a rule for it.
+  const moveTarget = keys.length === 1
+    ? shortcutTarget("sender", byKey.get(keys[0])!) : null;
+  const moveRule = moveTarget
+    ? { ...moveTarget, label: byKey.get(keys[0])!.label } : undefined;
   useEffect(() => {
     if (!keys.length) { setMoveDest(""); setFiling(false); }
   }, [keys.length]);
@@ -213,19 +221,15 @@ export function SenderList({ senders, folders, onAct, onProtect, onInspect,
                   disabled: fileBlocked }] : []),
               ]} />
             {moveDest === "?" && (
-              <>
-                <PopupSelect<string> up className="min-w-0 flex-1"
-                  placeholder={t("Move to folder…")}
-                  onChange={(f) => {
-                    run(onAct(keys, "move", f));
-                    setMoveDest("");
-                  }}
-                  options={folders.map((f) => ({ value: f, label: f }))} />
-                <Button variant="secondary" size="icon" label={t("Cancel")}
-                  className="shrink-0" onClick={() => setMoveDest("")}>
-                  <X size={18} />
-                </Button>
-              </>
+              <FolderPicker count={mails} folders={folders}
+                labels={pick?.labels} account={pick?.account ?? ""}
+                rule={moveRule} onOpenRules={pick?.onOpenRules}
+                onPick={(f) => {
+                  const task = onAct(keys, "move", f);
+                  void run(task);
+                  return task;
+                }}
+                onClose={() => setMoveDest("")} />
             )}
             {filing && (
               <>

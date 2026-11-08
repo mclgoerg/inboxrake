@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDemo } from "./demoMode";
 import { setLang } from "./i18n";
+import { findPicker, pickFolder } from "./folderPickerTestUtil";
 import { popupItem, popupPick } from "./toolTestUtils";
 import type { Group, Mail } from "./types";
 
@@ -25,6 +26,7 @@ vi.mock("./api", async (importOriginal) => {
       pin: (...args: unknown[]) => pin(...args),
       pinGroup: (...args: unknown[]) => pinGroup(...args),
       unsubscribe: vi.fn(),
+      folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
       unsubscribeAck: vi.fn(),
       thread: (...args: unknown[]) => thread(...args),
       message: () => Promise.resolve({ from: "", to: "", date: "",
@@ -509,17 +511,17 @@ describe("DetailPanel", () => {
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
     popupPick(await screen.findByRole("button", { name: "Action…" }),
       "Move to folder…");
-    expect(await screen.findByRole("button", { name: "Move to folder…" })).toBeTruthy();
+    await findPicker();
 
     // Cancel goes back to the plain Action… control without acting.
-    fireEvent.click(screen.getByTitle("Cancel"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByRole("button", { name: "Action…" })).toBeTruthy();
     expect(deleteMessages).not.toHaveBeenCalled();
 
     // Clearing the selection also resets it - re-selecting starts fresh
     // instead of reopening mid-move (the overview had this exact bug).
     popupPick(screen.getByRole("button", { name: "Action…" }), "Move to folder…");
-    await screen.findByRole("button", { name: "Move to folder…" });
+    await findPicker();
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
     expect(await screen.findByRole("button", { name: "Action…" })).toBeTruthy();
@@ -890,9 +892,9 @@ describe("DetailPanel header and action row", () => {
       async () => {
       const onMove = vi.fn().mockResolvedValue(false);
       await pick(onMove);
-      expect(screen.getByRole("button", { name: "Move to folder…" })).toBeTruthy();
+      await findPicker();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: /^Move \d+ mails?$/ })).toBeNull();
       expect(onMove).not.toHaveBeenCalled();
       expect(deleteMessages).not.toHaveBeenCalled();
     });
@@ -902,7 +904,7 @@ describe("DetailPanel header and action row", () => {
       const onMove = vi.fn().mockResolvedValue(true);
       const onClose = vi.fn();
       await pick(onMove, { onClose });
-      popupPick(screen.getByRole("button", { name: "Move to folder…" }), "Archive");
+      await pickFolder("Archive");
       await waitFor(() => expect(onMove).toHaveBeenCalledWith(
         expect.objectContaining({ key: "s@x.example" }), "Archive"));
       await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -913,7 +915,7 @@ describe("DetailPanel header and action row", () => {
       const onMove = vi.fn().mockResolvedValue(false);
       const onClose = vi.fn();
       await pick(onMove, { onClose });
-      popupPick(screen.getByRole("button", { name: "Move to folder…" }), "Archive");
+      await pickFolder("Archive");
       await waitFor(() => expect(onMove).toHaveBeenCalled());
       expect(onClose).not.toHaveBeenCalled();
     });
@@ -938,12 +940,12 @@ describe("DetailPanel header and action row", () => {
     it("an open picker resets when a mail gets ticked (no pop-back after "
       + "clearing)", async () => {
       await pick(vi.fn().mockResolvedValue(false));
-      expect(screen.getByRole("button", { name: "Move to folder…" })).toBeTruthy();
+      await findPicker();
       fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
       await screen.findByText("1 selected");
       fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
       await screen.findByRole("button", { name: "Move" });
-      expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: /^Move \d+ mails?$/ })).toBeNull();
     });
 
     it("is not offered on a pooled row's Senders view, and neither is an "

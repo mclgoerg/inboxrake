@@ -7,7 +7,8 @@
 import { barAction, barMore, openLimit } from "./barTestUtil";
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
-import { openTool, popupPick } from "./toolTestUtils";
+import { findPicker, pickFolder } from "./folderPickerTestUtil";
+import { openTool } from "./toolTestUtils";
 import { afterEach, expect, test, vi } from "vitest";
 
 const stateCalls = { n: 0 };
@@ -28,6 +29,7 @@ vi.mock("./api", () => ({
     getConfig: () => Promise.resolve(cfg),
     state: () => { stateCalls.n++; return Promise.resolve(state); },
     emptyTrash: () => Promise.resolve({ ok: true }),
+    folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     logout: () => Promise.resolve(),
     exportUrl: (mode: string, keys?: string[]) =>
       `/api/export?grouping=${mode}`
@@ -427,7 +429,7 @@ const renderMovable = (over: Record<string, unknown> = {}) => {
 const moveTo = async (dest: string) => {
   await openDetail();
   fireEvent.click(await screen.findByRole("button", { name: "Move" }));
-  popupPick("Move to folder…", dest);
+  await pickFolder(dest);
 };
 
 test("the detail's Move sends the whole group to the group path", async () => {
@@ -572,11 +574,10 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
 
   barAction("move");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Move to folder…" }))
-    .toBeTruthy());
+  await findPicker();
 
   // Cancel goes back to the plain action buttons, not stuck mid-move.
-  fireEvent.click(screen.getByTitle("Cancel"));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Move" }))
     .toBeTruthy());
 
@@ -584,29 +585,27 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   // cancelling - the bar disappears, and selecting again must NOT reopen
   // mid-move.
   barAction("move");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Move to folder…" }))
-    .toBeTruthy());
+  await findPicker();
   fireEvent.click(screen.getByText("Clear selection"));
   await waitFor(() => expect(screen.queryByText(/^Trash \d+$/)).toBeNull());
 
   await selectRowCheckbox();
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
   expect(screen.getByRole("button", { name: "Move" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Move \d+ mails?$/ })).toBeNull();
 });
 
-test("with a pop-up menu open, app shortcuts (# and /) do nothing", async () => {
+test("with the folder picker open, app shortcuts (# and /) do nothing", async () => {
   renderWithOneSenderGroup();
   await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
     .toBeGreaterThan(0));
   await selectRowCheckbox();
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
   barAction("move");
-  fireEvent.click(await screen.findByRole("button", { name: "Move to folder…" }));
-  const menu = screen.getByRole("menu");
-  fireEvent.keyDown(menu, { key: "#" });
-  fireEvent.keyDown(menu, { key: "/" });
-  expect(screen.queryByRole("dialog")).toBeNull();            // no trash confirm
+  const picker = await findPicker();
+  fireEvent.keyDown(picker, { key: "#" });
+  fireEvent.keyDown(picker, { key: "/" });
+  expect(screen.getAllByRole("dialog")).toEqual([picker]);    // no trash confirm
   expect(document.activeElement)                               // filter not focused
     .not.toBe(screen.getByPlaceholderText("Search or filter…"));
 });
@@ -691,23 +690,24 @@ test("the More menu has no separate re-rate entry", async () => {
 });
 
 // Focus must not drop to <body> when a control swaps in or out of the bar.
-test("the folder picker takes focus, and Cancel hands it back to Move",
+test("the folder picker sheet takes focus, and Cancel hands it back to Move",
   async () => {
   renderWithOneSenderGroup();
   await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
     .toBeGreaterThan(0));
   await selectRowCheckbox();
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
+  screen.getByRole("button", { name: "Move" }).focus();   // (a real click does)
   barAction("move");
-  await waitFor(() => expect(document.activeElement)
-    .toBe(screen.getByRole("button", { name: "Move to folder…" })));
-  fireEvent.click(screen.getByTitle("Cancel"));
+  const picker = await findPicker();
+  await waitFor(() => expect(picker.contains(document.activeElement)).toBe(true));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(document.activeElement)
     .toBe(screen.getByRole("button", { name: "Move" })));
 });
 
-test("on a touch device the picker's Cancel takes focus, not the select " +
-  "(focusing a select opens its picker there)", async () => {
+test("on a wide screen the picker is a popover: Esc closes it and hands " +
+  "focus back to Move", async () => {
   const mm = vi.fn().mockReturnValue({ matches: true,
     addEventListener() {}, removeEventListener() {} });
   vi.stubGlobal("matchMedia", mm);
@@ -717,9 +717,14 @@ test("on a touch device the picker's Cancel takes focus, not the select " +
       .toBeGreaterThan(0));
     await selectRowCheckbox();
     await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
+    screen.getByRole("button", { name: "Move" }).focus();
     barAction("move");
-    await waitFor(() => expect(document.activeElement)
-      .toBe(screen.getByTitle("Cancel")));
+    const picker = await findPicker();
+    expect(screen.getByRole("textbox", { name: "Find a folder" })).toBeTruthy();
+    fireEvent.keyDown(picker.querySelector("input")!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement)
+      .toBe(screen.getByRole("button", { name: "Move" }));
   } finally { vi.unstubAllGlobals(); }
 });
 
