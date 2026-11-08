@@ -118,8 +118,7 @@ test(">= 1024: the gear opens the page with a section column; sections are route
     expect(window.location.hash).toBe("#/settings/protected");
     expect(col.getByRole("button", { name: /^Protected senders/ }).textContent)
       .toContain("1");
-    expect((screen.getByLabelText("Protected senders") as HTMLTextAreaElement)
-      .value).toBe("boss@work.example");
+    expect(screen.getByText("boss@work.example")).toBeTruthy();
     // the account is a section too
     fireEvent.click(col.getByRole("button", { name: /^proton/ }));
     await h1("proton");
@@ -208,8 +207,12 @@ const editProtected = async () => {
   mount(true);
   fireEvent.click(within(await side()).getByRole("button", { name: "Settings" }));
   fireEvent.click(within(await column()).getByRole("button", { name: /^Protected senders/ }));
-  fireEvent.change(await screen.findByLabelText("Protected senders"),
-    { target: { value: "boss@work.example\n@bank.example" } });
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Add address or domain…" }));
+  const input = await screen.findByRole("textbox",
+    { name: "Add address or domain…" });
+  fireEvent.change(input, { target: { value: "bank.example" } });
+  fireEvent.keyDown(input, { key: "Enter" });
 };
 
 test("edits show a save bar with what changed; Revert drops them", async () => {
@@ -218,8 +221,8 @@ test("edits show a save bar with what changed; Revert drops them", async () => {
   expect(within(bar).getByRole("status").textContent)
     .toBe("Protected senders changed");
   fireEvent.click(within(bar).getByRole("button", { name: "Revert" }));
-  expect((screen.getByLabelText("Protected senders") as HTMLTextAreaElement)
-    .value).toBe("boss@work.example");
+  expect(screen.getByText("boss@work.example")).toBeTruthy();
+  expect(screen.queryByText("bank.example")).toBeNull();
   expect(screen.queryByRole("region", { name: "Unsaved changes" })).toBeNull();
   expect(saveCalls).toEqual([]);
 });
@@ -245,8 +248,7 @@ test("leaving with unsaved edits asks: Cancel stays, Discard leaves, Save saves 
     await cancelDialog();
     await expectNoDialog();
     expect(window.location.hash).toBe("#/settings/protected");
-    expect((screen.getByLabelText("Protected senders") as HTMLTextAreaElement)
-      .value).toContain("@bank.example");
+    expect(screen.getByText("bank.example")).toBeTruthy();
     // Discard: leaves without saving
     fireEvent.click(sidebar.getByRole("link", { name: /Senders/ }));
     await pressDialog("Discard changes");

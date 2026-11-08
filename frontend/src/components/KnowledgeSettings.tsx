@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { FILE_KINDS, filedKindName, keptMessage } from "../smart";
 import type { KnowledgeEntry, KnowledgeList, KnowledgeStored } from "../types";
 import { Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
-  SectionLabel, Select, Tag, useMediaQuery, useToast } from "./ui";
+  Select, SettingsGroup, Tag, useMediaQuery, useToast } from "./ui";
 
 /* "What Inboxrake knows about your senders" (Settings > Senders): everything
  * the user filed in Smart - by sender address or company - and the AI answers
@@ -317,12 +317,10 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   const canRemoveUnused = !!data?.complete && unused.length > 0;
 
   return (
-    <div className="space-y-3">
-      <div>
-        <SectionLabel>{t("know.table_title")}</SectionLabel>
-        <p className="mt-1 type-meta text-muted">{t("know.table_help")}</p>
-      </div>
-
+    <>
+      <SettingsGroup padded className="min-w-0" header={t("know.table_title")}
+        footnote={t("know.table_help")}>
+      <div className="space-y-3">
       {!data && !error && <Loading />}
       {error && (
         <p role="alert" className="type-meta text-danger-fg">
@@ -401,7 +399,13 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
                 onClick={() => setSel(new Set())}>{t("Clear selection")}</button>
             </div>
           )}
+        </>
+      )}
+      </div>
+      </SettingsGroup>
 
+      {data && (
+        <SettingsGroup padded className="min-w-0">
           {entries.length === 0 ? (
             <EmptyState title={t("know.empty_title")}
               hint={t("know.empty_hint")} />
@@ -505,15 +509,15 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
           )}
 
           {list.length > visible.length && (
-            <div className="text-center">
+            <div className="mt-3 text-center">
               <Button variant="secondary" size="sm"
                 onClick={() => setShown(shown + PAGE)}>
                 {t("know.more", { n: list.length - visible.length })}
               </Button>
             </div>
           )}
-        </>
+        </SettingsGroup>
       )}
-    </div>
+    </>
   );
 }

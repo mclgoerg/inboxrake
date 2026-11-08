@@ -2405,13 +2405,16 @@ const RowContext = createContext<{ labelId: string; descId?: string } | null>(
  *  hairlines; `padded` is for free-form content (a form, a table) that is not
  *  made of rows. */
 export function SettingsGroup({ header, footnote, padded = false,
-  className = "", children }: {
+  radioGroup = false, className = "", children }: {
   header?: ReactNode; footnote?: ReactNode; padded?: boolean;
+  /** The rows are `RadioRow`s of one choice: the group is a radio group. */
+  radioGroup?: boolean;
   className?: string; children: ReactNode;
 }) {
   const id = useId();
   return (
-    <div role="group" aria-labelledby={header ? `${id}-h` : undefined}
+    <div role={radioGroup ? "radiogroup" : "group"}
+      aria-labelledby={header ? `${id}-h` : undefined}
       className={`mb-6 ${className}`}>
       {header && (
         <h3 id={`${id}-h`} className="mb-1.5 px-3 type-meta font-medium
@@ -2442,7 +2445,8 @@ export function IconTile({ tone = "neutral", children }: {
 
 /** One row of a `SettingsGroup`: label (+ muted sub text) on the left, the
  *  control or value on the right. With `onClick` the whole row is a button
- *  with a trailing chevron (drill-down; `value` shows before it). `stack`
+ *  with a trailing chevron (drill-down; `value` shows before it; a plain row
+ *  shows `value` as muted text before its control). `stack`
  *  puts the children under the label at full width (an input, a text area).
  *  `danger` makes it a destructive text row. Switch / Stepper inside take
  *  their name from the label. */
@@ -2458,6 +2462,7 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
 }) {
   const id = useId();
   const ctx = { labelId: `${id}-l`, descId: sub ? `${id}-d` : undefined };
+  const hasValue = value != null && value !== "";
   // The icon is decoration: an avatar's letter must not lead the row's name.
   const iconEl = icon && <span aria-hidden className="contents">{icon}</span>;
   const text = (
@@ -2493,12 +2498,19 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
   }
   return (
     <RowContext.Provider value={ctx}>
-      <div className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
+      <div role={hasValue ? "group" : undefined}
+        aria-labelledby={hasValue ? ctx.labelId : undefined}
+        aria-describedby={hasValue ? `${id}-v` : undefined}
+        className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
         : "min-h-12 items-center"}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {iconEl}
           {text}
         </div>
+        {hasValue && (
+          <span id={`${id}-v`} className="min-w-0 max-w-1/2 truncate
+            type-body text-muted">{value}</span>
+        )}
         {children != null && (
           <div className={stack ? "min-w-0" : "min-w-0 shrink-0"}>
             {children}
@@ -2591,5 +2603,50 @@ export function Stepper({ value, onChange, min, max, step = 1, format, label,
         <Plus size={16} aria-hidden />
       </button>
     </div>
+  );
+}
+
+/** One choice of a list of exclusive options, as a `SettingsGroup` row: the
+ *  whole row is a `role="radio"` button with a check on the chosen one.
+ *  Rows of one group form a radio group (the group's header names it): one
+ *  tab stop (the chosen row), Up / Down / Left / Right move to and choose
+ *  the neighbouring enabled row. */
+export function RadioRow({ label, sub, checked, onSelect, disabled = false }: {
+  label: ReactNode; sub?: ReactNode; checked: boolean;
+  onSelect: () => void; disabled?: boolean;
+}) {
+  const id = useId();
+  const onKey = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const dir = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1
+      : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+    if (!dir) return;
+    const rows = [...(e.currentTarget.closest("[role=radiogroup],[role=group]")
+      ?.querySelectorAll<HTMLButtonElement>("[role=radio]:not(:disabled)")
+      ?? [])];
+    const next = rows[rows.indexOf(e.currentTarget) + dir];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    next.click();
+  };
+  return (
+    <button type="button" role="radio" aria-checked={checked}
+      aria-labelledby={`${id}-l`} aria-describedby={sub ? `${id}-d` : undefined}
+      tabIndex={checked ? 0 : -1} disabled={disabled} onClick={onSelect}
+      onKeyDown={onKey}
+      className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5
+        text-left transition-colors enabled:hover:bg-panel2
+        disabled:cursor-not-allowed disabled:text-faint">
+      <span className="min-w-0 flex-1">
+        <span id={`${id}-l`} className="block type-body">{label}</span>
+        {sub && (
+          <span id={`${id}-d`} className="block type-meta text-muted">
+            {sub}
+          </span>
+        )}
+      </span>
+      {checked && <Check size={18} aria-hidden className="shrink-0
+        text-accent" />}
+    </button>
   );
 }

@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { AppearanceControl, getAppearance, IconTile, SettingsGroup,
+import { AppearanceControl, getAppearance, IconTile, RadioRow, SettingsGroup,
   SettingsRow, Stepper, Switch } from "./components/ui";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -133,4 +133,46 @@ test("the appearance thumbnails are a radio group: tap or arrows pick, one tab s
   fireEvent.keyDown(group, { key: "ArrowRight" });   // wraps to System
   expect(getAppearance()).toBe("system");
   expect(localStorage.getItem("pmc_theme")).toBeNull();
+});
+
+test("radio rows choose one option: one tab stop, arrows move and choose, disabled rows are skipped", () => {
+  const Demo = () => {
+    const [v, setV] = useState("none");
+    return (
+      <SettingsGroup radioGroup header="Login method">
+        <RadioRow label="None" sub="Trusted network" checked={v === "none"}
+          onSelect={() => setV("none")} />
+        <RadioRow label="Password" checked={v === "password"}
+          onSelect={() => setV("password")} />
+        <RadioRow label="SSO" checked={v === "sso"} disabled
+          onSelect={() => setV("sso")} />
+      </SettingsGroup>
+    );
+  };
+  render(<Demo />);
+  const radios = within(screen.getByRole("radiogroup",
+    { name: "Login method" })).getAllByRole("radio");
+  expect(radios.map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+  expect(screen.getByRole("radio", { name: "None" })
+    .getAttribute("aria-describedby")).toBeTruthy();
+  fireEvent.click(radios[1]);
+  expect(radios[1].getAttribute("aria-checked")).toBe("true");
+  expect(radios[0].getAttribute("aria-checked")).toBe("false");
+  expect(radios.map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+  fireEvent.keyDown(radios[1], { key: "ArrowDown" });   // SSO is disabled
+  expect(radios[1].getAttribute("aria-checked")).toBe("true");
+  fireEvent.keyDown(radios[1], { key: "ArrowUp" });
+  expect(radios[0].getAttribute("aria-checked")).toBe("true");
+  expect(document.activeElement).toBe(radios[0]);
+});
+
+test("a plain row shows its value as text before its control", () => {
+  render(<SettingsGroup><SettingsRow label="API key" value="•••• set">
+    <button type="button">Change…</button></SettingsRow></SettingsGroup>);
+  // the value belongs to its label: the row is a group named by it
+  const row = screen.getByRole("group", { name: "API key" });
+  expect(row.getAttribute("aria-describedby")).toBeTruthy();
+  expect(document.getElementById(row.getAttribute("aria-describedby")!)!
+    .textContent).toBe("•••• set");
+  expect(screen.getByRole("button", { name: "Change…" })).toBeTruthy();
 });
