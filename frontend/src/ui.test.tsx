@@ -614,7 +614,7 @@ test("Modal sizes map to 448 / 672 / 768 px, full = lg at fixed height", () => {
   render(<Modal size="sm" onClose={() => {}}>body</Modal>);   // phone bottom sheet
   expect(panel().className).not.toContain("h-dvh");
   expect(panel().parentElement!.className).toContain("items-end");
-  expect(panel().parentElement!.className).toContain("bg-overlay");
+  expect(panel().parentElement!.querySelector(".bg-overlay")).not.toBeNull();   // the scrim layer
 });
 
 test("EmptyState keeps children usage and adds icon/title/hint/action", () => {
