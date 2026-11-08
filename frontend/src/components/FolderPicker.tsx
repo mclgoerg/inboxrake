@@ -194,10 +194,13 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     const dest = chosen;
     const target = rule && always ? rule : null;
     const destName = byRaw.get(dest)?.path ?? dest;
-    rememberRecent(account, dest);
     onClose();
+    // A folder counts as used only once the move went through (a declined
+    // confirm or a failure does not return true).
     Promise.resolve(onPick(dest)).then(async (ok) => {
-      if (ok === false || !target) return;
+      if (ok !== true) return;
+      rememberRecent(account, dest);
+      if (!target) return;
       try {
         await api.createRule({
           name: t("folder.rule_name", { label: target.label, dest: destName }),
@@ -259,8 +262,14 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
         }
       }
     };
+    // An outside press only closes the popover: the click that follows it must
+    // not also hit whatever lay underneath (same idea as the swipe-row tap).
     const onDoc = (e: MouseEvent) => {
-      if (!pop.current?.contains(e.target as Node)) close();
+      if (pop.current?.contains(e.target as Node)) return;
+      const eat = (c: Event) => { c.stopPropagation(); c.preventDefault(); };
+      document.addEventListener("click", eat, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener("click", eat, true), 600);
+      close();
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDoc);

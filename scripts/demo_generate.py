@@ -947,17 +947,17 @@ def generate() -> dict:
     knowledgestore.modify(lambda entries: entries.update({
         "a:billing@juniper-pay.example": {
             "kind": "other", "src": "user", "ts": _NOW - 86400 * 5,
-            "note": "regular bill"},
+            "note": ""},
         "a:noreply@cobalt-app.example": {
             "kind": "accounts", "src": "user", "ts": _NOW - 86400 * 3, "note": ""},
         "co:paymate.example": {
             "kind": "support", "src": "user", "ts": _NOW - 86400 * 2,
-            "note": "company with its own row"},
+            "note": ""},
         "a:noreply@dune-app.example": {
             "kind": "support", "src": "ai", "ts": _NOW - 86400, "note": ""},
         "a:ghost@nowhere.example": {
             "kind": "jobs", "src": "user", "ts": _NOW - 86400 * 30,
-            "note": "left the mailbox"},
+            "note": ""},
     }))
 
     for fake in FAKES.values():

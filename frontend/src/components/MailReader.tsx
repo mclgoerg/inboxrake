@@ -60,7 +60,7 @@ export interface ReaderActions {
    *  close the reader. */
   trash?: (m: Mail) => unknown;
   /** Move this mail to a folder (confirm, undo as in the opener). */
-  move?: (m: Mail, dest: string) => unknown;
+  move?: (m: Mail, dest: string) => Promise<boolean>;
   /** Set the pin; resolves false when it failed. Without it the reader
    *  calls the pin endpoint itself. */
   pin?: (m: Mail, pinned: boolean) => unknown;
@@ -285,7 +285,7 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
       {picking && canMove && (
         <FolderPicker count={1} folders={host.folders.map((f) => f.value)}
           labels={host.folders.map((f) => f.label)} account={host.account}
-          onPick={(dest) => actions!.move!(mail, dest) as Promise<void>}
+          onPick={(dest) => actions!.move!(mail, dest)}
           onClose={() => setPicking(false)} />
       )}
     </div>

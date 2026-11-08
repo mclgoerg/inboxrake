@@ -277,6 +277,21 @@ test("reader Move: the bar's move call for that one mail", async () => {
     .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));
 });
 
+test("reader Move: a declined confirm does not make the folder a recent one",
+  async () => {
+  mails.mockResolvedValue(resp([mk(1)], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Move this mail to a folder" }));
+  await pickFolder("Archive");
+  await findDialog();
+  await cancelDialog();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(deleteMessages).not.toHaveBeenCalled();
+  expect(Object.keys(localStorage).filter((k) =>
+    k.startsWith("pmc_move_recent"))).toEqual([]);
+});
+
 test("reader Pin: the pin call, and the list row follows", async () => {
   mails.mockResolvedValue(resp([mk(1)], 1));
   renderView();

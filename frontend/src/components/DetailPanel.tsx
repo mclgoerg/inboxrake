@@ -324,21 +324,21 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   };
 
   const act = (action: string, dest = "") => {
-    if (!mails || sel.size === 0) return Promise.resolve();
+    if (!mails || sel.size === 0) return Promise.resolve(false);
     return actOn(mails.filter((m) => sel.has(mailKey(m))), action, dest);
   };
 
   // `chosen` is the checked mails, or the single mail open in the reader
   // ("Trash this mail") - both go through the same confirm/pinned flow.
   const actOn = async (chosen: Mail[], action: string, dest = "",
-      single = false) => {
-    if (!mails) return;
+      single = false): Promise<boolean> => {
+    if (!mails) return false;
     const verb = actionVerb(action, dest);
     const plan = await planMailAction(chosen, action, verb);
-    if (plan.kind === "cancelled") return;
+    if (plan.kind === "cancelled") return false;
     if (plan.kind === "all_pinned") {
       setNote(t("toast.all_pinned"));
-      return;
+      return false;
     }
     const { acting, force } = plan;
     const actingKeys = new Set(acting.map(mailKey));
@@ -351,7 +351,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         // The group will be empty - go straight back to the overview.
         onDeleted();
         (onEmptied ?? onClose)();
-        return;
+        return true;
       }
       if (action !== "mark_read") {
         setMails(mails.filter((m) => !actingKeys.has(mailKey(m))));
@@ -373,8 +373,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       } else setSel(new Set());
       setNote(t("note.background", { verb }));
       onDeleted();
+      return true;
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
+      return false;
     }
   };
 
