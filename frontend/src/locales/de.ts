@@ -952,6 +952,8 @@ export const DE: Record<string, string> = {
   "notify.atts_done": "Anhang-Analyse abgeschlossen.",
   "notify.unsub_done": "Massenabbestellen abgeschlossen.",
   "preset.label": "Anbieter-Preset (füllt die Felder unten vor)",
+  "preset.row": "Anbieter",
+  "preset.row_sub": "Füllt die Felder unten vor",
   "preset.hint.proton":
     "Proton braucht die Mail Bridge (Bezahltarife): IMAP-Modus auf SSL "
     + "stellen, Zertifikat exportieren und als CA-Datei eintragen - "

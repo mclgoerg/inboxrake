@@ -272,7 +272,8 @@ export function FolderSettings({ account, data, included, setIncluded,
           style={{ paddingInlineStart: `${depth * 1.25}rem` }}>
           <span className="truncate">{label}</span>
           {x.role === "archive" && <Tag>{roleName("archive")}</Tag>}
-        </span>}>
+        </span>} sub={data.mail_counts?.[x.raw] != null
+          ? t("n.mails", { n: data.mail_counts[x.raw] }) : undefined}>
           <Switch checked={included.has(x.raw)}
             onChange={(on) => {
               const next = new Set(included);

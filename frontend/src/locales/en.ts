@@ -1153,6 +1153,8 @@ export const EN: Record<string, string> = {
   "notify.atts_done": "Attachment analysis finished.",
   "notify.unsub_done": "Bulk unsubscribe finished.",
   "preset.label": "Provider preset (prefills the fields below)",
+  "preset.row": "Provider",
+  "preset.row_sub": "Prefills the fields below",
   "preset.hint.proton":
     "Proton needs the Mail Bridge (paid plans): switch its IMAP mode to "
     + "SSL, export its certificate and point the CA file at it - see "

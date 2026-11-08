@@ -734,7 +734,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       label: t(`settings.sec.${id}`) });
   const defs: Record<SettingsSection, SecDef> = {
     account: sec("account", null, "neutral", undefined,
-      [t("preset.label"), t("Host"), t("IMAP port"), t("imap.security"),
+      [t("preset.row"), t("Host"), t("IMAP port"), t("imap.security"),
         t("User"), t("Password"), t("smtp.host"), t("SMTP port"),
         t("smtp.security"), t("cafile.label"), t("folders.discover"),
         t("account.rename"), t("account.add")]),
@@ -1028,8 +1028,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     <SettingsGroup header={t("settings.connection")}
       footnote={presetFoot.length ? presetFoot.map((x) =>
         <span key={x} className="block">{x}</span>) : undefined}>
-      <SettingsRow label={t("preset.label")}>
-        <PopupSelect name={t("preset.label")} value={f.preset}
+      <SettingsRow label={t("preset.row")} sub={t("preset.row_sub")}>
+        <PopupSelect name={t("preset.row")} value={f.preset}
           onChange={(p) => applyPreset(p)}
           options={(Object.keys(PRESET_LABELS) as Preset[]).map((p) =>
             ({ value: p, label: presetLabel(p) }))} />

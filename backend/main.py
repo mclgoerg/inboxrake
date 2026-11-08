@@ -1640,7 +1640,14 @@ def get_folders(account: str | None = Query(None)):
             held.setdefault(roles[role], set()).add(role)
     looks_like = found["looks_like"]
     delims = getattr(pairs, "delims", {})
+    # Mails per folder from the local scan index (no IMAP round trip):
+    # only folders the last scan actually saw appear.
+    mail_counts: dict[str, int] = {}
+    with acc.lock:
+        for m in acc.index.values():
+            mail_counts[m["folder"]] = mail_counts.get(m["folder"], 0) + 1
     return {
+        "mail_counts": mail_counts,
         # one row per detected role: where it points, how it was found,
         # and - when several folders tie - the choices with their counts
         "special": [

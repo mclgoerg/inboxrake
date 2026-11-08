@@ -142,7 +142,7 @@ afterEach(() => {
 });
 
 const presetButton = () =>
-  screen.getByRole("button", { name: /^Provider preset/ });
+  screen.getByRole("button", { name: /^Provider/ });
 const pickPreset = (p: Preset) => popupPick(presetButton(), presetLabel(p));
 const hostInput = () => screen.getByLabelText("Host") as HTMLInputElement;
 
@@ -1259,3 +1259,17 @@ test("the sending server unfolds under Advanced and stays staged", () => {
     { target: { value: "smtp.edited.example" } });
   expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
 });
+
+test("scanned folders show their mail count; unseen ones show none",
+  async () => {
+    foldersResult = { wildcards: [], mail_counts: { INBOX: 3 }, folders: [
+      { raw: "INBOX", name: "INBOX", role: null, excluded: false },
+      { raw: "Later", name: "Later", role: null, excluded: true }] };
+    try {
+      render(<Settings cfg={cfg} account="default" />);
+      expect(await screen.findByText("3 mails")).toBeTruthy();
+      expect(screen.getAllByText(/\d+ mails?/)).toHaveLength(1);
+    } finally {
+      foldersResult = null;
+    }
+  });
