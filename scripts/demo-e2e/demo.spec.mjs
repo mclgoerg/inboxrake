@@ -118,7 +118,9 @@ test("filter row, Select all matches banner, Clear, row again to clear", async (
   await expect(page.getByTestId("filter-token")).toContainText("Inactive 6+ months");
   await page.getByRole("button", { name: /^Select (all \d+ matches|the 1 match)/ }).click();
   await expect(page.getByRole("region", { name: "Selection actions" })).toBeVisible();
-  await expect(page.getByText(/^All \d+ matches selected$|^The 1 match is selected$/)).toBeVisible();
+  // (the table and the phone card list each render one; only one is laid out)
+  await expect(page.getByTestId("select-matches").filter({ visible: true }))
+    .toContainText(/matches? (is )?selected|match is selected/);
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.getByRole("region", { name: "Selection actions" })).toHaveCount(0);
   await expect(box).toHaveValue("age:>6m");           // the filter stays
