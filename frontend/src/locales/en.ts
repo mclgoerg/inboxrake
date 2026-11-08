@@ -28,15 +28,11 @@ export const EN: Record<string, string> = {
   "notice.ai_cancelled": "AI review cancelled after {done}/{total} groups.",
   "confirm.act_mails": "{verb}: {n} selected mails?",
   "confirm.act_mails_one": "{verb}: 1 selected mail?",
-  "confirm.unsubscribe":
-    "Unsubscribe from the senders of {n} selected groups?",
   "confirm.unsub_pooled_skipped":
     "{n} pooled rows are skipped: open one to unsubscribe from a single sender.",
   "toast.unsub_pooled":
     "Unsubscribing works one sender at a time: open a pooled row and use "
     + "its sender's Unsubscribe.",
-  "confirm.unsubscribe_one":
-    "Unsubscribe from the senders of the selected group?",
   "confirm.restore": "Restore {count} mails ({label})?",
   "confirm.restore_one": "Restore 1 mail ({label})?",
   "ai.usage": "Usage",
@@ -1022,6 +1018,69 @@ export const EN: Record<string, string> = {
   "toast.unsub_nothing":
     "Nothing to unsubscribe from - every sender is already handled or "
     + "protected.",
+  "unsub.sheet_title": "Unsubscribe",
+  "unsub.sheet_sub": "{n} senders · how each one works:",
+  "unsub.sheet_sub_one": "1 sender · how it works:",
+  "unsub.via_one_click": "One click",
+  "unsub.via_one_click_note": "done right away",
+  "unsub.via_mailto": "Sends a mail",
+  "unsub.via_mailto_note": "from your address, via your mail server",
+  "unsub.via_http": "Web page",
+  "unsub.via_http_note": "you confirm on their page",
+  "unsub.via_none": "No usable link",
+  "unsub.via_none_note": "this sender can't be unsubscribed from here",
+  "unsub.also_trash": "Also move their {n} mails to Trash",
+  "unsub.also_trash_one": "Also move their 1 mail to Trash",
+  "unsub.also_trash_sub": "{size} · you can undo it",
+  "unsub.also_trash_sub_pinned":
+    "{size} · {n} pinned stay · you can undo it",
+  "unsub.trash_note":
+    "The button below does both: it unsubscribes and then moves the mails of "
+    + "the senders that are done to Trash. Protected senders and pinned mails "
+    + "stay, and so do the mails of a sender that still needs you on its web "
+    + "page or whose unsubscribe fails.",
+  "unsub.trash_none":
+    "No mails were moved to Trash: none of these senders is done yet.",
+  "unsub.still_note":
+    "If one of them keeps writing, Inboxrake marks it \u201cStill mailing\u201d "
+    + "and offers to block it.",
+  "unsub.skipped":
+    "{n} senders are left out: already handled, protected or over the "
+    + "per-run limit.",
+  "unsub.skipped_one":
+    "1 sender is left out: already handled, protected or over the per-run "
+    + "limit.",
+  "unsub.skipped_no_header":
+    "{n} groups without an unsubscribe link are left out.",
+  "unsub.skipped_no_header_one":
+    "1 group without an unsubscribe link is left out.",
+  "unsub.btn": "Unsubscribe {n} senders",
+  "unsub.btn_one": "Unsubscribe 1 sender",
+  "unsub.btn_trash": "Unsubscribe and move to Trash",
+  "unsub.hide": "Hide",
+  "unsub.done_btn": "Done",
+  "unsub.load_failed": "Couldn't check the senders: {msg}",
+  "unsub.results_gone": "The result of this run is no longer available.",
+  "unsub.res_done": "{n} done",
+  "unsub.res_need": "{n} need you",
+  "unsub.res_need_one": "1 needs you",
+  "unsub.res_failed": "{n} failed",
+  "unsub.res_none": "Nothing was unsubscribed",
+  "unsub.out_done": "Unsubscribed",
+  "unsub.out_mail": "Unsubscribe mail sent",
+  "unsub.out_page": "Confirm on their page",
+  "unsub.out_failed": "Failed",
+  "unsub.out_marked": "Marked as done",
+  "unsub.open_page": "Open page",
+  "unsub.res_note":
+    "After you confirmed on their page, tap Mark as done. Activity keeps "
+    + "the result.",
+  "unsub.trashed": "Moved their {n} mails to Trash - you can undo it.",
+  "unsub.trashed_one": "Moved their 1 mail to Trash - you can undo it.",
+  "unsub.trash_failed": "Their mails were not moved to Trash.",
+  "unsub.trash_skipped":
+    "Unsubscribing goes on in the background. Their mails were not moved "
+    + "to Trash.",
   "dups.sub": "The same mail more than once",
   "dups.from_scan": "from the scan {ago} ago",
   "dups.hero_label": "Remove identical copies",
@@ -1756,7 +1815,6 @@ export const EN: Record<string, string> = {
   "confirm.b_pinned_kept_one": "1 protected mail stays untouched",
   "confirm.b_pinned_skipped": "{n} protected mails skipped",
   "confirm.b_pinned_skipped_one": "1 protected mail skipped",
-  "confirm.unsubscribe_btn": "Unsubscribe",
   "confirm.restore_btn": "Restore",
   "confirm.empty_trash_title": "Empty Trash?",
   "confirm.unpin_btn": "Remove protection",

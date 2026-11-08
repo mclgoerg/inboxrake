@@ -51,7 +51,7 @@ async function open(mails: Mail[]) {
   group_.mockResolvedValue(mails);
   render(<DialogProvider><DetailPanel grouping="sender" group={group}
     aiEnabled={false} protectedNow={false} unsubscribedNow={null}
-    onTrash={async () => true} folders={[]} sieve={false} variant="pane"
+    onUnsubscribe={() => {}} onTrash={async () => true} folders={[]} sieve={false} variant="pane"
     onClose={() => {}} onDeleted={() => {}} /></DialogProvider>);
   await screen.findByText("Mail 1");
 }

@@ -2673,7 +2673,8 @@ def start_scan(acc=None, notice: dict | None = None) -> None:
         # senders themselves stay recorded in unsubstore.
         acc.state["unsub"] = {"status": "idle", "progress": "", "error": "",
                           "total": 0, "done": 0, "links": 0, "failed": 0,
-                          "skipped": 0}
+                          "skipped": 0,
+                          "seq": acc.state["unsub"].get("seq", 0)}
         # Idle while the scan runs; run_scan reports it done again from the
         # per-mail analysis the index keeps for the mails still there.
         acc.state["atts"] = {"status": "idle", "progress": "", "error": "",

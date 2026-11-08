@@ -33,7 +33,10 @@ def _initial_state() -> dict:
         "atts": {"status": "idle", "progress": "", "error": "",
                  "mails": 0, "size": 0},   # attachment analysis (lazy)
         "unsub": {"status": "idle", "progress": "", "error": "", "total": 0,
-                  "done": 0, "links": 0, "failed": 0, "skipped": 0},
+                  "done": 0, "links": 0, "failed": 0, "skipped": 0,
+                  # run id (see unsub.start_bulk); seeded from the clock so
+                  # it never goes backwards across a server restart
+                  "seq": int(time.time())},
         "trash_count": None,   # mails currently in Trash (None = unknown)
         "junk_count": None,    # same for Junk (header chip)
         "notice": None,        # one-shot info for the UI: {key, params}|None
@@ -86,6 +89,9 @@ class AccountState:
         self.cancel = {"scan": False, "ai": False, "delete": False,
                        "atts": False, "unsub": False, "index": False}
         self.delete_pending: list[dict] = []
+        # Per-sender outcomes of the newest bulk unsubscribe (guarded by
+        # `lock`); `run` matches state["unsub"]["seq"].
+        self.unsub_results: dict = {"run": 0, "items": []}
         # Held for the whole of one permanent deletion (Empty Trash, purge of
         # Trash / Junk mails): two of them never run side by side.
         self.purge_lock = threading.Lock()

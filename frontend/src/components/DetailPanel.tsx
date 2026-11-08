@@ -4,7 +4,7 @@ import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
-import { openUnsubPage, unsubscribeGroup } from "../unsub";
+import { openUnsubPage } from "../unsub";
 import { t } from "../i18n";
 import { actionVerb, planMailAction } from "../mailActions";
 import { nowDate } from "../clock";
@@ -41,7 +41,7 @@ const RATING_FILTERS: { key: string; label: string }[] = [
 ];
 
 export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
-  unsubscribedNow, onTrash, onMove, onProtect, onBlock, onUnblock, blocked, folders,
+  unsubscribedNow, onUnsubscribe, onTrash, onMove, onProtect, onBlock, onUnblock, blocked, folders,
   sieve = true, smartMin = 10, onClose, onEmptied, onDeleted, variant = "modal", hideGroupActions = false,
   senders, onSenderAct, onSenderProtect, renderSender, backLabel,
   aiSort, onFile, onUnfile, categories, filingBox, onLabelsSaved,
@@ -51,6 +51,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   aiEnabled: boolean;
   protectedNow: boolean;                 // live value; `group` is a snapshot
   unsubscribedNow: GroupUnsub | null;     // live value; `group` is a snapshot
+  // Opens the unsubscribe sheet for this group (how it works, optional
+  // Trash, the result): the one entry the app has for a single sender.
+  onUnsubscribe: (g: Group) => void;
   // One-tap whole-group trash (distinct from the mail-list "Trash selected"
   // below, which only acts on individually checked mails). Resolves false
   // if the user declined the confirmation, in which case the panel stays
@@ -265,15 +268,6 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     } catch (e: any) {
       setNote(`AI error: ${e.message ?? e} - ${t("note.ai_resume")}`);
     }
-    setBusy(false);
-  };
-
-  const unsubscribe = async () => {
-    setBusy(true);
-    setNote(t("Unsubscribing…"));
-    const r = await unsubscribeGroup(grouping, group, demo);
-    setNote(r.message);
-    if (r.ok) onDeleted();   // refresh App's state so the persisted status shows up
     setBusy(false);
   };
 
@@ -565,7 +559,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       <ActionButton className={CELL} disabled={busy} icon={<BellOff size={18} />}
         label={unsubscribedNow?.status === "failed"
           ? t("unsub.retry") : t("Unsubscribe")}
-        onClick={unsubscribe} />
+        onClick={() => onUnsubscribe(group)} />
     );
 
   const actionRow = (

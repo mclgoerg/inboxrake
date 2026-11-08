@@ -1,8 +1,6 @@
-/* Unsubscribe from one sender's group: the call and the words around it,
- * shared by the detail panel's (Retry) Unsubscribe button and the activity
- * lists' Retry. Pure of UI: callers show `message` as a note or toast. */
+/* Unsubscribe helpers shared by the detail panel, the activity lists' Retry
+ * and the unsubscribe sheet (components/UnsubscribeSheet.tsx runs it). */
 
-import { api } from "./api";
 import { t } from "./i18n";
 import { isPooled } from "./smart";
 import type { Group } from "./types";
@@ -25,20 +23,4 @@ export function openUnsubPage(link: string, demo: boolean): string {
   if (demo) return t("unsub.demo_hint");
   window.open(link, "_blank", "noopener");
   return t("Opened the sender's unsubscribe page - confirm it there.");
-}
-
-/** Run the unsubscribe for `group` exactly as the detail panel does. Never
- *  throws: `ok` false carries the error text in `message`. */
-export async function unsubscribeGroup(grouping: Parameters<
-    typeof api.unsubscribe>[0], group: Group, demo: boolean):
-    Promise<{ ok: boolean; message: string }> {
-  try {
-    const r = await api.unsubscribe(grouping, group.key);
-    return { ok: true, message: r.action === "link"
-      ? openUnsubPage(r.detail, demo)
-      : `${t("Unsubscribed")} (${r.method}).` };
-  } catch (e: any) {
-    return { ok: false,
-      message: t("err.unsub", { msg: e.message ?? String(e) }) };
-  }
 }

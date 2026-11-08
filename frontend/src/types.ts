@@ -198,6 +198,9 @@ export interface UnsubState {
   links: number;
   failed: number;
   skipped: number;
+  /** Run id (backend unsub.start_bulk): the sheet that started a run waits
+   *  for ITS run. Absent in older servers / test fixtures. */
+  seq?: number;
 }
 
 export interface AttMail extends Mail {
@@ -558,15 +561,58 @@ export interface AiGroupResult {
   usage: AiUsage;
 }
 
+/** How a sender is unsubscribed (from its stored List-Unsubscribe header):
+ *  an automated HTTPS POST, a mail from the user's address, or a page the
+ *  user confirms. Null = no usable method. */
+export type UnsubVia = "one_click" | "mailto" | "http" | null;
+
 export interface UnsubResult {
   action: "done" | "link";
   method: string;
   detail: string;
   addr: string;
+  via?: UnsubVia;
+}
+
+/** One sender of the unsubscribe sheet's preview. */
+export interface UnsubPreviewSender {
+  addr: string;
+  name: string;
+  via: UnsubVia;
+  mails: number;
+  size: number;
+}
+
+export interface UnsubPreview {
+  senders: UnsubPreviewSender[];
+  skipped_protected: number;
+  skipped_done: number;
+  capped: number;
+  /** Selected groups none of whose senders offers an unsubscribe link. */
+  skipped_no_header: number;
+  skipped_pooled?: number;
+  /** What "also move their mails to Trash" would move: whole groups that
+   *  consist only of these senders' mails (never protected; pinned mails
+   *  left out). */
+  trash: {
+    groups: { key: string; addrs: string[]; mails: number; size: number }[];
+    mails: number; size: number; pinned: number;
+  };
+}
+
+/** One sender's outcome in a bulk run (GET /api/unsubscribe/results). */
+export interface UnsubRunItem {
+  addr: string;
+  status: "done" | "link" | "failed";
+  via: UnsubVia;
+  link: string;
+  error: string;
 }
 
 export interface UnsubBulkResult {
   queued: number;
+  /** The run's id (state.unsub.seq); only when something was queued. */
+  run?: number;
   skipped_protected: number;
   skipped_done: number;
   capped: number;

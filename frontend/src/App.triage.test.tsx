@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 let state: any;
 const protectMany = vi.fn().mockResolvedValue({ protected: [] });
 const unsubscribeBulk = vi.fn().mockResolvedValue(
-  { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0 });
+  { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0, run: 1 });
 const deleteGroups = vi.fn().mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
 const calls: string[] = [];
 
@@ -287,6 +287,8 @@ test("Apply runs protect, unsubscribe, then trash with exactly the decided keys"
   expect(deleteGroups.mock.calls[0].slice(0, 3))
     .toEqual(["sender", ["b@shop.example"], "trash"]);
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
+  // the run's outcome is listed in the unsubscribe sheet (no toast)
+  expect(await screen.findByRole("dialog", { name: "Unsubscribe" })).toBeTruthy();
 });
 
 test("pinned mails are left out of the counted mails", async () => {

@@ -29,16 +29,12 @@ export const DE: Record<string, string> = {
   "notice.ai_cancelled": "KI-Prüfung nach {done}/{total} Gruppen abgebrochen.",
   "confirm.act_mails": "{verb}: {n} ausgewählte Mails?",
   "confirm.act_mails_one": "{verb}: 1 ausgewählte Mail?",
-  "confirm.unsubscribe":
-    "Von den Absendern in {n} ausgewählten Gruppen abbestellen?",
   "confirm.unsub_pooled_skipped":
     "{n} gebündelte Zeilen werden übersprungen: öffne eine, um einen einzelnen "
     + "Absender abzubestellen.",
   "toast.unsub_pooled":
     "Abbestellen geht pro Absender: öffne eine gebündelte Zeile und nutze das "
     + "Abbestellen des Absenders.",
-  "confirm.unsubscribe_one":
-    "Von den Absendern der ausgewählten Gruppe abbestellen?",
   "confirm.restore": "{count} Mails wiederherstellen ({label})?",
   "confirm.restore_one": "1 Mail wiederherstellen ({label})?",
   "ai.usage": "Nutzung",
@@ -740,6 +736,76 @@ export const DE: Record<string, string> = {
   "toast.unsub_nothing":
     "Nichts abzubestellen - alle Absender sind bereits erledigt oder "
     + "geschützt.",
+  "unsub.sheet_title": "Abbestellen",
+  "unsub.sheet_sub": "{n} Absender · so funktioniert jeder:",
+  "unsub.sheet_sub_one": "1 Absender · so funktioniert es:",
+  "unsub.via_one_click": "Ein Klick",
+  "unsub.via_one_click_note": "sofort erledigt",
+  "unsub.via_mailto": "Sendet eine Mail",
+  "unsub.via_mailto_note": "von deiner Adresse, über deinen Mailserver",
+  "unsub.via_http": "Webseite",
+  "unsub.via_http_note": "du bestätigst auf deren Seite",
+  "unsub.via_none": "Kein nutzbarer Link",
+  "unsub.via_none_note": "dieser Absender lässt sich hier nicht abbestellen",
+  "unsub.also_trash": "Auch ihre {n} Mails in den Papierkorb verschieben",
+  "unsub.also_trash_one": "Auch ihre 1 Mail in den Papierkorb verschieben",
+  "unsub.also_trash_sub": "{size} · du kannst es rückgängig machen",
+  "unsub.also_trash_sub_pinned":
+    "{size} · {n} angeheftete bleiben · du kannst es rückgängig machen",
+  "unsub.trash_note":
+    "Der Button unten erledigt beides: Er bestellt ab und verschiebt dann "
+    + "die Mails der Absender, die erledigt sind, in den Papierkorb. "
+    + "Geschützte Absender und angeheftete Mails bleiben, ebenso die Mails "
+    + "eines Absenders, bei dem du noch auf dessen Webseite bestätigen musst "
+    + "oder das Abbestellen fehlschlägt.",
+  "unsub.trash_none":
+    "Es wurden keine Mails in den Papierkorb verschoben: Noch keiner dieser "
+    + "Absender ist erledigt.",
+  "unsub.still_note":
+    "Schreibt einer davon weiter, markiert Inboxrake ihn als "
+    + "\u201eSchreibt weiter\u201c und bietet an, ihn zu blockieren.",
+  "unsub.skipped":
+    "{n} Absender bleiben außen vor: bereits erledigt, geschützt oder über "
+    + "dem Limit pro Lauf.",
+  "unsub.skipped_one":
+    "1 Absender bleibt außen vor: bereits erledigt, geschützt oder über dem "
+    + "Limit pro Lauf.",
+  "unsub.skipped_no_header":
+    "{n} Gruppen ohne Abbestell-Link bleiben außen vor.",
+  "unsub.skipped_no_header_one":
+    "1 Gruppe ohne Abbestell-Link bleibt außen vor.",
+  "unsub.btn": "{n} Absender abbestellen",
+  "unsub.btn_one": "1 Absender abbestellen",
+  "unsub.btn_trash": "Abbestellen und in den Papierkorb verschieben",
+  "unsub.hide": "Ausblenden",
+  "unsub.done_btn": "Fertig",
+  "unsub.load_failed": "Die Absender konnten nicht geprüft werden: {msg}",
+  "unsub.results_gone": "Das Ergebnis dieses Laufs ist nicht mehr verfügbar.",
+  "unsub.res_done": "{n} erledigt",
+  "unsub.res_need": "bei {n} musst du ran",
+  "unsub.res_need_one": "bei 1 musst du ran",
+  "unsub.res_failed": "{n} fehlgeschlagen",
+  "unsub.res_none": "Nichts abbestellt",
+  "unsub.out_done": "Abbestellt",
+  "unsub.out_mail": "Abmelde-Mail gesendet",
+  "unsub.out_page": "Auf deren Seite bestätigen",
+  "unsub.out_failed": "Fehlgeschlagen",
+  "unsub.out_marked": "Als erledigt markiert",
+  "unsub.open_page": "Seite öffnen",
+  "unsub.res_note":
+    "Wenn du auf deren Seite bestätigt hast, tippe auf „Als erledigt "
+    + "markieren“. Die Aktivität hält das Ergebnis fest.",
+  "unsub.trashed":
+    "{n} Mails dieser Absender in den Papierkorb verschoben - du kannst es "
+    + "rückgängig machen.",
+  "unsub.trashed_one":
+    "1 Mail dieser Absender in den Papierkorb verschoben - du kannst es "
+    + "rückgängig machen.",
+  "unsub.trash_failed":
+    "Die Mails dieser Absender wurden nicht in den Papierkorb verschoben.",
+  "unsub.trash_skipped":
+    "Das Abbestellen läuft im Hintergrund weiter. Die Mails dieser Absender "
+    + "wurden nicht in den Papierkorb verschoben.",
   "Starting…": "Starte…",
   "Duplicates": "Duplikate",
   "dups.sub": "Dieselbe Mail mehrfach",
@@ -1952,7 +2018,6 @@ export const DE: Record<string, string> = {
   "confirm.b_pinned_kept_one": "1 geschützte Mail bleibt unberührt",
   "confirm.b_pinned_skipped": "{n} geschützte Mails übersprungen",
   "confirm.b_pinned_skipped_one": "1 geschützte Mail übersprungen",
-  "confirm.unsubscribe_btn": "Abbestellen",
   "confirm.restore_btn": "Wiederherstellen",
   "confirm.empty_trash_title": "Papierkorb leeren?",
   "confirm.unpin_btn": "Schutz aufheben",

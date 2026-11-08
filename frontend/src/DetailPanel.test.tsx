@@ -14,6 +14,7 @@ const aiGroup = vi.fn();
 const pin = vi.fn().mockResolvedValue({ ok: true, pinned: true });
 const pinGroup = vi.fn();
 const thread = vi.fn();
+const unsubscribe = vi.fn();
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
@@ -25,7 +26,7 @@ vi.mock("./api", async (importOriginal) => {
       aiGroup: (...args: unknown[]) => aiGroup(...args),
       pin: (...args: unknown[]) => pin(...args),
       pinGroup: (...args: unknown[]) => pinGroup(...args),
-      unsubscribe: vi.fn(),
+      unsubscribe: (...args: unknown[]) => unsubscribe(...args),
       folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
       unsubscribeAck: vi.fn(),
       thread: (...args: unknown[]) => thread(...args),
@@ -69,6 +70,7 @@ function renderPanel(mails: Mail[], extra: Partial<Parameters<
       aiEnabled={false}
       protectedNow={false}
       unsubscribedNow={null}
+      onUnsubscribe={noop}
       onTrash={noopAsync}
       folders={["Archive", "Promotions"]}
       sieve={false}
@@ -229,6 +231,18 @@ describe("DetailPanel", () => {
         expect(screen.queryByRole("button", { name: /unsubscribe/i }))
           .toBeNull();
       } finally { vi.unstubAllGlobals(); }
+    });
+
+    it("the button opens the unsubscribe sheet instead of acting itself",
+      async () => {
+      const onUnsubscribe = vi.fn();
+      const g = mkGroup({ unsub: true });
+      renderPanel([mkMail(1)], { group: g, onUnsubscribe });
+      await waitFor(() => screen.getByText("Mail 1"));
+      fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
+      expect(onUnsubscribe).toHaveBeenCalledTimes(1);
+      expect(onUnsubscribe.mock.calls[0][0].key).toBe(g.key);
+      expect(unsubscribe).not.toHaveBeenCalled();
     });
 
     it("an own row keeps it, like a Sender-tab row", async () => {
@@ -1057,24 +1071,6 @@ describe("DetailPanel unsubscribe links", () => {
       } else {
         expect(open).toHaveBeenCalledWith(link.link, "_blank", "noopener");
         expect(screen.queryByText(HINT)).toBeNull();
-      }
-    });
-
-    it(`Unsubscribe returning a link, demo=${demo}`, async () => {
-      const open = vi.fn();
-      vi.stubGlobal("open", open);
-      setDemo(demo);
-      const { api } = await import("./api");
-      (api.unsubscribe as any).mockResolvedValue(
-        { action: "link", detail: link.link, method: "link" });
-      renderPanel([mkMail(1)], { group: mkGroup({ unsub: true }) });
-      await waitFor(() => screen.getByText("Mail 1"));
-      fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
-      if (demo) {
-        await waitFor(() => screen.getByText(HINT));
-        expect(open).not.toHaveBeenCalled();
-      } else {
-        await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
       }
     });
   }
