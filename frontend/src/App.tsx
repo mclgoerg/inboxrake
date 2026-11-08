@@ -2444,7 +2444,7 @@ export default function App() {
     )}
     <div className={fullPage
       // A tool page: the column's full height, the panel scrolls inside.
-      ? "flex h-dvh min-w-0 flex-col"
+      ? "flex h-app min-w-0 flex-col"
       : `mx-auto max-w-6xl p-3 xl:max-w-360 pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+0.75rem)]
       sm:p-5 sm:pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+1.25rem)]`}>
       {/* Below 1024: the phone / tablet top bar - large page title (+ when
@@ -2910,7 +2910,7 @@ export default function App() {
           <div className="min-w-0">
             {/* Sticky to the top of the scroll container (body); usePaneHeight
                 sizes it to the room below the toolbar. */}
-            <div ref={setPaneEl} className="sticky top-0 h-dvh">
+            <div ref={setPaneEl} className="sticky top-0 h-app">
               {renderDetail("pane")}
             </div>
           </div>

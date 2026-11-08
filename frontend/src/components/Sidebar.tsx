@@ -76,7 +76,7 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
   );
   return (
     <nav aria-label={t("nav.label")} data-sidebar
-      className="fixed inset-y-0 left-0 z-(--z-dropdown) flex w-61 flex-col
+      className="fixed bottom-0 left-0 top-(--demo-bar-h) z-(--z-dropdown) flex w-61 flex-col
         gap-0.5 overflow-y-auto border-r border-line bg-side p-3">
       {account}
       <button type="button" onClick={() => onOpen("search")}

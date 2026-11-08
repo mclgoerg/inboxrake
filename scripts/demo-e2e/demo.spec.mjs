@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test";
 
 const BOOT_BUDGET_MS = 90_000;   // ~6 s warm on a 4-core VM; CI runners vary
-const TITLE = "Getting your demo ready to rake it";
+const TITLE = "Starting the demo";
 
 test.describe.configure({ mode: "serial" });
 
@@ -56,11 +56,26 @@ test("boots: progress steps, then the Overview on the demo mailboxes @fast", asy
     "Loading libraries", "Filling the demo mailboxes"]) {
     await expect(page.getByText(step, { exact: true })).toBeVisible();
   }
-  await expect(page.getByText("Demo - your changes live only in this tab"))
-    .toBeVisible({ timeout: BOOT_BUDGET_MS });
+  const note = page.getByText("Made-up mailboxes - your changes stay in this tab.");
+  await expect(note).toBeVisible({ timeout: BOOT_BUDGET_MS });
   // The start page is the Overview; the Senders list is one click away.
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Biggest senders" })).toBeVisible();
+  // The demo bar sits above app and sidebar: its words are what is hit at
+  // their position, and the sidebar starts right below it.
+  const box = await note.boundingBox();
+  expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)
+    ?.closest("[data-demo-bar]"), [box.x + 8, box.y + box.height / 2])).toBe(true);
+  const sideTop = await page.locator("[data-sidebar]").evaluate((el) => el.getBoundingClientRect().top);
+  expect(sideTop).toBe(34);
+  // First visit: "Three things to try" once; Got it dismisses it for good.
+  const tip = page.getByRole("dialog", { name: "Three things to try" });
+  await expect(tip).toBeVisible();
+  await tip.getByRole("button", { name: "Got it" }).click();
+  await expect(tip).toBeHidden();
+  await page.getByRole("button", { name: "Things to try" }).click();
+  await expect(tip).toBeVisible();
+  await tip.getByRole("button", { name: "Got it" }).click();
   bootMs = Date.now() - t0;
   seenDone = await page.evaluate(() => window.__seenDone);
   expect(seenDone, "the boot screen ticked its steps off").toBeGreaterThanOrEqual(3);
