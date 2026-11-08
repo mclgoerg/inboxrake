@@ -222,7 +222,7 @@ function FilterRows({ sheet, filter, quick, newCount, stillCount, presets,
             count={counts[`saved:${p.id}`]} on={checked === `saved:${p.id}`}
             icon={BookmarkPlus} tone="accent" onClick={() => onApply(p)}
             trailing={sheet ? (
-              <Menu variant="quiet" icon up label={t("filter.row_menu",
+              <Menu variant="quiet" icon label={t("filter.row_menu",
                 { name: p.name })} triggerClass="coarse:size-11"
                 trigger={<MoreHorizontal size={16} aria-hidden />}>
                 <MenuItem onClick={() => onEdit(p)}>{t("Edit")}</MenuItem>

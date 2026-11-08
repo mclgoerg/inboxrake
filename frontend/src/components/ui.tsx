@@ -748,10 +748,23 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
   useLayoutEffect(() => {
     if (!open) { setPlace(null); return; }
     position();
-    window.addEventListener("scroll", position, true);
+    // Scrolled out of view or under a sticky header: close, don't float.
+    const onScroll = (e: Event) => {
+      if (pop.current?.contains(e.target as Node)) return;
+      const wr = ref.current?.getBoundingClientRect();
+      const hit = wr && document.elementFromPoint?.(
+        (wr.left + wr.right) / 2, (wr.top + wr.bottom) / 2);
+      if (wr && (wr.bottom < 0 || wr.top > window.innerHeight
+        || (hit && !ref.current?.contains(hit) && !pop.current?.contains(hit)))) {
+        setOpen(false);
+        return;
+      }
+      position();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", position);
     return () => {
-      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", position);
     };
   }, [open]);
@@ -766,8 +779,8 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
   // Keyboard users land on the first item.
   // (preventScroll: opening a menu never moves the page.)
   useEffect(() => {
-    if (open) items()[0]?.focus({ preventScroll: true });
-  }, [open]);
+    if (open && place) items()[0]?.focus({ preventScroll: true });
+  }, [open, !!place]);
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -846,7 +859,8 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
       {open && createPortal(
         <div ref={pop} role="menu" onKeyDown={onMenuKey}
           style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
-            left: place?.left ?? 0, visibility: place ? "visible" : "hidden",
+            left: place?.left ?? 0, opacity: place ? 1 : 0,
+            pointerEvents: place ? undefined : "none",
             ...(place?.maxH ? { maxHeight: place.maxH } : {}) }}
           className={`z-(--z-modal) min-w-52
             ${place?.maxH || scroll ? "overflow-y-auto" : ""} ${scroll ? "max-h-96" : ""}

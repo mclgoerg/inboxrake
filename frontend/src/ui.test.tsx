@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip, ChipGroup, ChipSegment,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
-  MenuGroup, MenuHeading, PopupSelect, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
+  MenuGroup, MenuHeading, PopupSelect, SettingsGroup, SettingsRow, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
@@ -1514,6 +1514,51 @@ describe("Menu portal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Lang" }));
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  test("focus moves into the menu only once it is visible", () => {
+    const seen: string[] = [];
+    const f = vi.spyOn(HTMLElement.prototype, "focus")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menuitem")
+          seen.push(this.closest<HTMLElement>("[role=menu]")!.style.opacity);
+      });
+    render(<Menu label="Lang" trigger={<>L</>}><MenuItem>A</MenuItem></Menu>);
+    fireEvent.click(screen.getByRole("button", { name: "Lang" }));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((o) => o === "1")).toBe(true);
+    f.mockRestore();
+  });
+
+  test("PopupSelect in a SettingsRow card is not clipped (Language case)",
+    () => {
+      const onChange = vi.fn();
+      render(<SettingsGroup>
+        <SettingsRow label="Language">
+          <PopupSelect name="Language" value="en" onChange={onChange}
+            options={[{ value: "en", label: "English" },
+              { value: "de", label: "Deutsch" }]} />
+        </SettingsRow>
+      </SettingsGroup>);
+      fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
+      const de = screen.getByRole("menuitemradio", { name: "Deutsch" });
+      expect(de.closest("[role=menu]")!.parentElement).toBe(document.body);
+      fireEvent.click(de);
+      expect(onChange).toHaveBeenCalledWith("de");
+    });
+
+  test("a bulk-bar `up` menu is portalled out of the clipping bar", () => {
+    const spy = vi.spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 10, right: 50, width: 40, top: 700,
+        bottom: 740, height: 40, x: 10, y: 700, toJSON: () => ({}) });
+    render(<BulkBar summary="x" onClear={() => {}} primary={<i />}
+      actions={<Menu up variant="secondary" label="More" trigger={<>More</>}>
+        <MenuItem>One</MenuItem></Menu>} />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const pop = screen.getByRole("menu");
+    expect(pop.parentElement).toBe(document.body);
+    expect(pop.style.bottom).not.toBe("");
+    spy.mockRestore();
   });
 
   test("`up` menus anchor to the trigger's top edge", () => {
