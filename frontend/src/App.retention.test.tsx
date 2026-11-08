@@ -277,7 +277,7 @@ test("the limit pop-up is named after its label", async () => {
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await selectFirstGroup();
   openLimit();
-  expect(screen.getByRole("button", { name: /^Limit to All mails/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Limit to: All mails" })).toBeTruthy();
 });
 
 test("an active limit shows as a labelled token in the capsule and can be " +
