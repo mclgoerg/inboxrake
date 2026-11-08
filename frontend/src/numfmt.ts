@@ -61,9 +61,10 @@ export function fmtNum(n: number, opts: { digits?: number; max?: number;
   const k = `${loc}|${opts.digits}|${opts.max}|${opts.group}`;
   let nf = cache.get(k);
   if (!nf) { nf = new Intl.NumberFormat(loc, o); cache.set(k, nf); }
-  // French uses U+202F / U+00A0: a plain space keeps copy-paste and wrapping
-  // predictable.
-  return nf.format(n).replace(/[\u202f\u00a0]/g, " ");
+  // Narrow no-break space (U+202F) as the group mark of the space style, so a
+  // number never wraps in the middle (fr-FR already uses it; older ICU
+  // versions use U+00A0).
+  return nf.format(n).replace(/\u00a0/g, "\u202f");
 }
 
 /** Parse what a user typed, in the chosen style (also tolerant: a lone "," or
@@ -84,6 +85,14 @@ export function parseNum(text: string): number {
   return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : NaN;
 }
 
+/** Parse a decimal typed into a `DecimalInput`: digits with at most one
+ *  "." or "," as the decimal mark. Input never has grouping, so "1.500" is
+ *  1.5 in every style (never 1500). NaN for anything else (also negative). */
+export function parseDecimal(text: string): number {
+  const s = text.trim().replace(/[\s\u202f\u00a0]/g, "");
+  return /^(\d+[.,]?\d*|[.,]\d+)$/.test(s) ? Number(s.replace(",", ".")) : NaN;
+}
+
 /** A canonical decimal string ("0.5", as sent to the API) shown with the
  *  chosen decimal mark, no grouping - for text inputs. */
 export function decimalToInput(canonical: string): string {
@@ -91,9 +100,14 @@ export function decimalToInput(canonical: string): string {
 }
 
 /** What a user typed into a decimal input -> the canonical string the form
- *  state keeps ("" stays "", unparsable text is kept for the validator). */
+ *  state keeps ("" stays "", unparsable text is kept so the field can be
+ *  marked invalid and saving blocked). */
 export function inputToDecimal(text: string): string {
   if (!text.trim()) return "";
-  const n = parseNum(text);
+  const n = parseDecimal(text);
   return Number.isNaN(n) ? text : String(n);
 }
+
+/** Does this form value (canonical string) hold text that is no decimal? */
+export const isBadDecimal = (v: string): boolean =>
+  !!v.trim() && Number.isNaN(parseDecimal(v));

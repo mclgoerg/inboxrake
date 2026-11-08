@@ -1248,6 +1248,7 @@ export const DE: Record<string, string> = {
   "settings.for_account": "Für das Konto \u201e{name}\u201c",
   "settings.senders": "Absender",
   "settings.new_badge": "\u201eNeu\u201c-Markierung bleibt",
+  "decimal.invalid": "Gib in den Preis- und Budgetfeldern eine Zahl ein (zum Beispiel 0,5).",
   "numfmt.label": "Zahlenformat",
   "numfmt.help": "Wie Zahlen geschrieben werden. Automatisch folgt der Sprache.",
   "numfmt.auto": "Automatisch",
@@ -1837,7 +1838,7 @@ export const DE: Record<string, string> = {
     + "„Sonstige“ sortiert, z. B. „Mails von meinem Vermieter sind Support, "
     + "nicht Privatpersonen.“ Die KI wählt weiterhin nur eine der festen "
     + "Arten. Wird zusammen mit den Absenderdaten an deinen KI-Anbieter "
-    + "gesendet; bis zu 1500 Zeichen.",
+    + "gesendet; bis zu {max} Zeichen.",
   "smart.reason.own": "Hat genug Mails für eine eigene Zeile.",
   "smart.reason.protected": "Du hast diesen Absender geschützt.",
   "smart.reason.replied": "Du hast diesem Absender geschrieben.",

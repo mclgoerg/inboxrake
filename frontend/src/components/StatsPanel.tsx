@@ -70,7 +70,7 @@ function CatRow({ name, hue, count, bytes, sub = false }: {
       )}
       <span className="min-w-0 flex-1 break-words type-body">{name}</span>
       <span className="whitespace-nowrap text-muted tabular-nums">
-        {count} · {fmtSize(bytes)}</span>
+        {fmtNum(count)} · {fmtSize(bytes)}</span>
     </li>
   );
 }
@@ -399,7 +399,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                   </Ring>
                   <div className="min-w-0 type-meta text-muted">
                     <span className="type-heading text-body tabular-nums">
-                      {stats.replied_senders}</span>{" "}
+                      {fmtNum(stats.replied_senders)}</span>{" "}
                     {t("stats.replied_senders", { total: stats.senders })}
                   </div>
                 </div>

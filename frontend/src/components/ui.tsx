@@ -10,7 +10,7 @@ import { nowDate } from "../clock";
 import { demoHint, useDemo } from "../demoMode";
 import { getLang, t } from "../i18n";
 import { engagementTier, fmtDate } from "../lib";
-import { decimalToInput, inputToDecimal } from "../numfmt";
+import { decimalToInput, inputToDecimal, isBadDecimal } from "../numfmt";
 import type { GroupAi, GroupTrackers, StillMailing } from "../types";
 
 /** One-time consent: what metadata the AI features transmit. */
@@ -539,6 +539,7 @@ export function DecimalInput({ value, onChange, className = "", ...rest }:
   }, [value]);   // eslint-disable-line react-hooks/exhaustive-deps
   return <input className={`${CONTROL} ${className}`} type="text"
     inputMode="decimal" value={text} {...rest}
+    aria-invalid={isBadDecimal(value) || undefined}
     onChange={(e) => {
       setText(e.target.value);
       onChange(inputToDecimal(e.target.value));

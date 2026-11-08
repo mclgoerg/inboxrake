@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang, t } from "./i18n";
 import { fmtSize, fmtSizeGb, fmtUsd } from "./lib";
-import { decimalToInput, fmtNum, inputToDecimal, parseNum, setNumFormat,
+import { decimalToInput, fmtNum, inputToDecimal, isBadDecimal, parseDecimal,
+  parseNum, setNumFormat, type NumFormat,
 } from "./numfmt";
 
 afterEach(() => { setNumFormat("auto"); setLang("en"); });
@@ -23,7 +24,7 @@ describe("number format", () => {
     setNumFormat("en");
     expect(fmtNum(1234.5, { digits: 1 })).toBe("1,234.5");
     setNumFormat("space");
-    expect(fmtNum(1234.5, { digits: 1 })).toBe("1 234,5");
+    expect(fmtNum(1234.5, { digits: 1 })).toBe("1\u202f234,5");
     setNumFormat("de");
     setLang("en");
     expect(fmtNum(1234.5, { digits: 1 })).toBe("1.234,5");
@@ -52,5 +53,25 @@ describe("number format", () => {
     expect(inputToDecimal("0,5")).toBe("0.5");
     expect(inputToDecimal("")).toBe("");
     expect(inputToDecimal("x")).toBe("x");
+  });
+
+  it("parses decimal input without any grouping, in every style", () => {
+    for (const style of ["auto", "en", "de", "space"] as NumFormat[]) {
+      setNumFormat(style);
+      expect(parseDecimal("0.075")).toBe(0.075);
+      expect(parseDecimal("0,075")).toBe(0.075);
+      expect(parseDecimal("1.500")).toBe(1.5);
+      expect(parseDecimal("1,5")).toBe(1.5);
+      expect(parseDecimal("12")).toBe(12);
+      expect(inputToDecimal("1.500")).toBe("1.5");
+    }
+  });
+
+  it("flags text that is no non-negative decimal", () => {
+    for (const bad of ["abc", "-2", "1.2.3", "1,2,3", "0.5x"]) {
+      expect(isBadDecimal(inputToDecimal(bad))).toBe(true);
+    }
+    expect(isBadDecimal("")).toBe(false);
+    expect(isBadDecimal("0.5")).toBe(false);
   });
 });

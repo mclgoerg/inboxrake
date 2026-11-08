@@ -26,3 +26,12 @@ test("DecimalInput shows what is typed and reports the canonical string", () => 
   fireEvent.change(input, { target: { value: "" } });
   expect(seen.at(-1)).toBe("");
 });
+
+test("DecimalInput marks text that is no number as invalid", () => {
+  render(<Host onValue={() => {}} />);
+  const input = screen.getByLabelText("budget") as HTMLInputElement;
+  fireEvent.change(input, { target: { value: "abc" } });
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  fireEvent.change(input, { target: { value: "2" } });
+  expect(input.getAttribute("aria-invalid")).toBeNull();
+});

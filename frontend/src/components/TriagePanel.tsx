@@ -5,6 +5,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtSize } from "../api";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import {
   buildDeck, can, dragDecision, planOf, summarize, type Decision,
   type TriagePlan,
@@ -313,19 +314,19 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
   const tally = (<>
           <Tag tone={sum.trash.groups ? "keep" : "neutral"}>
             <Trash2 size={14} className="mr-1 inline align-text-bottom" />
-            {sum.trash.groups}
+            {fmtNum(sum.trash.groups)}
           </Tag>
           <Tag tone={sum.keep ? "safe" : "neutral"}>
             <Check size={14} className="mr-1 inline align-text-bottom" />
-            {sum.keep}
+            {fmtNum(sum.keep)}
           </Tag>
           <Tag tone={sum.unsub ? "info" : "neutral"}>
             <BellOff size={14} className="mr-1 inline align-text-bottom" />
-            {sum.unsub}
+            {fmtNum(sum.unsub)}
           </Tag>
           <Tag tone="neutral">
             <ShieldCheck size={14} className="mr-1 inline align-text-bottom" />
-            {sum.protect}
+            {fmtNum(sum.protect)}
           </Tag>
   </>);
 

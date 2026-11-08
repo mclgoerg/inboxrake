@@ -4,6 +4,7 @@
 
 import { Check } from "lucide-react";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import { Button, Notice, ProgressBar, Spinner } from "../components/ui";
 import { STEPS, type StepId } from "./protocol";
 import type { BootState } from "./runtime";
@@ -15,7 +16,7 @@ const LABEL: Record<StepId, string> = {
   seed: "demo.boot.seed",
 };
 
-const fmtMb = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
+const fmtMb = (n: number) => fmtNum(n, { digits: 1 });
 
 export function DemoBoot({ state, onRetry }: {
   state: Exclude<BootState, { phase: "ready" }>; onRetry: () => void;

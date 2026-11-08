@@ -63,7 +63,7 @@ function RunSummary({ rule, preview = true }: {
         </span>}
       {preview && r.preview.length > 0 && (
         <span className="block text-muted">
-          {r.preview.map((p) => `${p.label} (${p.count})`).join(" · ")}
+          {r.preview.map((p) => `${p.label} (${fmtNum(p.count)})`).join(" · ")}
         </span>
       )}
     </>

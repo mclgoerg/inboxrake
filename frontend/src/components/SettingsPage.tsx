@@ -4,7 +4,7 @@ import { Archive, Bell, Check, ChevronLeft, Folder, KeyRound, Mail, Plus,
 import { useEffect, useLayoutEffect, useRef, useState,
   type MutableRefObject, type ReactNode } from "react";
 import { api, downloadFile, fmtUsd } from "../api";
-import { fmtNum, getNumFormat, setNumFormat, type NumFormat } from "../numfmt";
+import { fmtNum, getNumFormat, isBadDecimal, setNumFormat, type NumFormat } from "../numfmt";
 import { getLang, setLang, t, type Lang } from "../i18n";
 import { accountAuth, fmtAgo, fmtSize } from "../lib";
 import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
@@ -362,8 +362,13 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   // Set once the page is about to be replaced by a full navigation (OAuth
   // consent): the browser's "Leave site?" prompt would be false then.
   const leaving = useRef(false);
+  // A price / budget that is no number must not silently save as 0 (= no
+  // cap): the field is marked invalid and Save is blocked.
+  const badDecimal = [f.priceIn, f.priceOut, f.budget, f.sharedBudget]
+    .some(isBadDecimal);
   const save = async (extra: Record<string, unknown> = {}) => {
     if (savingRef.current) return null;
+    if (badDecimal) { note(t("decimal.invalid"), true); return null; }
     savingRef.current = true;
     setSaving(true);
     try {
@@ -1414,7 +1419,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup padded header={t("ai.sort_instructions")}
-      footnote={t("ai.sort_instructions_help")}>
+      footnote={t("ai.sort_instructions_help", { max: fmtNum(1500) })}>
       <TextArea className="!min-h-16" maxLength={1500}
         aria-label={t("ai.sort_instructions")}
         value={f.sortInstructions} onChange={set("sortInstructions")} />
@@ -1758,7 +1763,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const saveBar = dirty && (
-    <SaveBar summary={summary.text} saving={saving} onRevert={revert}
+    <SaveBar summary={badDecimal ? t("decimal.invalid") : summary.text}
+      saving={saving} blocked={badDecimal} onRevert={revert}
       onSave={() => void save()} />
   );
 
@@ -1799,8 +1805,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 /** The floating capsule while edits are staged: what changed, Revert, Save.
  *  Publishes its height like the selection bar (toasts and the tab bar make
  *  room). */
-function SaveBar({ summary, saving, onRevert, onSave }: {
-  summary: string; saving: boolean; onRevert: () => void; onSave: () => void;
+function SaveBar({ summary, saving, blocked = false, onRevert, onSave }: {
+  summary: string; saving: boolean; blocked?: boolean; onRevert: () => void;
+  onSave: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useBulkBarHeight(ref, true);
@@ -1821,7 +1828,7 @@ function SaveBar({ summary, saving, onRevert, onSave }: {
         <Button variant="secondary" size="sm" onClick={onRevert}>
           {t("settings.revert")}
         </Button>
-        <Button size="sm" onClick={onSave} disabled={saving}>{t("Save")}</Button>
+        <Button size="sm" onClick={onSave} disabled={saving || blocked}>{t("Save")}</Button>
       </div>
     </div>
   );
