@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { t } from "../i18n";
-import { Menu, MenuDivider, MenuItem, PopupSelect, useMediaQuery }
+import { Menu, MenuGroup, MenuItem, PopupSelect, useMediaQuery }
   from "./ui";
 
 /** Sort field + direction. From 768 px: a pop-up button ("Sort: Mails ↓")
@@ -20,6 +20,11 @@ export function SortControl<K extends string>({ options, value, dir,
   plain?: boolean;
 }) {
   const phone = useMediaQuery("(width < 48rem)");
+  // The labels read "Sort: mails"; under the "Sort by" caption the key alone is enough.
+  const short = (l: string) => {
+    const x = t(l).replace(/^[^:]*:\s*/, "");
+    return x.charAt(0).toUpperCase() + x.slice(1);
+  };
   if (phone) {
     return (
       <Menu variant={plain ? "plain" : "secondary"} icon
@@ -29,36 +34,35 @@ export function SortControl<K extends string>({ options, value, dir,
           dir: t(dir === "asc" ? "sort.ascending" : "sort.descending")
             .toLowerCase() })}
         trigger={<ArrowUpDown size={18} />}>
-        {options.map((o) => (
-          <MenuItem key={o.k} active={o.k === value}
-            onClick={() => onValue(o.k)}>
-            {t(o.label)}
+        <MenuGroup label={t("sort.by")}>
+          {options.map((o) => (
+            <MenuItem key={o.k} active={o.k === value}
+              onClick={() => onValue(o.k)}>
+              {short(o.label)}
+            </MenuItem>
+          ))}
+        </MenuGroup>
+        <MenuGroup label={t("sort.order")}>
+          <MenuItem active={dir === "desc"} onClick={() => onDir("desc")}>
+            {t("sort.descending")}
           </MenuItem>
-        ))}
-        <MenuDivider />
-        <MenuItem active={dir === "asc"} onClick={() => onDir("asc")}>
-          {t("sort.ascending")}
-        </MenuItem>
-        <MenuItem active={dir === "desc"} onClick={() => onDir("desc")}>
-          {t("sort.descending")}
-        </MenuItem>
+          <MenuItem active={dir === "asc"} onClick={() => onDir("asc")}>
+            {t("sort.ascending")}
+          </MenuItem>
+        </MenuGroup>
       </Menu>
     );
   }
-  // The labels read "Sort: mails"; inside the pop-up the key alone is enough.
-  const short = (l: string) => {
-    const x = t(l).replace(/^[^:]*:\s*/, "");
-    return x.charAt(0).toUpperCase() + x.slice(1);
-  };
   return (
     <PopupSelect<string> className="shrink-0"
       label={`${t("sort.menu")}:`}
       valueLabel={`${short(options.find((o) => o.k === value)?.label ?? "")} ${
         dir === "desc" ? "↓" : "↑"}`}
       options={[
+        { heading: t("sort.by") },
         ...options.map((o) => ({ value: `k:${o.k}`, label: short(o.label),
           checked: o.k === value })),
-        "divider" as const,
+        { heading: t("sort.order") },
         { value: "d:desc", label: t("sort.descending"),
           icon: <ArrowDown size={14} aria-hidden />, checked: dir === "desc" },
         { value: "d:asc", label: t("sort.ascending"),

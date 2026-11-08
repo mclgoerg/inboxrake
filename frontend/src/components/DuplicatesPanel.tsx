@@ -264,7 +264,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
       <li key={mailKey(m)} className="flex items-stretch rounded-control
         bg-panel2">
         {review && (
-          <Checkbox checked={sel.has(mailKey(m))} className="pl-1"
+          <Checkbox round checked={sel.has(mailKey(m))} className="pl-1"
             onChange={() => toggle(mailKey(m))}
             aria-label={t("select.named", { subject })} />
         )}

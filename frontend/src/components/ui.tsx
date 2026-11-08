@@ -2,7 +2,7 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, ChevronsUp
   MousePointerClick, Pin, Plus, Shield, TriangleAlert, X }
   from "lucide-react";
 import { createPortal } from "react-dom";
-import { createContext, useCallback, useContext, useEffect, useId,
+import { createContext, Fragment, useCallback, useContext, useEffect, useId,
   useLayoutEffect, useMemo, useRef, useState, type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject }
   from "react";
@@ -967,6 +967,7 @@ export function MenuItem({ children, onClick, disabled, active, sub,
 
 export type PopupOption<T extends string = string> =
   | "divider"
+  | { heading: string }
   | { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean;
       /** Overrides the default check (`value === current`): a menu that
        *  holds two settings (sort key + direction) checks one of each. */
@@ -1003,10 +1004,20 @@ export function PopupSelect<T extends string>({ value, onChange, options,
   /** Extra attributes for the button (`data-bar-field` in a BulkBar). */
   triggerProps?: Partial<Record<`data-${string}` | "title", string>>;
 }) {
-  const cur = options.find((o) => o !== "divider" && o.value === value);
-  const hasValue = valueLabel != null || (cur != null && cur !== "divider");
-  const shown = valueLabel ?? (cur && cur !== "divider" ? cur.label
-    : placeholder);
+  const cur = options.find((o): o is Extract<typeof o, { value: T }> =>
+    o !== "divider" && "value" in o && o.value === value);
+  // A `{ heading }` option starts a labelled MenuGroup (role=group) that runs
+  // to the next heading.
+  const groups: { heading?: string; items: PopupOption<T>[] }[] = [];
+  for (const o of options) {
+    if (o !== "divider" && "heading" in o) groups.push({ heading: o.heading, items: [] });
+    else {
+      if (!groups.length) groups.push({ items: [] });
+      groups[groups.length - 1].items.push(o);
+    }
+  }
+  const hasValue = valueLabel != null || cur != null;
+  const shown = valueLabel ?? (cur ? cur.label : placeholder);
   const name = [label ?? nameBase, typeof shown === "string" ? shown : null]
     .filter(Boolean).join(" ") || undefined;
   return (
@@ -1025,19 +1036,25 @@ export function PopupSelect<T extends string>({ value, onChange, options,
         <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-muted" />
       </>}>
       <>
-        {options.map((o, i) => o === "divider"
-          ? <MenuDivider key={`d${i}`} />
-          : (
-            <MenuItem key={o.value} disabled={o.disabled}
-              active={o.checked ?? (o.value === value)}
-              onClick={() => onChange(o.value)}>
-              {o.icon ? (
-                <span className="flex items-center gap-2">
-                  {o.icon}{o.label}
-                </span>
-              ) : o.label}
-            </MenuItem>
-          ))}
+        {groups.map((g, gi) => {
+          const items = g.items.map((o, i) => o === "divider"
+            ? <MenuDivider key={`d${i}`} />
+            : "heading" in o ? null
+            : (
+              <MenuItem key={o.value} disabled={o.disabled}
+                active={o.checked ?? (o.value === value)}
+                onClick={() => onChange(o.value)}>
+                {o.icon ? (
+                  <span className="flex items-center gap-2">
+                    {o.icon}{o.label}
+                  </span>
+                ) : o.label}
+              </MenuItem>
+            ));
+          return g.heading
+            ? <MenuGroup key={`g${gi}`} label={g.heading}>{items}</MenuGroup>
+            : <Fragment key={`g${gi}`}>{items}</Fragment>;
+        })}
       </>
     </Menu>
   );
@@ -1059,7 +1076,9 @@ export function MenuGroup({ label, children }: {
     <div role="group" aria-label={label}
       className="[&:not(:first-child)]:mt-1 [&:not(:first-child)]:border-t
         [&:not(:first-child)]:border-line [&:not(:first-child)]:pt-1">
-      <div aria-hidden className="px-3 pb-0.5 pt-1.5 type-caption
+      {/* stopPropagation: a click on the caption must not close the Menu */}
+      <div aria-hidden onClick={(e) => e.stopPropagation()}
+        className="px-3 pb-0.5 pt-1.5 type-caption
         font-semibold uppercase tracking-wide text-muted">
         {label}
       </div>
@@ -2441,7 +2460,7 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
       {/* The negative margins + padding below stretch each target to the
           row's edges, so there are no dead strips between them. */}
       {onToggle && (
-        <Checkbox checked={checked} onChange={onToggle}
+        <Checkbox round checked={checked} onChange={onToggle}
           className="-my-3 -ml-3 min-w-14 self-stretch pl-3 md:-my-2.5
             md:-ml-2 md:min-w-13 md:pl-2"
           aria-label={selectLabel ?? t("Select mail")} />

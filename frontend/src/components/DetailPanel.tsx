@@ -20,7 +20,7 @@ import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
 import { ThreadView } from "./ThreadView";
 import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
   confirmDialog, DemoHint, EngagementMeter, ensureAiAck, Input, LINK,
-  LINK_ACCENT, Loading, Menu, MenuItem, Modal, Notice, PanelHeader, PinButton,
+  LINK_ACCENT, Loading, Menu, MenuGroup, MenuItem, Modal, Notice, PanelHeader, PinButton,
   PopupSelect, ProtectButton, RatingChips, Segmented, Spinner, StatTile,
   PageScope, stillMailingText, Tag, tabPanelProps, TrackerBadge,
   useBackLayer, useMediaQuery }
@@ -811,21 +811,25 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
             <Menu variant="secondary" icon label={t(
               sortBy === "date" ? "Sort: date" : "Sort: size")}
               trigger={<ArrowUpDown size={18} />}>
+              <MenuGroup label={t("sort.by")}>
               <MenuItem active={sortBy === "date"}
                 onClick={() => setSortBy("date")}>
-                {t("Sort: date")}
+                {t("mails.sort_date")}
               </MenuItem>
               <MenuItem active={sortBy === "size"}
                 onClick={() => setSortBy("size")}>
-                {t("Sort: size")}
+                {t("mails.sort_size")}
               </MenuItem>
+              </MenuGroup>
             </Menu>
           ) : (
             <PopupSelect<"date" | "size"> className="shrink-0"
               value={sortBy} onChange={setSortBy}
+              valueLabel={t(sortBy === "date" ? "Sort: date" : "Sort: size")}
               options={[
-                { value: "date", label: t("Sort: date") },
-                { value: "size", label: t("Sort: size") },
+                { heading: t("sort.by") },
+                { value: "date", label: t("mails.sort_date") },
+                { value: "size", label: t("mails.sort_size") },
               ]} />
           )}
           <PopupSelect<string> className="min-w-0 shrink"
