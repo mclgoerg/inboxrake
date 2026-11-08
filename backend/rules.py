@@ -61,6 +61,10 @@ PURGE_SCOPES = ("junk", "trash")
 SCOPES = ("mail",) + PURGE_SCOPES
 PURGE_ACTION = "purge"     # the ONLY action of a purge rule; not in mailops.ACTIONS
 PURGE_DEFAULT_DAYS = 30
+# Marks the Trash purge rule behind the Trash page's "Empty automatically"
+# switch (so Off knows it may remove it). Set on create only, for a Trash
+# purge rule only; nothing can set or clear it afterwards.
+AUTO_EMPTY = "auto_empty"
 # Not "smart": its rows' membership depends on a per-account threshold and
 # the protected list, so a standing rule on them would shift under it.
 RULE_GROUPINGS = tuple(g for g in mailops.GROUPINGS if g != "smart")
@@ -478,6 +482,9 @@ def _normalise(r: dict) -> bool:
     r.setdefault("keep_latest", None)    # tolerate pre-retention rules.json
     r.setdefault("older_than_days", None)
     r.setdefault("origin", "manual")     # tolerate pre-block rules.json
+    if r["origin"] == AUTO_EMPTY and (r.get("scope") != "trash"
+                                      or r.get("action") != PURGE_ACTION):
+        r["origin"] = "manual"           # a hand-edited file cannot misuse it
     r.setdefault("scope", "mail")        # tolerate pre-purge rules.json
     r.setdefault("report_at", None)
     r.setdefault("reset_reason", "")
@@ -611,8 +618,11 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
             raise ValueError("bad schedule")
         rule["schedule"] = body["schedule"]
     if "origin" in body:
-        if body["origin"] not in ("manual", "block"):
+        if body["origin"] not in ("manual", "block", AUTO_EMPTY):
             raise ValueError("bad origin")
+        if body["origin"] != rule.get("origin") \
+                and AUTO_EMPTY in (body["origin"], rule.get("origin")):
+            raise ValueError("bad origin")   # set on create, never changed
         rule["origin"] = body["origin"]
     if "account" in body and body["account"]:
         if body["account"] not in accounts.names():
@@ -653,12 +663,16 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
             raise ValueError(mailops.RULE_PURGE_KEEP_LATEST)
         if rule.get("older_than_days") is None:
             raise ValueError(mailops.RULE_PURGE_NEEDS_AGE)
-        if rule.get("origin") != "manual":
+        if rule.get("origin") != "manual" and not (
+                rule.get("origin") == AUTO_EMPTY
+                and rule["scope"] == "trash"):
             raise ValueError("bad origin")
         bad = purge_unsupported(rule["query"])
         if bad:
             raise ValueError(_purge_filter_error(bad))
         rule["dest"] = ""
+    elif rule.get("origin") == AUTO_EMPTY:
+        raise ValueError("bad origin")       # not a Trash purge rule any more
     elif rule["action"] not in mailops.ACTIONS:
         raise ValueError("bad action")       # e.g. a purge rule moved to mail
     elif rule["action"] == "move" and not rule["dest"]:
@@ -719,12 +733,20 @@ def create_rule(body: dict, lenient_filter: bool = False) -> dict:
             "reset_reason": ""}
     body = dict(body)
     body.pop("mode", None)                            # not on create
+    auto_empty = body.get("origin") == AUTO_EMPTY
+    if auto_empty:
+        body.pop("origin")
     if body.get("scope") in PURGE_SCOPES:
         # the one action of a purge rule, whatever the client sent as the
         # (mail-rule) default; a missing age starts at the D8 default
         body.setdefault("action", PURGE_ACTION)
         if body.get("older_than_days") is None:
             body["older_than_days"] = PURGE_DEFAULT_DAYS
+    if auto_empty:
+        # only ever for a Trash purge rule; _validate then checks the rest
+        if body.get("scope") != "trash":
+            raise ValueError("bad origin")
+        rule["origin"] = AUTO_EMPTY
     _validate(body, rule, lenient_filter)
     # filling in the blank template is not an edit of an armed rule
     rule["reset_reason"] = ""

@@ -2,8 +2,6 @@ import { Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, fmtSize } from "../api";
 import { t } from "../i18n";
-import { DE } from "../locales/de";
-import { EN } from "../locales/en";
 import type { Rule, TrashResp } from "../types";
 import { Button, confirmDialog, IconTile, SettingsGroup, SettingsRow,
   Stepper, Switch, useToast } from "./ui";
@@ -21,9 +19,8 @@ export function autoEmptyRule(rules: Rule[]): Rule | undefined {
   return same.find((r) => r.mode === "execute") ?? same[0];
 }
 
-/** Rules this switch created carry its name (in the language it was made in). */
-const isOurs = (r: Rule) =>
-  r.name === EN["fp.auto_rule_name"] || r.name === DE["fp.auto_rule_name"];
+/** Rules this switch created carry the marker (whatever they are named). */
+const isOurs = (r: Rule) => r.origin === "auto_empty";
 
 /** The size card of the Trash page: how much the folder holds, and the
  *  "Empty automatically" switch.
@@ -105,7 +102,7 @@ export function TrashCard({ list, rules, onChanged }: {
       r = await api.createRule({
         name: t("fp.auto_rule_name"), scope: "trash", action: "purge",
         grouping: "sender", query: "", schedule: "daily",
-        older_than_days: days });
+        older_than_days: days, origin: "auto_empty" });
       created = true;
     } else if (r.older_than_days !== days) {
       r = await api.updateRule(r.id, { older_than_days: days });
@@ -126,6 +123,7 @@ export function TrashCard({ list, rules, onChanged }: {
     if (!rule) return;
     if (isOurs(rule)) {
       await api.deleteRule(rule.id);
+      setDays(DEFAULT_DAYS);
       toast.show(t("fp.auto_off"));
     } else {
       await api.updateRule(rule.id, { mode: "report" });

@@ -1691,3 +1691,66 @@ def test_the_preview_endpoint_can_count_what_a_rule_would(real_age,
     bad = client.post("/api/folders_panel/purge_preview",
                       json={**body, "in_folder_days": 0})
     assert bad.status_code == 422
+
+
+# ======================================= the auto-empty marker (Trash page)
+
+def test_the_auto_empty_marker_is_accepted_on_create_for_a_trash_purge_rule():
+    r = rulesmod.create_rule({"name": "x", "scope": "trash",
+                              "origin": "auto_empty"})
+    assert r["origin"] == "auto_empty" and r["mode"] == "report"
+    assert _stored(r["id"])["origin"] == "auto_empty"
+    shown = client.get("/api/rules").json()["rules"]
+    assert [x["origin"] for x in shown] == ["auto_empty"]
+
+
+@pytest.mark.parametrize("body", [
+    {"scope": "junk"}, {"scope": "mail", "action": "trash"},
+    {"scope": "mail", "action": "purge"}])
+def test_the_auto_empty_marker_is_refused_anywhere_but_a_trash_purge_rule(body):
+    with pytest.raises(ValueError, match="bad origin|bad action"):
+        rulesmod.create_rule({"name": "x", "origin": "auto_empty", **body})
+    assert rulesmod.load_rules() == []
+
+
+def test_the_api_takes_auto_empty_on_create_only_and_refuses_block():
+    ok = client.post("/api/rules", json={
+        "name": "x", "scope": "trash", "origin": "auto_empty"})
+    assert ok.status_code == 200 and ok.json()["origin"] == "auto_empty"
+    assert client.post("/api/rules", json={
+        "name": "y", "scope": "trash", "origin": "block"}).status_code == 400
+    assert client.post("/api/rules", json={
+        "name": "z", "scope": "junk", "origin": "auto_empty"}).status_code == 400
+
+
+def test_an_edit_can_neither_set_nor_clear_the_marker():
+    ours = rulesmod.create_rule({"name": "x", "scope": "trash",
+                                 "origin": "auto_empty"})
+    other = _rule("trash")
+    for body in ({"origin": "manual"}, {"origin": "block"},
+                 {"origin": "nope"}, {"scope": "junk"}):
+        with pytest.raises(ValueError):
+            rulesmod.update_rule(ours["id"], body)
+    with pytest.raises(ValueError, match="bad origin"):
+        rulesmod.update_rule(other["id"], {"origin": "auto_empty"})
+    assert _stored(ours["id"])["origin"] == "auto_empty"
+    assert _stored(other["id"])["origin"] == "manual"
+    # ordinary edits keep it (also the age, the name, arming)
+    r = rulesmod.update_rule(ours["id"], {"name": "renamed",
+                                          "older_than_days": 45})
+    assert r["origin"] == "auto_empty" and r["name"] == "renamed"
+    same = client.post(f"/api/rules/{ours['id']}", json={
+        "origin": "auto_empty"})
+    assert same.status_code == 200 and same.json()["origin"] == "auto_empty"
+    assert client.post(f"/api/rules/{ours['id']}", json={
+        "origin": "manual"}).status_code == 400
+
+
+def test_a_hand_edited_file_cannot_mark_other_rules_as_auto_empty():
+    good = _rule("trash")
+    bad = _rule("junk")
+    rules = [dict(_stored(good["id"]), origin="auto_empty"),
+             dict(_stored(bad["id"]), origin="auto_empty")]
+    _write(rules)
+    got = {r["id"]: r["origin"] for r in rulesmod.load_rules()}
+    assert got == {good["id"]: "auto_empty", bad["id"]: "manual"}

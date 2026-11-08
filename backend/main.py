@@ -1265,6 +1265,8 @@ class RuleBody(BaseModel):
     mode: str | None = None        # only honoured on update
     keep_latest: int | None = None
     older_than_days: int | None = None
+    # only "auto_empty" (the Trash page's switch) can be set here, on create
+    origin: str | None = None
 
 
 @app.get("/api/rules")
@@ -1279,6 +1281,8 @@ def post_rules(body: RuleBody, account: str | None = Query(None)):
     `?account=` (the account the UI is showing) - never silently to the
     default account."""
     data = body.model_dump(exclude_none=True)
+    if data.get("origin") not in (None, "manual", rulesmod.AUTO_EMPTY):
+        raise HTTPException(400, "bad origin")
     if not data.get("account") and account:
         data["account"] = _acc(account).name
     try:

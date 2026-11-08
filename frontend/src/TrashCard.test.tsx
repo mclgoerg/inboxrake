@@ -38,7 +38,7 @@ const rule = (over: Partial<Rule> = {}): Rule => ({
   id: "r1", name: "Empty Trash automatically", scope: "trash",
   grouping: "sender", query: "", action: "purge", dest: "",
   schedule: "daily", mode: "execute", keep_latest: null,
-  older_than_days: 30, origin: "manual", report_runs: 1, created: 1,
+  older_than_days: 30, origin: "auto_empty", report_runs: 1, created: 1,
   last_run: null, ...over });
 
 const report = (over: Partial<RuleRun> = {}): RuleRun => ({
@@ -112,7 +112,7 @@ test("turning it on: preview first, nothing written, then rule + report + arm on
     // created without a mode (the server starts it in report mode), reported
     expect(createRule).toHaveBeenCalledWith(expect.objectContaining({
       scope: "trash", action: "purge", grouping: "sender", query: "",
-      schedule: "daily", older_than_days: 30 }));
+      schedule: "daily", older_than_days: 30, origin: "auto_empty" }));
     expect(createRule.mock.calls[0][0]).not.toHaveProperty("mode");
     expect(runRule).toHaveBeenCalledWith("r1");
     expect(runRule.mock.invocationCallOrder[0])
@@ -146,7 +146,7 @@ test("cancel after Apply leaves an armed rule exactly as it was", async () => {
 test("cancel on a report-only rule made on the Rules page leaves it untouched",
   async () => {
     card([rule({ mode: "report", report_runs: 0, name: "My own sweep",
-      older_than_days: 45 })]);
+      origin: "manual", older_than_days: 45 })]);
     expect(sw().getAttribute("aria-checked")).toBe("false");
     expect(screen.getByText(/Not active yet/)).toBeTruthy();
     fireEvent.click(sw());
@@ -261,9 +261,9 @@ test("off removes a rule this switch made", async () => {
   expect(onChanged).toHaveBeenCalled();
 });
 
-test("off only disarms a rule made elsewhere (Rules page) and says so",
+test("off only disarms a rule made elsewhere - even one with the switch's own name",
   async () => {
-    card([rule({ name: "My own sweep" })]);
+    card([rule({ origin: "manual" })]);          // same name, made by hand
     fireEvent.click(sw());
     await waitFor(() => expect(updateRule).toHaveBeenCalledWith("r1",
       { mode: "report" }));
@@ -272,6 +272,25 @@ test("off only disarms a rule made elsewhere (Rules page) and says so",
       "Automatic emptying is off - the rule stays in Rules, report only"))
       .toBeTruthy();
   });
+
+test("a switch rule the user renamed is still recognised by its marker",
+  async () => {
+    card([rule({ name: "My nightly sweep" })]);   // origin auto_empty
+    fireEvent.click(sw());
+    await waitFor(() => expect(deleteRule).toHaveBeenCalledWith("r1"));
+    expect(updateRule).not.toHaveBeenCalled();
+  });
+
+test("after Off the age goes back to the default", async () => {
+  card([rule({ older_than_days: 90 })]);
+  const days = screen.getByRole("spinbutton", { name: "Older than" });
+  expect(days.getAttribute("aria-valuenow")).toBe("90");
+  fireEvent.click(sw());
+  await waitFor(() => expect(deleteRule).toHaveBeenCalled());
+  await waitFor(() => expect(
+    screen.getByRole("spinbutton", { name: "Older than" })
+      .getAttribute("aria-valuenow")).toBe("30"));
+});
 
 test("a changed age on an armed rule needs Apply; only the confirm edits, reports and arms again",
   async () => {

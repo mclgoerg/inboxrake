@@ -419,7 +419,8 @@ export interface Rule {
   mode: "report" | "execute";
   keep_latest: number | null;
   older_than_days: number | null;
-  origin: "manual" | "block";
+  /** "auto_empty": the Trash page's "Empty automatically" switch made it. */
+  origin: "manual" | "block" | "auto_empty";
   report_runs: number;
   /** Purge rules: why an armed rule went back to report mode (shown on the
    *  card). */
