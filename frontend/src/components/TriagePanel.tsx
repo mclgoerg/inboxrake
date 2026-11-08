@@ -386,13 +386,13 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col items-center
           justify-center gap-3 overflow-hidden p-4">
-          <div className="relative mb-10 w-full max-w-md">
+          <div className="relative mb-16 w-full max-w-md">
             {/* The deck: the next two cards peek out from under this one. */}
             {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
               <div key={n} aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-card
-                  border border-line bg-panel shadow-popover"
-                style={{ transform: `translateY(${n * 18}px) scale(${1 - n * 0.07})`,
+                  border border-line bg-chip shadow-popover"
+                style={{ transform: `translateY(${n * 30}px) scale(${1 - n * 0.05})`,
                   opacity: 1 - n * 0.25 }} />
             ))}
             <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
