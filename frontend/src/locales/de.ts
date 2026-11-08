@@ -883,7 +883,43 @@ export const DE: Record<string, string> = {
   "fp.older_label": "Vor mehr als so vielen Tagen empfangen",
   "fp.older_invalid": "Bitte eine ganze Zahl von Tagen von 1 bis 36500 eingeben.",
   "fp.older_btn": "Mails zählen",
-  "fp.empty_junk": "Spam leeren",
+  "fp.empty_junk": "Spam leeren · {n}",
+  "fp.empty_trash": "Papierkorb leeren · {n}",
+  "fp.size_in_mails": "in {n} Mails",
+  "fp.size_in_mails_one": "in 1 Mail",
+  "fp.auto_title": "Automatisch leeren",
+  "fp.auto_sub": "Mails älter als {n} Tage, einmal am Tag",
+  "fp.auto_sub_one": "Mails älter als 1 Tag, einmal am Tag",
+  "fp.auto_report_only":
+    "Noch nicht aktiv - Inboxrake meldet nur, was gelöscht würde.",
+  "fp.auto_days": "Älter als",
+  "fp.auto_apply": "Übernehmen",
+  "fp.auto_next": "Nächster Lauf: {n} Mails · {size}",
+  "fp.auto_next_one": "Nächster Lauf: 1 Mail · {size}",
+  "fp.auto_next_none": "Nächster Lauf: noch nichts zu löschen",
+  "fp.auto_last": "Letzter Lauf: {n} Mails gelöscht",
+  "fp.auto_last_one": "Letzter Lauf: 1 Mail gelöscht",
+  "fp.auto_last_none": "Letzter Lauf: nichts zu löschen",
+  "fp.auto_confirm_title": "Papierkorb automatisch leeren?",
+  "fp.auto_confirm_body":
+    "Einmal am Tag werden Mails endgültig auf dem Server gelöscht, die vor "
+    + "mehr als {n} Tagen eingegangen sind und außerdem seit mindestens {n} "
+    + "Tagen im Papierkorb liegen - höchstens {cap} pro Lauf. Geschützte "
+    + "Absender und geschützte Mails bleiben unangetastet. Das lässt sich "
+    + "nicht rückgängig machen.",
+  "fp.auto_confirm_body_one":
+    "Einmal am Tag werden Mails endgültig auf dem Server gelöscht, die vor "
+    + "mehr als 1 Tag eingegangen sind und außerdem seit mindestens 1 Tag "
+    + "im Papierkorb liegen - höchstens {cap} pro Lauf. Geschützte "
+    + "Absender und geschützte Mails bleiben unangetastet. Das lässt sich "
+    + "nicht rückgängig machen.",
+  "fp.auto_now": "Jetzt würden {n} Mails · {size} gelöscht",
+  "fp.auto_now_one": "Jetzt würde 1 Mail · {size} gelöscht",
+  "fp.auto_now_none": "Jetzt gibt es nichts zu löschen",
+  "fp.auto_confirm_btn": "Einschalten",
+  "fp.auto_on": "Der Papierkorb wird jetzt automatisch geleert",
+  "fp.auto_off": "Automatisches Leeren ist aus",
+  "fp.auto_rule_name": "Papierkorb automatisch leeren",
   "fp.purge_title": "Endgültig aus „{folder}“ löschen?",
   "fp.purge_title_empty": "„{folder}“ endgültig leeren?",
   "fp.purge_body_junk":
@@ -925,11 +961,28 @@ export const DE: Record<string, string> = {
     "diesen Monat endgültig gelöscht: {n} Mails · {size} frei",
   "stats.freed_month_one":
     "diesen Monat endgültig gelöscht: 1 Mail · {size} frei",
-  "fp.which": "Ordner",
   "fp.grouping": "Gruppieren nach",
   "fp.by_sender": "Nach Absender",
   "fp.mails": "Mails",
   "fp.not_junk": "Kein Spam",
+  "fp.block": "Blockieren",
+  "fp.blocked": "Blockiert",
+  "fp.row_action": "{action}: {who}",
+  "fp.restore": "Wiederherstellen",
+  "fp.restored_inbox": "In den Posteingang zurückgelegt",
+  "fp.known_title": "{n} Absender, die du kennst",
+  "fp.known_title_one": "1 Absender, den du kennst",
+  "fp.known_sub": "Du hast ihnen schon geantwortet - wahrscheinlich kein Spam",
+  "fp.known_show": "Anzeigen",
+  "fp.known_all": "Alle anzeigen",
+  "fp.known_tag": "bekannt",
+  "fp.first_seen": "erstmals {date}",
+  "fp.replied_before": "du hast geantwortet",
+  "fp.junk_sub": "{n} Mails · von deinem Mailserver geprüft",
+  "fp.junk_sub_one": "1 Mail · von deinem Mailserver geprüft",
+  "fp.not_junk_note":
+    "„Kein Spam“ legt die Mail zurück in den Posteingang. Dein Mailserver "
+    + "lernt daraus ebenfalls, sofern er das unterstützt.",
   "fp.action": "Aktion…",
   "fp.to_trash": "In den Papierkorb verschieben",
   "fp.not_junk_done": "{n} Mails in den Posteingang verschoben",

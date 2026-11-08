@@ -1,34 +1,40 @@
-import { RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, Undo2,
+  UserCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
-import { t } from "../i18n";
+import { getLang, t } from "../i18n";
+import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp }
   from "../types";
 import { MessageView } from "./MailList";
-import { Button, confirmDialog, EmptyState, Input, Loading, MailRow, Modal,
-  PanelHeader, promptDialog, PopupSelect, Segmented, Spinner, Toolbar,
-  useMediaQuery, useToast } from "./ui";
+import { TrashCard } from "./TrashCard";
+import { Avatar, Button, Checkbox, confirmDialog, EmptyState, IconTile, Input,
+  Loading, MailRow, Modal, PanelHeader, promptDialog, PopupSelect, Segmented,
+  Spinner, Tag, Toolbar, useMediaQuery, useToast } from "./ui";
 
 type Grouping = "sender" | "mails";
 
 /** Phone-sized touch height for the toolbar's pop-up buttons. */
 const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
 
-/** Folders panel: the special folders Inboxrake manages (Junk, Trash) in one
- *  place - live contents (also mail that arrived or was deleted elsewhere),
- *  search, a by-sender view, and per-folder actions: Junk "Not junk" (to the
- *  Inbox, undoable, then offers Protect) and "Move to Trash"; Trash
- *  "Restore to…" and the Empty Trash footer. Both folders also get the
- *  irreversible "Delete permanently…" (selection / sender / older than N
- *  days / Empty Junk): always counted live on the server first, confirmed
- *  with the counts, and sent back as the counted UIDVALIDITY + exact UIDs. */
+/** The Trash and Junk pages (one component, the route picks the folder; each
+ *  is one tap away from the sidebar and the Clean up tiles). Live contents
+ *  (also mail that arrived or was deleted elsewhere), search, Select mode,
+ *  and per-folder actions. Trash: the size card with "Empty automatically"
+ *  (`TrashCard`), a Restore button per mail (to the Inbox; Select mode
+ *  keeps "Restore to…"), "Delete older than…" / "Empty Trash" in the bottom
+ *  bar. Junk: by sender with Not junk / Block / Trash per row, the "senders
+ *  you know" banner, "Not junk" (to the Inbox, undoable, then offers
+ *  Protect). Both folders also get the irreversible "Delete permanently…"
+ *  (selection / sender / older than N days / Empty): always counted live on
+ *  the server first, confirmed with the counts, and sent back as the counted
+ *  UIDVALIDITY + exact UIDs. */
 export function FoldersPanel({ state, initialRole = "trash", onClose,
-  onRoleChange, onChanged, onEmptyTrash, onUndo, onProtect }: {
+  onChanged, onEmptyTrash, onUndo, onProtect, onBlock, blockedSenders }: {
   state: AppState;
-  /** On a page the role follows `initialRole` (the route) when it changes. */
+  /** The folder this page shows; follows the route when it changes. */
   initialRole?: FolderRole;
-  /** The Junk | Trash switch was used (a page puts it in the URL). */
-  onRoleChange?: (r: FolderRole) => void;
   onClose: () => void;
   onChanged: () => void;
   /** The shared "Empty Trash" flow (confirm + permanent delete), given the
@@ -38,6 +44,11 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   onUndo: (entry: { ts: number; label: string; count: number }) => void;
   /** Protect these senders (the App's one-tap protect). */
   onProtect: (addrs: string[]) => Promise<boolean>;
+  /** Block one sender address (the App's confirmed Block); resolves true
+   *  once blocked. Without it the Junk rows have no Block button. */
+  onBlock?: (addr: string) => Promise<boolean>;
+  /** Addresses that already have a block rule (shown as "Blocked"). */
+  blockedSenders?: ReadonlySet<string>;
 }) {
   const toast = useToast();
   const wide = useMediaQuery("(min-width: 640px)");   // phones: own full row
@@ -45,10 +56,13 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   const [list, setList] = useState<TrashResp | null>(null);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const [searching, setSearching] = useState(false);
   // Junk is reviewed by sender (rescue false alarms), Trash as a mail list
   const [grouping, setGrouping] = useState<Grouping>(
     initialRole === "junk" ? "sender" : "mails");
+  const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [knownOnly, setKnownOnly] = useState(false);
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,7 +82,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   };
   useEffect(() => load(role), [role]);
   const switchRole = (r: FolderRole) => {
-    setRole(r); setQ(""); setNote("");
+    setRole(r); setQ(""); setNote(""); setSearching(false);
+    setSelecting(false); setKnownOnly(false);
     setGrouping(r === "junk" ? "sender" : "mails");
   };
   useEffect(() => {
@@ -76,18 +91,32 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRole]);
 
+  // Senders you replied to (main index): a Junk sender among them is
+  // probably a false alarm.
+  const known = useMemo(() => new Set(
+    role === "junk"
+      ? Object.values(state.groups?.sender ?? {})
+        .filter((g) => g.replied).map((g) => g.key)
+      : []), [role, state.groups]);
+  const knownSenders = useMemo(
+    () => (list?.senders ?? []).filter((g) => known.has(g.addr)),
+    [list, known]);
+  // the mail the Restore button sends to
+  const inbox = (state.folders_raw ?? []).find((f) => /^inbox$/i.test(f));
+
   const needle = q.trim().toLowerCase();
   const shownMails = useMemo(() => {
     if (!list) return null;
-    if (!needle) return list.mails;
     return list.mails.filter((m) =>
-      m.subject.toLowerCase().includes(needle) || m.addr.includes(needle));
-  }, [list, needle]);
+      (!knownOnly || known.has(m.addr))
+      && (!needle || m.subject.toLowerCase().includes(needle)
+        || m.addr.includes(needle)));
+  }, [list, needle, knownOnly, known]);
   const shownSenders = useMemo(() => {
     if (!list) return null;
-    const all = list.senders ?? [];
-    return needle ? all.filter((g) => g.addr.includes(needle)) : all;
-  }, [list, needle]);
+    return (list.senders ?? []).filter((g) =>
+      (!knownOnly || known.has(g.addr)) && (!needle || g.addr.includes(needle)));
+  }, [list, needle, knownOnly, known]);
   const shown = grouping === "sender" ? shownSenders : shownMails;
 
   const toggle = (uids: number[]) => {
@@ -96,6 +125,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     for (const u of uids) all ? next.delete(u) : next.add(u);
     setSel(next);
   };
+  const endSelect = () => { setSelecting(false); setSel(new Set()); };
 
   const dropped = (uids: Set<number>, n: number) => {
     setList((l) => l && {
@@ -110,30 +140,34 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     setSel(new Set());
   };
 
-  const restore = async (dest: string) => {
-    if (!list || !dest || sel.size === 0) return;
+  const restore = async (dest: string, uids: number[] = [...sel],
+                         toRow = false) => {
+    if (!list || !dest || uids.length === 0) return;
     setBusy(true);
     setNote("");
     try {
-      const uids = [...sel];
       const r = await api.trashRestore(uids, dest, list.uv);
-      setNote(t(r.rescan ? "trash.restored_refreshing" : "trash.restored",
-        { n: r.restored }));
-      dropped(sel, r.restored);
+      const msg = t(r.rescan ? "trash.restored_refreshing"
+        : "trash.restored", { n: r.restored });
+      if (toRow) toast.show(msg, { variant: "success" });
+      else setNote(msg);
+      dropped(new Set(uids), r.restored);
       onChanged();
     } catch (e: any) {
-      setNote(t("err.generic", { msg: e.message ?? e }));
+      const msg = t("err.generic", { msg: e.message ?? e });
+      if (toRow) toast.show(msg, { variant: "error" });
+      else setNote(msg);
     }
     setBusy(false);
   };
 
   // Junk -> Inbox ("Not junk", the primary action) or -> Trash. Both are
   // plain undoable moves; nothing is protected or blocked silently.
-  const moveJunk = async (action: "not_junk" | "trash") => {
-    if (!list || sel.size === 0) return;
+  const moveJunk = async (action: "not_junk" | "trash",
+                          uids: number[] = [...sel]) => {
+    if (!list || uids.length === 0) return;
     setBusy(true);
     setNote("");
-    const uids = [...sel];
     try {
       let r;
       try {
@@ -267,24 +301,30 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     if (v !== null) void purge({ older_than_days: Number(v) });
   };
 
-  const title = role === "junk" ? t("Junk") : t("Trash");
-  const hasRows = !!list && (list.mails.length > 0 || !!note);
+  const junk = role === "junk";
+  const title = junk ? t("Junk") : t("Trash");
+  const hasRows = !!list && list.total > 0;
+  const rowBtn = "max-sm:min-h-11 max-sm:coarse:min-h-11";
   return (
-    <Modal onClose={onClose} size="lg"
-      full={!!view || !shown || shown.length > 0 || !!q}>
+    <Modal onClose={onClose} size="lg" full>
       <PanelHeader
-        title={<span className="inline-flex items-center gap-2">
-          {role === "junk" ? <ShieldAlert size={18} /> : <Trash2 size={18} />}
-          {title}
-        </span>}
+        title={title}
         sub={list
-          ? t("n.mails", { n: list.total })
-            + (list.total > list.mails.length
-               ? ` (${t("trash.newest_shown", { n: list.mails.length })})`
-               : "")
+          ? junk ? t("fp.junk_sub", { n: list.total })
+            : list.total > list.mails.length
+              ? `${t("n.mails", { n: list.total })} (${t("trash.newest_shown",
+                { n: list.mails.length })})`
+              : undefined
           : t("loading…")}
-        actions={<Button variant="secondary" size="icon" label={t("Refresh")}
-          onClick={() => load()}><RefreshCw size={18} /></Button>}
+        actions={<>
+          <Button variant="secondary" size="icon" label={t("Search")}
+            aria-pressed={searching}
+            onClick={() => { if (searching) setQ(""); setSearching(!searching); }}>
+            <Search size={18} />
+          </Button>
+          <Button variant="secondary" size="icon" label={t("Refresh")}
+            onClick={() => load()}><RefreshCw size={18} /></Button>
+        </>}
         onClose={onClose}
       />
 
@@ -292,120 +332,184 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         <MessageView mail={view} onBack={() => setView(null)} />
       ) : (
         <>
-          {/* Own full-width row (phones) / left-aligned segments (desktop) */}
-          <div className="border-b border-line px-4 py-2">
-            <Segmented value={role} label={t("fp.which")} fill={!wide} tall={!wide} equal
-              onChange={(r) => { switchRole(r); onRoleChange?.(r); }}
-              options={[
-                { value: "junk", label: t("Junk") },
-                { value: "trash", label: t("Trash") },
-              ]} />
-          </div>
-          {hasRows && (
-            <Toolbar>
-              <Input className="w-full sm:w-auto sm:min-w-32 sm:flex-1"
-                placeholder={t("search.placeholder")}
+          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto
+            px-4 pb-4 pt-3">
+            {!junk && (
+              <TrashCard list={list} rules={state.rules ?? []}
+                onChanged={onChanged} />
+            )}
+            {junk && knownSenders.length > 0 && (
+              <div className="mb-3 flex items-center gap-3 rounded-card
+                bg-safe-bg p-3">
+                <IconTile tone="safe"><UserCheck size={16} /></IconTile>
+                <div className="min-w-0 flex-1">
+                  <div className="type-body font-semibold">
+                    {t("fp.known_title", { n: knownSenders.length })}
+                  </div>
+                  <div className="type-meta text-muted">{t("fp.known_sub")}</div>
+                </div>
+                <Button size="sm" variant="secondary" aria-pressed={knownOnly}
+                  onClick={() => setKnownOnly(!knownOnly)}>
+                  {t(knownOnly ? "fp.known_all" : "fp.known_show")}
+                </Button>
+              </div>
+            )}
+            {hasRows && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Segmented value={grouping} label={t("fp.grouping")}
+                  tall={!wide} equal onChange={setGrouping}
+                  options={junk ? [
+                    { value: "sender", label: t("fp.by_sender") },
+                    { value: "mails", label: t("fp.mails") },
+                  ] : [
+                    { value: "mails", label: t("fp.mails") },
+                    { value: "sender", label: t("fp.by_sender") },
+                  ]} />
+                <span className="flex-1" />
+                <Button variant="plain" size="sm"
+                  onClick={() => selecting ? endSelect() : setSelecting(true)}>
+                  {t(selecting ? "select.done" : "select.enter")}
+                </Button>
+              </div>
+            )}
+            {searching && (
+              <Input autoFocus className="mb-2 w-full"
+                aria-label={t("Search")} placeholder={t("search.placeholder")}
                 value={q} onChange={(e) => setQ(e.target.value)} />
-              <Segmented value={grouping} label={t("fp.grouping")} tall={!wide} equal
-                onChange={setGrouping}
-                options={[
-                  { value: "sender", label: t("fp.by_sender") },
-                  { value: "mails", label: t("fp.mails") },
-                ]} />
-              {sel.size > 0 && role === "trash" && (
-                <>
-                  <PopupSelect<string> disabled={busy}
-                    triggerClass={TALL}
-                    placeholder={`${t("trash.restore_to")} (${sel.size})`}
-                    onChange={restore}
-                    options={(state.folders_raw ?? []).map((f, i) => ({
-                      value: f, label: state.folders[i] ?? f }))} />
-                  <PopupSelect<string> disabled={busy} triggerClass={TALL}
-                    placeholder={t("fp.action")}
-                    onChange={() => purgeSelection()}
-                    options={[{ value: "delete",
-                      label: t("fp.delete_permanently") }]} />
-                </>
-              )}
-              {sel.size > 0 && role === "junk" && (
-                <>
-                  <Button disabled={busy} className="max-sm:min-h-11 max-sm:coarse:min-h-11"
-                    onClick={() => moveJunk("not_junk")}>
-                    {t("fp.not_junk")} ({sel.size})
-                  </Button>
-                  <PopupSelect<string> disabled={busy} triggerClass={TALL}
-                    placeholder={t("fp.action")}
-                    onChange={(v) => {
-                      if (v === "trash") void moveJunk("trash");
-                      if (v === "delete") purgeSelection();
-                    }}
-                    options={[
-                      { value: "trash", label: t("fp.to_trash") },
-                      { value: "delete", label: t("fp.delete_permanently") },
-                    ]} />
-                </>
-              )}
-              {busy && <Spinner />}
-              {note && <span className="w-full type-meta text-muted">{note}</span>}
-            </Toolbar>
-          )}
-          <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto pb-4">
+            )}
+            {hasRows && selecting && (
+              <Toolbar className="mb-2 rounded-card border">
+                {sel.size === 0 && (
+                  <span className="type-meta text-muted">
+                    {t("select.enter")}
+                  </span>
+                )}
+                {sel.size > 0 && !junk && (
+                  <>
+                    <PopupSelect<string> disabled={busy}
+                      triggerClass={TALL}
+                      placeholder={`${t("trash.restore_to")} (${sel.size})`}
+                      onChange={(dest) => restore(dest)}
+                      options={(state.folders_raw ?? []).map((f, i) => ({
+                        value: f, label: state.folders[i] ?? f }))} />
+                    <PopupSelect<string> disabled={busy} triggerClass={TALL}
+                      placeholder={t("fp.action")}
+                      onChange={() => purgeSelection()}
+                      options={[{ value: "delete",
+                        label: t("fp.delete_permanently") }]} />
+                  </>
+                )}
+                {sel.size > 0 && junk && (
+                  <>
+                    <Button disabled={busy} className={rowBtn}
+                      onClick={() => moveJunk("not_junk")}>
+                      {t("fp.not_junk")} ({sel.size})
+                    </Button>
+                    <PopupSelect<string> disabled={busy} triggerClass={TALL}
+                      placeholder={t("fp.action")}
+                      onChange={(v) => {
+                        if (v === "trash") void moveJunk("trash");
+                        if (v === "delete") purgeSelection();
+                      }}
+                      options={[
+                        { value: "trash", label: t("fp.to_trash") },
+                        { value: "delete", label: t("fp.delete_permanently") },
+                      ]} />
+                  </>
+                )}
+              </Toolbar>
+            )}
+            {busy && <div className="mb-2"><Spinner /></div>}
+            {note && <p className="mb-2 type-meta text-muted">{note}</p>}
             {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
             {!shown && !error && <Loading />}
             {shown && shown.length === 0 && (
               <EmptyState
-                icon={role === "junk" ? <ShieldAlert size={18} />
-                  : <Trash2 size={18} />}
+                icon={junk ? <ShieldAlert size={18} /> : <Trash2 size={18} />}
                 title={t(list?.mails.length ? "trash.no_match"
-                  : role === "junk" ? "fp.junk_empty" : "trash.empty")}
+                  : junk ? "fp.junk_empty" : "trash.empty")}
                 hint={list?.mails.length ? undefined
-                  : t(role === "junk" ? "fp.junk_empty_hint"
-                    : "trash.empty_hint")} />
+                  : t(junk ? "fp.junk_empty_hint" : "trash.empty_hint")} />
             )}
-            {grouping === "sender"
-              ? shownSenders?.map((g: SenderGroup) => (
-                <MailRow key={g.addr}
-                  checked={g.uids.every((u) => sel.has(u))}
-                  onToggle={() => toggle(g.uids)}
-                  onOpen={() => { setQ(g.addr); setGrouping("mails"); }}
-                  unread={g.unread > 0} subject={g.addr}
-                  dateIso={g.date || ""}
-                  selectLabel={t("select.named", { subject: g.addr })}
-                  meta={[t("n.mails", { n: g.count }), fmtSize(g.size)]
-                    .join(" · ")} />
-              ))
-              : shownMails?.map((m) => (
-                <MailRow key={mailKey(m)} checked={sel.has(m.uid)}
-                  onToggle={() => toggle([m.uid])} onOpen={() => setView(m)}
-                  unread={!m.seen} subject={m.subject || t("(no subject)")}
-                  dateIso={m.date || ""}
-                  selectLabel={t("select.named",
-                    { subject: m.subject || t("(no subject)") })}
-                  meta={[m.addr, fmtSize(m.size)].join(" · ")} />
-              ))}
+            {shown && shown.length > 0 && (
+              <div className="overflow-hidden rounded-card border border-line
+                bg-panel">
+                {grouping === "sender"
+                  ? shownSenders?.map((g: SenderGroup) => junk ? (
+                    <JunkSenderRow key={g.addr} g={g} busy={busy}
+                      known={known.has(g.addr)} selecting={selecting}
+                      checked={g.uids.every((u) => sel.has(u))}
+                      blocked={blockedSenders?.has(g.addr) ?? false}
+                      canBlock={!!onBlock}
+                      onToggle={() => toggle(g.uids)}
+                      onOpen={() => {
+                        setQ(g.addr); setSearching(true); setGrouping("mails");
+                      }}
+                      onNotJunk={() => void moveJunk("not_junk", g.uids)}
+                      onTrash={() => void moveJunk("trash", g.uids)}
+                      onBlock={() => void onBlock?.(g.addr)} />
+                  ) : (
+                    <MailRow key={g.addr}
+                      checked={g.uids.every((u) => sel.has(u))}
+                      onToggle={selecting ? () => toggle(g.uids) : undefined}
+                      onOpen={() => {
+                        setQ(g.addr); setSearching(true); setGrouping("mails");
+                      }}
+                      unread={g.unread > 0} subject={g.addr}
+                      dateIso={g.date || ""}
+                      selectLabel={t("select.named", { subject: g.addr })}
+                      meta={[t("n.mails", { n: g.count }), fmtSize(g.size)]
+                        .join(" · ")} />
+                  ))
+                  : shownMails?.map((m) => (
+                    <MailRow key={mailKey(m)} checked={sel.has(m.uid)}
+                      onToggle={selecting ? () => toggle([m.uid]) : undefined}
+                      onOpen={() => setView(m)}
+                      unread={!m.seen} subject={m.subject || t("(no subject)")}
+                      dateIso={m.date || ""}
+                      selectLabel={t("select.named",
+                        { subject: m.subject || t("(no subject)") })}
+                      meta={[m.addr, fmtSize(m.size)].join(" · ")}
+                      trailing={!junk && inbox && !selecting ? (
+                        <span>
+                          <Button size="sm" variant="tinted" disabled={busy}
+                            aria-label={t("fp.row_action", {
+                              action: t("fp.restore"),
+                              who: m.subject || t("(no subject)") })}
+                            onClick={() => void restore(inbox, [m.uid], true)}>
+                            <Undo2 size={14} className="mr-1 inline align-text-bottom" />
+                            {t("fp.restore")}
+                          </Button>
+                        </span>
+                      ) : undefined} />
+                  ))}
+              </div>
+            )}
+            {junk && hasRows && (
+              <p className="mt-3 px-1 type-meta text-muted">
+                {t("fp.not_junk_note")}
+              </p>
+            )}
           </div>
           {list && list.total > 0 && (
-            <div className="flex flex-wrap justify-end gap-2 border-t
-              border-line px-4 py-2
-              max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-              <Button variant="danger-quiet" disabled={busy}
-                className="max-sm:min-h-11 max-sm:coarse:min-h-11"
+            <div className="grid grid-cols-2 gap-2 border-t border-line px-4
+              py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
+              sm:flex sm:justify-end">
+              <Button variant="secondary" disabled={busy} className={rowBtn}
                 onClick={() => void purgeOlder()}>
                 {t("fp.older")}
               </Button>
-              {role === "trash" ? (
-                <Button variant="danger-quiet" disabled={busy}
-                  className="max-sm:min-h-11 max-sm:coarse:min-h-11"
+              {junk ? (
+                <Button variant="danger-tint" disabled={busy} className={rowBtn}
+                  onClick={() => void purge({ everything: true })}>
+                  {t("fp.empty_junk", { n: list.total })}
+                </Button>
+              ) : (
+                <Button variant="danger-tint" disabled={busy} className={rowBtn}
                   onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>
-                  {t("Empty Trash")} ({list.total})…
-                </Button>
-              ) : (
-                <Button variant="danger-quiet" disabled={busy}
-                  className="max-sm:min-h-11 max-sm:coarse:min-h-11"
-                  onClick={() => void purge({ everything: true })}>
-                  {t("fp.empty_junk")} ({list.total})…
+                  {t("fp.empty_trash", { n: list.total })}
                 </Button>
               )}
             </div>
@@ -413,5 +517,66 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         </>
       )}
     </Modal>
+  );
+}
+
+/** One sender of the Junk page: who, how much, since when, and the three
+ *  things you do with it - Not junk (back to the inbox), Block, Trash. In
+ *  Select mode the row is a checkbox instead and the page's bar acts. */
+function JunkSenderRow({ g, known, blocked, canBlock, busy, selecting, checked,
+  onToggle, onOpen, onNotJunk, onTrash, onBlock }: {
+  g: SenderGroup; known: boolean; blocked: boolean; canBlock: boolean;
+  busy: boolean; selecting: boolean; checked: boolean;
+  onToggle: () => void; onOpen: () => void;
+  onNotJunk: () => void; onTrash: () => void; onBlock: () => void;
+}) {
+  const first = g.first_date
+    ? fmtDate(g.first_date, nowDate(), { lang: getLang() }) : "";
+  const meta = [t("n.mails", { n: g.count }), fmtSize(g.size),
+    known ? t("fp.replied_before")
+      : first ? t("fp.first_seen", { date: first }) : ""]
+    .filter(Boolean).join(" · ");
+  const act = (action: string) => t("fp.row_action", { action, who: g.addr });
+  return (
+    <div className="flex items-start gap-3 border-b border-line/60 px-3 py-3
+      last:border-b-0">
+      {selecting && (
+        <Checkbox round checked={checked} onChange={onToggle}
+          className="mt-1.5"
+          aria-label={t("select.named", { subject: g.addr })} />
+      )}
+      <Avatar name={g.addr} size="md" className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <button type="button" onClick={onOpen}
+            className="min-w-0 cursor-pointer truncate text-left type-body
+              font-semibold hover:underline">{g.addr}</button>
+          {known && <Tag tone="info" className="shrink-0">
+            {t("fp.known_tag")}</Tag>}
+        </div>
+        <div className="type-meta text-muted">{meta}</div>
+        {!selecting && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" variant={known ? "tinted" : "secondary"}
+              disabled={busy} aria-label={act(t("fp.not_junk"))}
+              onClick={onNotJunk}>
+              <Inbox size={14} className="mr-1 inline align-text-bottom" />{t("fp.not_junk")}
+            </Button>
+            {blocked ? (
+              <Tag tone="keep" className="self-center">{t("fp.blocked")}</Tag>
+            ) : canBlock && (
+              <Button size="sm" variant="secondary" disabled={busy}
+                aria-label={act(t("fp.block"))} onClick={onBlock}>
+                <Ban size={14} className="mr-1 inline align-text-bottom" />{t("fp.block")}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" disabled={busy}
+              aria-label={act(t("Trash"))} onClick={onTrash}>
+              <Trash2 size={14} className="mr-1 inline align-text-bottom" />{t("Trash")}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

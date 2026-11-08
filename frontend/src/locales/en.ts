@@ -1151,7 +1151,41 @@ export const EN: Record<string, string> = {
   "fp.older_label": "Received more than this many days ago",
   "fp.older_invalid": "Enter a whole number of days from 1 to 36500.",
   "fp.older_btn": "Count mails",
-  "fp.empty_junk": "Empty Junk",
+  "fp.empty_junk": "Empty Junk · {n}",
+  "fp.empty_trash": "Empty Trash · {n}",
+  "fp.size_in_mails": "in {n} mails",
+  "fp.size_in_mails_one": "in 1 mail",
+  "fp.auto_title": "Empty automatically",
+  "fp.auto_sub": "Mails older than {n} days, once a day",
+  "fp.auto_sub_one": "Mails older than 1 day, once a day",
+  "fp.auto_report_only":
+    "Not active yet - Inboxrake only reports what it would delete.",
+  "fp.auto_days": "Older than",
+  "fp.auto_apply": "Apply",
+  "fp.auto_next": "Next run: {n} mails · {size}",
+  "fp.auto_next_one": "Next run: 1 mail · {size}",
+  "fp.auto_next_none": "Next run: nothing to delete yet",
+  "fp.auto_last": "Last run: {n} mails deleted",
+  "fp.auto_last_one": "Last run: 1 mail deleted",
+  "fp.auto_last_none": "Last run: nothing to delete",
+  "fp.auto_confirm_title": "Empty Trash automatically?",
+  "fp.auto_confirm_body":
+    "Once a day, mails received more than {n} days ago that have also been "
+    + "in Trash for at least {n} days are deleted permanently, on the "
+    + "server - up to {cap} per run. Protected senders and protected mails "
+    + "are never touched. This cannot be undone.",
+  "fp.auto_confirm_body_one":
+    "Once a day, mails received more than 1 day ago that have also been "
+    + "in Trash for at least 1 day are deleted permanently, on the "
+    + "server - up to {cap} per run. Protected senders and protected mails "
+    + "are never touched. This cannot be undone.",
+  "fp.auto_now": "Right now this would delete {n} mails · {size}",
+  "fp.auto_now_one": "Right now this would delete 1 mail · {size}",
+  "fp.auto_now_none": "Right now there is nothing to delete",
+  "fp.auto_confirm_btn": "Turn on",
+  "fp.auto_on": "Trash is now emptied automatically",
+  "fp.auto_off": "Automatic emptying is off",
+  "fp.auto_rule_name": "Empty Trash automatically",
   "fp.purge_title": "Permanently delete from {folder}?",
   "fp.purge_title_empty": "Empty {folder} permanently?",
   "fp.purge_body_junk":
@@ -1191,11 +1225,28 @@ export const EN: Record<string, string> = {
     "permanently deleted this month: {n} mails · {size} freed",
   "stats.freed_month_one":
     "permanently deleted this month: 1 mail · {size} freed",
-  "fp.which": "Folder",
   "fp.grouping": "Group by",
   "fp.by_sender": "By sender",
   "fp.mails": "Mails",
   "fp.not_junk": "Not junk",
+  "fp.block": "Block",
+  "fp.blocked": "Blocked",
+  "fp.row_action": "{action}: {who}",
+  "fp.restore": "Restore",
+  "fp.restored_inbox": "Restored to your inbox",
+  "fp.known_title": "{n} senders you know",
+  "fp.known_title_one": "1 sender you know",
+  "fp.known_sub": "You replied to them before - probably not junk",
+  "fp.known_show": "Show",
+  "fp.known_all": "Show all",
+  "fp.known_tag": "known",
+  "fp.first_seen": "first seen {date}",
+  "fp.replied_before": "you replied before",
+  "fp.junk_sub": "{n} mails · checked by your mail server",
+  "fp.junk_sub_one": "1 mail · checked by your mail server",
+  "fp.not_junk_note":
+    "“Not junk” moves the mail back to your inbox. Your mail server learns "
+    + "from that too, if it supports it.",
   "fp.action": "Action…",
   "fp.to_trash": "Move to Trash",
   "fp.not_junk_done": "Moved {n} mails to your inbox",

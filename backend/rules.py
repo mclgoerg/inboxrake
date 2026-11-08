@@ -1021,7 +1021,7 @@ def _run_purge(rule: dict, acc, result: dict) -> None:
                     "count": 0})
                 g["count"] += 1
         result.update(
-            groups=len(senders), mails=pv["count"],
+            groups=len(senders), mails=pv["count"], size=pv["size"],
             capped=pv["count"] - len(picked),
             skipped_protected=pv["skipped_protected"],
             skipped_pinned=pv["skipped_pinned"],

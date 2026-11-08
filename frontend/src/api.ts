@@ -454,8 +454,12 @@ export const api = {
       { role, action, uids, uv, force }),
   // Permanent delete (Trash / Junk): count first (a fresh server listing),
   // then send back exactly the counted uv + UIDs.
-  purgePreview: (role: FolderRole, select: PurgeSelect) =>
-    req<PurgePreview>("/api/folders_panel/purge_preview", { role, ...select }),
+  // `inFolderDays` (what a purge rule counts): only mails Inboxrake has seen
+  // in the folder that long - it only ever narrows the selection.
+  purgePreview: (role: FolderRole, select: PurgeSelect, inFolderDays?: number) =>
+    req<PurgePreview>("/api/folders_panel/purge_preview", {
+      role, ...select,
+      ...(inFolderDays ? { in_folder_days: inFolderDays } : {}) }),
   // role / folder / trash_folder / uv / uids all come from the preview.
   purge: (role: FolderRole, uids: number[], uv: number, folder: string,
           trash_folder: string | null) =>

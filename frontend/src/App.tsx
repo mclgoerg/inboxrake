@@ -1506,6 +1506,27 @@ export default function App() {
     }
   };
 
+  // The Junk page blocks a bare address: the same confirm and block rule as
+  // the group's Block (existing mail is left to the page's own Trash).
+  const blockedAddrs = useMemo(() => new Set(
+    [...blockRuleIds.keys()].filter((k) => k.startsWith("sender:"))
+      .map((k) => k.slice("sender:".length))), [blockRuleIds]);
+  const blockAddress = async (addr: string): Promise<boolean> => {
+    if (!await confirmDialog({
+      title: t("confirm.block_title", { label: addr }),
+      body: t("confirm.block_body"), tone: "danger",
+      confirmLabel: t("Block") })) return false;
+    try {
+      await api.block("sender", addr, addr, false);
+      notify(t("toast.blocked", { label: addr }), "success");
+      refresh();
+      return true;
+    } catch (e: any) {
+      fail(e);
+      return false;
+    }
+  };
+
   // Unblock = delete the standing rule the Block action created (same
   // reversible path as deleting any other rule in the Rules modal, just
   // reachable with one click from the group itself).
@@ -2277,12 +2298,13 @@ export default function App() {
         state={state}
         initialRole={routeTool === "junk" || routeTool === "trash"
           ? routeTool : foldersOpen ?? "trash"}
-        onRoleChange={(r) => { if (routeTool) goPage(r); }}
         onClose={() => closeTool(() => { setFoldersOpen(null); refresh(); })}
         onChanged={refresh}
         onEmptyTrash={emptyTrash}
         onUndo={undoEntry}
         onProtect={protectSenders}
+        onBlock={blockAddress}
+        blockedSenders={blockedAddrs}
       />
     )}
     {toolShown("duplicates") && (

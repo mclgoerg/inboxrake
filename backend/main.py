@@ -1519,6 +1519,10 @@ class PurgePreviewBody(BaseModel):
     senders: list[str] | None = None
     older_than_days: int | None = Field(None, ge=1, le=36500)
     everything: bool = False
+    # on top of the selection: only mails Inboxrake has seen in the folder
+    # for at least this many days (what a purge rule counts - the Trash
+    # page's "next run" preview); it only ever narrows
+    in_folder_days: int | None = Field(None, ge=1, le=36500)
 
 
 class PurgeBody(BaseModel):
@@ -1540,7 +1544,8 @@ def post_purge_preview(body: PurgePreviewBody,
         return mailops.purge_preview(
             body.role, uids=body.uids, senders=body.senders,
             older_than_days=body.older_than_days,
-            everything=body.everything, acc=acc)
+            everything=body.everything,
+            in_folder_days=body.in_folder_days, acc=acc)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
