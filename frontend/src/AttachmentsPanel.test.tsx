@@ -27,6 +27,11 @@ vi.mock("./api", () => ({
 const file = (name: string, size: number, kind: string, copies = 1) =>
   ({ name, size, kind, ext: name.split(".").pop()!, copies });
 
+vi.mock("./components/MailList", () => ({
+  MessageView: ({ mail }: { mail: { subject: string } }) =>
+    <div data-testid="viewer">{mail.subject}</div>,
+}));
+
 const mk = (uid: number, atts = [file("doc.pdf", 2e6, "pdf")], ts = 1e9) => ({
   uid, folder: "INBOX", date: "2026-01-02", ts, subject: `Scan ${uid}`,
   addr: "a@x.example", size: 10 + uid, seen: false, ai: null,
@@ -182,7 +187,8 @@ test("Open shows the selected mail in the viewer", async () => {
   show();
   await screen.findByText("doc.pdf");
   fireEvent.click(screen.getByLabelText("Select doc.pdf"));
-  expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  expect(screen.getByTestId("viewer").textContent).toBe("Scan 7");
 });
 
 test("Open needs exactly one mail; the subject stays visible in the list",
@@ -196,4 +202,44 @@ test("Open needs exactly one mail; the subject stays visible in the list",
     .disabled).toBe(true);
   fireEvent.click(screen.getByRole("radio", { name: "List" }));
   expect(screen.getByText(/Scan 1 · 2 MB/)).toBeTruthy();
+});
+
+test("a filter change drops hidden mails from the selection and the action",
+  async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  expect(screen.getByText("2 mails · 2 MB")).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "Images" }));
+  expect(screen.queryByText(/mails · 2 MB/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Move to Trash" })).toBeNull();
+  // selecting what is visible only ever covers visible mails
+  fireEvent.click(screen.getByLabelText("Select beach.jpg"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 3]], "trash"));
+});
+
+test("the badge counts the mails the tile selects, also after a trash",
+  async () => {
+  attachments.mockResolvedValue([mk(1, [REPEAT]), mk(2, [REPEAT]),
+    mk(3, [REPEAT])]);
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("in 3 mails");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  await pressDialog(/Move to Trash \(3\)/);
+  await waitFor(() => expect(screen.queryByText("scan.pdf")).toBeNull());
+});
+
+test("a truncated list says so", async () => {
+  attachments.mockResolvedValue(Array.from({ length: 2000 },
+    (_, i) => mk(i + 1, [file(`f${i}.pdf`, 1e6, "pdf")])));
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText(/Showing the 2.?000 mails/);
 });

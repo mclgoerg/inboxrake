@@ -39,6 +39,8 @@ interface FileTile {
 }
 
 const PAGE = 60;
+/** The list endpoint returns at most this many mails (largest first). */
+const LIST_CAP = 2000;
 const VIEW_KEY = "pmc_atts_view";
 const AGES = [0, 1, 2, 5];
 
@@ -121,7 +123,6 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
           by.set(key, tile);
         }
         if (!tile.mails.includes(m)) tile.mails.push(m);
-        tile.copies = Math.max(tile.copies, a.copies);
       }
     }
     return [...by.values()].sort((a, b) => b.size - a.size);
@@ -131,13 +132,23 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     const cutoff = age ? Date.now() / 1000 - age * 365 * 86400 : 0;
     return tiles.filter((f) =>
       (kind === "all" || f.kind === kind)
-      && (!repeatsOnly || f.copies > 1)
+      && (!repeatsOnly || f.mails.length > 1)
       // a file is "older" when even its newest mail is
       && (!cutoff || Math.max(...f.mails.map((m) => m.ts || 0)) < cutoff));
   }, [tiles, kind, age, repeatsOnly]);
 
-  // Filters change what is listed: start from the top again.
-  useEffect(() => setShown(PAGE), [kind, age, repeatsOnly]);
+  // Filters change what is listed: start from the top again, and drop any
+  // selected mail that no visible tile stands for (nothing hidden is ever
+  // selected).
+  const visibleKeys = useMemo(() => new Set(
+    visible.flatMap((f) => f.mails.map(mailKey))), [visible]);
+  useEffect(() => {
+    setShown(PAGE);
+    setSel((s) => {
+      const keep = [...s].filter((k) => visibleKeys.has(k));
+      return keep.length === s.size ? s : new Set(keep);
+    });
+  }, [visibleKeys]);
 
   const setLayoutKeep = (v: "grid" | "list") => {
     setLayout(v);
@@ -152,7 +163,9 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     setSel(next);
   };
 
-  const chosen = (mails ?? []).filter((m) => sel.has(mailKey(m)));
+  // Only mails of visible tiles can be acted on.
+  const chosen = (mails ?? []).filter((m) =>
+    sel.has(mailKey(m)) && visibleKeys.has(mailKey(m)));
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
   const trash = async () => {
@@ -313,6 +326,11 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
                         aria-label={t("atts.view_list")} /> }]} />
                 </div>
 
+                {mails.length >= LIST_CAP && (
+                  <p className="mb-3 type-meta text-muted">
+                    {t("atts.capped", { n: LIST_CAP })}
+                  </p>
+                )}
                 {visible.length === 0 ? (
                   <EmptyState icon={<Paperclip size={18} />}
                     title={t("atts.no_match")} hint={t("atts.no_match_hint")} />
@@ -343,7 +361,9 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
                 <span className="block truncate font-semibold text-body">
                   {t("atts.sel", { n: chosen.length, size: fmtSize(chosenSize) })}
                 </span>
-                <span className="block truncate">{t("atts.sel_note")}</span>
+                <span className="block whitespace-normal">
+                  {t("atts.sel_note")}
+                </span>
               </>}
               onClear={() => setSel(new Set())}
               actions={
@@ -376,10 +396,10 @@ function FileItem({ f, list, on, onToggle }: {
   const k = KIND[f.kind];
   const m = f.mails[0];
   const label = t("atts.select_file", { name: f.name });
-  const badge = f.copies > 1 && (
+  const badge = f.mails.length > 1 && (
     <span className="inline-flex items-center gap-1 type-meta font-medium
       text-review-fg">
-      <Copy size={14} aria-hidden />{t("atts.in_mails", { n: f.copies })}
+      <Copy size={14} aria-hidden />{t("atts.in_mails", { n: f.mails.length })}
     </span>);
   const sub = [fmtSize(f.size), m.addr].join(" · ");
   const subject = m.subject || t("(no subject)");

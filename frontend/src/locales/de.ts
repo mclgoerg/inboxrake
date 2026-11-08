@@ -707,6 +707,7 @@ export const DE: Record<string, string> = {
   "atts.sel_note": "Die ganze Mail kommt in den Papierkorb, nicht nur die Datei.",
   "atts.open": "Öffnen",
   "atts.open_one": "Öffnen geht nur mit genau einer ausgewählten Mail.",
+  "atts.capped": "Gezeigt werden die {n} Mails mit den meisten Anhangdaten; kleinere stehen nicht in der Liste.",
   "atts.more": "{n} weitere zeigen",
   "atts.no_match": "Keine passenden Dateien",
   "atts.no_match_hint": "Probier eine andere Dateiart oder ein anderes Alter.",

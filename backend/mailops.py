@@ -3596,7 +3596,7 @@ def attachments_summary(acc=None) -> dict:
         mails = [m for m in acc.index.values() if m.get("att_size")]
     kinds = {k: {"kind": k, "bytes": 0, "count": 0} for k in ATT_KINDS}
     for m in mails:
-        for a in m["atts"]:
+        for a in m.get("atts") or ():
             row = kinds[att_kind(a["name"])]
             row["bytes"] += a["size"]
             row["count"] += 1

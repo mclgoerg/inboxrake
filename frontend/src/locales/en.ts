@@ -972,6 +972,7 @@ export const EN: Record<string, string> = {
   "atts.sel_note": "The whole mail goes to Trash, not only the file.",
   "atts.open": "Open",
   "atts.open_one": "Open needs exactly one selected mail.",
+  "atts.capped": "Showing the {n} mails with the most attachment data; smaller ones are not listed.",
   "atts.more": "Show {n} more",
   "atts.no_match": "No files match",
   "atts.no_match_hint": "Try another kind of file or age.",
