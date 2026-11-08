@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
+import { afterBackSettles } from "./backStack";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -1971,7 +1972,7 @@ export default function App() {
     acct?: string | null, push = false) => {
     if (s === null && settingsPushed.current) {
       settingsPushed.current = false;
-      window.history.back();
+      afterBackSettles(() => window.history.back());
       return;
     }
     settingsPushed.current = push;
@@ -2911,7 +2912,10 @@ export default function App() {
       )}
 
       {detail && !splitPane && renderDetail("modal")}
-      <PageSlot page={wide} parent={shownTool ? backTarget : undefined}>{toolPanels}</PageSlot>
+      {/* A routed tool below 1024 (deep link, resize) has its route entry as its
+          history entry; a tool opened from a tab page / menu pushes its own. */}
+      <PageSlot page={wide} parent={shownTool ? backTarget : undefined}
+        entry={!routeTool}>{toolPanels}</PageSlot>
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
       {aiFilterOpen && (
         <AiFilterPanel

@@ -359,8 +359,11 @@ export function Wizard({ cfg, mode, initialStep, initialAccount, scan,
   );
   const titleId = "wizard-title";
 
+  // The first-run wizard is the whole screen, not opened by the user: Back
+  // has no page underneath to return to.
   return (
-    <Modal full size="md" onClose={close} labelledBy={titleId}>
+    <Modal full size="md" onClose={close} labelledBy={titleId}
+      backLayer={mode !== "first"}>
       <PanelHeader
         title={<span id={titleId}>{t("wizard.title")}</span>}
         closeLabel={mode === "first" ? t("wizard.later") : t("wizard.cancel")}

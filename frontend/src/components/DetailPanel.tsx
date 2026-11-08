@@ -22,7 +22,8 @@ import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
   confirmDialog, DemoHint, EngagementMeter, ensureAiAck, Input, LINK,
   LINK_ACCENT, Loading, Menu, MenuItem, Modal, Notice, PanelHeader, PinButton,
   PopupSelect, ProtectButton, RatingChips, Segmented, Spinner, StatTile,
-  stillMailingText, Tag, tabPanelProps, TrackerBadge, useMediaQuery }
+  stillMailingText, Tag, tabPanelProps, TrackerBadge, useBackLayer,
+  useMediaQuery }
   from "./ui";
 
 // Rating filter chips: same green/yellow/red/unrated buckets as the
@@ -112,6 +113,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // (a pool whose senders are all gone falls back to its mails view)
   const tab = hasSenders ? pick : "mails";
   const [inspect, setInspect] = useState<Group | null>(null);
+  // Below 1024 px Back leaves the pooled sender's own detail (the reader
+  // inside it closes first: it registered later).
+  useBackLayer(!!inspect && !!renderSender, () => setInspect(null));
   const [senderSel, setSenderSel] = useState(0);   // ticked in the sender list
   const [mails, setMails] = useState<Mail[] | null>(null);
   const [error, setError] = useState("");

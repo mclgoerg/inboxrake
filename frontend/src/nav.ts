@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { useMediaQuery } from "./components/ui";
+import { useSidebar } from "./components/ui";
+import { afterBackSettles } from "./backStack";
+
+export { SIDEBAR_QUERY, SIDEBAR_W, useSidebar } from "./components/ui";
 
 /** Tools that open as a page beside the sidebar (from 1024 px; below it they
  *  stay modals). */
@@ -84,8 +87,11 @@ export function useSettingsRoute() {
 export function gotoSettings(section: SettingsSection | null,
   account: string | null = null, push = false): void {
   const hash = settingsHash(section, account);
-  if (push) window.location.hash = hash;
-  else window.location.replace(hash);
+  // A dialog that just closed (the unsaved-edits prompt) pops its entry first.
+  afterBackSettles(() => {
+    if (push) window.location.hash = hash;
+    else window.location.replace(hash);
+  });
 }
 
 /** `#/senders` -> "senders"; anything else (empty, unknown) -> null. */
@@ -143,8 +149,10 @@ export function useNav(initial: Page = DEFAULT_PAGE,
   const setPage = useCallback((p: Page) => {
     setPageState(p);
     kept.current = hashOf(p);
+    // A page change takes the open overlays (and their history entries) with
+    // it: the hash is written once those are popped (`backStack.ts`).
     if (parseHash(window.location.hash) !== p)
-      window.location.hash = hashOf(p);
+      afterBackSettles(() => { window.location.hash = hashOf(p); });
   }, []);
   return [page, setPage];
 }
@@ -246,10 +254,3 @@ export function useScrollPerPage(routeKey: string): void {
     return stop;
   }, [routeKey]);
 }
-
-/** From here the sidebar is the navigation (Tailwind `lg`); below it the
- *  top bar and the bottom tab bar are. */
-export const SIDEBAR_QUERY = "(min-width: 1024px)";
-export const SIDEBAR_W = 244;
-
-export const useSidebar = () => useMediaQuery(SIDEBAR_QUERY);
