@@ -44,7 +44,6 @@ vi.mock("./api", () => ({
       top_hosts: [], mode: "local", secret_key_set: true, scanned: true,
       estimate_full: {}, job: { status: "idle" } }),
     mails: () => Promise.resolve({ items: [], total: 0 }),
-    wrapped: () => new Promise(() => {}),
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
