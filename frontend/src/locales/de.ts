@@ -310,7 +310,7 @@ export const DE: Record<string, string> = {
   "tracker.sender_meta_one": "1 von {of} Mails mit Tracking",
   "tracker.n_senders": "{n} Absender",
   "tracker.n_senders_one": "1 Absender",
-  "tracker.tag_pixel": "Öffnen",
+  "tracker.tag_pixel": "Öffnungen",
   "tracker.tag_click": "Klicks",
   "tracker.pick": "Mails von {name} anzeigen",
   "tracker.nothing_found":

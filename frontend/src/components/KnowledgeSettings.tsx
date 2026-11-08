@@ -355,7 +355,7 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   );
   const entryRow = (e: KnowledgeEntry) => (
     <div key={e.key} data-entry={e.key}
-      className="flex items-center gap-3 px-3 py-2.5">
+      className="flex items-start gap-3 px-3 py-2.5">
       {selecting && (
         <Checkbox round checked={sel.has(e.key)} className="shrink-0"
           aria-label={t("know.select", { name: nameOf(e) })}
@@ -369,10 +369,10 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
             className="shrink-0 text-muted" />}
         </div>
         {editing === e.key ? editor(e) : statusLine(e)}
+        <Tag tone={e.src === "user" ? "info" : "safe"} className="mt-1">
+          {e.src === "user" ? t("know.src_user") : t("know.src_ai")}
+        </Tag>
       </div>
-      <Tag tone={e.src === "user" ? "info" : "safe"} className="shrink-0">
-        {e.src === "user" ? t("know.src_user") : t("know.src_ai")}
-      </Tag>
       <Menu variant="quiet" icon label={t("know.row_menu", { name: nameOf(e) })}
         trigger={<MoreHorizontal size={16} />}>
         <MenuItem onClick={() => startEdit(e)} disabled={busy}>

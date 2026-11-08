@@ -140,7 +140,18 @@ describe("FolderPicker", () => {
     fireEvent.click(move);
     expect(onPick).toHaveBeenCalledWith("Orders");
     expect(onClose).toHaveBeenCalled();
-    expect(loadRecent("acc")[0].raw).toBe("Orders");
+    await waitFor(() => expect(loadRecent("acc")[0].raw).toBe("Orders"));
+  });
+
+  it("does not remember the folder when the move was declined", async () => {
+    const { onPick } = mount({
+      onPick: vi.fn().mockResolvedValue(false) as any });
+    const dlg = await findPicker();
+    fireEvent.click(row(dlg, "Orders"));
+    fireEvent.click(within(dlg).getByRole("button", { name: "Move" }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(loadRecent("acc")).toEqual([]);
+    void onPick;
   });
 
   it("search filters to matching folders with their full path", async () => {
@@ -268,6 +279,16 @@ describe("FolderPicker", () => {
       m.onClose.mockClear();
       fireEvent.mouseDown(document.body);
       expect(m.onClose).toHaveBeenCalledTimes(1);
+    });
+    it("an outside press does not also activate what it hit", async () => {
+      const hit = vi.fn();
+      render(<button onClick={hit}>behind</button>);
+      mount();
+      await findPicker();
+      const b = screen.getByText("behind");
+      fireEvent.mouseDown(b);
+      fireEvent.click(b);
+      expect(hit).not.toHaveBeenCalled();
     });
     it("Tab wraps inside the popover", async () => {
       mount();
