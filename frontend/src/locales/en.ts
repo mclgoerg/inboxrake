@@ -544,6 +544,8 @@ export const EN: Record<string, string> = {
   "activity.undo_all": "Show all {n}",
   "activity.undo_fewer": "Show fewer",
   "activity.undo": "Undo history",
+  "activity.undone": "undone",
+  "activity.undone_n": "{n} undone",
   "activity.undo_empty": "Nothing to undo.",
   "col.status_tags": "Status & tags",
   "tracker.title": "Trackers",

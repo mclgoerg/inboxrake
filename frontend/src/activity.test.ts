@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { groupByMonth, localIso, monthSummary } from "./activity";
+import { groupByMonth, localIso, monthSummary, undoneCounts } from "./activity";
 import type { AuditEntry } from "./types";
 
 const at = (y: number, m: number, d: number) =>
@@ -61,4 +61,54 @@ test("a partial or cancelled run counts by what it really affected", () => {
     e(at(2026, 10, 7), { outcome: "error", count: 0 }),
   ], now);
   expect(s.mails).toBe(10);
+});
+
+test("mails restored by an undo are subtracted from the month", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 2), { id: "a", count: 10, bytes: 1000 }),
+    e(at(2026, 10, 3), { id: "b", count: 4, bytes: 400 }),
+    e(at(2026, 10, 4), { action: "undo", id: "u1", count: 4, bytes: 0,
+      undoes: { id: "b", count: 4 } }),
+    e(at(2026, 10, 5), { action: "undo", id: "u2", count: 5, bytes: 0,
+      undoes: { id: "a", count: 5 } }),
+  ], now);
+  expect(s.mails).toBe(5);
+  expect(s.bytes).toBe(500);
+  expect(s.weeks).toEqual([5, 0, 0, 0]);
+});
+
+test("the same undo entry listed twice is counted once", () => {
+  const u = e(at(2026, 10, 4), { action: "undo", id: "u1",
+    undoes: { id: "a", count: 3 } });
+  expect(undoneCounts([u, u]).get("a")).toBe(3);
+});
+
+test("from_role marks a rescue without the label text", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 5), { action: "move", label: "whatever", count: 3,
+      from_role: "junk" }),
+    e(at(2026, 10, 6), { count: 2 }),
+  ], now);
+  expect(s.mails).toBe(2);
+});
+
+test("an undo that restores more than the entry had never makes a negative", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 2), { id: "a", count: 3, bytes: 300 }),
+    e(at(2026, 10, 3), { action: "undo", id: "u1", undoes: { id: "a", count: 9 } }),
+    e(at(2026, 10, 4), { count: 2, bytes: 200 }),
+  ], now);
+  expect(s.mails).toBe(2);
+  expect(s.weeks).toEqual([2, 0, 0, 0]);
+  expect(s.bytes).toBe(200);
+});
+
+test("an undone rule move does not let the rule run count instead", () => {
+  const t0 = at(2026, 10, 5);
+  const s = monthSummary([
+    e(t0, { action: "rule_execute", actor: "rule:r1", count: 7, bytes: 0 }),
+    e(t0 - 5, { id: "m", actor: "rule:r1", count: 7 }),
+    e(t0 + 60, { action: "undo", id: "u1", undoes: { id: "m", count: 7 } }),
+  ], now);
+  expect(s.mails).toBe(0);
 });

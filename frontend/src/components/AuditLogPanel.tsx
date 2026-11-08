@@ -2,7 +2,7 @@ import { Archive, BellOff, ChevronLeft, ChevronRight, Download, FolderInput,
   ListChecks, Mail, MailCheck, ScrollText, Send, Trash2, Undo2,
   type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { groupByMonth, localIso, monthSummary } from "../activity";
+import { groupByMonth, localIso, monthSummary, undoneCounts } from "../activity";
 import { nowDate } from "../clock";
 import { api, downloadFile, errorText, fmtSize } from "../api";
 import { getLang, t } from "../i18n";
@@ -111,8 +111,10 @@ function MonthCard({ recent, rules }: {
   );
 }
 
-function TimelineRow({ e, rules, retry }: {
+function TimelineRow({ e, rules, retry, undone = 0 }: {
   e: AuditEntry; rules: Rule[];
+  /** Mails of this entry that a later undo restored. */
+  undone?: number;
   /** The Retry button of a failed unsubscribe, when there is one. */
   retry?: ReactNode;
 }) {
@@ -141,6 +143,14 @@ function TimelineRow({ e, rules, retry }: {
         {e.error && (
           <span className={`block type-meta ${failed ? "text-danger-fg"
             : "text-muted"}`}>{errorText(e.error)}</span>
+        )}
+        {undone > 0 && (
+          <span className="mt-1 block">
+            <Tag tone="neutral">
+              {undone >= e.count ? t("activity.undone")
+                : t("activity.undone_n", { n: undone })}
+            </Tag>
+          </span>
         )}
         {retry}
       </span>
@@ -228,6 +238,11 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
   };
 
   const months = useMemo(() => groupByMonth(entries ?? []), [entries]);
+  // An undo is newer than what it undid, so it may sit on an earlier page:
+  // read the undone counts from this page and the recent entries together.
+  const undone = useMemo(
+    () => undoneCounts([...(recent?.entries ?? []), ...(entries ?? [])]),
+    [recent, entries]);
 
   return (
     <Modal onClose={onClose} size="lg"
@@ -263,6 +278,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
                 border-line bg-panel">
                 {m.entries.map((e, i) => (
                   <TimelineRow key={`${e.ts}-${i}`} e={e} rules={rules}
+                    undone={e.id ? undone.get(e.id) ?? 0 : 0}
                     retry={retryButton(e)} />
                 ))}
               </ul>
