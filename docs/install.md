@@ -49,9 +49,14 @@ does not support, and Bridge needs a paid Proton plan.
 ```bash
 git clone https://github.com/mclgoerg/inboxrake
 cd inboxrake/deploy
-cp .env.example .env        # optional edits - account setup is in the UI
+cp .env.example .env        # optional edits - account setup happens in the UI
+# generate the key that encrypts stored passwords (before the first start)
+sed -i "s|^INBOXRAKE_SECRET_KEY=.*|INBOXRAKE_SECRET_KEY=$(openssl rand -base64 32)|" .env
 docker compose up -d
 ```
+
+The `sed` line writes a fresh `INBOXRAKE_SECRET_KEY` into `.env` (see
+"Secrets encryption" above); keep that key out of your backups.
 
 Open http://localhost:8765. Update later with
 `docker compose pull && docker compose up -d`.
