@@ -1,4 +1,7 @@
-/* High-resolution README screenshots against scripts/demo.py.
+/* High-resolution README / docs / landing-page screenshots against
+ * scripts/demo.py. The file names are a contract: docs/screenshots/*.png are
+ * imported by the README, the docs and website/landing, and og-image.mjs
+ * composes website/public/og.png from them - do not rename them.
  *
  * Run from the repo root. The demo needs a writable /data and read access to
  * the checkout (repo files are mode 600), hence --user and the tmpfs; build
@@ -15,7 +18,8 @@
  *     ghcr.io/mclgoerg/inboxrake:latest python /repo/scripts/demo.py
  *   docker run --rm --network mb-docs-net -v "$PWD":/repo -w /tmp node:26 \
  *     bash -c "apt-get update -q && apt-get install -yq --no-install-recommends \
- *       chromium fonts-noto-color-emoji fonts-noto-core fonts-roboto || exit 1; \
+ *       chromium pngquant fonts-noto-color-emoji fonts-noto-core fonts-roboto \
+ *       || exit 1; \
  *       mkdir rig && cd rig && npm i -s puppeteer-core \
  *       && cp /repo/scripts/*.mjs . && node screenshots.mjs \
  *            http://mb-docs-demo:8765 \
@@ -25,11 +29,15 @@
  *
  * The colour-emoji font is required: without it the emoji in the rows
  * render as empty boxes. Start from a fresh demo container (the demo keeps
- * state in memory, e.g. a dismissed notice or a trashed group).
- * Output: PNGs in ./out at 2x device scale (mobile.png: three 3x phones).
+ * state in memory, e.g. a dismissed notice or a trashed group). Every shot
+ * pins the demo account "proton", English and one theme (`pmc_theme`).
+ * Output: PNGs in ./out - desktop 1440x900 at 2x, phones 390x844 at 3x
+ * (mobile.png: three 3x phones side by side); with pngquant on the PATH they
+ * are palette-compressed (quality 85-100) to stay well below ~400 KB each.
  * Optional OUT=<dir> overrides the output folder.
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import {
   byRole, click, dismissNotice, goNav, hideCaret, launch, open, openGroup,
@@ -40,106 +48,103 @@ const BASE = process.argv[2] ?? "http://127.0.0.1:8765";
 const OUT = process.env.OUT ?? "out";
 mkdirSync(OUT, { recursive: true });
 
+const DESKTOP = { width: 1440, height: 900, scale: 2 };
+const PHONE = { width: 390, height: 844, scale: 3, mobile: true };
+
 const browser = await launch();
 const save = async (page, name) => {
   await hideCaret(page);
   await page.screenshot({ path: `${OUT}/${name}` });
   console.log(name);
 };
-
-/** A quick filter in the Filter menu cycles filter -> select, so two picks
- *  leave the matches ticked (the menu closes after each pick). */
-const selectViaFilter = async (page, item) => {
-  for (let i = 0; i < 2; i++) {
-    await click(page, "button", "Filter");
-    await click(page, "menuitemradio", item);
-  }
-  await byRole(page, "button", /^Trash \d+$/);        // the selection bar is up
+/** A page at `route` with the notices dismissed and everything settled. */
+const view = async (opts, route, theme) => {
+  const page = await open(browser, BASE, { ...opts, route, theme });
+  await dismissNotice(page);
   await settle(page);
+  return page;
 };
 
-// 1) Hero: the Senders page (sidebar + list), dark.
-let page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
-await dismissNotice(page);
+// Desktop ------------------------------------------------------------------
+
+// The Overview, the start page (light).
+let page = await view(DESKTOP, "overview", "light");
+await waitText(page, /Biggest senders|Next steps/);
+await save(page, "desktop-overview-light.png");
+await page.close();
+
+// Senders with a sender open beside the list (split pane, >= 1280 px).
+page = await view(DESKTOP, "senders", "dark");
+await openGroup(page, "ACME Store");
+await save(page, "desktop-senders-dark.png");
+await page.close();
+
+// The space map (Insights).
+page = await view(DESKTOP, "space", "dark");
+await waitText(page, /Click for details/);
+await save(page, "desktop-space-map-dark.png");
+await page.close();
+
+// Phone --------------------------------------------------------------------
+
+page = await view(PHONE, "overview", "light");
+await waitText(page, /Biggest senders|Next steps/);
+await save(page, "phone-overview-light.png");
+await page.close();
+
+page = await view(PHONE, "senders", "dark");
+await save(page, "phone-senders-dark.png");
+await page.close();
+
+page = await view(PHONE, "duplicates", "dark");
+await waitText(page, /Remove \d+ copies/);
+await save(page, "phone-duplicates-dark.png");
+await page.close();
+
+page = await view(PHONE, "trackers", "dark");
+await save(page, "phone-trackers-dark.png");
+await page.close();
+
+// A mail open in the reader: sender detail -> first mail.
+page = await view(PHONE, "senders", "dark");
+await openGroup(page, "ACME Store");
+await page.evaluate(() => [...document.querySelectorAll(
+  '[role="dialog"] button')].find((b) => /^unread|Weekend SALE/
+    .test((b.textContent || "").trim()))?.click());
+await waitText(page, /Unsubscribe link found|Tracking pixel/);
 await settle(page);
-await save(page, "groups-dark.png");
+await save(page, "phone-reader-dark.png");
 await page.close();
 
-// 1b) The Overview, the start page.
-page = await open(browser, BASE, {
-  width: 1440, height: 900, scale: 2, route: "overview",
-});
-await dismissNotice(page);
-await waitText(page, /Biggest senders/);
-await settle(page);
-await save(page, "overview.png");
+// Your year in mail: the first card of the story (Insights tab -> row).
+page = await view(PHONE, "insights", "dark");
+await click(page, "button", /^Your year in mail/);
+await sleep(1200);                       // the first card animates in
+await save(page, "phone-year-dark.png");
 await page.close();
 
-// 2) Same, light theme.
-page = await open(browser, BASE, {
-  width: 1440, height: 900, scale: 2, theme: "light",
-});
-await dismissNotice(page);
-await settle(page);
-await save(page, "groups-light.png");
-await page.close();
-
-// 3) Split pane (>= 1280 px): a group beside the list.
-page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
-await dismissNotice(page);
-await openGroup(page, "PayBank");
-// Keep every row clear of the sticky header: after the pane has settled,
-// scroll so the first row below the header sits flush under it (no row cut).
-await settle(page);
-await page.evaluate(() => {
-  const th = document.querySelector("thead th");
-  const headerBottom = th ? th.getBoundingClientRect().bottom : 0;
-  const first = [...document.querySelectorAll("[data-gidx]")]
-    .filter((e) => e.offsetParent)
-    .find((e) => e.getBoundingClientRect().bottom > headerBottom + 4);
-  // The page scrolls inside <body>, not the window.
-  if (first) document.body.scrollBy(0, first.getBoundingClientRect().top
-    - headerBottom);
-});
-await sleep(400);
-await save(page, "split-pane.png");
-await page.close();
-
-// 4) Drill-down as the modal (below the split-pane breakpoint).
-page = await open(browser, BASE, { width: 1024, height: 768, scale: 2 });
-await dismissNotice(page);
-await openGroup(page, "PayBank");
-await save(page, "detail.png");
-await page.close();
-
-// 5) Statistics, opened from the sidebar (Insights).
-page = await open(browser, BASE, { width: 1440, height: 900, scale: 2 });
-await dismissNotice(page);
-await goNav(page, "Statistics");
-await waitText(page, /top (senders|domains)/i);
-await settle(page);
-await save(page, "stats.png");
-await page.close();
-
-// 6) Phone: list, a group's details, the confirm sheet - composed below.
-const PHONE = { width: 390, height: 844, scale: 3, mobile: true };
+// mobile.png: Senders, a sender's details, the Trash confirm sheet.
 const phones = [];
-page = await open(browser, BASE, PHONE);
-await dismissNotice(page);
+page = await view(PHONE, "senders", "dark");
 await save(page, "_phone-list.png");
 phones.push("_phone-list.png");
 await page.close();
 
-page = await open(browser, BASE, PHONE);
-await dismissNotice(page);
-await openGroup(page, "PayBank");
+page = await view(PHONE, "senders", "dark");
+await openGroup(page, "ACME Store");
 await save(page, "_phone-detail.png");
 phones.push("_phone-detail.png");
 await page.close();
 
-page = await open(browser, BASE, PHONE);
-await dismissNotice(page);
-await selectViaFilter(page, "AI-safe groups");
+page = await view(PHONE, "senders", "dark");
+await click(page, "button", "Select");
+for (const who of ["PaketFix", "TechDigest"]) {   // the "Safe to delete" ones
+  await page.evaluate((who) => [...document.querySelectorAll("[data-gidx]")]
+    .find((e) => e.offsetParent && e.textContent.includes(who))
+    ?.querySelector('input[type="checkbox"], [role="checkbox"], button')
+    ?.click(), who);
+  await sleep(250);
+}
 await click(page, "button", /^Trash \d+$/);
 await byRole(page, "dialog", /Trash/);
 await settle(page);
@@ -170,3 +175,17 @@ await sheet.close();
 phones.forEach((f) => unlinkSync(`${OUT}/${f}`));
 
 await browser.close();
+
+// Palette-compress when pngquant is available (keeps the README light);
+// --skip-if-larger leaves an image alone if quantising would not shrink it.
+try {
+  execFileSync("pngquant", ["--quality=85-100", "--speed=1", "--force",
+    "--skip-if-larger", "--ext", ".png", ...[
+      "desktop-overview-light", "desktop-senders-dark",
+      "desktop-space-map-dark", "phone-overview-light", "phone-senders-dark",
+      "phone-duplicates-dark", "phone-reader-dark", "phone-trackers-dark",
+      "phone-year-dark", "mobile"].map((n) => `${OUT}/${n}.png`)],
+  { stdio: "inherit" });
+} catch (e) {
+  console.log("pngquant not used:", e.status ?? e.code);
+}
