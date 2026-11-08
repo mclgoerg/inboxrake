@@ -967,6 +967,7 @@ export function MenuItem({ children, onClick, disabled, active, sub,
 
 export type PopupOption<T extends string = string> =
   | "divider"
+  | { heading: string }
   | { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean;
       /** Overrides the default check (`value === current`): a menu that
        *  holds two settings (sort key + direction) checks one of each. */
@@ -1003,10 +1004,10 @@ export function PopupSelect<T extends string>({ value, onChange, options,
   /** Extra attributes for the button (`data-bar-field` in a BulkBar). */
   triggerProps?: Partial<Record<`data-${string}` | "title", string>>;
 }) {
-  const cur = options.find((o) => o !== "divider" && o.value === value);
-  const hasValue = valueLabel != null || (cur != null && cur !== "divider");
-  const shown = valueLabel ?? (cur && cur !== "divider" ? cur.label
-    : placeholder);
+  const cur = options.find((o): o is Extract<typeof o, { value: T }> =>
+    o !== "divider" && "value" in o && o.value === value);
+  const hasValue = valueLabel != null || cur != null;
+  const shown = valueLabel ?? (cur ? cur.label : placeholder);
   const name = [label ?? nameBase, typeof shown === "string" ? shown : null]
     .filter(Boolean).join(" ") || undefined;
   return (
@@ -1027,6 +1028,7 @@ export function PopupSelect<T extends string>({ value, onChange, options,
       <>
         {options.map((o, i) => o === "divider"
           ? <MenuDivider key={`d${i}`} />
+          : "heading" in o ? <MenuLabel key={`h${i}`}>{o.heading}</MenuLabel>
           : (
             <MenuItem key={o.value} disabled={o.disabled}
               active={o.checked ?? (o.value === value)}
@@ -1046,6 +1048,17 @@ export function PopupSelect<T extends string>({ value, onChange, options,
 /** Hairline between groups of MenuItems. */
 export function MenuDivider() {
   return <div role="separator" className="my-1 border-t border-line" />;
+}
+
+/** Quiet caption above a run of MenuItems ("Sort by", "Order"): visual only,
+ *  not a menuitem, so arrow-key navigation skips it. */
+export function MenuLabel({ children }: { children: ReactNode }) {
+  return (
+    <div role="presentation" className="px-3 pb-0.5 pt-1.5 type-caption
+      font-semibold uppercase tracking-wide text-muted">
+      {children}
+    </div>
+  );
 }
 
 /** A labelled section of MenuItems. The label is a visual caption of the
@@ -2441,7 +2454,7 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
       {/* The negative margins + padding below stretch each target to the
           row's edges, so there are no dead strips between them. */}
       {onToggle && (
-        <Checkbox checked={checked} onChange={onToggle}
+        <Checkbox round checked={checked} onChange={onToggle}
           className="-my-3 -ml-3 min-w-14 self-stretch pl-3 md:-my-2.5
             md:-ml-2 md:min-w-13 md:pl-2"
           aria-label={selectLabel ?? t("Select mail")} />

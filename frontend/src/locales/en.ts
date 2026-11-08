@@ -227,6 +227,8 @@ export const EN: Record<string, string> = {
   "usage.shared": "shared key",
   "sort.menu_state": "{key}, {dir}",
   "sort.menu": "Sort",
+  "sort.by": "Sort by",
+  "sort.order": "Order",
   "sort.ascending": "Ascending",
   "sort.descending": "Descending",
   "view.group_by": "Group by",

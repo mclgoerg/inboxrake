@@ -132,7 +132,7 @@ describe("DetailPanel", () => {
       expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Sort: date" }));
       fireEvent.click(screen.getByRole("menuitemradio",
-        { name: "Sort: size" }));
+        { name: "Size" }));
       expect(screen.getByRole("button", { name: "Sort: size" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "More" }));
       expect(screen.queryByRole("menuitem", { name: "Unsubscribe" })).toBeNull();
@@ -143,9 +143,9 @@ describe("DetailPanel", () => {
     renderPanel([mkMail(1), mkMail(2)], { group: mkGroup({ unsub: true }) });
     await waitFor(() => screen.getByText("Mail 1"));
     expect(screen.getByRole("button", { name: "Sort: date" })).toBeTruthy();
-    popupPick("Sort: date", "Sort: size");
+    popupPick("Sort: date", "Size");
     expect(screen.getByRole("button", { name: "Sort: size" })).toBeTruthy();
-    popupPick("Sort: size", "Sort: date");
+    popupPick("Sort: size", "Date");
     expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeTruthy();
   });
 

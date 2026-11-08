@@ -1564,6 +1564,8 @@ export const DE: Record<string, string> = {
   "usage.shared": "geteilter Schlüssel",
   "sort.menu_state": "{key}, {dir}",
   "sort.menu": "Sortieren",
+  "sort.by": "Sortieren nach",
+  "sort.order": "Reihenfolge",
   "sort.ascending": "Aufsteigend",
   "sort.descending": "Absteigend",
   "view.group_by": "Gruppieren nach",
