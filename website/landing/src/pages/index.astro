@@ -1,6 +1,14 @@
 ---
-import hero from "../../../../docs/screenshots/groups-dark.png";
-import heroLight from "../../../../docs/screenshots/groups-light.png";
+import Icon from "../components/Icon.astro";
+import Shot from "../components/Shot.astro";
+import desktopLight from "../../../../docs/screenshots/desktop-overview-light.png";
+import desktopDark from "../../../../docs/screenshots/desktop-senders-dark.png";
+import phoneOverviewLight from "../../../../docs/screenshots/phone-overview-light.png";
+import phoneSendersDark from "../../../../docs/screenshots/phone-senders-dark.png";
+import phoneDuplicates from "../../../../docs/screenshots/phone-duplicates-dark.png";
+import phoneReader from "../../../../docs/screenshots/phone-reader-dark.png";
+import phoneTrackers from "../../../../docs/screenshots/phone-trackers-dark.png";
+import phoneYear from "../../../../docs/screenshots/phone-year-dark.png";
 import { DEMO_LIVE, GITHUB } from "../../site.mjs";
 import { VERSION, RELEASE_URL } from "../../../release.mjs";
 
@@ -21,16 +29,52 @@ const jsonLd = {
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   sameAs: [GITHUB],
 };
-const heroAlt =
-  "The Senders page: a sidebar, and senders with mail counts, sizes and AI verdicts";
+
+const works = ["Gmail", "Outlook", "iCloud", "Fastmail", "GMX", "Proton Mail (Bridge)", "any IMAP"];
+
+// Copy for every card is checked against docs/features.md, docs/security.md
+// and the app (Settings > AI states what is sent): no claim beyond those.
+const features = [
+  { shot: phoneOverviewLight, alt: "The Overview page: how much space the mailbox uses and what arrived last week", title: "See what fills your inbox", text: "What arrived, what you cleaned and what takes the space - week by week." },
+  { shot: phoneSendersDark, alt: "The Senders page: every sender with its mail count and size", title: "Clean up by sender", text: "Every sender with mails, size and how much you read. Pick several, then unsubscribe, archive or trash." },
+  { shot: phoneDuplicates, alt: "The Duplicates page with the button that removes the extra copies", title: "Copies and big files", text: "Remove duplicate mails in one tap, find the attachments that take the space." },
+  { shot: phoneReader, alt: "A mail open in the reader, shown as plain text", title: "Read without being tracked", text: "Plain text, remote images never load - and unsubscribe right from the mail." },
+  { shot: phoneTrackers, alt: "The Trackers page: the share of mails with a tracking pixel and who is behind it", title: "See who is watching", text: "Which senders track your opens and clicks, and through whom." },
+  { shot: phoneYear, alt: "The first card of Your year in mail, a full-screen story", title: "Your year in mail", text: "A short story of your mailbox year - how much, from whom, when." },
+];
+const promises = [
+  { icon: "list-checks", title: "You see it first", text: "Every action shows the exact number of mails before anything moves." },
+  { icon: "undo-2", title: "Undo", text: "Moves go to Trash first and normally offer Undo - the last 10 actions, until the server restarts." },
+  { icon: "scan-eye", title: "Scans only read", text: "Scanning never changes your mailbox. Nothing changes until you say so." },
+  { icon: "sparkles", title: "AI is optional", text: "Off until you turn it on. It sends mail metadata (senders, counts, sizes, subjects) to the provider you pick - never bodies or attachments." },
+];
+const steps = [
+  { title: "Start the container", text: "One Docker image - NAS guides for Synology, Unraid, TrueNAS, Portainer, Raspberry Pi." },
+  { title: "Open it and sign in to your mailbox", text: "A short setup picks the provider, the sign-in and an optional login password." },
+  { title: "Scan, look, clean up", text: "The first scan only reads. Nothing moves until you say so." },
+];
+// Same commands as README.md "Docker Compose" (and install.md's key note).
+const install = [
+  { c: "# needs Docker and an IMAP mailbox" },
+  { cmd: "git clone https://github.com/mclgoerg/inboxrake" },
+  { cmd: "cd inboxrake/deploy" },
+  { cmd: "cp .env.example .env", c: "        # optional edits - account setup happens in the UI" },
+  { c: "# generate the key that encrypts stored passwords (before the first start)" },
+  { cmd: 'sed -i "s|^INBOXRAKE_SECRET_KEY=.*|INBOXRAKE_SECRET_KEY=$(openssl rand -base64 32)|" .env' },
+  { cmd: "docker compose up -d" },
+];
+const installText = install.map((l) => [l.cmd, l.c].filter(Boolean).join("")).join("\n");
+const CHANGELOG = `${GITHUB}/releases`;
+const heroAlt = "The Inboxrake app on a computer";
 ---
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
     <link rel="canonical" href="https://inboxrake.com/" />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <meta property="og:type" content="website" />
@@ -43,167 +87,410 @@ const heroAlt =
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <script is:inline>
-      // Same choice as the docs site (Starlight stores it in localStorage),
-      // else the system setting.
-      const t = localStorage.getItem("starlight-theme");
-      document.documentElement.dataset.theme =
-        t === "light" || t === "dark"
-          ? t
-          : matchMedia("(prefers-color-scheme: light)").matches
-            ? "light"
-            : "dark";
-    </script>
   </head>
   <body>
-    <header class="bar">
-      <div class="brand-group">
-        <a class="brand" href="/"><img src="/favicon.svg" alt="" width="32" height="32" />Inboxrake</a>
-        <a class="version" href={RELEASE_URL} aria-label={`Release ${VERSION}`}>v{VERSION}</a>
-      </div>
-      <nav>
+    <header class="top wrap">
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" width="32" height="32" />Inboxrake</a>
+      <a class="version" href={RELEASE_URL} aria-label={`Release ${VERSION}`}>v{VERSION}</a>
+      <span class="grow"></span>
+      <nav class="links" aria-label="Main">
         <a href="/docs/">Docs</a>
-        <a href={GITHUB}>GitHub</a>
+        <a href="#install">Install</a>
+        <a href={GITHUB}><Icon name="github" size={17} />GitHub</a>
       </nav>
+      {DEMO_LIVE && <a class="btn primary sm" href="/demo/"><span class="long">Try the demo</span><span class="short">Demo</span></a>}
+      <details class="menu">
+        <summary aria-label="Menu"><Icon name="menu" size={22} /></summary>
+        <div class="menu-pop">
+          <a href="/docs/">Docs</a>
+          <a href="#install">Install</a>
+          <a href={GITHUB}>GitHub</a>
+        </div>
+      </details>
     </header>
 
     <main>
-      <section class="hero">
-        <h1>Rake your mailbox into tidy piles.</h1>
-        <p class="lead">
-          Inboxrake is a self-hosted web app that rakes an IMAP mailbox into
-          tidy piles: it scans everything, groups mails by sender, subject or
-          thread with counts and sizes, and lets you trash, unsubscribe from
-          or block whole groups at once. Optional AI review (Anthropic,
-          OpenAI, Claude on Microsoft Foundry, or local models via Ollama,
-          LM Studio or vLLM) suggests what is safe to delete.
-        </p>
-        <p class="cta">
-          {DEMO_LIVE && <a class="btn primary" href="/demo/">Try the demo</a>}
-          <a class={DEMO_LIVE ? "btn" : "btn primary"} href="#install">Install</a>
-          <a class="btn" href="/docs/">Read the docs</a>
-          <a class="btn" href={GITHUB}>GitHub</a>
-        </p>
-        <img class="shot only-dark" loading="eager" fetchpriority="high" src={hero.src} width={hero.width} height={hero.height} alt={heroAlt} />
-        <img class="shot only-light" loading="lazy" src={heroLight.src} width={heroLight.width} height={heroLight.height} alt={heroAlt} />
+      <section class="hero wrap">
+        <div class="hero-text">
+          <span class="eyebrow"><Icon name="server" size={14} />Open source · self-hosted · free</span>
+          <h1>Rake your mailbox into tidy piles.</h1>
+          <p class="lead">
+            Inboxrake scans your mailbox, groups every mail <strong>by sender</strong> and shows what takes the space.
+            Then you clean up in bulk - <strong>with a preview first and Undo after.</strong>
+          </p>
+          <p class="cta">
+            {DEMO_LIVE && <a class="btn primary" href="/demo/">Try the demo <Icon name="arrow-right" size={18} /></a>}
+            <a class={DEMO_LIVE ? "btn secondary" : "btn primary"} href="#install"><Icon name="terminal" size={17} />Install</a>
+            <a class="btn ghost" href={GITHUB}><Icon name="github" size={18} />GitHub</a>
+          </p>
+          {DEMO_LIVE && (
+            <p class="note">
+              <span class="long">The demo runs right in your browser - made-up mailboxes, no account, nothing to set up.</span>
+              <span class="short">Runs in your browser · made-up mailboxes</span>
+            </p>
+          )}
+        </div>
+        <div class="hero-art">
+          <div class="dev" aria-hidden="false">
+            <div class="win">
+              <div class="chrome"><i></i><i></i><i></i></div>
+              <Shot src={desktopLight} dark={desktopDark} alt={heroAlt} widths={[640, 960, 1280]} sizes="(min-width: 1100px) 600px, 90vw" />
+            </div>
+            <div class="phone-frame">
+              <Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[200, 400]} sizes="200px" />
+            </div>
+          </div>
+          <div class="phones">
+            <div class="phone-frame flat"><Shot src={phoneOverviewLight} alt="The Overview page of the app on a phone" widths={[170, 340]} sizes="170px" /></div>
+            <div class="phone-frame flat lower"><Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[170, 340]} sizes="170px" /></div>
+          </div>
+        </div>
       </section>
 
-      <section class="promise">
-        <h2>Nothing is deleted without asking</h2>
-        <p>
-          Moves go to Trash and normally offer Undo (the last 10 actions until restart). If the server cannot safely identify a moved copy, restore it manually from Trash. Permanent deletion cannot be undone -{" "}
-          <strong>except</strong> permanent deletion in Trash and Junk: the manual "delete permanently" actions confirm with exact counts, and opt-in purge rules only act after you have reviewed a report run. Scans are read-only. Mailbox access goes to your mail provider; unsubscribe contacts the sender, and SSO contacts your identity provider. Optional AI review sends metadata only, never mail bodies or attachments.
-        </p>
-        <p><a href="/docs/security/">Security &amp; privacy in detail</a></p>
+      <div class="wrap works">
+        <span class="small">Works with</span>
+        {works.map((w) => <span class="chip">{w}</span>)}
+      </div>
+
+      <section class="band wrap" id="features">
+        <h2>Everything in one place.</h2>
+        <p class="sub">Phone or computer, light or dark - the same app.</p>
+        <ul class="features" id="feature-list">
+          {features.map((f, i) => (
+            <li class="card">
+              <div class="fshot">
+                <Shot src={f.shot} alt={f.alt} widths={[240, 480]} sizes="240px" />
+              </div>
+              <div class="fbody"><h3>{f.title}</h3><p>{f.text}</p></div>
+            </li>
+          ))}
+        </ul>
+        <div class="dots" id="feature-dots" aria-hidden="true"></div>
       </section>
 
-      <section id="install">
-        <h2>Install</h2>
-        <p>
-          Needs Docker and an IMAP mailbox (Gmail, iCloud, Fastmail, Proton
-          via Bridge, ...). For Proton Mail use <code>docker-compose.proton.yml</code>
-          instead of the default compose file (it needs a Bridge image you
-          provide - see its header).
-        </p>
-        <pre><code>git clone https://github.com/mclgoerg/inboxrake
-cd inboxrake/deploy
-cp .env.example .env        # optional edits - account setup happens in the UI
-sed -i "s|^INBOXRAKE_SECRET_KEY=.*|INBOXRAKE_SECRET_KEY=$(openssl rand -base64 32)|" .env
-docker compose up -d</code></pre>
-        <p>
-          Open <code>http://localhost:8765</code>; on a fresh install a welcome
-          screen and a short setup walk you through provider, sign-in
-          (folders are optional), an optional login password and the first
-          scan. Platform guides (Synology,
-          Unraid, TrueNAS, Portainer, Raspberry Pi), plain{" "}
-          <code>docker run</code> and every setting are in the{" "}
-          <a href="/docs/install/">install guide</a>.
-        </p>
+      <section class="tinted">
+        <div class="band wrap">
+          <div class="promise-head">
+            <div>
+              <h2>Nothing is deleted without asking.</h2>
+              <p class="sub">Your mailbox, your server, your call.</p>
+            </div>
+            <a class="link" href="/docs/security/">Security &amp; privacy in detail <Icon name="arrow-right" size={16} /></a>
+          </div>
+          <ul class="promise">
+            {promises.map((p) => (
+              <li class="pc">
+                <span class="ic"><Icon name={p.icon} size={20} /></span>
+                <h3>{p.title}</h3>
+                <p>{p.text}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
+
+      <section class="band wrap install" id="install">
+        <div>
+          <h2>Running in two minutes.</h2>
+          <ol class="steps">
+            {steps.map((s, i) => (
+              <li><span class="n">{i + 1}</span><div><h3>{s.title}</h3><p>{s.text}</p></div></li>
+            ))}
+          </ol>
+        </div>
+        <div class="code-col">
+          <div class="code">
+            <button class="copy" type="button" data-copy={installText} hidden><Icon name="copy" size={13} /><span>Copy</span></button>
+            <pre tabindex="0"><code>{install.map((l, i) => (
+              <>{l.cmd && <><span class="prompt" aria-hidden="true">$ </span>{l.cmd}</>}{l.c && <span class="comment">{l.c}</span>}{i < install.length - 1 ? "\n" : ""}</>
+            ))}</code></pre>
+          </div>
+          <a class="link" href="/docs/install/">Full install guide <Icon name="arrow-right" size={16} /></a>
+        </div>
+      </section>
+
+      {DEMO_LIVE && (
+        <section class="wrap closing">
+          <div class="cta-card">
+            <img src="/favicon.svg" alt="" width="64" height="64" />
+            <div class="cta-text">
+              <h2>Try it on made-up mail first.</h2>
+              <p>The whole app, right in your browser.</p>
+            </div>
+            <a class="btn primary" href="/demo/">Try the demo <Icon name="arrow-right" size={18} /></a>
+          </div>
+        </section>
+      )}
     </main>
 
-    <footer>
-      <span>MIT licensed.</span>
-      <span>
-        <a href={GITHUB + "/blob/main/LICENSE"}>License</a> ·{" "}
-        <a href="/docs/">Docs</a> ·{" "}
-        <a href={GITHUB}>GitHub</a> ·{" "}
-        Security: <a href="mailto:security@inboxrake.com">security@inboxrake.com</a>
-      </span>
+    <footer class="foot wrap">
+      <a class="brand small-brand" href="/"><img src="/favicon.svg" alt="" width="22" height="22" />Inboxrake</a>
+      <a class="plain" href={GITHUB + "/blob/main/LICENSE"}>MIT licensed</a>
+      <span class="grow"></span>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/docs/">Docs</a>
+        <a href={GITHUB}>GitHub</a>
+        <a href={CHANGELOG}>Changelog</a>
+      </nav>
+      <span class="security">Security: <a href="mailto:security@inboxrake.com">security@inboxrake.com</a></span>
     </footer>
+
+    <script is:inline>
+      // Progressive enhancement only: the page and the install commands work
+      // without it. Shows the Copy button and the position dots of the
+      // swipeable feature cards on phones.
+      (function () {
+        var btn = document.querySelector(".copy");
+        if (btn && navigator.clipboard) {
+          btn.hidden = false;
+          btn.addEventListener("click", function () {
+            navigator.clipboard.writeText(btn.dataset.copy).then(function () {
+              var label = btn.querySelector("span");
+              label.textContent = "Copied";
+              setTimeout(function () { label.textContent = "Copy"; }, 1800);
+            });
+          });
+        }
+        var list = document.getElementById("feature-list");
+        var dots = document.getElementById("feature-dots");
+        if (!list || !dots || !("IntersectionObserver" in window)) return;
+        var cards = list.children;
+        for (var i = 0; i < cards.length; i++) dots.appendChild(document.createElement("i"));
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) {
+              var at = Array.prototype.indexOf.call(cards, e.target);
+              for (var k = 0; k < dots.children.length; k++) dots.children[k].className = k === at ? "on" : "";
+            }
+          });
+        }, { root: list, threshold: 0.6 });
+        for (var j = 0; j < cards.length; j++) io.observe(cards[j]);
+      })();
+    </script>
   </body>
 </html>
 
 <style is:global>
-  /* Starlight's look: its system font, gray scale and indigo accent. */
+  /* The app's look (frontend/src/index.css): warm surfaces, caramel accent,
+     system fonts - no web font, no external request. Light and dark follow
+     prefers-color-scheme. Text pairs are kept at >= 4.5:1. */
   :root {
-    --bg: hsl(224, 10%, 10%);
-    --bg-alt: hsl(224, 14%, 16%);
-    --text: hsl(224, 6%, 77%);
-    --strong: hsl(0, 0%, 100%);
-    --line: hsl(224, 10%, 23%);
-    --accent: hsl(224, 100%, 60%);
-    --accent-text: hsl(224, 100%, 85%);
-    --on-accent: hsl(224, 54%, 20%);
-    --code: hsl(224, 10%, 23%);
-    color-scheme: dark;
-  }
-  :root[data-theme="light"] {
-    --bg: hsl(0, 0%, 100%);
-    --bg-alt: hsl(224, 19%, 97%);
-    --text: hsl(224, 10%, 23%);
-    --strong: hsl(224, 10%, 10%);
-    --line: hsl(224, 6%, 77%);
-    --accent: hsl(234, 90%, 60%);
-    --accent-text: hsl(234, 90%, 60%);
-    --on-accent: hsl(0, 0%, 100%);
-    --code: hsl(224, 20%, 94%);
+    --bg: #faf9f7;
+    --panel: #ffffff;
+    --panel2: #f3f1ee;
+    --line: #e4e1dc;
+    --accent: #94570a;
+    --accenth: #7f4a07;
+    --on-accent: #ffffff;
+    --tint: rgb(148 87 10 / 0.1);
+    --body: #1f1c19;
+    --muted: #6e6862;
+    --shadow: 0 30px 70px rgb(60 40 10 / 0.22);
+    --code-bg: #1d1b19;
+    --code-text: #eae4da;
+    --code-muted: #8d877e;
+    --code-chip: #2f2c29;
+    --code-chip-text: #d9d2c6;
+    --code-accent: #d98d2b;
     color-scheme: light;
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181716;
+      --panel: #232120;
+      --panel2: #1e1c1a;
+      --line: #36322d;
+      --accent: #d98d2b;
+      --accenth: #e49a3a;
+      --on-accent: #1b1206;
+      --tint: rgb(217 141 43 / 0.16);
+      --body: #f4f0ea;
+      --muted: #a19b93;
+      --shadow: 0 30px 70px rgb(0 0 0 / 0.5);
+      color-scheme: dark;
+    }
+  }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 1rem; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body {
     margin: 0;
     background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    color: var(--body);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", system-ui, sans-serif;
     font-size: 1rem;
-    line-height: 1.7;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
   }
-  a { color: var(--accent-text); }
-  h1, h2, strong { color: var(--strong); }
-  h1 { font-size: 2.5rem; line-height: 1.2; margin: 0 0 1rem; }
-  h2 { font-size: 1.5rem; line-height: 1.3; margin: 0 0 0.75rem; }
-  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  code { background: var(--code); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.9em; }
-  pre { background: var(--code); padding: 1rem; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
-  pre code { background: none; padding: 0; }
-  .bar {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 0.75rem 1.5rem; background: var(--bg-alt); border-bottom: 1px solid var(--line);
+  h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  a { color: inherit; }
+  img { max-width: 100%; }
+  .i { flex: none; display: inline-block; vertical-align: middle; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .wrap { max-width: 82rem; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3.5rem); }
+  .grow { flex: 1; }
+  .small { font-size: 0.84rem; color: var(--muted); }
+
+  /* ---- top bar ---- */
+  .top { display: flex; align-items: center; gap: 0.75rem; padding-block: 1.1rem; }
+  .brand { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 750; font-size: 1.2rem; letter-spacing: -0.01em; text-decoration: none; }
+  .brand img { border-radius: 8px; }
+  .version { font-size: 0.75rem; font-weight: 600; color: var(--muted); background: var(--panel2); border-radius: 999px; padding: 0.1rem 0.55rem; text-decoration: none; }
+  .version:hover { text-decoration: underline; }
+  .links { display: flex; gap: 0.25rem; }
+  .links a { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.65rem; font-weight: 500; text-decoration: none; border-radius: 8px; }
+  .links a:hover { color: var(--accent); }
+  .menu { display: none; position: relative; }
+  .menu summary { list-style: none; cursor: pointer; width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu-pop { position: absolute; right: 0; top: 100%; z-index: 5; min-width: 11rem; background: var(--panel); border-radius: 14px; box-shadow: 0 0 0 1px var(--line), 0 16px 40px rgb(0 0 0 / 0.2); padding: 0.4rem; display: grid; }
+  .menu-pop a { padding: 0.7rem 0.9rem; border-radius: 10px; text-decoration: none; font-weight: 550; }
+  .menu-pop a:hover { background: var(--tint); }
+  .short { display: none; }
+
+  /* ---- buttons ---- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.9rem; padding: 0 1.4rem; border-radius: 999px; font-weight: 650; font-size: 1rem; text-decoration: none; white-space: nowrap; }
+  .btn.sm { min-height: 2.25rem; padding: 0 1rem; font-size: 0.92rem; }
+  .btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 6px 18px rgb(148 87 10 / 0.25); }
+  .btn.primary:hover { background: var(--accenth); }
+  .btn.secondary { background: var(--panel); box-shadow: 0 0 0 1px var(--line) inset; }
+  .btn.secondary:hover { background: var(--panel2); }
+  .btn.ghost:hover { color: var(--accent); }
+  .link { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--accent); font-weight: 600; text-decoration: none; }
+  .link:hover { text-decoration: underline; }
+
+  /* ---- hero ---- */
+  .hero { display: grid; grid-template-columns: minmax(0, 37rem) minmax(0, 1fr); gap: 2.5rem; align-items: center; padding-top: 3rem; padding-bottom: 2.5rem; }
+  .hero-text { display: grid; gap: 1.5rem; justify-items: start; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 1.9rem; padding: 0.2rem 0.8rem; border-radius: 1rem; line-height: 1.3; background: var(--tint); color: var(--accent); font-size: 0.85rem; font-weight: 650; }
+  h1 { font-size: clamp(2.4rem, 5vw, 4rem); line-height: 1.03; font-weight: 800; letter-spacing: -0.035em; }
+  .lead { font-size: 1.25rem; line-height: 1.5; color: var(--muted); }
+  .lead strong { color: var(--body); font-weight: 600; }
+  .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+  .note { font-size: 0.85rem; color: var(--muted); }
+  .hero-art { min-width: 0; }
+  .dev { position: relative; width: 100%; max-width: 45rem; margin-left: auto; aspect-ratio: 720 / 660; }
+  .win { position: absolute; left: 0; top: 3%; width: 90%; border-radius: 14px; overflow: hidden; background: var(--panel); box-shadow: var(--shadow), 0 0 0 1px rgb(0 0 0 / 0.1); }
+  .chrome { height: 1.85rem; background: var(--panel2); display: flex; align-items: center; gap: 0.5rem; padding: 0 0.8rem; }
+  .chrome i { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--line); display: block; }
+  .win img, .phone-frame img, .fshot img { display: block; width: 100%; height: auto; }
+  .phone-frame { background: #121110; padding: 0.55rem; border-radius: 2.3rem; box-shadow: 0 30px 60px rgb(0 0 0 / 0.35); }
+  .phone-frame img { border-radius: 1.8rem; }
+  .dev .phone-frame { position: absolute; right: 0; top: 25%; width: 29%; }
+  .phones { display: none; }
+
+  .works { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding-bottom: 1.5rem; }
+  .works .small { margin-right: 0.4rem; }
+  .chip { min-height: 1.9rem; display: inline-flex; align-items: center; padding: 0 0.8rem; border-radius: 999px; background: var(--panel); box-shadow: 0 0 0 1px var(--line) inset; font-size: 0.85rem; font-weight: 550; }
+
+  /* ---- bands ---- */
+  .band { padding-block: 4.5rem; }
+  h2 { font-size: clamp(1.75rem, 3.4vw, 2.5rem); font-weight: 780; letter-spacing: -0.03em; line-height: 1.1; }
+  .sub { margin-top: 0.6rem; font-size: 1.1rem; color: var(--muted); }
+  h3 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
+  .tinted { background: var(--panel2); }
+
+  .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2rem; }
+  .card { background: var(--panel); border-radius: 22px; box-shadow: 0 0 0 1px var(--line); overflow: hidden; }
+  .fshot { height: 15.6rem; overflow: hidden; background: var(--panel2); display: flex; justify-content: center; padding-top: 1.4rem; }
+  .fshot picture { width: 15rem; max-width: 100%; align-self: flex-start; display: block; border-radius: 22px 22px 0 0; overflow: hidden; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); }
+  .fbody { padding: 1.1rem 1.4rem 1.4rem; }
+  .fbody p { margin-top: 0.25rem; color: var(--muted); font-size: 0.92rem; line-height: 1.45; }
+  .dots { display: none; }
+
+  .promise-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.75rem; }
+  .promise { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+  .pc { background: var(--panel); border-radius: 18px; padding: 1.25rem; box-shadow: 0 0 0 1px var(--line); }
+  .pc .ic { width: 2.5rem; height: 2.5rem; border-radius: 12px; background: var(--tint); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 0.9rem; }
+  .pc h3 { margin-bottom: 0.3rem; }
+  .pc p { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+
+  .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; align-items: start; }
+  .steps { display: grid; gap: 1rem; margin-top: 1.4rem; }
+  .steps li { display: flex; gap: 0.9rem; align-items: flex-start; }
+  .steps .n { width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--tint); color: var(--accent); font-weight: 750; display: flex; align-items: center; justify-content: center; flex: none; }
+  .steps h3 { font-size: 1rem; }
+  .steps p { color: var(--muted); font-size: 0.92rem; }
+  .code-col { display: grid; gap: 0.9rem; padding-top: 3.6rem; min-width: 0; }
+  .code { position: relative; background: var(--code-bg); color: var(--code-text); border-radius: 16px; }
+  .code pre { margin: 0; padding: 1.1rem 1.25rem; padding-top: 3rem; overflow-x: auto; font: 0.84rem/1.75 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .code .prompt { color: var(--code-accent); user-select: none; -webkit-user-select: none; }
+  .code .comment { color: var(--code-muted); }
+  .copy { position: absolute; top: 0.7rem; right: 0.7rem; min-height: 2rem; padding: 0 0.7rem; border: 0; border-radius: 8px; background: var(--code-chip); color: var(--code-chip-text); font: 600 0.8rem system-ui, sans-serif; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+  .copy:hover { background: #3a3632; }
+  .copy[hidden] { display: none; }
+  .code:not(:has(.copy:not([hidden]))) pre { padding-top: 1.1rem; }
+
+  .closing { padding-bottom: 3rem; }
+  .cta-card { background: var(--panel); border-radius: 26px; box-shadow: 0 0 0 1px var(--line); padding: 2.5rem; display: flex; align-items: center; gap: 1.75rem; }
+  .cta-card img { border-radius: 16px; flex: none; }
+  .cta-text { flex: 1; min-width: 0; }
+  .cta-text h2 { font-size: clamp(1.4rem, 2.6vw, 1.9rem); }
+  .cta-text p { margin-top: 0.4rem; color: var(--muted); }
+
+  .foot { border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; padding-block: 1.6rem; font-size: 0.9rem; color: var(--muted); }
+  .small-brand { font-size: 0.95rem; color: var(--body); }
+  .plain { text-decoration: none; }
+  .foot-links { display: flex; gap: 1.1rem; }
+  .foot a:not(.brand):not(.plain) { color: var(--accent); font-weight: 500; text-decoration: none; }
+  .foot a:not(.brand):not(.plain):hover { text-decoration: underline; }
+
+  /* ---- tablet ---- */
+  @media (max-width: 1100px) {
+    .hero { grid-template-columns: minmax(0, 1fr); padding-top: 2rem; gap: 2.5rem; }
+    .dev { margin-inline: auto; }
+    .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .promise { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .install { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    .code-col { padding-top: 0; }
   }
-  .bar nav { display: flex; gap: 1.25rem; }
-  .bar a { text-decoration: none; }
-  .brand-group { display: flex; align-items: center; gap: 0.5rem; }
-  .bar .version { color: var(--text); font-size: 0.75rem; white-space: nowrap; }
-  .bar .version:hover { text-decoration: underline; }
-  .brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--strong); font-weight: 600; font-size: 1.125rem; }
-  main { max-width: 52rem; margin: 0 auto; padding: 3rem 1.5rem 1rem; }
-  section { margin-bottom: 3rem; }
-  .lead { font-size: 1.125rem; }
-  .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1.5rem 0; }
-  .btn {
-    display: inline-block; padding: 0.5rem 1.25rem; border-radius: 999rem;
-    border: 1px solid var(--line); color: var(--strong); text-decoration: none; font-weight: 600;
+
+  /* ---- phone ---- */
+  @media (max-width: 720px) {
+    .top { padding-block: 0.7rem; }
+    .brand { font-size: 1.1rem; }
+    .links, .version { display: none; }
+    .menu { display: block; }
+    .long { display: none; }
+    .short { display: inline; }
+    .hero { padding-top: 1rem; padding-bottom: 1.5rem; gap: 1.75rem; }
+    .hero-text { gap: 1.1rem; }
+    .lead { font-size: 1.05rem; }
+    .cta { display: grid; grid-template-columns: 1fr 1fr; }
+    .cta .primary { grid-column: 1 / -1; min-height: 3.4rem; }
+    .cta .ghost { background: var(--panel); box-shadow: 0 0 0 1px var(--line) inset; }
+    .note { text-align: center; justify-self: center; margin-top: -0.3rem; }
+    .dev { display: none; }
+    .phones { display: flex; justify-content: center; align-items: flex-start; gap: 0.75rem; }
+    .phones .phone-frame { width: min(10.6rem, 44%); padding: 0.4rem; border-radius: 1.7rem; }
+    .phones .phone-frame img { border-radius: 1.4rem; }
+    .phones .lower { margin-top: 1.9rem; }
+    .band { padding-block: 2.75rem; }
+    .sub { font-size: 1rem; }
+    .features { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.75rem; margin-inline: calc(-1 * clamp(1.25rem, 4vw, 3.5rem)); padding-inline: clamp(1.25rem, 4vw, 3.5rem); scroll-padding-inline: clamp(1.25rem, 4vw, 3.5rem); padding-bottom: 0.25rem; scrollbar-width: none; }
+    .features::-webkit-scrollbar { display: none; }
+    .features .card { flex: none; width: min(17rem, 78vw); scroll-snap-align: start; }
+    .fshot { height: 18rem; }
+    .fshot picture { width: 14.5rem; }
+    .dots { display: flex; justify-content: center; gap: 0.4rem; margin-top: 0.9rem; }
+    .dots i { width: 0.4rem; height: 0.4rem; border-radius: 0.2rem; background: var(--line); display: block; transition: width 0.2s, background 0.2s; }
+    .dots i.on { width: 1.1rem; background: var(--accent); }
+    .promise-head { flex-direction: column; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem; }
+    .promise { gap: 0.65rem; }
+    .pc { padding: 0.9rem; }
+    .pc .ic { width: 2.1rem; height: 2.1rem; margin-bottom: 0.6rem; }
+    .pc h3 { font-size: 0.98rem; }
+    .pc p { font-size: 0.82rem; }
+    .code pre { font-size: 0.75rem; padding-inline: 0.9rem; }
+    .cta-card { flex-direction: column; align-items: stretch; text-align: center; padding: 1.4rem; gap: 1rem; }
+    .cta-card img { display: none; }
+    .foot { justify-content: center; text-align: center; }
+    .foot .grow { display: none; }
+    .foot .brand { display: none; }
+    .security { flex-basis: 100%; }
   }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .shot { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
-  :root[data-theme="light"] .only-dark, :root:not([data-theme="light"]) .only-light { display: none; }
-  .promise { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem 1.5rem; }
-  .promise p:last-child { margin-bottom: 0; }
-  footer {
-    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem;
-    max-width: 52rem; margin: 0 auto; padding: 1.5rem; border-top: 1px solid var(--line);
-    font-size: 0.875rem;
+  @media (max-width: 380px) {
+    .promise { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
