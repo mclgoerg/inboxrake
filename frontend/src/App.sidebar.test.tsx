@@ -205,22 +205,21 @@ test("account menu in the sidebar carries the profile items", async () => {
   fireEvent.click(within(await side()).getByRole("button", { name: /proton/ }));
   expect(await screen.findByRole("menuitem", { name: /Settings/ })).toBeTruthy();
   expect(screen.getByRole("menuitem", { name: /Add account/ })).toBeTruthy();
-  expect(screen.getByRole("group", { name: "Appearance" })).toBeTruthy();
-  expect(screen.getByRole("menuitem", { name: /Empty Trash/ })).toBeTruthy();
+  expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: /Activity/ })).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: /Empty Trash/ })).toBeNull();
 });
 
-test("the phone avatar menu has Activity (opens the audit log); the sidebar "
-  + "menu does not, its footer has it", async () => {
+test("the phone avatar opens an Accounts sheet whose Activity row opens the "
+  + "audit log", async () => {
   mount(false);
   fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Activity/ }));
-  const dlg = await screen.findByRole("dialog");
-  expect(within(dlg).getByText("Activity")).toBeTruthy();
-  cleanup();
-  mount(true);
-  fireEvent.click(within(await side()).getByRole("button", { name: /proton/ }));
-  await screen.findByRole("menuitem", { name: /Settings/ });
-  expect(screen.queryByRole("menuitem", { name: /Activity/ })).toBeNull();
+  const sheet = await screen.findByRole("dialog");
+  expect(within(sheet).getByText("Accounts")).toBeTruthy();
+  fireEvent.click(within(sheet).getByRole("button", { name: /Activity/ }));
+  await waitFor(() => expect(screen.getByRole("dialog").textContent)
+    .toContain("Activity"));
+  expect(screen.queryByText("Accounts")).toBeNull();
 });
 
 test("#/cleanup at >= 1024: the sidebar's Senders rewrites the URL",

@@ -68,8 +68,6 @@ export const EN: Record<string, string> = {
   "account.hint":
     "Each account is scanned and cleaned separately - views never mix. "
     + "Switch accounts in the header once more than one is set up.",
-  "account.new_prompt": "Name for the new account (e.g. \"gmail\"):",
-  "account.new_title": "Add account",
   "account.rename_title": "Rename account",
   "account.rename_confirm": "Rename",
   "account.err_empty": "Enter a name.",
@@ -89,6 +87,11 @@ export const EN: Record<string, string> = {
   "account.delete_mails": "Mails on the server are untouched.",
   "account.delete_confirm": "Delete account",
   "menu.accounts": "Accounts",
+  "menu.done": "Done",
+  "menu.signin_failed": "Sign-in failed - fix it",
+  "menu.signin_missing": "Not signed in - set it up",
+  "menu.mails_size": "{n} mails · {size}",
+  "menu.mails_size_one": "1 mail · {size}",
   "update.available": "A new version of Inboxrake is available.",
   "update.reload": "Reload",
   "menu.version": "v{version} (build {id})",
@@ -1640,7 +1643,6 @@ export const EN: Record<string, string> = {
   "audit.act.rule_execute": "Rule executed",
   "audit.act.unsubscribe": "Unsubscribe",
   "audit.act.undo": "Undo",
-  "trash.counting": "Counting…",
   "trash.already_empty": "Trash is empty.",
   "audit.act.empty_trash": "Trash emptied",
   "audit.outcome.ok": "ok",

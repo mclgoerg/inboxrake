@@ -15,7 +15,6 @@ let versionCalls = 0;
 
 let trashTotal = 5;            // what the live Trash listing reports
 let trashFails = false;
-let trashGate: Promise<void> | null = null;   // holds the live count back
 const emptyTrash = vi.fn().mockResolvedValue({ ok: true });
 const aiReview = vi.fn().mockResolvedValue({ ok: true });
 const undoApi = vi.fn().mockResolvedValue({ ok: true });
@@ -28,13 +27,11 @@ vi.mock("./api", () => ({
     emptyTrash: (...a: unknown[]) => emptyTrash(...a),
     undo: (...a: unknown[]) => undoApi(...a),
     trash: async () => {
-      if (trashGate) await trashGate;
       if (trashFails) throw new Error("imap down");
       return { folder: "Trash", uv: 1, total: trashTotal, max_uid: 40, mails: [] };
     },
     // the Folders panel's listing (same Trash)
     foldersPanel: async () => {
-      if (trashGate) await trashGate;
       if (trashFails) throw new Error("imap down");
       return { folder: "Trash", uv: 1, total: trashTotal, max_uid: 40,
         mails: [], senders: [] };
@@ -128,7 +125,6 @@ afterEach(() => {
   emptyTrash.mockClear();
   trashTotal = 5;
   trashFails = false;
-  trashGate = null;
   aiReview.mockClear();
   undoApi.mockClear();
 });
@@ -148,42 +144,24 @@ const mount = async (over: Partial<AppState> = {},
 const openProfile = () =>
   fireEvent.click(screen.getByLabelText(/^Account:/));
 
-test("profile menu: Empty Trash sits last, set apart and danger-styled",
+test("the account menu has no Empty Trash (it lives on the Trash page)",
   async () => {
   await mount();
   openProfile();
-  const item = await screen.findByRole("menuitem", { name: /Empty Trash/ });
-  expect(item.textContent).toBe("Empty Trash…")        // no (stale) cached count;
-  expect(item.className).toContain("text-danger-fg");
-  const menu = item.parentElement!;
-  const items = [...menu.children];
-  expect(items[items.indexOf(item) - 1].getAttribute("role"))
-    .toBe("separator");
-  const settings = screen.getByRole("menuitem", { name: /Settings/ });
-  expect(items.indexOf(item)).toBeGreaterThan(items.indexOf(settings));
+  await screen.findByRole("button", { name: /Settings/ });
+  expect(screen.queryByRole("button", { name: /Empty Trash/ })).toBeNull();
 });
 
-test("Empty Trash from the profile menu states N + irreversibility, then " +
-  "deletes on confirm", async () => {
-  await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
-  const dlg = await findDialog();
-  expect(dlg.textContent).toContain("5 mails in Trash");
-  expect(dlg.textContent).toContain("This cannot be undone.");
-  expect(emptyTrash).not.toHaveBeenCalled();
-  await pressDialog("Delete permanently (5)");
-  await waitFor(() => expect(emptyTrash).toHaveBeenCalledOnce());
-  // the delete is bound to what the confirm counted
-  expect(emptyTrash).toHaveBeenCalledWith({ uv: 1, max_uid: 40 });
-});
+const openTrashPanel = async (n = 5) => {
+  openTool("Clean up", /^Trash/);
+  return screen.findByRole("button", { name: `Empty Trash · ${n}` });
+};
 
-test("Empty Trash uses the LIVE Trash total, not the stale state count",
+test("Empty Trash uses the Trash page's LIVE total, not the stale state count",
   async () => {
   trashTotal = 9;                       // state.trash_count still says 5
   await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
+  fireEvent.click(await openTrashPanel(9));
   expect((await findDialog()).textContent).toContain("9 mails in Trash");
   await pressDialog("Delete permanently (9)");
   await waitFor(() => expect(emptyTrash).toHaveBeenCalledOnce());
@@ -192,8 +170,7 @@ test("Empty Trash uses the LIVE Trash total, not the stale state count",
 test("a single mail reads 'The 1 mail', not '1 mails'", async () => {
   trashTotal = 1;
   await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
+  fireEvent.click(await openTrashPanel(1));
   const text = (await findDialog()).textContent!;
   expect(text).toContain("The 1 mail in Trash");
   expect(text).not.toContain("1 mails");
@@ -204,27 +181,12 @@ test("if the live count can't be fetched there is no confirm and no delete",
   async () => {
   trashFails = true;
   await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
-  await screen.findByText(/imap down/);
-  await expectNoDialog();
-  expect(emptyTrash).not.toHaveBeenCalled();
-});
-
-test("cancelling Empty Trash from the profile menu deletes nothing",
-  async () => {
-  await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
-  await cancelDialog();
-  await expectNoDialog();
-  expect(emptyTrash).not.toHaveBeenCalled();
-});
-
-const openTrashPanel = async () => {
   openTool("Clean up", /^Trash/);
-  return screen.findByRole("button", { name: "Empty Trash · 5" });
-};
+  await screen.findByText(/imap down/);
+  expect(screen.queryByRole("button", { name: /^Empty Trash/ })).toBeNull();
+  await expectNoDialog();
+  expect(emptyTrash).not.toHaveBeenCalled();
+});
 
 test("the Trash panel footer offers the same Empty Trash confirm",
   async () => {
@@ -247,12 +209,12 @@ test("cancelling Empty Trash in the Trash panel deletes nothing",
   expect(emptyTrash).not.toHaveBeenCalled();
 });
 
-test("no Empty Trash entry (and no Trash panel footer) while Trash is empty",
-  async () => {
+test("no Trash panel footer while Trash is empty", async () => {
+  trashTotal = 0;
   await mount({ trash_count: 0 });
-  openProfile();
-  await screen.findByRole("menuitem", { name: /Settings/ });
-  expect(screen.queryByRole("menuitem", { name: /Empty Trash/ })).toBeNull();
+  openTool("Clean up", /^Trash/);
+  await waitFor(() => expect(screen.queryByText(/imap down/)).toBeNull());
+  expect(screen.queryByRole("button", { name: /^Empty Trash/ })).toBeNull();
 });
 
 const selectAndRateWithAi = async () => {
@@ -284,28 +246,3 @@ test("AI consent: continuing remembers the choice and runs the review",
   expect(localStorage.getItem("pmc_ai_ack")).toBe("1");
 });
 
-test("the menu path says 'Counting…' while it fetches the live count",
-  async () => {
-  let release!: () => void;
-  trashGate = new Promise<void>((r) => { release = r; });
-  await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
-  expect(await screen.findByText("Counting…")).toBeTruthy();
-  await expectNoDialog();                              // nothing to confirm yet
-  release();
-  expect((await findDialog()).textContent).toContain("5 mails in Trash");
-  expect(screen.queryByText("Counting…")).toBeNull();
-  await cancelDialog();
-});
-
-test("a live count of 0 toasts 'Trash is empty' instead of offering to delete 0",
-  async () => {
-  trashTotal = 0;                        // state.trash_count still says 5
-  await mount();
-  openProfile();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Empty Trash/ }));
-  expect(await screen.findByText("Trash is empty.")).toBeTruthy();
-  await expectNoDialog();
-  expect(emptyTrash).not.toHaveBeenCalled();
-});

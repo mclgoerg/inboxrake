@@ -434,7 +434,6 @@ export const DE: Record<string, string> = {
   "Inbox": "Posteingang",
   "Moving…": "Verschiebe…",
   "Restoring…": "Stelle wieder her…",
-  "trash.counting": "Zähle…",
   "trash.already_empty": "Der Papierkorb ist leer.",
   "Emptying Trash…": "Leere Papierkorb…",
   "loading…": "lade…",
@@ -1398,8 +1397,6 @@ export const DE: Record<string, string> = {
   "account.hint":
     "Jedes Konto wird getrennt gescannt und aufgeräumt - Ansichten "
     + "vermischen sich nie. Bei mehreren Konten oben im Kopf umschalten.",
-  "account.new_prompt": "Name für das neue Konto (z. B. \"gmail\"):",
-  "account.new_title": "Konto hinzufügen",
   "account.rename_title": "Konto umbenennen",
   "account.rename_confirm": "Umbenennen",
   "account.err_empty": "Bitte einen Namen eingeben.",
@@ -1421,6 +1418,11 @@ export const DE: Record<string, string> = {
   "account.delete_mails": "Mails auf dem Server bleiben unangetastet.",
   "account.delete_confirm": "Konto löschen",
   "menu.accounts": "Konten",
+  "menu.done": "Fertig",
+  "menu.signin_failed": "Anmeldung fehlgeschlagen - beheben",
+  "menu.signin_missing": "Nicht angemeldet - einrichten",
+  "menu.mails_size": "{n} Mails · {size}",
+  "menu.mails_size_one": "1 Mail · {size}",
   "update.available": "Eine neue Version von Inboxrake ist verfügbar.",
   "update.reload": "Neu laden",
   "menu.version": "v{version} (Build {id})",

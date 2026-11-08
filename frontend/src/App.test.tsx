@@ -166,13 +166,11 @@ test("the active account is marked and the trigger shows its name",
       .textContent).toContain("p"));
     await settleStateCalls();
     await openMenu();
-    // Account rows only: the Appearance radios are menuitemradio too.
-    const rows = screen.getAllByRole("menuitemradio")
-      .filter((r) => !/^(System|Light|Dark)$/.test(r.textContent ?? ""));
-    const active = rows.find((r) => r.getAttribute("aria-checked") === "true");
-    expect(active?.textContent).toContain("proton");
-    expect(rows.filter((r) => r.getAttribute("aria-checked") === "true"))
-      .toHaveLength(1);
+    const sheet = await screen.findByRole("dialog");
+    const active = within(sheet).getAllByRole("button")
+      .filter((r) => r.getAttribute("aria-current") === "true");
+    expect(active).toHaveLength(1);
+    expect(active[0].textContent).toContain("proton");
   });
 
 test("clicking a different account switches; clicking the active one " +
@@ -217,16 +215,16 @@ test("the avatar is never named 'Account: ' - without an account it is the profi
   expect(seen.has("Account: ")).toBe(false);
 });
 
-test("single account: no Accounts section, header keeps the plain " +
-  "profile trigger", async () => {
+test("single account: the sheet shows its card and Add account; Appearance " +
+  "radios work", async () => {
   cfg = singleCfg;
   state = { ...baseState };
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await openMenu();
-  expect(screen.queryByText("Accounts")).toBeNull();
-  expect(screen.queryByText("proton")).toBeNull();
-  // Appearance: System / Light / Dark radios, System checked by default.
-  const radios = screen.getAllByRole("menuitemradio");
+  const sheet = await screen.findByRole("dialog");
+  expect(within(sheet).getByText("marcel@proton.example")).toBeTruthy();
+  expect(within(sheet).getByRole("button", { name: "Add account" })).toBeTruthy();
+  const radios = within(sheet).getAllByRole("radio");
   expect(radios.map((r) => r.textContent)).toEqual(["System", "Light", "Dark"]);
   expect(radios[0].getAttribute("aria-checked")).toBe("true");
   fireEvent.click(radios[2]);

@@ -212,3 +212,17 @@ def test_openapi_version_is_the_release_version():
             / "version.txt").read_text().strip()
     assert want and app.version == want
     assert app.openapi()["info"]["version"] == want
+
+
+def test_accounts_summary_counts_the_last_scan():
+    name = client.get("/api/config").json()["default_account"]
+    empty = client.get("/api/accounts/summary").json()[name]
+    assert empty["mails"] == 0 and empty["size"] == 0
+    acc = mailops.accounts.get(name)
+    with acc.lock:
+        acc.state["scanned_ts"] = 1700000000
+        acc.state["groups"]["sender"] = {
+            "a": {"count": 3, "size": 300}, "b": {"count": 2, "size": 50}}
+    got = client.get("/api/accounts/summary").json()[name]
+    assert got["mails"] == 5 and got["size"] == 350
+    assert got["scanned_ts"] == 1700000000

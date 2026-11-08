@@ -2005,6 +2005,24 @@ def get_config():
     return cfgmod.masked_config(cfgmod.load_config())
 
 
+@app.get("/api/accounts/summary")
+def get_accounts_summary():
+    """Per account of this workspace: what its last scan holds (mails, bytes,
+    when, current job status). The account switcher's cards; read from the
+    in-memory state / restored snapshot, so no mail server is contacted."""
+    out = {}
+    for name in accountsmod.names():
+        acc = accountsmod.get(name)
+        with acc.lock:
+            senders = acc.state["groups"].get("sender") or {}
+            out[name] = {
+                "status": acc.state["status"],
+                "scanned_ts": acc.state["scanned_ts"],
+                "mails": sum(r["count"] for r in senders.values()),
+                "size": sum(r["size"] for r in senders.values())}
+    return out
+
+
 def _keep_caller_signed_in(request: Request, response: Response,
                            old_sub: str | None) -> None:
     """After THIS request signed everyone out (new epoch) the person who did

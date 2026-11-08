@@ -121,7 +121,7 @@ function Settings({ section: first = "account", ...props }: Partial<
   account: string; section?: SettingsSection | null }) {
   const [section, setSection] = useState<SettingsSection | null>(first);
   goto = setSection;
-  return <SettingsPage onClose={() => {}} onSaved={() => {}}
+  return <SettingsPage onClose={() => {}} onAddAccount={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} {...props} section={section}
     onSection={(s) => setSection(s)} />;
 }
@@ -148,7 +148,7 @@ const hostInput = () => screen.getByLabelText("Host") as HTMLInputElement;
 
 test("gmail preset prefills IMAP + SMTP fields", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(hostInput().value).toBe("127.0.0.1");
   pickPreset("gmail");
   expect(hostInput().value).toBe("imap.gmail.com");
@@ -167,7 +167,7 @@ test("gmail preset prefills IMAP + SMTP fields", () => {
 
 test("custom preset keeps the current fields", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("custom");
   expect(hostInput().value).toBe("127.0.0.1");
   expect(presetButton().textContent).toMatch(/Custom/);
@@ -176,7 +176,7 @@ test("custom preset keeps the current fields", () => {
 test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
   () => {
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
+      onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
     const ca = () => (screen.getByLabelText(/CA file/) as HTMLInputElement);
     expect(ca().value).toBe("/certs/bridge-cert.pem");
     pickPreset("custom");
@@ -188,7 +188,7 @@ test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
 
 test("prefilled fields stay editable", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("fastmail");
   fireEvent.change(hostInput(), { target: { value: "imap.mine.example" } });
   expect(hostInput().value).toBe("imap.mine.example");
@@ -197,7 +197,7 @@ test("prefilled fields stay editable", () => {
 test("folder discovery follows the account being edited", async () => {
   foldersCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(foldersCalls).toEqual(["default"]);
   await selectAccount("icloud");
   await waitFor(() => expect(foldersCalls).toEqual(["default", "icloud"]));
@@ -216,7 +216,7 @@ test("a virtual view folder is listed under special folders, no checkbox",
         view: true, excluded: true }] };
     try {
       render(<Settings cfg={cfg} account="default" onClose={() => {}}
-        onSaved={() => {}} onAccountsChanged={() => {}} />);
+        onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
       expect(await screen.findByText("[Gmail]/Starred")).toBeTruthy();
       expect(screen.getByText(/Views of other folders - never scanned/))
         .toBeTruthy();
@@ -238,7 +238,7 @@ test("a look-alike of a special folder is locked and unticked", async () => {
       excluded: true }] };
   try {
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
+      onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
     const box = await screen.findByLabelText(/Gelöschte Elemente/);
     expect((box as HTMLInputElement).disabled).toBe(true);
     expect((box as HTMLInputElement).checked).toBe(false);
@@ -268,7 +268,7 @@ test("choosing a role folder acts on the edited account, not the active one",
     foldersResult = tiedTrash();
     try {
       render(<Settings cfg={cfg} account="default" onClose={() => {}}
-        onSaved={() => {}} onAccountsChanged={() => {}} />);
+        onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
       await selectAccount("icloud");
       fireEvent.click(await screen.findByRole("button",
         { name: /Which folder is your Trash folder\?/ }));
@@ -284,7 +284,7 @@ test("unsaved ticks survive the reload after a role choice", async () => {
   foldersResult = tiedTrash();
   try {
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
+      onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
     const box = await screen.findByLabelText("Projects");
     expect(box.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(box);                       // untick, not saved yet
@@ -307,7 +307,7 @@ test("unsaved ticks survive the reload after a role choice", async () => {
 
 const renderWithDialogs = (over: Partial<Parameters<typeof Settings>[0]>
   = {}) => render(<DialogProvider><Settings cfg={cfg} account="default"
-  onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}}
+  onClose={() => {}} onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}}
   {...over} /></DialogProvider>);
 
 test("rename sends rename_account for the edited account", async () => {
@@ -341,16 +341,15 @@ test("rename validates: empty and duplicate names are refused", async () => {
   expect(saveCalls).toEqual([]);
 });
 
-test("a new account is named in a prompt and sent as add_account",
+test("+ Add account opens the setup wizard instead of a name prompt",
   async () => {
     saveCalls.length = 0;
-    renderWithDialogs({ section: null });
+    const onAddAccount = vi.fn();
+    renderWithDialogs({ section: null, onAddAccount });
     fireEvent.click(screen.getByText("Add account"));
-    const dlg = await findDialog();
-    fireEvent.change(within(dlg).getByRole("textbox"),
-      { target: { value: " gmail " } });
-    await pressDialog("Add account");
-    await waitFor(() => expect(saveCalls).toEqual([{ add_account: "gmail" }]));
+    await waitFor(() => expect(onAddAccount).toHaveBeenCalledOnce());
+    await expectNoDialog();
+    expect(saveCalls).toEqual([]);
   });
 
 test("deleting an account names it in a danger dialog; Cancel keeps it",
@@ -524,7 +523,7 @@ test("server settings (login + shared AI) are admin-only", () => {
       shared_budget_usd: 5 },
   };
   render(<Settings cfg={asUser} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   // no Server group at all for non-admins (not even by route) …
   openSection(null);
   expect(screen.queryByText("Sign-in & users")).toBeNull();
@@ -557,7 +556,7 @@ test("the admin sees and saves the shared AI section", async () => {
       api_key_set: true },
   };
   render(<Settings cfg={asAdmin} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   openSection("signin");
   expect(screen.getByText(/Shared AI key/)).toBeTruthy();
   // the per-user usage table loads (id + shared-key spend/cap visible)
@@ -586,7 +585,7 @@ test("SSO warnings: open allow-list and missing admin", () => {
   });
   const show = (c: Config) => {
     render(<Settings cfg={c} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
+      onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
     openSection("signin");
   };
   show(mk("me@x.example", ["me@x.example"]));
@@ -624,7 +623,7 @@ test("Sign out all sessions asks first, then calls the API; hidden without a log
   cleanup();
   render(<Settings cfg={{ ...cfg, auth: { ...cfg.auth, mode: "none",
     is_admin: true } }} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   openSection("signin");
   expect(screen.queryByText("Sign out all sessions…")).toBeNull();
 });
@@ -632,7 +631,7 @@ test("Sign out all sessions asks first, then calls the API; hidden without a log
 test("section switches keep unsaved edits and Save persists every section", () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   // edit on the account section …
   fireEvent.change(hostInput(), { target: { value: "imap.new.example" } });
   // … wander off and back - the edit must survive
@@ -884,20 +883,6 @@ test("the delete dialog lists the data that goes with the account",
     await cancelDialog();
   });
 
-test("account names like 'constructor' are valid, real duplicates are not",
-  async () => {
-    saveCalls.length = 0;
-    renderWithDialogs({ section: null });
-    fireEvent.click(screen.getByText("Add account"));
-    const dlg = await findDialog();
-    fireEvent.change(within(dlg).getByRole("textbox"),
-      { target: { value: "constructor" } });
-    expect(within(dlg).queryByRole("alert")).toBeNull();
-    await pressDialog("Add account");
-    await waitFor(() => expect(saveCalls).toEqual(
-      [{ add_account: "constructor" }]));
-  });
-
 test("OAuth disconnect asks first; Cancel disconnects nothing", async () => {
   oauthDisconnectCalls.length = 0;
   const oauthCfg: Config = { ...cfg, accounts: { ...cfg.accounts,
@@ -992,7 +977,7 @@ test("new account + gmail preset starts on App password: Password " +
   async () => {
     saveCalls.length = 0;
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
+      onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
     pickPreset("gmail");
     expect(signinTab("App password").getAttribute("aria-checked"))
       .toBe("true");
@@ -1009,7 +994,7 @@ test("switching to OAuth shows the OAuth card instead of the Password " +
   "field; Save sends auth=oauth + oauth.provider google", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("gmail");
   fireEvent.click(signinTab("OAuth"));
   expect(screen.getByText(/Connect your Gmail account/)).toBeTruthy();
@@ -1024,7 +1009,7 @@ test("a saved gmail account opens on the stored method - even when OAuth " +
   "is still connected but the method is App password", () => {
   const { unmount } = render(<Settings
     cfg={gmailCfg(oauthAcct({ auth: "oauth" }))} account="default"
-    onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onClose={() => {}} onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(signinTab("OAuth").getAttribute("aria-checked")).toBe("true");
   expect(screen.getByText("Connected")).toBeTruthy();
   unmount();
@@ -1039,7 +1024,7 @@ test("a saved gmail account opens on the stored method - even when OAuth " +
 test("an older backend (no auth field) derives the method from the " +
   "connected token", () => {
   render(<Settings cfg={gmailCfg(oauthAcct())} account="default"
-    onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onClose={() => {}} onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(signinTab("OAuth").getAttribute("aria-checked")).toBe("true");
 });
 
@@ -1078,7 +1063,7 @@ test("switching back and forth then Save never sends disconnect and keeps " +
 test("whitespace is stripped from a Gmail app password", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("gmail");
   fireEvent.change(appPw(), { target: { value: "abcd efgh\u00a0ijkl  mnop" } });
   await clickSave();
@@ -1088,7 +1073,7 @@ test("whitespace is stripped from a Gmail app password", async () => {
 test("other presets keep the password exactly as typed", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("icloud");
   revealPassword();
   fireEvent.change(screen.getByLabelText("Password"),
@@ -1115,7 +1100,7 @@ test("outlook preset: OAuth card, no switch, no Password field, " +
   "auth=oauth", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("outlook");
   expect(screen.queryByRole("radio", { name: "OAuth" })).toBeNull();
   expect(screen.queryByLabelText("Password")).toBeNull();
@@ -1138,7 +1123,7 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
   const secret = () => screen.getByLabelText("Client secret")
     .getAttribute("placeholder");
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+    onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("outlook");
   expect(secret()).toBe("optional");
   pickPreset("gmail");

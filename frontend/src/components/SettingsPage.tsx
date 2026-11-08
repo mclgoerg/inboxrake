@@ -165,13 +165,13 @@ export type SettingsControl = {
 };
 
 type Status = "ok" | "check" | "nocreds";
-const statusOf = (im: ImapAccount): Status =>
+export const statusOf = (im: ImapAccount): Status =>
   !im.password_set && !im.oauth?.connected ? "nocreds"
     : im.verified === false ? "check" : "ok";
 const STATUS_DOT: Record<Status, string> = {
   ok: "bg-safe-fg", check: "bg-review-fg", nocreds: "bg-keep-fg" };
 
-function StatusDot({ status }: { status: Status }) {
+export function StatusDot({ status }: { status: Status }) {
   return <span role="img" aria-label={t(`settings.status.${status}`)}
     title={t(`settings.status.${status}`)}
     className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
@@ -185,7 +185,7 @@ type SecDef = {
 };
 
 export function SettingsPage({ cfg, account, section, routeAccount = null,
-  onSection, onClose, onSaved, onAccountsChanged, aiAnswers = 0,
+  onSection, onClose, onAddAccount, onSaved, onAccountsChanged, aiAnswers = 0,
   onKnowledgeChanged = () => {}, scanState = null, controlRef }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
@@ -197,6 +197,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   /** Open a section (push = a new history entry), or null for the root. */
   onSection: (s: SettingsSection | null, account?: string | null,
     push?: boolean) => void;
+  /** "+ Add account": the app's setup wizard (it names the account itself). */
+  onAddAccount: () => void;
   /** Leave the page (Esc / Back from the root): the app returns where the
    *  user came from. */
   onClose: () => void;
@@ -559,19 +561,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 
   const newAccount = async () => {
     if (!await resolveUnsaved()) return;
-    const name = (await promptDialog({
-      title: t("account.new_title"), label: t("account.new_prompt"),
-      confirmLabel: t("account.add"), validate: accountNameError(),
-    }))?.trim();
-    if (!name) return;
-    try {
-      const next = await api.saveConfig({ add_account: name });
-      onAccountsChanged(next, name);
-      loadAccount(next, name);
-      onSection("account", name, !wide && section === null);
-    } catch (e: any) {
-      note(t("err.generic", { msg: e.message ?? e }), true);
-    }
+    onAddAccount();
   };
 
   const deleteAccount = async () => {

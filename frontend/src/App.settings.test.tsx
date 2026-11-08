@@ -169,9 +169,9 @@ test("< 1024: a root list drills down into a section and Back returns to it",
     window.location.hash = "#/senders";
     mount(false);
     fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Settings/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Settings/ }));
     await h1("Settings");
-    expect(window.location.hash).toBe("#/settings");
+    await waitFor(() => expect(window.location.hash).toBe("#/settings"));
     // the account card, then the grouped rows with their current values
     expect(screen.getByRole("button", { name: /^proton/ }).textContent)
       .toContain("me@proton.example");
