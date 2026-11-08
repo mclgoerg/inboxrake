@@ -178,11 +178,11 @@ test("empty mailbox: a hint instead of a map", () => {
 test("German", () => {
   setLang("de");
   show();
-  expect(screen.getByText("1.2 GB in 375 Mails")).toBeTruthy();
+  expect(screen.getByText("1,2 GB in 375 Mails")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Alter der letzten Mail" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Auswählen" }));
   fireEvent.click(tile(/^mid\.example/));
-  expect(screen.getByText("1 Absender - 200.0 MB ausgewählt")).toBeTruthy();
+  expect(screen.getByText("1 Absender - 200,0 MB ausgewählt")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Fertig" })).toBeTruthy();
 });
 

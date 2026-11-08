@@ -2,6 +2,7 @@ import { BarChart3, Sparkles, TrendingDown } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
+import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import type { StatsResp } from "../types";
@@ -69,7 +70,7 @@ function CatRow({ name, hue, count, bytes, sub = false }: {
       )}
       <span className="min-w-0 flex-1 break-words type-body">{name}</span>
       <span className="whitespace-nowrap text-muted tabular-nums">
-        {count} · {fmtSize(bytes)}</span>
+        {fmtNum(count)} · {fmtSize(bytes)}</span>
     </li>
   );
 }
@@ -243,11 +244,11 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
         {stats && (
           <>
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <Kpi value={pMails.toLocaleString()}
+              <Kpi value={fmtNum(pMails)}
                 label={inPeriod
                   ? <>{t("mails")} · {pName}<div>{t("stats.senders_all",
-                    { n: stats.senders.toLocaleString() })}</div></>
-                  : `${t("mails")} · ${stats.senders.toLocaleString()} ${
+                    { n: fmtNum(stats.senders) })}</div></>
+                  : `${t("mails")} · ${fmtNum(stats.senders)} ${
                     t("stats.senders")}`}
                 extra={buckets.length > 1 && (
                   <MiniBars className="max-sm:hidden"
@@ -259,12 +260,12 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                       size: fmtSize(Math.round(pSize / pMails)) })} />
               <Kpi value={`${pct(pUnread, pMails)}%`}
                 label={inPeriod
-                  ? t("stats.unread_in", { n: pUnread.toLocaleString(),
+                  ? t("stats.unread_in", { n: fmtNum(pUnread),
                     period: pName })
-                  : `${t("stats.unread")} · ${pUnread.toLocaleString()}`}
+                  : `${t("stats.unread")} · ${fmtNum(pUnread)}`}
                 extra={<Ring frac={pMails ? pUnread / pMails : 0}
                   px={48} />} />
-              <Kpi value={(thisMonth?.trash ?? 0).toLocaleString()}
+              <Kpi value={fmtNum(thisMonth?.trash ?? 0)}
                 label={t("stats.trash_tile")}
                 extra={(thisMonth?.purge ?? 0) > 0 && (
                   <Tag tone="safe">
@@ -301,7 +302,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                     <Donut px={128} label={t("stats.categories")}
                       slices={catSlices}>
                       <span className="type-heading tabular-nums">
-                        {tagged.toLocaleString()}</span>
+                        {fmtNum(tagged)}</span>
                       <span className="type-caption text-muted">
                         {t("stats.tagged")}</span>
                     </Donut>
@@ -398,7 +399,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                   </Ring>
                   <div className="min-w-0 type-meta text-muted">
                     <span className="type-heading text-body tabular-nums">
-                      {stats.replied_senders}</span>{" "}
+                      {fmtNum(stats.replied_senders)}</span>{" "}
                     {t("stats.replied_senders", { total: stats.senders })}
                   </div>
                 </div>
@@ -406,7 +407,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                   <div className="mb-1 type-meta text-muted">
                     <span className="font-semibold text-body tabular-nums">
                       {pct(stats.bulk, stats.mails)}%</span>{" "}
-                    {t("stats.newsletters")} ({stats.bulk.toLocaleString()})
+                    {t("stats.newsletters")} ({fmtNum(stats.bulk)})
                   </div>
                   <ProgressBar value={stats.bulk} max={stats.mails}
                     label={t("stats.newsletters")} />

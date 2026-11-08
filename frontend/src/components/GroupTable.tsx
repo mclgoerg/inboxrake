@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import { Avatar, Button, cap, Checkbox, ShortDate, StillMailingBadge, Tag, PopupSelect, isModalOpen, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
@@ -296,7 +297,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
             )}
             <td className={`whitespace-nowrap px-2 py-2.5 text-right
               tabular-nums ${td}`}>
-              <div className="font-semibold">{g.count}</div>
+              <div className="font-semibold">{fmtNum(g.count)}</div>
               <div className="type-meta text-muted">{fmtSize(g.size)}</div>
             </td>
             <td className={`px-1 py-2.5 text-right ${td}`}>
@@ -373,7 +374,7 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                 </div>
                 <div className="shrink-0 whitespace-nowrap text-right
                   tabular-nums">
-                  <div className="font-semibold">{g.count}</div>
+                  <div className="font-semibold">{fmtNum(g.count)}</div>
                   <div className="type-meta text-muted">{fmtSize(g.size)}</div>
                 </div>
                 <ChevronRight aria-hidden size={18}

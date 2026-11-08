@@ -1,5 +1,6 @@
 import { Check, ChevronRight, LayoutGrid, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import { fmtBig, heatOf, levelTiles, buildDomains, senderIndex, tickState,
   toggleItem, type ColorBy, type Heat, type MapItem } from "../spacemap";
@@ -103,7 +104,7 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
   const label = (it: MapItem): string => {
     const p = it.protectedSenders;
     return [t("space.tile", { name: nameOf(it), size: fmtBig(it.size),
-      mails: it.count.toLocaleString(), n: it.count }),
+      mails: fmtNum(it.count), n: it.count }),
       ...(p ? [t("space.tile_protected", { n: p })] : []),
       ...(tickState(it, sel) === "all" ? [t("space.tile_selected")] : []),
     ].join(", ");
@@ -134,7 +135,7 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
         <LayoutGrid size={18} /> {t("space.title")}
       </span>}
         sub={domains.length ? t("space.total", {
-          size: fmtBig(totals.size), mails: totals.count.toLocaleString(),
+          size: fmtBig(totals.size), mails: fmtNum(totals.count),
           n: totals.count }) : undefined}
         onClose={onClose} />
       {!domains.length ? (
@@ -265,7 +266,7 @@ export function SpaceMapPanel({ groups, onDone, onClose }: {
                     )}
                     <span className="shrink-0 type-meta tabular-nums
                       text-muted">
-                      {it.count.toLocaleString()} · {fmtBig(it.size)}
+                      {fmtNum(it.count)} · {fmtBig(it.size)}
                     </span>
                   </li>
                 ))}

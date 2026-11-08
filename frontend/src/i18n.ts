@@ -4,6 +4,7 @@
 
 import { DE } from "./locales/de";
 import { EN } from "./locales/en";
+import { fmtNum, setNumLangSource } from "./numfmt";
 
 export type Lang = "en" | "de";
 
@@ -12,6 +13,7 @@ let lang: Lang =
     (localStorage.getItem("pmc_lang") as Lang)) || "en";
 
 export const getLang = (): Lang => lang;
+setNumLangSource(getLang);
 
 export function setLang(next: Lang): void {
   lang = next;
@@ -27,7 +29,9 @@ export function t(key: string,
   let s = one ?? (lang === "de" ? DE[key] : undefined) ?? EN[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      s = s.replaceAll(`{${k}}`, String(v));
+      // Numbers follow the number format (see numfmt.ts); a year is no count.
+      s = s.replaceAll(`{${k}}`,
+        typeof v === "number" && k !== "year" ? fmtNum(v) : String(v));
     }
   }
   return s;

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState,
   type ReactNode } from "react";
 import { api, fmtSize, saveBlob } from "../api";
 import { getLang, t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import type { WrappedResp, WrappedSender } from "../types";
 import {
   buildSummarySvg, paletteFromTheme, senderName, svgToPngBlob,
@@ -15,7 +16,7 @@ export const CARD_MS = 6000;
 const TICK_MS = 100;
 const HOLD_MS = 250;
 
-const num = (n: number) => n.toLocaleString(getLang());
+const num = (n: number) => fmtNum(n);
 const pct = (n: number, of: number) => (of ? Math.round((100 * n) / of) : 0);
 const monthName = (m: number) =>
   new Date(2001, m - 1, 1).toLocaleString(getLang(), { month: "long" });

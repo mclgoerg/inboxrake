@@ -78,7 +78,7 @@ test("first build asks for consent, then starts the job", async () => {
   const asked = (await findDialog()).textContent as string;
   expect(asked).toMatch(/no readable text/);
   // the storage the user is agreeing to, up front
-  expect(asked).toContain("1000 scanned mails");
+  expect(asked).toContain("1,000 scanned mails");
   expect(asked).toContain("roughly 5.9 MB of disk space");
   expect(asked).toContain("up to 11.7 MB");
   expect(asked).toContain("500.0 MB are free");
@@ -92,7 +92,7 @@ test("the estimate is shown before the button is pressed", async () => {
   indexInfo.mockResolvedValue(info());
   renderPanel();
   await screen.findByText(
-    /Estimated disk space: about 5\.9 MB for 1000 mails \(up to 11\.7 MB/);
+    /Estimated disk space: about 5\.9 MB for 1,000 mails \(up to 11\.7 MB/);
   expect(screen.getByText(/500\.0 MB free on the data volume/)).toBeTruthy();
 });
 
@@ -124,7 +124,7 @@ test("rebuild is estimated for every scanned mail", async () => {
     estimate_full: est(2000) }));
   renderPanel();
   fireEvent.click(await screen.findByText("Rebuild"));
-  expect((await findDialog()).textContent).toContain("2000 scanned mails");
+  expect((await findDialog()).textContent).toContain("2,000 scanned mails");
   await pressDialog("Rebuild");
   await waitFor(() => expect(indexBuild).toHaveBeenLastCalledWith(
     "proton", true));
@@ -143,7 +143,7 @@ test("a usable index shows its size, offers update/rebuild/delete", async () => 
   indexInfo.mockResolvedValue(info({ exists: true, usable: true, reason: null,
     docs: 1531, bytes: 3 * 1048576, built_ts: 1790000000 }));
   renderPanel();
-  await screen.findByText(/1531 mails indexed, last updated/);
+  await screen.findByText(/1,531 mails indexed, last updated/);
   expect(screen.getByText("Disk space used: 3.0 MB")).toBeTruthy();
   fireEvent.click(screen.getByText("Update now"));
   await pressDialog("Update now");
@@ -207,7 +207,7 @@ test("large volumes are shown in GB, not thousands of MB", async () => {
     free: 64 * 1024 * MB }) }));
   renderPanel();
   await screen.findByText(/64\.0 GB free on the data volume/);
-  expect(screen.getByText(/about 585\.9 MB for 100000 mails \(up to 1\.1 GB/))
+  expect(screen.getByText(/about 585\.9 MB for 100,000 mails \(up to 1\.1 GB/))
     .toBeTruthy();
 });
 

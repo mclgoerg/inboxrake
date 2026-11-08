@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Building2, Pencil, Trash2, User } from "lucide-reac
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, saveBlob } from "../api";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import { FILE_KINDS, filedKindName, keptMessage } from "../smart";
 import type { KnowledgeEntry, KnowledgeList, KnowledgeStored } from "../types";
 import { Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
@@ -492,7 +493,7 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
                           )}
                         </td>
                         <td className="px-2 py-2.5 text-right tabular-nums">
-                          {e.senders}
+                          {fmtNum(e.senders)}
                         </td>
                         <td className="px-2 py-2.5">
                           <Tag tone={STATUS_TONE[e.status] ?? "neutral"}>

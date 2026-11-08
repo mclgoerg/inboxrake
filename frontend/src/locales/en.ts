@@ -169,6 +169,10 @@ export const EN: Record<string, string> = {
   "settings.for_account": "For account \u201c{name}\u201d",
   "settings.senders": "Senders",
   "settings.new_badge": "\u201cNew\u201d badge stays for",
+  "decimal.invalid": "Enter a number (for example 0.5) in the price and budget fields.",
+  "numfmt.label": "Number format",
+  "numfmt.help": "How numbers are written. Automatic follows the language.",
+  "numfmt.auto": "Automatic",
   "settings.n_days": "{n} days",
   "settings.n_days_one": "{n} day",
   "settings.n_senders": "{n} senders",
@@ -1630,7 +1634,7 @@ export const EN: Record<string, string> = {
     "Added to the fixed instructions when the AI sorts the senders left in "
     + "Other, e.g. \"Mails from my landlord are support, not individuals.\" "
     + "The AI still only picks one of the fixed kinds. Sent to your AI "
-    + "provider together with the sender data; up to 1500 characters.",
+    + "provider together with the sender data; up to {max} characters.",
   "smart.reason.own": "Has enough mails for its own row.",
   "smart.reason.protected": "You protected this sender.",
   "smart.reason.replied": "You have written to this sender.",

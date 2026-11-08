@@ -1342,6 +1342,23 @@ test("AI review: budget ring with spend of cap, key never prefilled, prices and 
     api_key: "sk-new", price_in: 1.5, price_out: 0, budget_usd: 7 });
 });
 
+test("AI review: a budget that is no number blocks Save instead of saving 0", () => {
+  saveCalls.length = 0;
+  render(<Settings section="ai" account="default" cfg={{ ...cfg, ai: {
+    ...cfg.ai, budget_usd: 5 } }} />);
+  const budget = screen.getByLabelText(/Monthly AI budget/);
+  fireEvent.change(budget, { target: { value: "abc" } });
+  expect(budget.getAttribute("aria-invalid")).toBe("true");
+  const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  expect(screen.getByRole("status").textContent).toMatch(/Enter a number/);
+  fireEvent.click(save);
+  expect(saveCalls.length).toBe(0);
+  fireEvent.change(budget, { target: { value: "7,5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].ai.budget_usd).toBe(7.5);
+});
+
 test("AI review without a cap shows what was spent, no ring", () => {
   render(<Settings section="ai" account="default"
     cfg={{ ...cfg, ai: { ...cfg.ai, month_cost: 1.25 } }} />);

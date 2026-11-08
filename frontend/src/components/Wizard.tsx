@@ -3,6 +3,7 @@ import { Check, CheckCircle2, ChevronRight, Circle, Lock, Server } from
 import { useEffect, useId, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { demoHint, useDemo } from "../demoMode";
+import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import { parseProgress } from "../lib";
 import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
@@ -561,8 +562,8 @@ export function Wizard({ cfg, mode, initialStep, initialAccount, scan,
                 <span className="type-largetitle">
                   {Math.round(prog.done / prog.total * 100)}%</span>
                 <span className="type-meta text-muted">
-                  {t("wizard.scan_of", { done: prog.done.toLocaleString(),
-                    total: prog.total.toLocaleString() })}</span>
+                  {t("wizard.scan_of", { done: fmtNum(prog.done),
+                    total: fmtNum(prog.total) })}</span>
               </>)}
             </ScanRing>}
             <h2 className="type-title2">{scanDone ? t("wizard.scan_title_done")

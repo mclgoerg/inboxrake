@@ -2,6 +2,7 @@ import { Archive, CalendarClock, ClipboardList, FolderInput, MailOpen, MoreHoriz
   Trash2, TriangleAlert, X } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
+import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import { matchGroup, parseFilter } from "../lib";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
@@ -62,7 +63,7 @@ function RunSummary({ rule, preview = true }: {
         </span>}
       {preview && r.preview.length > 0 && (
         <span className="block text-muted">
-          {r.preview.map((p) => `${p.label} (${p.count})`).join(" · ")}
+          {r.preview.map((p) => `${p.label} (${fmtNum(p.count)})`).join(" · ")}
         </span>
       )}
     </>
@@ -137,7 +138,7 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
                   <Avatar name={p.label} />
                   <span className="min-w-0 flex-1 truncate type-body">
                     {p.label}</span>
-                  <span className="type-body text-muted">{p.count}</span>
+                  <span className="type-body text-muted">{fmtNum(p.count)}</span>
                 </li>
               ))}
             </ul>
@@ -666,7 +667,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 function PreviewStat({ n, k }: { n: number; k: string }) {
   return (
     <div>
-      <div className="type-title2">{n.toLocaleString()}</div>
+      <div className="type-title2">{fmtNum(n)}</div>
       <div className="type-meta text-muted">{t(k, { n })}</div>
     </div>
   );
