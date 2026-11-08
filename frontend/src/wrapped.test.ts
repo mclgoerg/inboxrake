@@ -8,6 +8,8 @@ const data: WrappedResp = {
   top_senders: [
     { label: "Ann Example", addr: "ann@shop.example", mails: 40, bytes: 9 },
     { label: "Bob <&>", addr: "bob@news.example", mails: 30, bytes: 9 }],
+  by_month: Array(12).fill(0), by_weekday: Array(7).fill(0),
+  by_hour: Array(24).fill(0),
   loudest_month: null, busiest_weekday: null, busiest_hour: null,
   biggest: null, ghosts: { count: 0, top: [] },
   cleanup: { trashed: 0, archived: 0, purged: 0, freed_bytes: 0,

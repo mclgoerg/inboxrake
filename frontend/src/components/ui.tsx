@@ -1129,11 +1129,12 @@ export const hueFillAt = (i: number): string => HUE_FILLS[i % HUE_COUNT];
 /** Letter avatar identifying one account/sender/domain, tinted by a
  *  stable hash of its name so entries stay visually distinct. `size`
  *  controls the diameter: "sm" (account switcher), "md" (group rows) or "lg"
- *  (the sender detail header). */
+ *  (the sender detail header) or "xl" (a hero, e.g. the story's loudest sender). */
 export function Avatar({ name, size = "sm", className = "" }: {
-  name: string; size?: "sm" | "md" | "lg"; className?: string;
+  name: string; size?: "sm" | "md" | "lg" | "xl"; className?: string;
 }) {
-  const dims = size === "lg" ? "size-16 type-title2"
+  const dims = size === "xl" ? "size-28 type-display"
+    : size === "lg" ? "size-16 type-title2"
     : size === "md" ? "size-8 type-meta" : "size-5 type-caption";
   return (
     <span className={`inline-flex ${dims} shrink-0 items-center

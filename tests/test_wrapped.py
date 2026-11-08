@@ -56,6 +56,9 @@ def test_basic_totals_and_peaks():
     assert r["loudest_month"] == {"month": 3, "mails": 3}
     assert r["busiest_hour"] == {"hour": 9, "mails": 3}
     assert r["busiest_weekday"]["mails"] >= 2
+    assert r["by_month"] == [0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    assert len(r["by_weekday"]) == 7 and sum(r["by_weekday"]) == 4
+    assert len(r["by_hour"]) == 24 and r["by_hour"][9] == 3
     assert r["biggest"] == {"label": "b@y.example", "addr": "b@y.example",
                             "bytes": 9000}
     assert r["top_senders"][0] == {"label": "Ann", "addr": "a@x.example",
