@@ -1583,7 +1583,8 @@ export function Segmented<T extends string>({ value, onChange, options,
   idPrefix }: {
   value: T | null;
   onChange: (v: T) => void;
-  options: { value: T; label: ReactNode }[];
+  /** `disabled` greys one segment out (a state the user cannot pick yet). */
+  options: { value: T; label: ReactNode; disabled?: boolean }[];
   label: string;
   fill?: boolean;
   /** 44 px tall segments (phone sheets with big touch targets). */
@@ -1623,12 +1624,14 @@ export function Segmented<T extends string>({ value, onChange, options,
             id={idPrefix && `${idPrefix}-tab-${o.value}`}
             aria-controls={idPrefix && on ? `${idPrefix}-panel` : undefined}
             tabIndex={o.value === tabStop ? 0 : -1}
+            disabled={o.disabled}
             onClick={() => onChange(o.value)}
             className={`${tall ? "min-h-11 coarse:min-h-11"
               : "min-h-9 coarse:min-h-10"} min-w-0 whitespace-nowrap
               px-1.5 transition-colors type-meta md:type-body md:px-2 lg:px-3
               focus-visible:-outline-offset-2 enabled:active:translate-y-px
-              rounded-badge ${fill && !equal ? "flex-auto" : ""}
+              rounded-badge disabled:cursor-not-allowed disabled:opacity-50
+              ${fill && !equal ? "flex-auto" : ""}
               ${on ? "bg-segment-on font-semibold text-body shadow-segment"
                 : "text-muted hover:text-body"}`}>
             {o.label}

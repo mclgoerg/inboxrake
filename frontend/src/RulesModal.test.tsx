@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { RulesModal } from "./components/RulesModal";
-import { DialogProvider } from "./components/ui";
+import { DialogProvider, PageSlot } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import { EN } from "./locales/en";
@@ -47,6 +47,31 @@ const rule: Rule = {
   created: 0, last_run: null,
 };
 
+
+// New / Edit rule is a side panel (a sheet here): its fields are pop-ups.
+const openNew = () =>
+  fireEvent.click(screen.getByRole("button", { name: /New rule|Neue Regel/ }));
+const renderNew = () => {
+  const r = render(<RulesModal state={baseState} onClose={() => {}}
+    onChanged={() => {}} />);
+  openNew();
+  return r;
+};
+const popup = (field: string) => screen.getByRole("button",
+  { name: new RegExp(`^${field}( |$)`) });
+const choose = (field: string, option: string) => {
+  fireEvent.click(popup(field));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: option }));
+};
+const SCOPE = { mail: "Inbox & folders", junk: "Junk", trash: "Trash" };
+const pickScope = (value: keyof typeof SCOPE) =>
+  choose("Applies to", SCOPE[value]);
+const tab = (name: string) => screen.getByRole("tab", { name });
+const clickDelete = () => {
+  fireEvent.click(screen.getByRole("button", { name: /^More: / }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+};
+
 afterEach(() => {
   cleanup();
   createRule.mockClear();
@@ -59,12 +84,10 @@ afterEach(() => {
 
 test("creating a rule with keep-latest sends the field, leaves the other " +
   "null", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   fireEvent.change(screen.getByLabelText("Name"),
     { target: { value: "My rule" } });
-  fireEvent.change(screen.getByLabelText("Apply to"),
-    { target: { value: "keep_latest" } });
+  choose("Apply to", "Keep newest N, act on the rest");
   fireEvent.change(screen.getByPlaceholderText("N"),
     { target: { value: "5" } });
   fireEvent.click(screen.getByText("Create rule (report only)"));
@@ -78,8 +101,8 @@ test("editing a rule prefills the retention selector and shows its tag",
       onClose={() => {}} onChanged={() => {}} />);
     expect(screen.getByText("older than 30d")).toBeTruthy();
     fireEvent.click(screen.getByText("Edit"));
-    expect(screen.getByDisplayValue("Only mails older than N days"))
-      .toBeTruthy();
+    expect(popup("Apply to").textContent)
+      .toContain("Only mails older than N days");
     expect(screen.getByDisplayValue("30")).toBeTruthy();
   });
 
@@ -96,12 +119,11 @@ test("the live match count leaves pinned mails out (mark_read excepted)",
     sender: { a: grp("a", 10, 3), b: grp("b", 5, 0) } } };
   render(<RulesModal state={state} onClose={() => {}}
     onChanged={() => {}} />);
-  expect(screen.getByText(/currently matches 2 groups · 12 mails/))
-    .toBeTruthy();
-  fireEvent.change(screen.getByDisplayValue("Move to Trash"),
-    { target: { value: "mark_read" } });
-  expect(screen.getByText(/currently matches 2 groups · 15 mails/))
-    .toBeTruthy();
+  openNew();
+  const preview = () => screen.getByText("Preview").parentElement!.textContent;
+  expect(preview()).toMatch(/2groups12mails0protected skipped/);
+  choose("Action", "Mark as read");
+  expect(preview()).toMatch(/2groups15mails/);
 });
 
 test("a run summary names the protected mails it skipped", () => {
@@ -114,11 +136,13 @@ test("a run summary names the protected mails it skipped", () => {
 });
 
 test("every field of the new-rule form has a label", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
-  for (const label of ["Name", "Grouping", "Filter", "Action", "Schedule",
-    "Apply to"]) {
+  renderNew();
+  for (const label of ["Name", "Filter"]) {
     expect(screen.getByLabelText(label)).toBeTruthy();
+  }
+  for (const label of ["Grouping", "Applies to", "Action", "Schedule",
+    "Apply to"]) {
+    expect(popup(label)).toBeTruthy();
   }
 });
 
@@ -128,21 +152,33 @@ const renderCards = (rules: Rule[], onChanged = () => {}) =>
       onChanged={onChanged} />
   </DialogProvider>);
 
-test("card actions: Run now, Edit, Enable execute, then Delete last",
+test("a card: Run now, Edit, More (Delete inside), Report only / Active",
   () => {
   renderCards([rule]);
   const names = screen.getAllByRole("button")
-    .map((b) => b.textContent?.trim())
-    .filter((x) => ["Run now", "Edit", "Enable execute", "Delete"].includes(x!));
-  expect(names).toEqual(["Run now", "Edit", "Enable execute", "Delete"]);
-  expect(screen.getByText("Delete").className).toContain("text-danger-fg");
-  expect(screen.getByText("Enable execute").className).not.toContain("bg-danger");
+    .map((b) => b.textContent?.trim() || b.getAttribute("aria-label"))
+    .filter((x) => ["Run now", "Edit", "More: Old shop mail"].includes(x!));
+  expect(names).toEqual(["Run now", "Edit", "More: Old shop mail"]);
+  expect(tab("Report only").getAttribute("aria-selected")).toBe("true");
+  expect(tab("Active").getAttribute("aria-selected")).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: /^More: / }));
+  expect(screen.getByRole("menuitem", { name: "Delete" }).className)
+    .toContain("text-danger-fg");
+});
+
+test("a card reads as a sentence", () => {
+  renderCards([{ ...rule, query: "tag:shipping age:>1y", action: "move",
+    dest: "Parcels", keep_latest: 3, older_than_days: null,
+    schedule: "weekly" }]);
+  const p = screen.getByText("When").closest("p")!;
+  expect(p.textContent).toBe("WhenSendergroups matchtag:shipping age:>1y"
+    + "thenMove to folder → Parcelskeep newest 3·weekly");
 });
 
 test("Delete asks first, then deletes the rule", async () => {
   const onChanged = vi.fn();
   renderCards([rule], onChanged);
-  fireEvent.click(screen.getByText("Delete"));
+  clickDelete();
   expect((await findDialog()).textContent).toContain("Old shop mail");
   expect(deleteRule).not.toHaveBeenCalled();
   await pressDialog("Delete");
@@ -152,7 +188,7 @@ test("Delete asks first, then deletes the rule", async () => {
 
 test("cancelling Delete keeps the rule", async () => {
   renderCards([rule]);
-  fireEvent.click(screen.getByText("Delete"));
+  clickDelete();
   await cancelDialog();
   await expectNoDialog();
   expect(deleteRule).not.toHaveBeenCalled();
@@ -161,7 +197,7 @@ test("cancelling Delete keeps the rule", async () => {
 test("Enable execute asks first, then switches the rule to execute",
   async () => {
   renderCards([rule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   expect((await findDialog()).textContent).toContain("cap 500 per run");
   expect(updateRule).not.toHaveBeenCalled();
   await pressDialog("Enable execute");
@@ -171,7 +207,7 @@ test("Enable execute asks first, then switches the rule to execute",
 
 test("cancelling Enable execute leaves the rule in report mode", async () => {
   renderCards([rule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   await cancelDialog();
   await expectNoDialog();
   expect(updateRule).not.toHaveBeenCalled();
@@ -202,39 +238,32 @@ const purgeRule: Rule = {
   schedule: "weekly", older_than_days: 30, report_runs: 1,
 };
 
-const pickScope = (value: string) =>
-  fireEvent.change(screen.getByLabelText("Applies to"), { target: { value } });
-
 test("the Folder select offers Inbox & folders, Junk and Trash", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
-  const sel = screen.getByLabelText("Applies to") as HTMLSelectElement;
-  expect([...sel.options].map((o) => [o.value, o.textContent]))
-    .toEqual([["mail", "Inbox & folders"], ["junk", "Junk"],
-      ["trash", "Trash"]]);
-  expect(sel.value).toBe("mail");
+  renderNew();
+  expect(popup("Applies to").textContent).toContain("Inbox & folders");
+  fireEvent.click(popup("Applies to"));
+  expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent))
+    .toEqual(["Inbox & folders", "Junk", "Trash"]);
   expect(screen.queryByText(/on the server, permanently/)).toBeNull();
 });
 
 test("choosing Junk fixes the action, shows the warning and offers the " +
   "defaults: older than 30 days, weekly", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("junk");
   expect(screen.getByText(/Deletes mail on the server, permanently/))
     .toBeTruthy();
   // shown as a real warning (the red danger tone), not as a neutral note
   expect(screen.getByText(/Deletes mail on the server, permanently/)
     .closest('[role="status"]')!.className).toContain("bg-keep-bg");
-  const action = screen.getByLabelText("Action") as HTMLSelectElement;
+  const action = popup("Action") as HTMLButtonElement;
   expect(action.disabled).toBe(true);
-  expect([...action.options].map((o) => o.textContent))
-    .toEqual(["Delete permanently"]);
+  expect(action.textContent).toContain("Delete permanently");
   expect(screen.getByLabelText("In Trash/Junk for more than this many days"))
     .toHaveProperty("value", "30");
-  expect(screen.getByLabelText("Schedule")).toHaveProperty("value", "weekly");
-  expect(screen.queryByLabelText("Grouping")).toBeNull();
-  expect(screen.queryByLabelText("Apply to")).toBeNull();
+  expect(popup("Schedule").textContent).toContain("weekly");
+  expect(screen.queryByRole("button", { name: /^Grouping/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Apply to/ })).toBeNull();
   // the filter stays the Input + the query builder
   expect(screen.getByLabelText("Filter")).toBeTruthy();
   expect(screen.getByRole("button", { name: /filter builder|Build/i })
@@ -244,8 +273,7 @@ test("choosing Junk fixes the action, shows the warning and offers the " +
 
 test("a new purge rule is sent as purge on the chosen folder, 30 days " +
   "unless changed; the server forces report mode", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("trash");
   fireEvent.change(screen.getByLabelText("Name"),
     { target: { value: "Weekly purge" } });
@@ -258,8 +286,7 @@ test("a new purge rule is sent as purge on the chosen folder, 30 days " +
 });
 
 test("a purge rule needs a whole number of days", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("junk");
   fireEvent.change(screen.getByLabelText("Name"),
     { target: { value: "x" } });
@@ -271,15 +298,13 @@ test("a purge rule needs a whole number of days", () => {
 });
 
 test("switching back to Inbox & folders restores an ordinary rule form", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("junk");
   pickScope("mail");
   expect(screen.queryByText(/on the server, permanently/)).toBeNull();
-  expect((screen.getByLabelText("Action") as HTMLSelectElement).value)
-    .toBe("trash");
-  expect(screen.getByLabelText("Schedule")).toHaveProperty("value", "manual");
-  expect(screen.getByLabelText("Apply to")).toHaveProperty("value", "none");
+  expect(popup("Action").textContent).toContain("Move to Trash");
+  expect(popup("Schedule").textContent).toContain("manual");
+  expect(popup("Apply to").textContent).toContain("All mails");
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "m" } });
   fireEvent.click(screen.getByText("Create rule (report only)"));
   expect(createRule).toHaveBeenCalledWith(expect.objectContaining(
@@ -288,12 +313,9 @@ test("switching back to Inbox & folders restores an ordinary rule form", () => {
 
 test("the query builder of a purge rule only offers sender conditions",
   () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("trash");
-  const trigger = screen.getAllByRole("button")
-    .find((b) => b.getAttribute("aria-expanded") !== null)!;
-  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("button", { name: EN["qb.tip"] }));
   expect(screen.getByText(EN["qb.age_sender"])).toBeTruthy();
   expect(screen.getByText(EN["qb.unread"])).toBeTruthy();
   for (const k of ["qb.tag", "qb.ai", "qb.att", "qb.flags"]) {
@@ -313,7 +335,7 @@ test("a purge rule card shows folder, action, mode and a sender-level " +
   const tags = [...document.querySelectorAll("span")].map((e) => e.textContent);
   expect(tags).toContain("Junk");           // the folder tag (not the option)
   expect(screen.getByText("Delete permanently")).toBeTruthy();
-  expect(screen.getByText("report")).toBeTruthy();
+  expect(tab("Report only").getAttribute("aria-selected")).toBe("true");
   expect(screen.getByText(/5 mails would be deleted permanently · senders: 2/))
     .toBeTruthy();
   expect(screen.getByText(/Anna \(3\) · b@gone.example \(2\)/)).toBeTruthy();
@@ -332,7 +354,7 @@ test("in report mode Run report is the primary button", async () => {
 test("Enable execute on a purge rule opens a danger dialog with the " +
   "permanent wording and only then switches", async () => {
   renderCards([purgeRule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("permanently");
   expect(dlg).toContain("on the server");
@@ -349,7 +371,7 @@ test("Enable execute on a purge rule opens a danger dialog with the " +
 test("cancelling the purge confirm leaves the rule in report mode",
   async () => {
   renderCards([purgeRule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   await cancelDialog();
   await expectNoDialog();
   expect(updateRule).not.toHaveBeenCalled();
@@ -358,8 +380,9 @@ test("cancelling the purge confirm leaves the rule in report mode",
 test("a purge rule without a report run cannot be switched to execute",
   () => {
   renderCards([{ ...purgeRule, report_runs: 0 }]);
-  expect((screen.getByText("Enable execute").closest("button")!).disabled)
-    .toBe(true);
+  expect(tab("Active").hasAttribute("disabled")).toBe(true);
+  // and says why, in plain text (not only a tooltip)
+  expect(screen.getByText("Run at least one report first")).toBeTruthy();
 });
 
 test("Run on an execute-mode purge rule confirms with the permanent wording",
@@ -378,7 +401,7 @@ test("Run on an execute-mode purge rule confirms with the permanent wording",
 
 test("going back to report mode needs no confirmation", async () => {
   renderCards([{ ...purgeRule, mode: "execute" }]);
-  fireEvent.click(screen.getByText("Back to report mode"));
+  fireEvent.click(tab("Report only"));
   await waitFor(() => expect(updateRule)
     .toHaveBeenCalledWith("pg1", { mode: "report" }));
 });
@@ -389,7 +412,7 @@ test("editing an execute-mode purge rule says it goes back to report mode",
   fireEvent.click(screen.getByText("Edit"));
   expect(screen.getByText(/switches this rule back to report mode/))
     .toBeTruthy();
-  expect(screen.getByLabelText("Applies to")).toHaveProperty("value", "junk");
+  expect(popup("Applies to").textContent).toContain("Junk");
   expect(screen.getByLabelText("In Trash/Junk for more than this many days"))
     .toHaveProperty("value", "30");
   fireEvent.click(screen.getByText("Save"));
@@ -411,16 +434,16 @@ test("a purge run's unverified mails are named", () => {
 test("German: folder select, warning, defaults and the confirm", async () => {
   setLang("de");
   renderCards([purgeRule]);
-  expect(screen.getByLabelText("Gilt für")).toBeTruthy();
   expect(screen.getByText("Endgültig löschen")).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Gilt für"), { target: { value: "trash" } });
+  fireEvent.click(screen.getByText("Bearbeiten"));
+  expect(popup("Gilt für")).toBeTruthy();
+  choose("Gilt für", "Papierkorb");
   expect(screen.getByText(/Löscht Mails auf dem Server, endgültig/))
     .toBeTruthy();
   expect(screen.getByLabelText("Mehr als so viele Tage in Papierkorb/Spam"))
     .toHaveProperty("value", "30");
-  expect((screen.getByLabelText("Aktion") as HTMLSelectElement).disabled)
-    .toBe(true);
-  fireEvent.click(screen.getByText("Ausführen aktivieren"));
+  expect((popup("Aktion") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(tab("Aktiv"));
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("endgültig");
   expect(dlg).toContain("auf dem Server");
@@ -456,7 +479,7 @@ const tonedConfirm = async () => {
 test("both purge confirms are danger dialogs: Cancel focused, red confirm " +
   "button 'Delete permanently (up to N)'", async () => {
   const { unmount } = renderCards([purgeRule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   let { ok, cancel } = await tonedConfirm();
   expect(ok.className).toContain("bg-danger");
   expect(document.activeElement).toBe(cancel);
@@ -479,7 +502,7 @@ test("an empty filter says ALL senders in the editor help, the card, the " +
     skipped_protected: 0, skipped_pinned: 0, preview: [], error: "" } };
   const { unmount } = renderCards([ran]);
   expect(screen.getAllByText(/all senders/).length).toBeGreaterThanOrEqual(2);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   expect((await findDialog()).textContent)
     .toContain("The filter is empty: this applies to ALL senders in the Junk folder.");
   await cancelDialog();
@@ -490,8 +513,7 @@ test("an empty filter says ALL senders in the editor help, the card, the " +
     .toContain("applies to ALL senders in the Junk folder");
   await cancelDialog();
   cleanup();
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("trash");
   expect(screen.getByText(/An empty filter means ALL senders/)).toBeTruthy();
   for (const fam of ["tag:", "ai:", "eng:", "att:", "is:", "has:", "domain:"]) {
@@ -502,7 +524,7 @@ test("an empty filter says ALL senders in the editor help, the card, the " +
 test("a filter with text does not claim ALL senders", async () => {
   renderCards([{ ...purgeRule, query: "from:a@gone.example" }]);
   expect(screen.queryByText(/all senders/)).toBeNull();
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   expect((await findDialog()).textContent).not.toContain("ALL senders");
   await cancelDialog();
 });
@@ -511,7 +533,7 @@ test("German: empty filter says alle Absender in both confirms", async () => {
   setLang("de");
   renderCards([{ ...purgeRule, query: "" }]);
   expect(screen.getByText("alle Absender")).toBeTruthy();
-  fireEvent.click(screen.getByText("Ausführen aktivieren"));
+  fireEvent.click(tab("Aktiv"));
   expect((await findDialog()).textContent)
     .toContain("gilt für ALLE Absender im Ordner Spam");
   await pressDialog("Abbrechen");
@@ -527,29 +549,24 @@ test("the preview line has no plural trap for one mail or one sender", () => {
 });
 
 test("the folder select is labelled apart from the Move destination", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
-  expect(screen.getByLabelText("Applies to")).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Action"),
-    { target: { value: "move" } });
-  expect(screen.getByLabelText("Folder")).toBeTruthy();    // the target
-  expect(screen.getByLabelText("Applies to")).toBeTruthy();
+  renderNew();
+  expect(popup("Applies to")).toBeTruthy();
+  choose("Action", "Move to folder");
+  expect(popup("Folder")).toBeTruthy();    // the target
+  expect(popup("Applies to")).toBeTruthy();
   setLang("de");
   cleanup();
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
-  const sel = screen.getByLabelText("Gilt für") as HTMLSelectElement;
-  expect([...sel.options].map((o) => o.textContent))
+  renderNew();
+  fireEvent.click(popup("Gilt für"));
+  expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent))
     .toEqual(["Posteingang & Ordner", "Spam", "Papierkorb"]);
 });
 
 test("the query builder of a purge rule says the age is the sender's " +
   "newest mail", () => {
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("junk");
-  fireEvent.click(screen.getAllByRole("button")
-    .find((b) => b.getAttribute("aria-expanded") !== null)!);
+  fireEvent.click(screen.getByRole("button", { name: EN["qb.tip"] }));
   expect(screen.getByText("Sender's newest mail older than")).toBeTruthy();
   expect(screen.queryByText("Older than")).toBeNull();
 });
@@ -568,8 +585,7 @@ test("a card says why an armed rule went back to report mode", () => {
 test("a refused save is shown in the modal", async () => {
   createRule.mockRejectedValueOnce(new Error(
     "filter not available for Junk and Trash rules: tag:"));
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
+  renderNew();
   pickScope("junk");
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "x" } });
   fireEvent.change(screen.getByLabelText("Filter"),
@@ -591,7 +607,7 @@ test("a refused run (ambiguous folder) is shown in the modal", async () => {
 test("if the cap cannot be read no destructive confirm opens", async () => {
   listRules.mockRejectedValue(new Error("offline"));
   renderCards([purgeRule]);
-  fireEvent.click(screen.getByText("Enable execute"));
+  fireEvent.click(tab("Active"));
   await waitFor(() => expect(screen.getByText(/offline/)).toBeTruthy());
   expect(screen.queryAllByRole("dialog")
     .filter((d) => d.hasAttribute("aria-labelledby"))).toHaveLength(0);
@@ -617,10 +633,8 @@ test("German: the run confirm of an execute-mode rule has the full " +
 test("German: the editor help says an empty filter means ALL senders and " +
   "lists the refused filters", () => {
   setLang("de");
-  render(<RulesModal state={baseState} onClose={() => {}}
-    onChanged={() => {}} />);
-  fireEvent.change(screen.getByLabelText("Gilt für"),
-    { target: { value: "junk" } });
+  renderNew();
+  choose("Gilt für", "Spam");
   const help = screen.getByText(/Ein leerer Filter bedeutet ALLE Absender/);
   for (const fam of ["tag:", "ai:", "eng:", "att:", "is:", "has:", "domain:"]) {
     expect(help.textContent, fam).toContain(fam);
@@ -680,4 +694,54 @@ test("the editor of an armed mail rule shows the reset note", () => {
 test("a card says why an edited mail rule went back to report mode", () => {
   renderCards([{ ...rule, mode: "report", reset_reason: "edited" }]);
   expect(document.body.textContent).toContain(EN["rule.reset_edited"]);
+});
+
+test("the editor is closed until New rule / Edit; Cancel and Close shut it",
+  () => {
+  renderCards([rule]);
+  expect(screen.queryByLabelText("Name")).toBeNull();
+  openNew();
+  expect(screen.getByLabelText("Name")).toBeTruthy();
+  fireEvent.click(screen.getByText("Cancel"));
+  expect(screen.queryByLabelText("Name")).toBeNull();
+  fireEvent.click(screen.getByText("Edit"));
+  expect(screen.getByText("Edit rule")).toBeTruthy();
+  fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!);
+  expect(screen.queryByLabelText("Name")).toBeNull();
+});
+
+test("a filter handed in (the AI's) opens the editor with it", () => {
+  render(<RulesModal state={baseState} initialQuery="tag:shipping"
+    onClose={() => {}} onChanged={() => {}} />);
+  expect(screen.getByLabelText("Filter")).toHaveProperty("value", "tag:shipping");
+});
+
+test("on a page the editor is a side panel, not a dialog; Esc closes it",
+  () => {
+  render(<PageSlot page><RulesModal state={baseState} onClose={() => {}}
+    onChanged={() => {}} /></PageSlot>);
+  openNew();
+  const aside = screen.getByRole("complementary");
+  expect(aside.querySelector('[role="dialog"]')).toBeNull();
+  expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+  fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Escape" });
+  expect(screen.queryByRole("complementary")).toBeNull();
+});
+
+test("the preview names protected skips and example senders", () => {
+  const state = { ...baseState, groups: { ...baseState.groups, sender: {
+    a: grp("Anna Shop", 10, 0), b: grp("Bob Post", 5, 0),
+    c: { ...grp("Cleo", 4, 0), protected: true } } } };
+  render(<RulesModal state={state} onClose={() => {}} onChanged={() => {}} />);
+  openNew();
+  expect(screen.getByText("Preview").parentElement!.textContent)
+    .toMatch(/2groups15mails1protected skipped/);
+  expect(screen.getByText("Anna Shop")).toBeTruthy();
+  expect(screen.queryByText("Cleo")).toBeNull();
+});
+
+test("a new rule says it starts in report mode (the server always does)",
+  () => {
+  renderNew();
+  expect(screen.getByText("Starts in report mode")).toBeTruthy();
 });
