@@ -10,6 +10,7 @@ import { nowDate } from "../clock";
 import { demoHint, useDemo } from "../demoMode";
 import { getLang, t } from "../i18n";
 import { engagementTier, fmtDate } from "../lib";
+import { decimalToInput, inputToDecimal } from "../numfmt";
 import type { GroupAi, GroupTrackers, StillMailing } from "../types";
 
 /** One-time consent: what metadata the AI features transmit. */
@@ -519,6 +520,29 @@ const CONTROL = `min-h-9 coarse:min-h-10 rounded-control border border-line
 export function Input({ className = "", ...rest }:
   ComponentProps<"input">) {
   return <input className={`${CONTROL} ${className}`} {...rest} />;
+}
+
+/** Text input for a non-negative decimal (prices, budgets) in the chosen
+ *  number format: shows and accepts "0,5" or "0.5" as the user's format
+ *  dictates, while `value` / `onChange` carry the canonical dot string
+ *  ("0.5", "" when empty) that forms keep and APIs take. A native
+ *  type="number" would use the browser's locale instead of the app's. */
+export function DecimalInput({ value, onChange, className = "", ...rest }:
+  Omit<ComponentProps<"input">, "value" | "onChange" | "type"> & {
+    value: string; onChange: (canonical: string) => void;
+  }) {
+  const [text, setText] = useState(() => decimalToInput(value));
+  // Re-sync only when the outside value is not what the text already means
+  // (so "0," survives while typing).
+  useEffect(() => {
+    if (inputToDecimal(text) !== value) setText(decimalToInput(value));
+  }, [value]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return <input className={`${CONTROL} ${className}`} type="text"
+    inputMode="decimal" value={text} {...rest}
+    onChange={(e) => {
+      setText(e.target.value);
+      onChange(inputToDecimal(e.target.value));
+    }} />;
 }
 
 export function Select({ className = "", ...rest }:

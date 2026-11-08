@@ -1,0 +1,99 @@
+/* Number formatting shared by every count / size / percent / money display.
+ * Automatic follows the UI language (de "1.732", en "1,732"); the user can
+ * pin a style in Settings > General. Browser-side only (localStorage, like
+ * the language). Kept free of imports so lib.ts and i18n.ts can use it. */
+
+export type NumFormat = "auto" | "en" | "de" | "space";
+
+const KEY = "pmc_numfmt";
+const FORMATS: NumFormat[] = ["auto", "en", "de", "space"];
+
+let langOf: () => string = () => "en";
+/** i18n.ts registers its language getter here (avoids an import cycle). */
+export const setNumLangSource = (fn: () => string): void => { langOf = fn; };
+
+let pref: NumFormat = (() => {
+  try {
+    const v = typeof localStorage !== "undefined"
+      && localStorage.getItem(KEY) as NumFormat;
+    return v && FORMATS.includes(v) ? v : "auto";
+  } catch { return "auto"; }
+})();
+
+export const getNumFormat = (): NumFormat => pref;
+
+export function setNumFormat(next: NumFormat): void {
+  pref = next;
+  try {
+    if (next === "auto") localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, next);
+  } catch { /* private mode: applies for this session only */ }
+}
+
+/** The Intl locale for the effective style. "space" is French style: its
+ *  group separator is a narrow no-break space, normalised below. */
+const localeOf = (): string => {
+  const f = pref === "auto" ? (langOf() === "de" ? "de" : "en") : pref;
+  return f === "de" ? "de-DE" : f === "space" ? "fr-FR" : "en-US";
+};
+
+/** Decimal and group separator of the effective style. */
+export function numSeparators(): { decimal: string; group: string } {
+  const parts = new Intl.NumberFormat(localeOf()).formatToParts(1234567.5);
+  const pick = (type: string) => parts.find((p) => p.type === type)?.value;
+  return { decimal: pick("decimal") ?? ".", group: pick("group") ?? "," };
+}
+
+const cache = new Map<string, Intl.NumberFormat>();
+
+/** Format a number in the effective style. `digits` fixes the number of
+ *  fraction digits; `max` allows up to that many (default: none shown for
+ *  counts = whole numbers stay whole, fractions up to 3). */
+export function fmtNum(n: number, opts: { digits?: number; max?: number;
+  group?: boolean } = {}): string {
+  const loc = localeOf();
+  const o: Intl.NumberFormatOptions = {};
+  if (opts.digits !== undefined) {
+    o.minimumFractionDigits = opts.digits;
+    o.maximumFractionDigits = opts.digits;
+  } else if (opts.max !== undefined) o.maximumFractionDigits = opts.max;
+  if (opts.group === false) o.useGrouping = false;
+  const k = `${loc}|${opts.digits}|${opts.max}|${opts.group}`;
+  let nf = cache.get(k);
+  if (!nf) { nf = new Intl.NumberFormat(loc, o); cache.set(k, nf); }
+  // French uses U+202F / U+00A0: a plain space keeps copy-paste and wrapping
+  // predictable.
+  return nf.format(n).replace(/[\u202f\u00a0]/g, " ");
+}
+
+/** Parse what a user typed, in the chosen style (also tolerant: a lone "," or
+ *  "." counts as the decimal mark when it cannot be a group separator).
+ *  Returns NaN for text that is no number; "" gives NaN too. */
+export function parseNum(text: string): number {
+  let s = text.trim().replace(/[\s\u202f\u00a0]/g, "");
+  if (!s) return NaN;
+  const { decimal, group } = numSeparators();
+  if (group === "." || group === ",") {
+    // the group mark is dropped only when it sits between digit triplets
+    const esc = (c: string) => `\\${c}`;
+    const grouped = new RegExp(
+      `^[+-]?\\d{1,3}(${esc(group)}\\d{3})+(${esc(decimal)}\\d*)?$`);
+    if (grouped.test(s)) s = s.split(group).join("");
+  }
+  s = s.replace(/,/g, ".");
+  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : NaN;
+}
+
+/** A canonical decimal string ("0.5", as sent to the API) shown with the
+ *  chosen decimal mark, no grouping - for text inputs. */
+export function decimalToInput(canonical: string): string {
+  return canonical.replace(".", numSeparators().decimal);
+}
+
+/** What a user typed into a decimal input -> the canonical string the form
+ *  state keeps ("" stays "", unparsable text is kept for the validator). */
+export function inputToDecimal(text: string): string {
+  if (!text.trim()) return "";
+  const n = parseNum(text);
+  return Number.isNaN(n) ? text : String(n);
+}

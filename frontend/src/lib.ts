@@ -1,6 +1,7 @@
 /* Pure helpers - kept dependency-free so they are unit-testable. */
 
 import { nowDate, nowMs } from "./clock";
+import { fmtNum } from "./numfmt";
 import type { AuthMethod, Grouping, Group, ImapAccount } from "./types";
 
 /** How an account signs in. Older backends send no `auth`: they used
@@ -17,12 +18,12 @@ export const hasCredentials = (
   ? !!im.oauth?.connected : !!im.password_set);
 
 export const fmtSize = (b: number): string =>
-  b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB`
-  : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`;
+  b >= 1048576 ? `${fmtNum(b / 1048576, { digits: 1 })} MB`
+  : b >= 1024 ? `${fmtNum(Math.round(b / 1024))} KB` : `${fmtNum(b)} B`;
 
 /** fmtSize plus a GB step (volumes and big mailboxes outgrow 1000 MB). */
 export const fmtSizeGb = (b: number): string =>
-  b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : fmtSize(b);
+  b >= 1073741824 ? `${fmtNum(b / 1073741824, { digits: 1 })} GB` : fmtSize(b);
 
 /** Short locale date for display: "6 Oct" / "6. Okt." this year, with the
  *  year ("6 Oct 2024") otherwise; `time` appends the wall-clock HH:MM of
@@ -51,7 +52,7 @@ export function fmtDate(iso: string, now: Date = nowDate(),
 }
 
 export const fmtUsd = (c: number): string =>
-  `$${c < 0.1 ? c.toFixed(4) : c.toFixed(2)}`;
+  `$${fmtNum(c, { digits: c < 0.1 ? 4 : 2 })}`;
 
 export const mailKey = (m: { folder: string; uid: number }): string =>
   `${m.folder} ${m.uid}`;

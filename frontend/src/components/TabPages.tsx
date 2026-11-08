@@ -4,6 +4,7 @@ import { BarChart3, BellOff, ChevronRight, ClipboardList, Copy, Eye, History,
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
+import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtAgo } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
@@ -140,7 +141,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
                 {fmtSize(ready.size)}
               </span>
               <span className="type-meta text-muted">
-                {t("tab.in_mails", { n: ready.mails.toLocaleString() })}
+                {t("tab.in_mails", { n: fmtNum(ready.mails) })}
               </span>
             </div>
             <div aria-hidden className="mt-3 flex h-2 gap-0.5
@@ -221,7 +222,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
           <li className="contents">
             <Tile icon={<Wand2 size={18} aria-hidden />}
               tone="bg-safe-bg text-safe-fg" label={t("AI review")}
-              value={aiSafe > 0 ? aiSafe.toLocaleString() : null}
+              value={aiSafe > 0 ? fmtNum(aiSafe) : null}
               sub={demoHint ?? (aiSafe > 0 ? t("tab.ai_sub") : undefined)}
               disabled={aiDisabled} onClick={onReviewAi} />
           </li>
@@ -359,7 +360,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
     if (!wrapped || !wrapped.received.mails) return null;
     const top = wrapped.top_senders[0];
     return { year: wrapped.year, n: cardsFor(wrapped).length,
-      line: [t("n.mails", { n: wrapped.received.mails.toLocaleString() }),
+      line: [t("n.mails", { n: fmtNum(wrapped.received.mails) }),
         top && t("tab.year_top", { name: top.label || top.addr })]
         .filter(Boolean).join(" · ") };
   }, [wrapped]);
@@ -376,10 +377,10 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
           <>
             <span className="flex flex-wrap items-baseline gap-x-2">
               <span className="type-title tabular-nums">
-                {t("n.mails", { n: stats.data.mails.toLocaleString() })}
+                {t("n.mails", { n: fmtNum(stats.data.mails) })}
               </span>
               <span className="type-meta text-muted">
-                {t("tab.per_month", { n: perMonth.toLocaleString() })}
+                {t("tab.per_month", { n: fmtNum(perMonth) })}
               </span>
             </span>
             <MiniBars className="mt-3 gap-1" sizeClass="h-16 w-full" barClass="rounded-t-badge"

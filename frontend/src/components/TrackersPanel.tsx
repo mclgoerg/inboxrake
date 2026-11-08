@@ -1,6 +1,7 @@
 import { Eye } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
+import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import type { TrackerReport } from "../types";
 import { Button, confirmDialog, EmptyState, Loading, Modal, PanelHeader,
@@ -126,17 +127,17 @@ export function TrackersPanel({ account, onClose, onPickSender }: {
           <p className="mt-1 type-meta text-muted">{t("tracker.explainer")}</p>
         </div>
         <div className="grid grid-cols-3 gap-2">
-          <Card value={rep.pixel.toLocaleString()}
+          <Card value={fmtNum(rep.pixel)}
             label={t("tracker.with_pixel")} />
-          <Card value={rep.click.toLocaleString()}
+          <Card value={fmtNum(rep.click)}
             label={t("tracker.with_click")} />
-          <Card value={rep.senders.toLocaleString()}
+          <Card value={fmtNum(rep.senders)}
             label={t("tracker.senders")} />
         </div>
         <div className="flex flex-wrap items-center gap-2 type-meta text-muted">
           <span>{t("tracker.checked",
-            { n: rep.checked.toLocaleString(),
-              total: rep.docs.toLocaleString() })}</span>
+            { n: fmtNum(rep.checked),
+              total: fmtNum(rep.docs) })}</span>
           {checkOlder}
         </div>
 

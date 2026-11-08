@@ -5,6 +5,7 @@ import { BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
 import type { ReactNode } from "react";
 import { hashOf, type Page } from "../nav";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 
 /** Tool entry points the sidebar can open: pages (`ToolPage`, Settings) and
  *  the dialog that stays a modal (Your year in mail). */
@@ -36,7 +37,7 @@ const CURRENT = "bg-accent-tint font-medium text-accent";
 
 function Count({ n }: { n?: number | null }) {
   return !n ? null
-    : <span className="ml-auto type-meta tabular-nums text-muted">{n}</span>;
+    : <span className="ml-auto type-meta tabular-nums text-muted">{fmtNum(n)}</span>;
 }
 
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,

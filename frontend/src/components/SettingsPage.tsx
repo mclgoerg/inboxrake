@@ -4,6 +4,7 @@ import { Archive, Bell, Check, ChevronLeft, Folder, KeyRound, Mail, Plus,
 import { useEffect, useLayoutEffect, useRef, useState,
   type MutableRefObject, type ReactNode } from "react";
 import { api, downloadFile, fmtUsd } from "../api";
+import { fmtNum, getNumFormat, setNumFormat, type NumFormat } from "../numfmt";
 import { getLang, setLang, t, type Lang } from "../i18n";
 import { accountAuth, fmtAgo, fmtSize } from "../lib";
 import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
@@ -20,7 +21,7 @@ import { CategoryList, parseCategories as parseCategoryText, ProtectedList }
 import { demoHint, useDemo } from "../demoMode";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
-  LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, RadioRow, Ring,
+  DecimalInput, LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, RadioRow, Ring,
   Segmented, Select, SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag,
   type TagTone, TextArea, useBulkBarHeight, useToast } from "./ui";
 
@@ -1149,6 +1150,20 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           options={[{ value: "en", label: "English" },
             { value: "de", label: "Deutsch" }]} />
       </SettingsRow>
+      <SettingsRow label={t("numfmt.label")} sub={t("numfmt.help")}>
+        <PopupSelect name={t("numfmt.label")} value={getNumFormat()}
+          // Like the language: applied with a reload so every number follows.
+          onChange={(v) => { void (async () => {
+            if (v === getNumFormat() || !await resolveUnsaved()) return;
+            setNumFormat(v as NumFormat);
+            leaving.current = true;
+            window.location.reload();
+          })(); }}
+          options={[{ value: "auto", label: t("numfmt.auto") },
+            { value: "en", label: "1,234.5" },
+            { value: "de", label: "1.234,5" },
+            { value: "space", label: "1 234,5" }]} />
+      </SettingsRow>
     </SettingsGroup>
     <SettingsGroup header={t("settings.senders")}>
       <SettingsRow label={t("settings.new_badge")}
@@ -1379,20 +1394,23 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     <SettingsGroup header={t("ai.prices")}>
       <SettingsRow label={t("ai.price_in")}
         sub={t("ai.price_auto", { n: pi })}>
-        <Input className="w-28" type="number" step="0.01" min="0"
+        <DecimalInput className="w-28"
           aria-label={t("ai.price_in")} value={f.priceIn}
-          placeholder={`auto: ${pi}`} onChange={set("priceIn")} />
+          placeholder={`auto: ${pi}`}
+          onChange={(v) => put("priceIn", v)} />
       </SettingsRow>
       <SettingsRow label={t("ai.price_out")}
         sub={t("ai.price_auto", { n: po })}>
-        <Input className="w-28" type="number" step="0.01" min="0"
+        <DecimalInput className="w-28"
           aria-label={t("ai.price_out")} value={f.priceOut}
-          placeholder={`auto: ${po}`} onChange={set("priceOut")} />
+          placeholder={`auto: ${po}`}
+          onChange={(v) => put("priceOut", v)} />
       </SettingsRow>
       <SettingsRow label={t("budget.label")}>
-        <Input className="w-28" type="number" step="0.5" min="0"
+        <DecimalInput className="w-28"
           aria-label={t("budget.label")} value={f.budget}
-          placeholder={t("budget.none")} onChange={set("budget")} />
+          placeholder={t("budget.none")}
+          onChange={(v) => put("budget", v)} />
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup padded header={t("ai.sort_instructions")}
@@ -1404,10 +1422,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </DemoFieldset>
     <SettingsGroup header={t("ai.usage")}>
       <SettingsRow label={t("AI spend")} value={fmtUsd(s.cost)} />
-      <SettingsRow label={t("ai.runs")} value={s.runs.toLocaleString()} />
+      <SettingsRow label={t("ai.runs")} value={fmtNum(s.runs)} />
       <SettingsRow label={t("ai.tokens")}
-        value={`${s.input_tokens.toLocaleString()} / ${
-          s.output_tokens.toLocaleString()}`} />
+        value={`${fmtNum(s.input_tokens)} / ${
+          fmtNum(s.output_tokens)}`} />
       <div className="flex flex-wrap gap-2 px-4 py-2.5">
         <Button variant="danger-quiet" size="sm" onClick={resetStats}>
           {t("ai.reset_spend")}
@@ -1493,9 +1511,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           onChange={(on) => put("sharedEnabled", on)} />
       </SettingsRow>
       <SettingsRow label={t("shared.budget")}>
-        <Input className="w-28" type="number" step="0.5" min="0"
+        <DecimalInput className="w-28"
           aria-label={t("shared.budget")} value={f.sharedBudget}
-          placeholder={t("budget.none")} onChange={set("sharedBudget")} />
+          placeholder={t("budget.none")}
+          onChange={(v) => put("sharedBudget", v)} />
       </SettingsRow>
       {f.sharedEnabled && (<>
         <SettingsRow label={t("Provider")}>
@@ -1541,10 +1560,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
               {u.label || u.id}
             </span>}
             sub={<>
-              {stat(t("usage.mails"), <>{u.mails.toLocaleString()}
+              {stat(t("usage.mails"), <>{fmtNum(u.mails)}
                 {" "}· {fmtSize(u.size)}</>)}
               {stat(t("usage.cleaned"), <>
-                {u.actions_month.trash.toLocaleString()}
+                {fmtNum(u.actions_month.trash)}
                 {(u.actions_month.purged_bytes ?? 0) > 0
                   && <> · {fmtSize(u.actions_month.purged_bytes ?? 0)}</>}
               </>)}

@@ -4,6 +4,7 @@ import { BellOff, BookmarkPlus, Check, ChevronDown, ChevronRight,
   ListFilter, MoreHorizontal, Pencil, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, TriangleAlert, UserPlus, X, type LucideIcon } from "lucide-react";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import type { FilterPreset } from "../types";
 import { Button, Input, Menu, MenuDivider, MenuGroup, MenuItem, Modal, SectionLabel,
   useMediaQuery } from "./ui";
@@ -142,7 +143,7 @@ function Row({ sheet, label, count, on, icon: Icon, tone = "muted", sub,
         </span>
         {count !== undefined && (
           <span className="shrink-0 tabular-nums type-meta text-muted">
-            {count}</span>
+            {fmtNum(count)}</span>
         )}
         {toggles && (
           <span aria-hidden className="flex size-4 shrink-0">

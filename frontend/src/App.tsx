@@ -45,6 +45,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   from "./components/ui";
 import { nowMs } from "./clock";
 import { demoHint, setDemo, useDemo } from "./demoMode";
+import { fmtNum } from "./numfmt";
 import { t } from "./i18n";
 import { usePaneHeight, useSplitPane } from "./splitPane";
 import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
@@ -915,8 +916,8 @@ export default function App() {
       if (!est.units) { notify(t("aisort.nothing")); return; }
       const bullets = [
         t("aisort.b_units", { n: est.senders }),
-        t("aisort.b_cost", { tin: est.tokens_in.toLocaleString(),
-          tout: est.tokens_out.toLocaleString(), cost: fmtUsd(est.cost) }),
+        t("aisort.b_cost", { tin: fmtNum(est.tokens_in),
+          tout: fmtNum(est.tokens_out), cost: fmtUsd(est.cost) }),
         ...(est.has_instructions ? [t("aisort.b_instructions")] : []),
         t("aisort.b_only")];
       if (!await confirmDialog({ title: t("aisort.title"),
