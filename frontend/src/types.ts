@@ -254,6 +254,10 @@ export interface SenderGroup {
   unread: number;
   ts: number;
   date: string;
+  /** The sender's earliest mail in this folder ("first seen"; 0 / "" =
+   *  unknown, e.g. a server that predates the field). */
+  first_ts?: number;
+  first_date?: string;
   uids: number[];
 }
 
@@ -387,6 +391,8 @@ export interface RuleRun {
   mode: "report" | "execute";
   groups: number;
   mails: number;
+  /** Purge rules: bytes of the mails counted in `mails`. */
+  size?: number;
   acted: number;
   capped: number;
   skipped_protected: number;
@@ -413,7 +419,8 @@ export interface Rule {
   mode: "report" | "execute";
   keep_latest: number | null;
   older_than_days: number | null;
-  origin: "manual" | "block";
+  /** "auto_empty": the Trash page's "Empty automatically" switch made it. */
+  origin: "manual" | "block" | "auto_empty";
   report_runs: number;
   /** Purge rules: why an armed rule went back to report mode (shown on the
    *  card). */

@@ -4377,18 +4377,23 @@ def role_drop(role: str, folder: str, uids, acc=None) -> None:
 
 def role_senders(mails: list[dict]) -> list[dict]:
     """Sender grouping of a role listing (light: sender address only - no
-    Smart rows, no AI, no known senders). Biggest groups first."""
+    Smart rows, no AI, no known senders). Newest / earliest mail of each
+    sender as `date` / `first_date`. Biggest groups first."""
     groups: dict[str, dict] = {}
     for m in mails:
         g = groups.setdefault(m["addr"], {
             "addr": m["addr"], "count": 0, "size": 0, "unread": 0,
-            "ts": 0, "date": "", "uids": []})
+            "ts": 0, "date": "", "first_ts": 0, "first_date": "",
+            "uids": []})
         g["count"] += 1
         g["size"] += m["size"]
         g["unread"] += 0 if m["seen"] else 1
         g["uids"].append(m["uid"])
         if m["ts"] >= g["ts"]:
             g["ts"], g["date"] = m["ts"], m["date"]
+        # the earliest mail of the sender ("first seen" on the Junk page)
+        if not g["first_ts"] or 0 < m["ts"] <= g["first_ts"]:
+            g["first_ts"], g["first_date"] = m["ts"], m["date"]
     for g in groups.values():
         g["uids"].sort()
     return sorted(groups.values(), key=lambda g: (-g["count"], g["addr"]))

@@ -223,7 +223,7 @@ test("cancelling Empty Trash from the profile menu deletes nothing",
 
 const openTrashPanel = async () => {
   openTool("Clean up", /^Trash/);
-  return screen.findByRole("button", { name: /Empty Trash \(5\)/ });
+  return screen.findByRole("button", { name: "Empty Trash · 5" });
 };
 
 test("the Trash panel footer offers the same Empty Trash confirm",

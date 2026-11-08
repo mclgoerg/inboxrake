@@ -1265,6 +1265,8 @@ class RuleBody(BaseModel):
     mode: str | None = None        # only honoured on update
     keep_latest: int | None = None
     older_than_days: int | None = None
+    # only "auto_empty" (the Trash page's switch) can be set here, on create
+    origin: str | None = None
 
 
 @app.get("/api/rules")
@@ -1279,6 +1281,8 @@ def post_rules(body: RuleBody, account: str | None = Query(None)):
     `?account=` (the account the UI is showing) - never silently to the
     default account."""
     data = body.model_dump(exclude_none=True)
+    if data.get("origin") not in (None, "manual", rulesmod.AUTO_EMPTY):
+        raise HTTPException(400, "bad origin")
     if not data.get("account") and account:
         data["account"] = _acc(account).name
     try:
@@ -1519,6 +1523,10 @@ class PurgePreviewBody(BaseModel):
     senders: list[str] | None = None
     older_than_days: int | None = Field(None, ge=1, le=36500)
     everything: bool = False
+    # on top of the selection: only mails Inboxrake has seen in the folder
+    # for at least this many days (what a purge rule counts - the Trash
+    # page's "next run" preview); it only ever narrows
+    in_folder_days: int | None = Field(None, ge=1, le=36500)
 
 
 class PurgeBody(BaseModel):
@@ -1540,7 +1548,8 @@ def post_purge_preview(body: PurgePreviewBody,
         return mailops.purge_preview(
             body.role, uids=body.uids, senders=body.senders,
             older_than_days=body.older_than_days,
-            everything=body.everything, acc=acc)
+            everything=body.everything,
+            in_folder_days=body.in_folder_days, acc=acc)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:

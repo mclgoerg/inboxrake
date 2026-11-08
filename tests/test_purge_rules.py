@@ -432,6 +432,7 @@ def test_report_mode_reports_counts_and_deletes_or_moves_nothing(monkeypatch):
     assert res["mode"] == "report" and res["acted"] == 0
     assert res["mails"] == 3 and res["groups"] == 2     # c is too recent
     assert res["capped"] == 0 and res["error"] == ""
+    assert res["size"] == 3000                           # what the Trash page shows
     assert res["preview"] == [{"key": "b@gone.example", "label": "Shop Team",
                                "count": 2},
                               {"key": "a@gone.example",
@@ -1669,3 +1670,87 @@ def test_a_real_edit_of_an_armed_rule_still_says_edited(monkeypatch):
     assert _stored(rule["id"])["reset_reason"] == ""
     edited = rulesmod.update_rule(rule["id"], {"query": "other"})
     assert edited["mode"] == "report" and edited["reset_reason"] == "edited"
+
+
+def test_the_preview_endpoint_can_count_what_a_rule_would(real_age,
+                                                          monkeypatch):
+    """`in_folder_days` narrows the age selection to mail seen in the folder
+    that long - the Trash page's "next run" line equals the rule's report."""
+    _env(monkeypatch, trash=_mails([3, 4, 5], date=OLD))
+    mailops.trash_list()
+    _backdate("trash", 90, uids={3})
+    body = {"role": "trash", "older_than_days": 30}
+    plain = client.post("/api/folders_panel/purge_preview", json=body).json()
+    assert plain["uids"] == [3, 4, 5]
+    narrowed = client.post("/api/folders_panel/purge_preview",
+                           json={**body, "in_folder_days": 30}).json()
+    assert narrowed["uids"] == [3] and narrowed["count"] == 1
+    assert narrowed["size"] == 103
+    rule = _rule("trash", days=30)
+    assert _run(rule)["mails"] == narrowed["count"]
+    bad = client.post("/api/folders_panel/purge_preview",
+                      json={**body, "in_folder_days": 0})
+    assert bad.status_code == 422
+
+
+# ======================================= the auto-empty marker (Trash page)
+
+def test_the_auto_empty_marker_is_accepted_on_create_for_a_trash_purge_rule():
+    r = rulesmod.create_rule({"name": "x", "scope": "trash",
+                              "origin": "auto_empty"})
+    assert r["origin"] == "auto_empty" and r["mode"] == "report"
+    assert _stored(r["id"])["origin"] == "auto_empty"
+    shown = client.get("/api/rules").json()["rules"]
+    assert [x["origin"] for x in shown] == ["auto_empty"]
+
+
+@pytest.mark.parametrize("body", [
+    {"scope": "junk"}, {"scope": "mail", "action": "trash"},
+    {"scope": "mail", "action": "purge"}])
+def test_the_auto_empty_marker_is_refused_anywhere_but_a_trash_purge_rule(body):
+    with pytest.raises(ValueError, match="bad origin|bad action"):
+        rulesmod.create_rule({"name": "x", "origin": "auto_empty", **body})
+    assert rulesmod.load_rules() == []
+
+
+def test_the_api_takes_auto_empty_on_create_only_and_refuses_block():
+    ok = client.post("/api/rules", json={
+        "name": "x", "scope": "trash", "origin": "auto_empty"})
+    assert ok.status_code == 200 and ok.json()["origin"] == "auto_empty"
+    assert client.post("/api/rules", json={
+        "name": "y", "scope": "trash", "origin": "block"}).status_code == 400
+    assert client.post("/api/rules", json={
+        "name": "z", "scope": "junk", "origin": "auto_empty"}).status_code == 400
+
+
+def test_an_edit_can_neither_set_nor_clear_the_marker():
+    ours = rulesmod.create_rule({"name": "x", "scope": "trash",
+                                 "origin": "auto_empty"})
+    other = _rule("trash")
+    for body in ({"origin": "manual"}, {"origin": "block"},
+                 {"origin": "nope"}, {"scope": "junk"}):
+        with pytest.raises(ValueError):
+            rulesmod.update_rule(ours["id"], body)
+    with pytest.raises(ValueError, match="bad origin"):
+        rulesmod.update_rule(other["id"], {"origin": "auto_empty"})
+    assert _stored(ours["id"])["origin"] == "auto_empty"
+    assert _stored(other["id"])["origin"] == "manual"
+    # ordinary edits keep it (also the age, the name, arming)
+    r = rulesmod.update_rule(ours["id"], {"name": "renamed",
+                                          "older_than_days": 45})
+    assert r["origin"] == "auto_empty" and r["name"] == "renamed"
+    same = client.post(f"/api/rules/{ours['id']}", json={
+        "origin": "auto_empty"})
+    assert same.status_code == 200 and same.json()["origin"] == "auto_empty"
+    assert client.post(f"/api/rules/{ours['id']}", json={
+        "origin": "manual"}).status_code == 400
+
+
+def test_a_hand_edited_file_cannot_mark_other_rules_as_auto_empty():
+    good = _rule("trash")
+    bad = _rule("junk")
+    rules = [dict(_stored(good["id"]), origin="auto_empty"),
+             dict(_stored(bad["id"]), origin="auto_empty")]
+    _write(rules)
+    got = {r["id"]: r["origin"] for r in rulesmod.load_rules()}
+    assert got == {good["id"]: "auto_empty", bad["id"]: "manual"}

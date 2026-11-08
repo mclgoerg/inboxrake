@@ -74,6 +74,15 @@ function panel(initialRole: "junk" | "trash" = "junk",
   </DialogProvider></ToastProvider>);
 }
 
+/** Enter Select mode (once), then tick one row by its label. */
+const pick = async (label: string) => {
+  if (!screen.queryByRole("button", { name: /^(Done|Fertig)$/ })) {
+    fireEvent.click(await screen.findByRole("button",
+      { name: /^(Select|Auswählen)$/ }));
+  }
+  fireEvent.click(await screen.findByLabelText(label));
+};
+
 const pickDelete = async (label = "Action…") => {
   popupPick(await screen.findByRole("button", { name: label }),
     /^(Delete permanently|Endgültig löschen)/);
@@ -86,7 +95,7 @@ test("a selected sender: live count, danger confirm with counts, then the exact 
     const onChanged = vi.fn();
     panel("junk", onChanged);
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     // the whole sender row -> the server counts that sender live
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("junk",
@@ -113,7 +122,7 @@ test("the confirm button is the danger tone and names verb + count",
   async () => {
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     const dlg = await findDialog();
     const btn = within(dlg).getByRole("button",
@@ -125,7 +134,7 @@ test("the confirm button is the danger tone and names verb + count",
 test("Cancel deletes nothing", async () => {
   panel("junk");
   await screen.findByText("win@lottery.example");
-  fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+  await pick("Select win@lottery.example");
   await pickDelete();
   await findDialog();
   await cancelDialog();
@@ -139,7 +148,7 @@ test("selected mails (mails view) are counted by their UIDs", async () => {
     uv: 4 }));
   panel("trash");
   await screen.findByText("Again");
-  fireEvent.click(screen.getByLabelText("Select Again"));
+  await pick("Select Again");
   await pickDelete();
   await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("trash",
     { uids: [41] }));
@@ -212,13 +221,13 @@ test("Delete older than N days: counts live, confirms, sends the counted UIDs",
       "Trash", null));
   });
 
-test("footer: Empty Junk (n)… next to Delete older than, Trash keeps Empty Trash",
+test("bottom bar: Empty Junk · n next to Delete older than, Trash keeps Empty Trash",
   async () => {
     purgePreview.mockResolvedValue(preview({ uids: [40, 41, 42], count: 3 }));
     panel("junk");
     await screen.findByText("win@lottery.example");
     expect(screen.queryByRole("button", { name: /Empty Trash/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Empty Junk (3)…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Empty Junk · 3" }));
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("junk",
       { everything: true }));
     const dlg = await findDialog();
@@ -226,8 +235,9 @@ test("footer: Empty Junk (n)… next to Delete older than, Trash keeps Empty Tra
     await pressDialog("Delete permanently (3)");
     await waitFor(() => expect(purge).toHaveBeenCalledWith(
       "junk", [40, 41, 42], 4, "Spam", "Trash"));
-    fireEvent.click(screen.getByRole("tab", { name: "Trash" }));
-    expect(await screen.findByRole("button", { name: "Empty Trash (3)…" }))
+    cleanup();
+    panel("trash");
+    expect(await screen.findByRole("button", { name: "Empty Trash · 3" }))
       .toBeTruthy();
     expect(screen.queryByRole("button", { name: /Empty Junk/ })).toBeNull();
   });
@@ -238,7 +248,7 @@ test("nothing deletable (all skipped): a toast, no confirm, no delete",
       skipped_protected: 2, skipped_pinned: 1 }));
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     await screen.findByText("Nothing to delete. 2 mails from protected senders are skipped; 1 protected "
       + "mail is skipped. Remove the protection first to delete them.");
@@ -253,7 +263,7 @@ test("a refused delete (ambiguous role, changed folder) shows the error and keep
       "Trash is ambiguous - choose it in Settings first"));
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     await pressDialog("Delete permanently (2)");
     expect((await screen.findAllByText(/Trash is ambiguous/)).length)
@@ -266,7 +276,7 @@ test("a refused count (ambiguous Junk) never reaches the confirm", async () => {
     "Junk is ambiguous - choose it in Settings first"));
   panel("junk");
   await screen.findByText("win@lottery.example");
-  fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+  await pick("Select win@lottery.example");
   await pickDelete();
   expect((await screen.findAllByText(/Junk is ambiguous/)).length)
     .toBeGreaterThan(0);
@@ -280,7 +290,7 @@ test("unverified Junk mails are reported as still being in Trash", async () => {
   const onUndo = vi.fn();
   panel("junk", () => {}, onUndo);
   await screen.findByText("win@lottery.example");
-  fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+  await pick("Select win@lottery.example");
   await pickDelete();
   await pressDialog("Delete permanently (2)");
   const msg = await screen.findByText(/Nothing was deleted permanently/);
@@ -302,7 +312,7 @@ test("unverified in German says nothing was deleted permanently", async () => {
     skipped_pinned: 0, missing: 0, capped: 0, unverified: 1, undo: null });
   panel("junk");
   await screen.findByText("win@lottery.example");
-  fireEvent.click(screen.getByLabelText("win@lottery.example auswählen"));
+  await pick("win@lottery.example auswählen");
   popupPick(screen.getByRole("button", { name: "Aktion…" }),
     /^Endgültig löschen/);
   await pressDialog("Endgültig löschen (2)");
@@ -318,7 +328,7 @@ test("everything vanished: an info toast, never 'Permanently deleted 0'",
       skipped_pinned: 0, missing: 2, capped: 0, unverified: 0, undo: null });
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     await pressDialog("Delete permanently (2)");
     const msg = await screen.findByText(
@@ -337,7 +347,7 @@ test("the delete is sent with the role, folder, uv and UIDs of the PREVIEW, not 
       count: 2, via_trash: false }));
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     await pickDelete();
     await pressDialog("Delete permanently (2)");
     await waitFor(() => expect(purge).toHaveBeenCalledWith(
@@ -349,7 +359,7 @@ test("the confirm bullet shows the LIVE count, not the selection size",
     purgePreview.mockResolvedValue(preview({ uids: [41], count: 1 }));
     panel("junk");
     await screen.findByText("win@lottery.example");
-    fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+    await pick("Select win@lottery.example");
     expect(screen.getByRole("button", { name: "Not junk (2)" })).toBeTruthy();
     await pickDelete();
     const dlg = await findDialog();
@@ -366,7 +376,7 @@ test("a partial / mixed selection is sent as exact UIDs, never as senders",
     await screen.findByText("win@lottery.example");
     // select ONE mail of the sender in the mails view, then switch grouping
     fireEvent.click(screen.getByRole("tab", { name: "Mails" }));
-    fireEvent.click(await screen.findByLabelText("Select You won"));
+    await pick("Select You won");
     fireEvent.click(screen.getByRole("tab", { name: "By sender" }));
     await pickDelete();
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("junk",
@@ -378,8 +388,8 @@ test("one whole sender row plus a stray mail of another sender falls back to UID
     panel("junk");
     await screen.findByText("win@lottery.example");
     fireEvent.click(screen.getByRole("tab", { name: "Mails" }));
-    fireEvent.click(await screen.findByLabelText("Select You won"));   // 1 of 2
-    fireEvent.click(screen.getByLabelText("Select Wrongly caught")); // all of bob
+    await pick("Select You won");   // 1 of 2
+    await pick("Select Wrongly caught"); // all of bob
     fireEvent.click(screen.getByRole("tab", { name: "By sender" }));
     await pickDelete();
     await waitFor(() => expect(purgePreview).toHaveBeenCalledTimes(1));
@@ -392,9 +402,9 @@ test("German strings", async () => {
     skipped_pinned: 1 }));
   panel("junk");
   await screen.findByText("win@lottery.example");
-  expect(screen.getByRole("button", { name: "Spam leeren (3)…" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Spam leeren · 3" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Ältere löschen…" })).toBeTruthy();
-  fireEvent.click(screen.getByLabelText("win@lottery.example auswählen"));
+  await pick("win@lottery.example auswählen");
   popupPick(screen.getByRole("button", { name: "Aktion…" }),
     /^Endgültig löschen/);
   const dlg = await findDialog();
@@ -416,7 +426,7 @@ test("phone: the delete controls are >= 44px targets", async () => {
     expect(screen.getByRole("button", { name }).className)
       .toContain("max-sm:coarse:min-h-11");
   }
-  fireEvent.click(screen.getByLabelText("Select win@lottery.example"));
+  await pick("Select win@lottery.example");
   expect(screen.getByLabelText("Action…").className)
     .toContain("max-sm:coarse:min-h-11");
 });

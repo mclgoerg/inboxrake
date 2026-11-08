@@ -49,7 +49,8 @@ def test_junk_listing_and_sender_grouping(junked):
     assert r["senders"][0] == {
         "addr": "win@lottery.example", "count": 2, "size": 1100, "unread": 1,
         "ts": r["senders"][0]["ts"], "date": r["senders"][0]["date"],
-        "uids": [40, 41]}
+        "first_ts": r["senders"][0]["first_ts"],
+        "first_date": r["senders"][0]["first_date"], "uids": [40, 41]}
     assert [g["addr"] for g in r["senders"]] == [
         "win@lottery.example", "bob@friends.example"]
     assert mailops.STATE["junk_count"] == 3
@@ -57,6 +58,15 @@ def test_junk_listing_and_sender_grouping(junked):
     assert {m["uid"] for m in mailops.role_mails("junk")} == {40, 41, 42}
     assert mailops.role_mails("trash") == []
     assert all(m["folder"] != "Spam" for m in mailops.INDEX.values())
+
+
+def test_a_sender_row_knows_its_earliest_and_newest_mail(junked):
+    s = {g["addr"]: g for g in _list()["senders"]}["win@lottery.example"]
+    assert s["first_date"].startswith("2026-01-02")      # "first seen"
+    assert s["date"].startswith("2026-01-03")            # newest
+    assert 0 < s["first_ts"] < s["ts"]
+    one = {g["addr"]: g for g in _list()["senders"]}["bob@friends.example"]
+    assert one["first_ts"] == one["ts"] and one["first_date"] == one["date"]
 
 
 def test_trash_listing_keeps_working_on_both_endpoints(trashed_pair):

@@ -154,13 +154,11 @@ test("the Trash row opens the panel on Trash, the Junk row on Junk",
     await mount();
     fireEvent.click(await screen.findByRole("button", { name: /^Trash/ }));
     await waitFor(() => expect(foldersPanel).toHaveBeenLastCalledWith("trash"));
-    expect(screen.getByRole("tab", { name: "Trash" })
-      .getAttribute("aria-selected")).toBe("true");
+    await screen.findByText("Trash is empty");
     fireEvent.click(screen.getByRole("button", { name: "Back to Clean up" }));
     fireEvent.click(screen.getByRole("button", { name: /^Junk/ }));
     await waitFor(() => expect(foldersPanel).toHaveBeenLastCalledWith("junk"));
-    expect(screen.getByRole("tab", { name: "Junk" })
-      .getAttribute("aria-selected")).toBe("true");
+    await screen.findByText("Junk is empty");
   });
 
 test("the Junk row works without any count", async () => {

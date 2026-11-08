@@ -290,21 +290,20 @@ test("widening on #/cleanup replaces the history entry with #/overview",
   replace.mockRestore();
 });
 
-test("the Junk | Trash switch updates the URL and follows it", async () => {
-  window.location.hash = "#/junk";
-  mount();
-  const tab = (n: string) => screen.findByRole("tab", { name: n });
-  expect((await tab("Junk")).getAttribute("aria-selected")).toBe("true");
-  fireEvent.click(await tab("Trash"));
-  expect(window.location.hash).toBe("#/trash");
-  expect((await tab("Trash")).getAttribute("aria-selected")).toBe("true");
-  goto("#/junk");                                   // Back
-  await waitFor(() => expect(screen.getByRole("tab", { name: "Junk" })
-    .getAttribute("aria-selected")).toBe("true"));
-  fireEvent.click(within(await side()).getByRole("button", { name: /Trash/ }));
-  await waitFor(() => expect(screen.getByRole("tab", { name: "Trash" })
-    .getAttribute("aria-selected")).toBe("true"));
-});
+test("Junk and Trash are two pages: the route and the sidebar pick the folder",
+  async () => {
+    window.location.hash = "#/junk";
+    mount();
+    await screen.findByText("Junk is empty");
+    // no Junk | Trash switch inside a page any more
+    expect(screen.queryByRole("tab", { name: "Trash" })).toBeNull();
+    fireEvent.click(within(await side()).getByRole("button", { name: /Trash/ }));
+    expect(window.location.hash).toBe("#/trash");
+    await screen.findByText("Trash is empty");
+    goto("#/junk");                                   // Back
+    await screen.findByText("Junk is empty");
+    expect(screen.queryByText("Trash is empty")).toBeNull();
+  });
 
 test("leaving a page by Back refreshes (Duplicates)", async () => {
   mount();
