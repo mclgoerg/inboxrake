@@ -16,6 +16,7 @@ import { fmtDate } from "../lib";
 import { nowDate } from "../clock";
 import { splitQuoted } from "../quoted";
 import type { Mail, MessageDetail } from "../types";
+import { FolderPicker } from "./FolderPicker";
 import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, Spinner, Tag,
   useMediaQuery, useOptionalToast } from "./ui";
 
@@ -27,6 +28,8 @@ import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, Spinner, Tag,
 export interface ReaderHost {
   /** The account's own addresses: "to me", and not offered for blocking. */
   selfAddrs: string[];
+  /** The account (the folder picker remembers recent folders per account). */
+  account: string;
   /** Folders a single mail can be moved to (value = raw name). */
   folders: { value: string; label: string }[];
   /** Does this sender exist as a group the app can open? */
@@ -45,7 +48,7 @@ export interface ReaderHost {
   unsubscribed?: (addr: string) => "done" | "link" | "failed" | "pending" | null;
 }
 
-const NO_HOST: ReaderHost = { selfAddrs: [], folders: [] };
+const NO_HOST: ReaderHost = { selfAddrs: [], account: "", folders: [] };
 const ReaderHostContext = createContext<ReaderHost>(NO_HOST);
 export const ReaderHostProvider = ReaderHostContext.Provider;
 export const useReaderHost = (): ReaderHost => useContext(ReaderHostContext);
@@ -179,8 +182,8 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
   const canOpen = !!host.openSender && !!host.hasSender?.(addr);
   const canBlock = !!host.blockSender && !host.isBlocked?.(addr)
     && !host.selfAddrs.some((a) => a.toLowerCase() === addr.toLowerCase());
-  const folders = host.folders.filter((f) => f.value !== mail.folder);
-  const canMove = !!actions?.move && folders.length > 0;
+  const [picking, setPicking] = useState(false);
+  const canMove = !!actions?.move && host.folders.length > 0;
   const convLabel = conversationCount && conversationCount > 1
     ? (top ? t("reader.conversation_n", { n: conversationCount })
       : t("thread.n_mails", { n: conversationCount }))
@@ -216,19 +219,6 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
     ? <Icon size={16} aria-hidden fill={fill} />
     : <Icon size={18} aria-hidden fill={fill} />;
 
-  const moveMenu = canMove && (
-    <Menu key="move" scroll label={t("reader.move_label")}
-      className={top ? "" : "min-w-0 flex-1"}
-      {...(top ? { variant: "secondary" as const, triggerSize: "sm" as const }
-        : { triggerClass: `${BAR_ITEM} w-full` })}
-      trigger={face(ico(FolderInput), t("detail.move"))}>
-      {folders.map((f) => (
-        <MenuItem key={f.value} onClick={() => void actions!.move!(mail, f.value)}>
-          {f.label}
-        </MenuItem>
-      ))}
-    </Menu>
-  );
   const moreMenu = (
     <Menu key="more" label={t("menu.more")} up={!top}
       className={top ? "" : "min-w-0 flex-1"}
@@ -272,11 +262,18 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
         { aria: t(pin.on ? "reader.unpin" : "reader.pin"),
           title: t(pin.on ? "pin.unprotect_tip" : "pin.protect_tip"),
           pressed: pin.on })}
-      {moveMenu}
+      {canMove && btn("move", ico(FolderInput), t("detail.move"),
+        () => setPicking(true), { aria: t("reader.move_label") })}
       {onConversation && btn("conversation",
         ico(MessagesSquare), convLabel,
         onConversation, { aria: t("thread.read") })}
       {moreMenu}
+      {picking && canMove && (
+        <FolderPicker count={1} folders={host.folders.map((f) => f.value)}
+          labels={host.folders.map((f) => f.label)} account={host.account}
+          onPick={(dest) => actions!.move!(mail, dest) as Promise<void>}
+          onClose={() => setPicking(false)} />
+      )}
     </div>
   );
 }

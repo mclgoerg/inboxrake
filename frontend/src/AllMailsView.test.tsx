@@ -48,7 +48,7 @@ const state = {
 const onChanged = vi.fn();
 const renderView = () =>
   render(<ToastProvider><DialogProvider>
-    <ReaderHostProvider value={{ selfAddrs: [], folders: [
+    <ReaderHostProvider value={{ selfAddrs: [], account: "proton", folders: [
       { value: "INBOX", label: "INBOX" }, { value: "Archive", label: "Archive" }] }}>
       <AllMailsView state={state} onChanged={onChanged} />
     </ReaderHostProvider>
@@ -271,7 +271,7 @@ test("reader Move: the bar's move call for that one mail", async () => {
   renderView();
   await openMail(1);
   fireEvent.click(screen.getByRole("button", { name: "Move this mail to a folder" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+  await pickFolder("Archive");
   await pressDialog(/^Move → Archive \(1\)$/);
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));

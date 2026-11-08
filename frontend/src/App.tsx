@@ -2401,6 +2401,7 @@ export default function App() {
   const senderGroup = (addr: string) => state?.groups.sender?.[addr];
   const readerHost: ReaderHost = {
     selfAddrs: acct?.user ? [acct.user] : [],
+    account,
     folders: (state?.folders_raw ?? []).map((f, i) => ({
       value: f, label: state?.folders[i] ?? f })),
     hasSender: (addr) => !!senderGroup(addr),

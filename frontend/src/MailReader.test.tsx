@@ -10,6 +10,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { MessageView } from "./components/MailList";
 import { ReaderHostProvider, parseFrom, toLine, type ReaderActions,
   type ReaderHost } from "./components/MailReader";
+import { pickFolder } from "./folderPickerTestUtil";
 import { setLang } from "./i18n";
 import type { Mail, MessageDetail } from "./types";
 
@@ -24,6 +25,7 @@ vi.mock("./api", () => ({
     thread: (...a: unknown[]) => thread(...a),
     messages: (...a: unknown[]) => messages(...a),
     pin: (...a: unknown[]) => pinApi(...a),
+    folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
   },
   fmtSize: (n: number) => `${n} B`,
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
@@ -50,7 +52,7 @@ afterEach(() => {
 });
 
 const host = (over: Partial<ReaderHost> = {}): ReaderHost => ({
-  selfAddrs: ["me@self.example"],
+  selfAddrs: ["me@self.example"], account: "proton",
   folders: [{ value: "INBOX", label: "Inbox" },
     { value: "Archive", label: "Archive" }, { value: "Receipts", label: "Receipts" }],
   ...over,
@@ -212,7 +214,7 @@ const open = async (actions?: ReaderActions, h = host(), mail = mk(1),
   await screen.findByText(/Hi there/);
 };
 
-test("Trash, Move and Pin call the opener's handlers; Move lists the other folders",
+test("Trash, Move and Pin call the opener's handlers; Move picks the folder",
   async () => {
     const actions: ReaderActions = { trash: vi.fn(), move: vi.fn(),
       pin: vi.fn().mockResolvedValue(true) };
@@ -220,11 +222,11 @@ test("Trash, Move and Pin call the opener's handlers; Move lists the other folde
     fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
     expect(actions.trash).toHaveBeenCalledWith(expect.objectContaining({ uid: 1 }));
 
+    // Move opens the folder picker ("Move 1 mail"); picking runs the opener's move
     fireEvent.click(screen.getByRole("button", { name: "Move this mail to a folder" }));
-    expect(screen.queryByRole("menuitem", { name: "Inbox" })).toBeNull();   // its own folder
-    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
-    expect(actions.move).toHaveBeenCalledWith(expect.objectContaining({ uid: 1 }),
-      "Archive");
+    await pickFolder("Archive");
+    await waitFor(() => expect(actions.move).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 1 }), "Archive"));
 
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Unpin" })
