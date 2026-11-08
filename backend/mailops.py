@@ -3415,6 +3415,9 @@ def attachments_list(limit: int = 300, acc=None) -> list[dict]:
     return out[:limit]
 
 
+STATS_DAYS = 31      # length of the per-day series in index_stats
+
+
 def index_stats(acc=None) -> dict:
     """Live numbers from the scanned index: totals, unread/newsletter
     share, per-year and per-month histograms, category breakdown, top
@@ -3422,6 +3425,9 @@ def index_stats(acc=None) -> dict:
     mail_verdicts = verdictstore.load_mails()
     years: dict[str, dict] = {}
     months: dict[str, dict] = {}
+    days: dict[str, dict] = {}
+    day_floor = time.strftime("%Y-%m-%d", time.localtime(
+        time.time() - (STATS_DAYS - 1) * 86400))
     domains: dict[str, dict] = {}
     categories: dict[str, dict] = {}
     total_size = unread = bulk = oldest = 0
@@ -3446,9 +3452,17 @@ def index_stats(acc=None) -> dict:
             y["size"] += m["size"]
             if lt:
                 mo = months.setdefault(time.strftime("%Y-%m", lt),
-                                       {"count": 0, "size": 0})
+                                       {"count": 0, "size": 0, "unread": 0})
                 mo["count"] += 1
                 mo["size"] += m["size"]
+                mo["unread"] += 0 if m["seen"] else 1
+                day = time.strftime("%Y-%m-%d", lt)
+                if day >= day_floor:
+                    dy = days.setdefault(day,
+                                         {"count": 0, "size": 0, "unread": 0})
+                    dy["count"] += 1
+                    dy["size"] += m["size"]
+                    dy["unread"] += 0 if m["seen"] else 1
             dom = m["addr"].rsplit("@", 1)[-1]
             d = domains.setdefault(dom, {"count": 0, "size": 0})
             d["count"] += 1
@@ -3483,8 +3497,12 @@ def index_stats(acc=None) -> dict:
         "ai_groups": ai_groups,
         "rated_mails": rated,
         "years": [{"year": y, **v} for y, v in sorted(years.items())],
-        "months": [{"month": k, **v}
+        "months": [{"month": k, "count": v["count"], "size": v["size"]}
                    for k, v in sorted(months.items())][-12:],
+        # additive (period switch): the full month history and the last
+        # STATS_DAYS days, local time, with the unread share per bucket
+        "months_all": [{"month": k, **v} for k, v in sorted(months.items())],
+        "days": [{"day": k, **v} for k, v in sorted(days.items())],
         "categories": sorted(
             [{"tag": k, **v} for k, v in categories.items()],
             key=lambda c: -c["count"]),

@@ -3,10 +3,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
 import { getLang, t } from "../i18n";
+import { fmtDate } from "../lib";
 import type { StatsResp } from "../types";
 import {
   Avatar, Button, Donut, hueFillAt, Loading, MiniBars, Modal, PanelHeader,
-  ProgressBar, Ring, SectionLabel, Tag,
+  ProgressBar, Ring, Segmented, SectionLabel, Tag, useMediaQuery,
 } from "./ui";
 
 const month = () => nowDate().toISOString().slice(0, 7);
@@ -39,8 +40,37 @@ function Kpi({ value, label, extra }: {
         <div className="type-title2 tabular-nums">{value}</div>
         <div className="type-meta text-muted">{label}</div>
       </div>
-      {extra}
+      {extra && <div className="shrink-0">{extra}</div>}
     </div>
+  );
+}
+
+type Period = "30d" | "12m" | "all";
+type Bucket = { key: string; label: string; tip: string; count: number;
+  size: number; unread: number };
+
+const localDay = (d: Date) => `${d.getFullYear()}-${
+  String(d.getMonth() + 1).padStart(2, "0")}-${
+  String(d.getDate()).padStart(2, "0")}`;
+
+/** Donut slices: the biggest categories one each, the rest one "Other"
+ *  slice (the palette has six hues). */
+const CAT_HEAD = 5;
+
+/** One legend row; `hue` undefined = no dot (a member of "Other"). */
+function CatRow({ name, hue, count, bytes, sub = false }: {
+  name: string; hue?: number; count: number; bytes: number; sub?: boolean;
+}) {
+  return (
+    <li className={`flex items-center gap-2 ${sub ? "pl-4.5 text-muted" : ""}`}>
+      {hue !== undefined && (
+        <span aria-hidden="true"
+          className={`size-2.5 shrink-0 rounded-full ${hueFillAt(hue)}`} />
+      )}
+      <span className="min-w-0 flex-1 break-words type-body">{name}</span>
+      <span className="whitespace-nowrap text-muted tabular-nums">
+        {count} · {fmtSize(bytes)}</span>
+    </li>
   );
 }
 
@@ -85,8 +115,12 @@ function Columns({ rows, hint, compact = false }: {
                 ${active === i ? "bg-accenth" : "bg-accent/70"}`}
                 style={{ height: `${Math.max(2, (100 * r.count) / max)}%` }} />
             </span>
-            <span className="block truncate text-center type-caption
-              text-muted">{r.label}</span>
+            {/* a long series labels every n-th column; the text may spill
+                over its neighbours' empty labels */}
+            <span className="flex h-4 justify-center">
+              <span className="shrink-0 whitespace-nowrap type-caption
+                text-muted">{r.label}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -103,6 +137,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
+  const [period, setPeriod] = useState<Period>("12m");
 
   useEffect(() => {
     let alive = true;
@@ -118,10 +153,58 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
     ? stats.rated_mails.delete_safe + stats.rated_mails.review
       + stats.rated_mails.keep
     : 0;
+  const cats = stats?.categories ?? [];
+  const many = cats.length > CAT_HEAD + 1;
+  const catHead = many ? cats.slice(0, CAT_HEAD) : cats;
+  const catTail = many ? cats.slice(CAT_HEAD) : [];
+  const catSlices = [...catHead.map((c) => c.count),
+    ...(many ? [catTail.reduce((a, c) => a + c.count, 0)] : [])];
+  const coarse = useMediaQuery("(pointer: coarse)");
+  const hint = t(coarse ? "stats.tap_hint" : "stats.hover_hint");
   const tagged = stats?.categories.reduce((a, c) => a + c.count, 0) ?? 0;
-  const monthTip = (m: { month: string; count: number; size: number }) =>
-    t("stats.month_tip", { month: `${monthName(m.month)} ${m.month.slice(0, 4)}`,
-      mails: t("n.mails", { n: m.count }), size: fmtSize(m.size) });
+  // The period switch needs the per-day / full-month series (a backend from
+  // before them simply has no switch and keeps the 12-month view).
+  const periods = !!stats?.days && !!stats?.months_all;
+  const per: Period = periods ? period : "12m";
+  const tipOf = (name: string, b: { count: number; size: number }) =>
+    t("stats.month_tip", { month: name, mails: t("n.mails", { n: b.count }),
+      size: fmtSize(b.size) });
+  // a long history is charted per year (the Mails per year card is then
+  // the chart itself)
+  const yearsChart = per === "all" && (stats?.months_all?.length ?? 0) > 36;
+  const buckets: Bucket[] = !stats ? [] : per === "30d"
+    ? (() => {
+        const byDay = new Map(stats.days?.map((d) => [d.day, d]));
+        return Array.from({ length: 30 }, (_, i) => {
+          const d = nowDate();
+          d.setDate(d.getDate() - (29 - i));
+          const k = localDay(d);
+          const v = byDay.get(k) ?? { count: 0, size: 0, unread: 0 };
+          return { key: k, ...v, tip: tipOf(fmtDate(k, nowDate(), { lang: getLang() }), v),
+            label: i % 5 === 4 || i === 0 ? String(d.getDate()) : "" };
+        });
+      })()
+    : per === "all" && yearsChart
+    ? stats.years.map((y) => ({ key: y.year, label: y.year, count: y.count,
+        size: y.size, unread: 0, tip: tipOf(y.year, y) }))
+    : (per === "12m" ? (stats.months_all ?? stats.months).slice(-12)
+        : stats.months_all ?? stats.months).map((m) => ({
+          key: m.month, count: m.count, size: m.size,
+          unread: (m as { unread?: number }).unread ?? 0,
+          label: monthName(m.month),
+          tip: tipOf(`${monthName(m.month)} ${m.month.slice(0, 4)}`, m) }));
+  const step = per === "30d" ? 1 : Math.ceil(buckets.length / 8);
+  if (step > 1) buckets.forEach((b, i) => { if (i % step) b.label = ""; });
+  // period-based KPIs; without the series they are the all-time figures
+  const inPeriod = periods && per !== "all";
+  const pMails = inPeriod ? buckets.reduce((a, b) => a + b.count, 0)
+    : stats?.mails ?? 0;
+  const pSize = inPeriod ? buckets.reduce((a, b) => a + b.size, 0)
+    : stats?.size ?? 0;
+  const pUnread = inPeriod ? buckets.reduce((a, b) => a + b.unread, 0)
+    : stats?.unread ?? 0;
+  const allTime = periods && t("stats.pall");   // figures the period never touches
+  const pName = t(per === "30d" ? "stats.in30" : "stats.in12");
 
   return (
     <Modal onClose={onClose}>
@@ -140,25 +223,34 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
         {stats && (
           <>
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <Kpi value={stats.mails.toLocaleString()}
-                label={`${t("mails")} · ${stats.senders.toLocaleString()} ${
-                  t("stats.senders")}`}
-                extra={stats.months.length > 1 && (
+              <Kpi value={pMails.toLocaleString()}
+                label={inPeriod
+                  ? <>{t("mails")} · {pName}<div>{t("stats.senders_all",
+                    { n: stats.senders.toLocaleString() })}</div></>
+                  : `${t("mails")} · ${stats.senders.toLocaleString()} ${
+                    t("stats.senders")}`}
+                extra={buckets.length > 1 && (
                   <MiniBars className="max-sm:hidden"
-                    values={stats.months.map((m) => m.count)} />)} />
-              <Kpi value={fmtSize(stats.size)}
-                label={t("stats.size_sub", { size: stats.mails
-                  ? fmtSize(Math.round(stats.size / stats.mails)) : "-" })} />
-              <Kpi value={`${pct(stats.unread, stats.mails)}%`}
-                label={`${t("stats.unread")} · ${stats.unread.toLocaleString()}`}
-                extra={<Ring frac={stats.mails ? stats.unread / stats.mails : 0}
+                    values={buckets.map((m) => m.count)} />)} />
+              <Kpi value={fmtSize(pSize)}
+                label={pMails === 0 ? t("stats.total_size")
+                  : t(inPeriod ? "stats.size_in" : "stats.size_sub",
+                    { period: pName,
+                      size: fmtSize(Math.round(pSize / pMails)) })} />
+              <Kpi value={`${pct(pUnread, pMails)}%`}
+                label={inPeriod
+                  ? t("stats.unread_in", { n: pUnread.toLocaleString(),
+                    period: pName })
+                  : `${t("stats.unread")} · ${pUnread.toLocaleString()}`}
+                extra={<Ring frac={pMails ? pUnread / pMails : 0}
                   px={48} />} />
               <Kpi value={(thisMonth?.trash ?? 0).toLocaleString()}
                 label={t("stats.trash_tile")}
                 extra={(thisMonth?.purge ?? 0) > 0 && (
                   <Tag tone="safe">
                     <TrendingDown size={14} className="mr-1 inline" />
-                    {fmtSize(thisMonth?.purged_bytes ?? 0)}
+                    {t("stats.freed_pill",
+                      { size: fmtSize(thisMonth?.purged_bytes ?? 0) })}
                   </Tag>)} />
             </div>
             {(thisMonth?.purge ?? 0) > 0 && (
@@ -169,46 +261,55 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
             )}
 
             <div className="grid gap-3 xl:grid-cols-3">
-              {stats.months.length > 1 && (
-                <ChartCard title={t("stats.per_month")}
-                  className="xl:col-span-2">
-                  <Columns hint={t("stats.hover_hint")}
-                    rows={stats.months.map((m) => ({ key: m.month,
-                      label: monthName(m.month), tip: monthTip(m),
-                      count: m.count }))} />
+              {buckets.length > 0 && (
+                <ChartCard className="xl:col-span-2"
+                  title={t(per === "30d" ? "stats.per_day"
+                    : per === "12m" ? "stats.per_month"
+                      : yearsChart ? "stats.per_year" : "stats.per_month_all")}
+                  hint={periods && (
+                    <Segmented label={t("stats.period")} value={per}
+                      onChange={setPeriod} options={[
+                        { value: "30d", label: t("stats.p30") },
+                        { value: "12m", label: t("stats.p12") },
+                        { value: "all", label: t("stats.pall") }]} />)}>
+                  <Columns hint={hint} rows={buckets} />
                 </ChartCard>
               )}
               {stats.categories.length > 0 && (
-                <ChartCard title={t("stats.categories")}>
+                <ChartCard title={t("stats.categories")} hint={allTime}>
                   <div className="flex flex-wrap items-center gap-4">
                     <Donut px={128} label={t("stats.categories")}
-                      slices={stats.categories.map((c) => c.count)}>
+                      slices={catSlices}>
                       <span className="type-heading tabular-nums">
                         {tagged.toLocaleString()}</span>
                       <span className="type-caption text-muted">
                         {t("stats.tagged")}</span>
                     </Donut>
-                    <ul className="min-w-44 flex-1 space-y-1.5 type-meta">
-                      {stats.categories.map((c, i) => (
-                        <li key={c.tag} className="flex items-center gap-2">
-                          <span aria-hidden="true" className={`size-2.5
-                            shrink-0 rounded-full ${hueFillAt(i)}`} />
-                          <span className="min-w-0 flex-1 truncate type-body"
-                            title={c.tag}>{c.tag}</span>
-                          <span className="whitespace-nowrap text-muted
-                            tabular-nums">
-                            {c.count} · {fmtSize(c.size)}</span>
-                        </li>
+                    <ul className="min-w-48 flex-1 space-y-1.5 type-meta">
+                      {catHead.map((c, i) => (
+                        <CatRow key={c.tag} name={c.tag} hue={i}
+                          count={c.count} bytes={c.size} />
                       ))}
+                      {catTail.length > 0 && (
+                        <>
+                          <CatRow name={t("stats.other")} hue={CAT_HEAD}
+                            count={catTail.reduce((a, c) => a + c.count, 0)}
+                            bytes={catTail.reduce((a, c) => a + c.size, 0)} />
+                          {catTail.map((c) => (
+                            <CatRow key={c.tag} name={c.tag} sub
+                              count={c.count} bytes={c.size} />
+                          ))}
+                        </>
+                      )}
                     </ul>
                   </div>
                 </ChartCard>
               )}
             </div>
 
-            {stats.years.length > 1 && (
+            {stats.years.length > 0 && !yearsChart && (
               <ChartCard title={t("stats.per_year")}>
-                <Columns compact hint={t("stats.hover_hint")}
+                <Columns compact hint={hint}
                   rows={stats.years.map((y) => ({ key: y.year, label: y.year,
                     tip: t("stats.month_tip", { month: y.year,
                       mails: t("n.mails", { n: y.count }),
@@ -218,44 +319,57 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
             )}
 
             <div className="grid gap-3 xl:grid-cols-3">
-              <ChartCard title={t("stats.top_senders")}
+              <ChartCard title={t("stats.top_senders")} hint={allTime}
                 className="xl:col-span-2">
-                <ul>
-                  {stats.top_senders.map((s) => {
-                    const max = Math.max(1, stats.top_senders[0].count);
-                    const row = (
-                      <>
-                        <Avatar name={s.label || s.key} size="md" />
-                        <span className="w-28 shrink-0 truncate text-left
-                          sm:w-40" title={s.key}>{s.label}</span>
-                        <span className="h-2 min-w-0 flex-1 rounded-full
-                          bg-chip" aria-hidden="true">
-                          <span className="block h-2 rounded-full bg-accent"
-                            style={{ width: `${(100 * s.count) / max}%` }} />
-                        </span>
-                        <span className="shrink-0 text-right type-meta
-                          whitespace-nowrap text-muted tabular-nums">
-                          {t("n.mails", { n: s.count })} · {fmtSize(s.size)}
-                        </span>
-                      </>
-                    );
-                    return (
-                      <li key={s.key}>
-                        {onOpenSender
-                          ? <button type="button" onClick={() =>
-                              onOpenSender(s.key)}
-                              className="flex min-h-11 w-full cursor-pointer
-                                items-center gap-2 rounded-control px-1
-                                hover:bg-chip">{row}</button>
-                          : <div className="flex min-h-11 items-center gap-2
-                              px-1">{row}</div>}
-                      </li>
-                    );
-                  })}
-                </ul>
+                {stats.top_senders.length === 0 ? (
+                  <div className="type-meta text-muted">{t("stats.none")}</div>
+                ) : (
+                  <ul>
+                    {stats.top_senders.map((s) => {
+                      const max = Math.max(1, stats.top_senders[0].count);
+                      // phones: name + figures on one line, the bar under
+                      // them at full width; from sm: name | bar | figures
+                      const row = (
+                        <>
+                          <Avatar name={s.label || s.key} size="md" />
+                          <span className="grid min-w-0 flex-1 items-center
+                            gap-x-2 gap-y-1 text-left grid-cols-[1fr_auto]
+                            sm:grid-cols-[10rem_1fr_auto]">
+                            <span className="truncate" title={s.key}>
+                              {s.label}</span>
+                            <span className="col-span-2 row-start-2 h-2
+                              rounded-full bg-chip sm:col-span-1 sm:row-start-1
+                              sm:col-start-2" aria-hidden="true">
+                              <span className="block h-2 rounded-full
+                                bg-accent"
+                                style={{ width: `${(100 * s.count) / max}%` }} />
+                            </span>
+                            <span className="text-right type-meta
+                              whitespace-nowrap text-muted tabular-nums
+                              sm:col-start-3 sm:row-start-1">
+                              {t("n.mails", { n: s.count })} ·{" "}
+                              {fmtSize(s.size)}</span>
+                          </span>
+                        </>
+                      );
+                      return (
+                        <li key={s.key}>
+                          {onOpenSender
+                            ? <button type="button" onClick={() =>
+                                onOpenSender(s.key)}
+                                className="flex min-h-11 w-full cursor-pointer
+                                  items-center gap-2 rounded-control px-1
+                                  hover:bg-chip">{row}</button>
+                            : <div className="flex min-h-11 items-center gap-2
+                                px-1">{row}</div>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </ChartCard>
 
-              <ChartCard title={t("stats.engagement")}>
+              <ChartCard title={t("stats.engagement")} hint={allTime}>
                 <div className="flex items-center gap-3">
                   <Ring px={64} frac={stats.senders
                     ? stats.replied_senders / stats.senders : 0}>
@@ -286,6 +400,9 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
             </div>
 
             <ChartCard title={t("stats.top_domains")}>
+              {stats.top_domains.length === 0 && (
+                <div className="type-meta text-muted">{t("stats.none")}</div>
+              )}
               <ul>
                 {stats.top_domains.map((d) => (
                   <li key={d.domain} className="flex items-baseline gap-2

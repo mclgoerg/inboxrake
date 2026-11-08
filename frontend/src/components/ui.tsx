@@ -1068,9 +1068,10 @@ export function Ring({ frac, px = 56, label, children }: {
       <svg viewBox="0 0 120 120" fill="none" strokeWidth={14}
         className="absolute inset-0 size-full -rotate-90">
         <circle cx="60" cy="60" r={R} className="stroke-chip" />
-        <circle cx="60" cy="60" r={R} strokeLinecap="round"
-          className="stroke-accent"
-          strokeDasharray={`${C * f} ${C}`} />
+        {f > 0 && (   // no arc at 0: a round cap would draw a stray dot
+          <circle cx="60" cy="60" r={R} strokeLinecap="round"
+            className="stroke-accent" strokeDasharray={`${C * f} ${C}`} />
+        )}
       </svg>
       {children && <div className="relative type-caption">{children}</div>}
     </div>
@@ -1086,9 +1087,9 @@ export function MiniBars({ values, className = "" }: {
   const max = Math.max(1, ...values);
   return (
     <div aria-hidden="true"
-      className={`flex h-10 items-end gap-0.5 ${className}`}>
+      className={`flex h-10 w-20 items-end gap-px ${className}`}>
       {values.map((v, i) => (
-        <div key={i} className="w-1 rounded-full bg-accent/70"
+        <div key={i} className="min-w-px flex-1 rounded-full bg-accent/70"
           style={{ height: `${Math.max(8, (100 * v) / max)}%` }} />
       ))}
     </div>
@@ -1113,7 +1114,8 @@ export function Donut({ slices, px = 152, label, holeClass = "bg-panel2",
       style={{ width: px, height: px }}>
       {slices.map((v, i) => {
         const from = (360 * at) / total;
-        const span = (360 * v) / total;
+        // a hairline gap between slices (the surface shows through)
+        const span = Math.max(0, (360 * v) / total - (slices.length > 1 ? 1.5 : 0));
         at += v;
         const mask = `conic-gradient(from ${from}deg, #000 ${span}deg, transparent 0)`;
         return (
@@ -1123,9 +1125,11 @@ export function Donut({ slices, px = 152, label, holeClass = "bg-panel2",
             style={{ maskImage: mask, WebkitMaskImage: mask }} />
         );
       })}
-      {/* hole = 56 % of the disc: a ring width that reads at 120-152 px */}
-      <div className={`absolute inset-[22%] rounded-full ${holeClass}`} />
-      <div className="relative grid justify-items-center text-center">
+      {/* hole = 64 % of the disc: a ring width that reads at 120-152 px */}
+      <div className={`absolute inset-[18%] rounded-full ${holeClass}`} />
+      {/* centre text must fit the hole (64 % wide), so it wraps inside 56 % */}
+      <div className="relative grid justify-items-center text-center"
+        style={{ maxWidth: "56%" }}>
         {children}
       </div>
     </div>

@@ -126,3 +126,58 @@ test("the figures of the old page are all still there", async () => {
     "100 B per mail", "Top domains by size", "x.example", "senders you replied to (of 2)"])
     expect(txt().toLowerCase()).toContain(s.toLowerCase());
 });
+
+test("the period switch re-scopes the chart and the period KPIs", async () => {
+  actions = {};
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${
+    String(d.getDate()).padStart(2, "0")}`;
+  extra = {
+    mails: 100, size: 1000,
+    months: [{ month: "2026-01", count: 60, size: 600 }],
+    months_all: [{ month: "2025-01", count: 40, size: 400, unread: 4 },
+      { month: "2026-01", count: 60, size: 600, unread: 6 }],
+    days: [{ day, count: 3, size: 30, unread: 3 }],
+  };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByRole("tablist", { name: "Period" });
+  // default 12 months: 12 buckets are the newest of months_all (both here)
+  expect(screen.getByText("Mails per month (last 12)")).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "30 days" }));
+  expect(screen.getByText("Mails per day (last 30)")).toBeTruthy();
+  expect(screen.getByText("2 senders overall")).toBeTruthy();
+  expect(screen.getByText("last 30 days · 10 B per mail")).toBeTruthy();
+  expect(screen.getByText("30 B")).toBeTruthy();
+  expect(screen.getByText("100%")).toBeTruthy();              // unread 3 of 3
+  fireEvent.click(screen.getByRole("tab", { name: "All time" }));
+  expect(screen.getByText("Mails per month")).toBeTruthy();
+  expect(screen.getByText("1000 B")).toBeTruthy();
+  // all-time-only cards say so
+  expect(screen.getAllByText("All time").length).toBeGreaterThan(1);
+});
+
+test("many categories: the rest is one 'Other' slice, still listed", async () => {
+  actions = {};
+  extra = { categories: ["a", "b", "c", "d", "e", "f", "g"].map((tag, i) => (
+    { tag, count: 10 - i, size: 100 })) };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByText("Other");
+  expect(screen.getByText("5 · 100 B")).toBeTruthy();        // f
+  expect(screen.getByText("9 · 200 B")).toBeTruthy();        // Other = f + g
+});
+
+test("an empty mailbox: no stray figures, proper empty cards", async () => {
+  actions = {};
+  extra = { mails: 0, size: 0, senders: 0, unread: 0 };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByText("total size");
+  expect(document.body.textContent).not.toContain("per mail");
+  expect(screen.getAllByText("Nothing here yet").length).toBe(2);
+});
+
+test("a single month still gets its chart", async () => {
+  actions = {};
+  extra = { months: [{ month: "2026-01", count: 3, size: 30 }] };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByRole("button", { name: "Jan 2026 · 3 mails · 30 B" });
+});
