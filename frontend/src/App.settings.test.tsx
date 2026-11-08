@@ -40,6 +40,7 @@ import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog }
   from "./dialogTestUtils";
+import { backStackBusy } from "./backStack";
 import { setLang } from "./i18n";
 import type { AppState, Config } from "./types";
 
@@ -91,6 +92,12 @@ const mount = (wide: boolean) => {
 const side = () => screen.findByRole("navigation", { name: "Main navigation" });
 const column = () => screen.findByRole("navigation", { name: "Settings" });
 const h1 = (name: string) => screen.findByRole("heading", { level: 1, name });
+/** The URL hash is written by the app after the history has settled
+ *  (`afterBackSettles`), not in the click that asked for it. */
+const hashIs = (hash: string) =>
+  waitFor(() => expect(window.location.hash).toBe(hash));
+/** Waits until no hash write or history pop of the app is still on its way. */
+const navSettled = () => waitFor(() => expect(backStackBusy()).toBe(false));
 
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); localStorage.clear(); setLang("en");
@@ -103,7 +110,7 @@ test(">= 1024: the gear opens the page with a section column; sections are route
     mount(true);
     fireEvent.click(within(await side()).getByRole("button", { name: "Settings" }));
     await h1("General");
-    expect(window.location.hash).toBe("#/settings");
+    await hashIs("#/settings");
     const col = within(await column());
     // the grouped sections of board 22, the admin's Server group included
     for (const name of ["proton", "Add account", "General", "Notifications",
@@ -115,14 +122,14 @@ test(">= 1024: the gear opens the page with a section column; sections are route
     // a section is a route, and the count of protected senders is shown
     fireEvent.click(col.getByRole("button", { name: /^Protected senders/ }));
     await h1("Protected senders");
-    expect(window.location.hash).toBe("#/settings/protected");
+    await hashIs("#/settings/protected");
     expect(col.getByRole("button", { name: /^Protected senders/ }).textContent)
       .toContain("1");
     expect(screen.getByText("boss@work.example")).toBeTruthy();
     // the account is a section too
     fireEvent.click(col.getByRole("button", { name: /^proton/ }));
     await h1("proton");
-    expect(window.location.hash).toBe("#/settings/account/proton");
+    await hashIs("#/settings/account/proton");
     expect(screen.getByLabelText("Host")).toBeTruthy();
   });
 
@@ -135,8 +142,9 @@ test("a section route opens straight on it, and Esc returns where Settings was o
     fireEvent.click(within(await column()).getByRole("button", { name: /^AI review/ }));
     await h1("AI review");
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(window.location.hash).toBe("#/senders"));
+    await hashIs("#/senders");
     expect(screen.queryByRole("navigation", { name: "Settings" })).toBeNull();
+    await navSettled();
     cleanup();
     window.location.hash = "#/settings/digest";
     mount(true);
@@ -171,7 +179,7 @@ test("< 1024: a root list drills down into a section and Back returns to it",
     fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Settings/ }));
     await h1("Settings");
-    await waitFor(() => expect(window.location.hash).toBe("#/settings"));
+    await hashIs("#/settings");
     // the account card, then the grouped rows with their current values
     expect(screen.getByRole("button", { name: /^proton/ }).textContent)
       .toContain("me@proton.example");
@@ -181,15 +189,15 @@ test("< 1024: a root list drills down into a section and Back returns to it",
       .toContain("Off");
     fireEvent.click(screen.getByRole("button", { name: /^AI review/ }));
     await h1("AI review");
-    expect(window.location.hash).toBe("#/settings/ai");
+    await hashIs("#/settings/ai");
     expect(screen.queryByRole("button", { name: /^Protected senders/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await h1("Settings");
-    await waitFor(() => expect(window.location.hash).toBe("#/settings"));
+    await hashIs("#/settings");
     // no dialog, and the tab bar is still the way out
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "Senders" }));
-    await waitFor(() => expect(window.location.hash).toBe("#/senders"));
+    await hashIs("#/senders");
   });
 
 test("< 1024: a section opened by its URL goes up to the root list, not out of the app",
@@ -199,7 +207,7 @@ test("< 1024: a section opened by its URL goes up to the root list, not out of t
     await h1("AI review");
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await h1("Settings");
-    await waitFor(() => expect(window.location.hash).toBe("#/settings"));
+    await hashIs("#/settings");
   });
 
 const editProtected = async () => {
@@ -252,14 +260,15 @@ test("leaving with unsaved edits asks: Cancel stays, Discard leaves, Save saves 
     // Discard: leaves without saving
     fireEvent.click(sidebar.getByRole("link", { name: /Senders/ }));
     await pressDialog("Discard changes");
-    await waitFor(() => expect(window.location.hash).toBe("#/senders"));
+    await hashIs("#/senders");
     expect(saveCalls).toEqual([]);
     // Save: saves, then leaves
+    await navSettled();
     cleanup();
     await editProtected();
     fireEvent.click(within(await side()).getByRole("link", { name: /Senders/ }));
     await pressDialog("Save");
-    await waitFor(() => expect(window.location.hash).toBe("#/senders"));
+    await hashIs("#/senders");
     expect(saveCalls).toHaveLength(1);
   });
 
@@ -277,12 +286,16 @@ test("Esc and the browser's Back ask too, and clean pages leave at once", async 
   await pressDialog("Discard changes");
   await waitFor(() => expect(screen.queryByRole("navigation",
     { name: "Settings" })).toBeNull());
+  // leaving writes the URL once the history is clear of the dialog's entry:
+  // let that land before the next mount reads the hash
+  await hashIs("#/senders");
+  await navSettled();
   cleanup();
   window.location.hash = "#/settings/general";
   mount(true);
   await h1("General");
   fireEvent.click(within(await side()).getByRole("link", { name: /Senders/ }));
-  await waitFor(() => expect(window.location.hash).toBe("#/senders"));
+  await hashIs("#/senders");
   await expectNoDialog();
 });
 
@@ -305,7 +318,7 @@ test("switching the edited account with unsaved edits asks first", async () => {
     await h1("work");
     expect((screen.getByLabelText("Host") as HTMLInputElement).value)
       .toBe("h");
-    expect(window.location.hash).toBe("#/settings/account/work");
+    await hashIs("#/settings/account/work");
     expect(screen.queryByRole("region", { name: "Unsaved changes" })).toBeNull();
   } finally {
     delete (cfg as any).accounts.work;
