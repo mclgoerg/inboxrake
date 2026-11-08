@@ -375,7 +375,8 @@ def test_summary_counts_every_kind_without_a_cap(monkeypatch):
     ]
     _scan(monkeypatch, {"INBOX": inbox, "Trash": [], "Spam": []})
     assert client.get("/api/duplicates/summary").json() == {
-        "sets": 1, "wasted": 500, "versions": 1, "possible": 1}
+        "sets": 1, "wasted": 500, "versions": 1, "possible": 1,
+        "dismissed": 0}
     # identical copies and versions are not counted as possible again
     assert len(mailops.possible_duplicates_list()) == 1
 
@@ -391,15 +392,211 @@ def test_summary_is_not_capped_at_the_list_limit(monkeypatch):
     _scan(monkeypatch, {"INBOX": inbox, "Trash": [], "Spam": []})
     assert len(mailops.duplicates_list()) == 200
     assert mailops.duplicates_summary() == {
-        "sets": 210, "wasted": 210 * 100, "versions": 0, "possible": 0}
+        "sets": 210, "wasted": 210 * 100, "versions": 0, "possible": 0,
+        "dismissed": 0}
 
 
 def test_summary_of_an_empty_index(monkeypatch):
     _scan(monkeypatch, {"INBOX": [], "Trash": [], "Spam": []})
     assert client.get("/api/duplicates/summary").json() == {
-        "sets": 0, "wasted": 0, "versions": 0, "possible": 0}
+        "sets": 0, "wasted": 0, "versions": 0, "possible": 0,
+        "dismissed": 0}
 
 
 def test_summary_account_param(monkeypatch):
     r = client.get("/api/duplicates/summary", params={"account": "nope"})
     assert r.status_code == 400
+
+
+# ------------------------------------------- payload: keys, ids, locked sets
+
+def _all_kinds(monkeypatch):
+    """One set of every kind: identical, versions, possible (+ a lone mail)."""
+    _scan(monkeypatch, {"INBOX": [
+        make_msg(1, frm="a@x.example", subject="One", msgid="<i@x.example>",
+                 size=500, date=_stamp(8, 0)),
+        make_msg(2, frm="a@x.example", subject="One", msgid="<i@x.example>",
+                 size=500, date=_stamp(8, 1)),
+        make_msg(3, frm="b@x.example", subject="Two", msgid="<v@x.example>",
+                 size=700, date=_stamp(8, 2)),
+        make_msg(4, frm="b@x.example", subject="Two", msgid="<v@x.example>",
+                 size=900, date=_stamp(8, 3)),
+        make_msg(5, frm="c@x.example", subject="Three",
+                 msgid="<p1@x.example>", date=_stamp(9, 0)),
+        make_msg(6, frm="c@x.example", subject="Three",
+                 msgid="<p2@x.example>", date=_stamp(9, 4)),
+        make_msg(7, frm="d@x.example", subject="Alone"),
+    ], "Trash": [], "Spam": []})
+
+
+def test_payload_carries_the_message_id_the_key_and_no_lock(monkeypatch):
+    _all_kinds(monkeypatch)
+    (ident,) = client.get("/api/duplicates").json()
+    assert ident["key"] == "<i@x.example>" and ident["locked"] is None
+    assert [m["msgid"] for m in ident["mails"]] == ["<i@x.example>"] * 2
+    assert [m["pinned"] for m in ident["mails"]] == [False, False]
+    (ver,) = client.get("/api/duplicates/versions").json()
+    assert ver["key"] == "<v@x.example>"
+    (pos,) = client.get("/api/duplicates/possible").json()
+    assert pos["key"].startswith("p:") and len(pos["key"]) == 26
+    assert [m["msgid"] for m in pos["mails"]] == [
+        "<p2@x.example>", "<p1@x.example>"]
+
+
+def test_possible_key_follows_the_members_not_their_order(monkeypatch):
+    _all_kinds(monkeypatch)
+    (a,) = client.get("/api/duplicates/possible").json()
+    mailops.run_scan()
+    (b,) = client.get("/api/duplicates/possible").json()
+    assert a["key"] == b["key"]
+
+
+def test_idless_versions_get_a_digest_key(monkeypatch):
+    _scan(monkeypatch, {"INBOX": [
+        _idless(1, frm="b@y.example", subject="Hello", size=300),
+        _idless(2, frm="b@y.example", subject="Hello", size=300)],
+        "Trash": [], "Spam": []})
+    (v,) = client.get("/api/duplicates/versions").json()
+    assert v["key"].startswith("t:") and len(v["key"]) == 26
+
+
+def test_a_pinned_or_protected_set_is_locked(monkeypatch):
+    from backend import config as cfgmod
+    _all_kinds(monkeypatch)
+    assert client.post("/api/pin", json={"folder": "INBOX", "uid": 1}).json()[
+        "pinned"] is True
+    cfgmod.update_config({"protected": ["b@x.example"]})
+    (ident,) = client.get("/api/duplicates").json()
+    assert ident["locked"] == "pinned"
+    # pins key off the Message-ID: the other copy is pinned too
+    assert [m["pinned"] for m in ident["mails"]] == [True, True]
+    (ver,) = client.get("/api/duplicates/versions").json()
+    assert ver["locked"] == "protected"
+    (pos,) = client.get("/api/duplicates/possible").json()
+    assert pos["locked"] is None
+
+
+# ------------------------------------------------- "Keep all": dismiss/restore
+
+def _dismiss(kind, key, **kw):
+    return client.post("/api/duplicates/dismiss",
+                       json={"kind": kind, "key": key}, **kw)
+
+
+def test_dismissed_sets_leave_the_lists_and_the_summary(monkeypatch):
+    _all_kinds(monkeypatch)
+    (ident,) = client.get("/api/duplicates").json()
+    (pos,) = client.get("/api/duplicates/possible").json()
+    assert _dismiss("identical", ident["key"]).json() == {"ok": True}
+    assert client.get("/api/duplicates").json() == []
+    assert len(client.get("/api/duplicates/versions").json()) == 1
+    assert client.get("/api/duplicates/summary").json() == {
+        "sets": 0, "wasted": 0, "versions": 1, "possible": 1, "dismissed": 1}
+    assert _dismiss("possible", pos["key"]).status_code == 200
+    assert client.get("/api/duplicates/possible").json() == []
+    assert client.get("/api/duplicates/summary").json()["dismissed"] == 2
+    # asking twice is fine
+    assert _dismiss("possible", pos["key"]).status_code == 200
+    assert client.get("/api/duplicates/summary").json()["dismissed"] == 2
+
+
+def test_a_dismissal_is_per_kind(monkeypatch):
+    _all_kinds(monkeypatch)
+    # the identical set's id, dismissed as "versions": no effect on identical
+    assert _dismiss("versions", "<i@x.example>").status_code == 200
+    assert len(client.get("/api/duplicates").json()) == 1
+    assert client.get("/api/duplicates/summary").json()["dismissed"] == 0
+
+
+def test_restore_one_or_all(monkeypatch):
+    _all_kinds(monkeypatch)
+    keys = {"identical": "<i@x.example>", "versions": "<v@x.example>"}
+    for kind, key in keys.items():
+        _dismiss(kind, key)
+    assert client.get("/api/duplicates/summary").json()["dismissed"] == 2
+    r = client.post("/api/duplicates/restore",
+                    json={"kind": "identical", "key": keys["identical"]})
+    assert r.json() == {"ok": True}
+    assert len(client.get("/api/duplicates").json()) == 1
+    assert client.get("/api/duplicates/versions").json() == []
+    assert client.post("/api/duplicates/restore", json={"all": True}).json() \
+        == {"ok": True}
+    assert len(client.get("/api/duplicates/versions").json()) == 1
+    assert client.get("/api/duplicates/summary").json()["dismissed"] == 0
+
+
+def test_dismiss_and_restore_refuse_bad_input(monkeypatch):
+    _all_kinds(monkeypatch)
+    for body in ({"kind": "nope", "key": "<i@x.example>"},
+                 {"kind": "identical", "key": ""},
+                 {"kind": "identical", "key": "x" * 401},
+                 {"kind": "identical", "key": "a\nb"}):
+        r = client.post("/api/duplicates/dismiss", json=body)
+        assert r.status_code == 400 and r.json()["detail"] == \
+            "bad_duplicate_set"
+    assert client.post("/api/duplicates/restore", json={}).status_code == 400
+    assert client.post("/api/duplicates/restore",
+                       json={"kind": "identical"}).status_code == 400
+    assert client.post("/api/duplicates/dismiss",
+                       json={"kind": "identical", "key": "k"},
+                       params={"account": "nope"}).status_code == 400
+
+
+def test_a_dismissed_possible_set_returns_when_it_gains_a_mail(monkeypatch):
+    _all_kinds(monkeypatch)
+    (pos,) = client.get("/api/duplicates/possible").json()
+    _dismiss("possible", pos["key"])
+    assert client.get("/api/duplicates/possible").json() == []
+    fake = _scan(monkeypatch, {"INBOX": [
+        make_msg(5, frm="c@x.example", subject="Three",
+                 msgid="<p1@x.example>", date=_stamp(9, 0)),
+        make_msg(6, frm="c@x.example", subject="Three",
+                 msgid="<p2@x.example>", date=_stamp(9, 4)),
+        make_msg(8, frm="c@x.example", subject="Three",
+                 msgid="<p3@x.example>", date=_stamp(9, 5))],
+        "Trash": [], "Spam": []})
+    assert fake is not None
+    (again,) = client.get("/api/duplicates/possible").json()
+    assert len(again["mails"]) == 3 and again["key"] != pos["key"]
+
+
+def test_dismissed_sets_stay_per_account(monkeypatch):
+    from backend import accounts
+    from test_multiaccount import _two_accounts
+    fakes = _two_accounts(monkeypatch)
+    for host, uids in (("host-one", (101, 102)), ("host-two", (201, 202))):
+        for uid in uids:
+            fakes[host].mailbox["INBOX"].append(
+                make_msg(uid, subject="S", msgid="<same@x.example>", size=700))
+    mailops.run_scan(accounts.get("one"))
+    mailops.run_scan(accounts.get("two"))
+    r = _dismiss("identical", "<same@x.example>", params={"account": "one"})
+    assert r.status_code == 200
+    assert client.get("/api/duplicates", params={"account": "one"}).json() == []
+    assert len(client.get("/api/duplicates",
+                          params={"account": "two"}).json()) == 1
+
+
+def test_the_one_tap_selection_goes_through_the_normal_trash_path(monkeypatch):
+    """"Remove N copies" is all-but-newest of every listed identical set sent
+    to /api/delete_messages: undoable, audited, and refused (whole) when a
+    copy is pinned or from a protected sender."""
+    from backend import config as cfgmod
+    _all_kinds(monkeypatch)
+    (ident,) = client.get("/api/duplicates").json()
+    items = [[m["folder"], m["uid"]] for m in ident["mails"][1:]]
+    cfgmod.update_config({"protected": ["a@x.example"]})
+    r = client.post("/api/delete_messages", json={"items": items})
+    assert r.status_code == 400 \
+        and r.json()["detail"] == "protected_sender_selected"
+    cfgmod.update_config({"protected": []})
+    client.post("/api/pin", json={"folder": "INBOX", "uid": 1})
+    r = client.post("/api/delete_messages", json={"items": items})
+    assert r.status_code == 400 and r.json()["detail"] == "pinned_mails"
+    client.post("/api/pin", json={"folder": "INBOX", "uid": 1,
+                                  "pinned": False})
+    assert client.post("/api/delete_messages",
+                       json={"items": items}).json()["queued"] == 1
+    wait_delete_done()
+    assert client.get("/api/duplicates").json() == []
+    assert client.get("/api/state").json()["undo"], "the move is undoable"

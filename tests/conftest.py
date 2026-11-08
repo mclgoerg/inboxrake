@@ -23,6 +23,7 @@ from backend import config as cfgmod          # noqa: E402
 from backend import digest as digestmod       # noqa: E402
 from backend import knowledgestore            # noqa: E402
 from backend import knownsenders              # noqa: E402
+from backend import dupstore                  # noqa: E402
 from backend import labelstore                # noqa: E402
 from backend import mailops                   # noqa: E402
 from backend import pinstore                  # noqa: E402
@@ -74,10 +75,13 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(pinstore, "PINS_PATH", tmp_path / "pinned_mails.json")
     monkeypatch.setattr(labelstore, "LABELS_PATH",
                         tmp_path / "sender_labels.json")
+    monkeypatch.setattr(dupstore, "DUPS_PATH",
+                        tmp_path / "duplicates_kept.json")
     verdictstore._mails_cache.clear()
     unsubstore._cache.clear()
     pinstore._cache.clear()
     labelstore._cache.clear()
+    dupstore._cache.clear()
     mailops._SENT_CACHE.clear()
     accountsmod.reset()
     yield
@@ -94,6 +98,7 @@ def isolate(tmp_path, monkeypatch):
     unsubstore._cache.clear()
     pinstore._cache.clear()
     labelstore._cache.clear()
+    dupstore._cache.clear()
     accountsmod.reset()
 
 

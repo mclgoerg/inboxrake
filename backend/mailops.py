@@ -34,6 +34,7 @@ from . import accounts
 from . import auditlog
 from . import bodyindex
 from . import config as cfgmod
+from . import dupstore
 from . import demo
 from . import knownsenders
 from . import labelstore
@@ -3782,18 +3783,68 @@ def _dup_groups(mails: list[dict]) -> tuple[list[list[dict]],
     return identical, versions
 
 
-def _dup_payload(sets: list[list[dict]], limit: int,
-                 reclaimable: bool = True) -> list[dict]:
+def _dup_key(kind: str, s: list[dict]) -> str:
+    """What "Keep all" remembers a set by (see dupstore): the Message-ID the
+    whole identical / versions group shares; for a versions group without
+    one, a digest of the tuple it was paired by; for a possible set, a
+    digest of its members' ids (an id-less member counts by time and size),
+    so a set that gains a mail is a new set. The key is derived, never sent
+    by the mailbox, and capped well below dupstore.KEY_MAX."""
+    if kind == "possible":
+        ids = sorted(m["msgid"] or f"~{m['ts']}:{m['size']}" for m in s)
+        return "p:" + hashlib.sha1("\0".join(ids).encode()).hexdigest()[:24]
+    if _usable_msgid(s[0]["msgid"]):
+        return s[0]["msgid"]
+    m = s[0]
+    tup = "\0".join([m["msgid"] or "", m["addr"], m["subject"],
+                     str(m["size"])])
+    return "t:" + hashlib.sha1(tup.encode()).hexdigest()[:24]
+
+
+def _dup_kinds(mails: list[dict], kept: dict[str, set[str]],
+               only: str | None = None
+               ) -> tuple[dict[str, list[list[dict]]], int]:
+    """The duplicate sets of `mails` by kind (identical / versions /
+    possible; just `only` when given), from ONE _dup_groups pass, without the
+    sets the user chose to keep (`kept`, dupstore.load_account) - and how many
+    sets that left out."""
+    groups = _dup_groups(mails)
+    every = {"identical": groups[0], "versions": groups[1]}
+    if only != "identical" and only != "versions":
+        every["possible"] = _possible_sets(mails, groups)
+    if only:
+        every = {only: every[only]}
+    shown = {kind: [s for s in sets
+                    if _dup_key(kind, s) not in kept.get(kind, ())]
+             for kind, sets in every.items()}
+    return shown, sum(len(every[k]) - len(shown[k]) for k in every)
+
+
+def _dup_payload(sets: list[list[dict]], limit: int, kind: str,
+                 acc) -> list[dict]:
+    """The list payload of one kind. Every set carries its `key` (what
+    "Keep all" posts) and `locked`: "pinned" / "protected" when a copy is a
+    pinned mail or from a protected sender - delete_messages refuses such a
+    selection, so the one-tap cleanup leaves the set alone."""
+    reclaimable = kind == "identical"
+    pinned = pinstore.load_account(acc.name)
+    protected = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
     out = []
     for s in sets:
         s = sorted(s, key=lambda m: -m["ts"])
+        pins = [m["msgid"] in pinned for m in s]
         out.append({
+            "key": _dup_key(kind, s),
             "wasted": sum(m["size"] for m in s[1:]) if reclaimable else 0,
+            "locked": "pinned" if any(pins) else "protected"
+            if any(cfgmod.is_protected(m["addr"], protected) for m in s)
+            else None,
             "mails": [{"uid": m["uid"], "folder": m["folder"],
                        "date": m["date"], "ts": m["ts"],
                        "subject": m["subject"], "addr": m["addr"],
-                       "size": m["size"], "seen": m["seen"], "ai": None}
-                      for m in s]})
+                       "size": m["size"], "seen": m["seen"], "ai": None,
+                       "msgid": m["msgid"], "pinned": pin}
+                      for m, pin in zip(s, pins)]})
     # Reclaimable sets by what they would free, the rest by how much mail
     # they hold; the sort is stable, so ties keep their scan order.
     out.sort(key=(lambda x: -x["wasted"]) if reclaimable
@@ -3801,15 +3852,24 @@ def _dup_payload(sets: list[list[dict]], limit: int,
     return out[:limit]
 
 
+def _dup_sets(kind: str, limit: int, acc) -> list[dict]:
+    """One kind's list payload, from the account's index, without the sets
+    the user chose to keep (dupstore)."""
+    acc = acc or accounts.get()
+    with acc.lock:
+        mails = list(acc.index.values())
+    shown, _ = _dup_kinds(mails, dupstore.load_account(acc.name), only=kind)
+    return _dup_payload(shown[kind], limit, kind, acc)
+
+
 def duplicates_list(limit: int = 200, acc=None) -> list[dict]:
     """Identical copies from the scanned index: a usable Message-ID (see
     _usable_msgid) shared by two or more mails that ALL have the same size.
     Newest mail first inside each set; 'wasted' is what deleting all but the
-    newest would free. Copies that differ in size are versions_list."""
-    acc = acc or accounts.get()
-    with acc.lock:
-        mails = list(acc.index.values())
-    return _dup_payload(_dup_groups(mails)[0], limit)
+    newest would free. Copies that differ in size are versions_list. Sets
+    the user chose to keep ("Keep all", dupstore) are left out - in all
+    three lists and the summary."""
+    return _dup_sets("identical", limit, acc)
 
 
 def versions_list(limit: int = 200, acc=None) -> list[dict]:
@@ -3821,10 +3881,7 @@ def versions_list(limit: int = 200, acc=None) -> list[dict]:
     the tuple: two statements with the same sender, subject and size but
     different ids are two mails. Same shape as duplicates_list, but nothing
     is reclaimable ('wasted' is 0): the UI never auto-selects these."""
-    acc = acc or accounts.get()
-    with acc.lock:
-        mails = list(acc.index.values())
-    return _dup_payload(_dup_groups(mails)[1], limit, reclaimable=False)
+    return _dup_sets("versions", limit, acc)
 
 
 POSSIBLE_DUP_WINDOW = 600       # seconds: "sent twice within minutes"
@@ -3863,26 +3920,46 @@ def possible_duplicates_list(limit: int = 200, acc=None) -> list[dict]:
     minutes of another in its group (chained by time). Mails already in an
     identical or versions set are left out. Same shape as duplicates_list;
     the UI never auto-selects these - the user compares and decides."""
-    acc = acc or accounts.get()
-    with acc.lock:
-        mails = list(acc.index.values())
-    return _dup_payload(_possible_sets(mails, _dup_groups(mails)), limit)
+    return _dup_sets("possible", limit, acc)
 
 
 def duplicates_summary(acc=None) -> dict:
     """Full counts behind the three duplicate lists (no 200 cap), from ONE
     pass over the index: identical `sets` and what they would free
-    (`wasted`), plus the `versions` and `possible` sets to compare."""
+    (`wasted`), plus the `versions` and `possible` sets to compare, and how
+    many sets the user chose to keep (`dismissed`, left out of the rest)."""
     acc = acc or accounts.get()
     with acc.lock:
         mails = list(acc.index.values())
-    groups = _dup_groups(mails)
-    identical, versions = groups
-    return {"sets": len(identical),
-            "wasted": sum(m["size"] for s in identical
+    shown, hidden = _dup_kinds(mails, dupstore.load_account(acc.name))
+    return {"sets": len(shown["identical"]),
+            "wasted": sum(m["size"] for s in shown["identical"]
                           for m in sorted(s, key=lambda m: -m["ts"])[1:]),
-            "versions": len(versions),
-            "possible": len(_possible_sets(mails, groups))}
+            "versions": len(shown["versions"]),
+            "possible": len(shown["possible"]),
+            "dismissed": hidden}
+
+
+def dismiss_duplicate_set(kind: str, key: str, acc=None) -> dict:
+    """"Keep all": hide one set from the lists (nothing is moved). `key` is
+    the set's `key` from the list payload."""
+    acc = acc or accounts.get()
+    dupstore.dismiss(kind, key, acc.name)
+    return {"ok": True}
+
+
+def restore_duplicate_sets(kind: str | None, key: str | None,
+                           everything: bool, acc=None) -> dict:
+    """Show one hidden set again (`kind` + `key`), or - `everything` - every
+    hidden set of the account."""
+    acc = acc or accounts.get()
+    if everything:
+        dupstore.restore_all(acc.name)
+    elif kind is not None and key is not None:
+        dupstore.restore(kind, key, acc.name)
+    else:
+        raise ValueError("bad_duplicate_set")
+    return {"ok": True}
 
 
 # ----------------------------------------------------------- undo & trash

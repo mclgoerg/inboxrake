@@ -231,10 +231,19 @@ export interface DupSummary {
   versions: number;
   /** Likely double-sends to compare. */
   possible: number;
+  /** Sets the user chose to keep ("Keep all"): left out of everything above. */
+  dismissed: number;
 }
 
+export type DupKind = "identical" | "versions" | "possible";
+
 export interface DupSet {
+  /** What "Keep all" remembers the set by (POST /api/duplicates/dismiss). */
+  key: string;
   wasted: number;
+  /** A copy is a pinned mail / from a protected sender: the backend refuses
+   *  to move such a set, so the one-tap cleanup leaves it alone. */
+  locked: "pinned" | "protected" | null;
   mails: Mail[];    // newest first
 }
 
@@ -503,7 +512,8 @@ export interface Mail {
   size: number;
   seen: boolean;
   ai: Verdict | null;
-  pinned?: boolean;   // absent in search/duplicate/attachment lists
+  pinned?: boolean;   // absent in search/attachment lists
+  msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
 }
 
