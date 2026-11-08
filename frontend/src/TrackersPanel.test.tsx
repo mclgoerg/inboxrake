@@ -61,7 +61,7 @@ test("data: headline share, numbers, senders, hosts and the explainer",
   async () => {
     trackers.mockResolvedValue(rep());
     show();
-    await screen.findByText("of the mails we checked carry a tracker");
+    await screen.findByText("of the mails we checked carry a tracking pixel");
     expect(screen.getByRole("img", { name: "63% of the mails we checked "
       + "carry a tracking pixel" })).toBeTruthy();
     expect(screen.getByText("63 %")).toBeTruthy();
@@ -174,7 +174,7 @@ test("German", async () => {
   setLang("de");
   trackers.mockResolvedValue(rep());
   show();
-  await screen.findByText("der geprüften Mails tragen einen Tracker");
+  await screen.findByText("der geprüften Mails tragen ein Tracking-Pixel");
   expect(screen.getByText("40 von 40 Mails geprüft")).toBeTruthy();
   expect(screen.getByText("Absender mit dem meisten Tracking")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Mails von Shop News anzeigen" }))

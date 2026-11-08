@@ -596,7 +596,7 @@ export const EN: Record<string, string> = {
   "col.status_tags": "Status & tags",
   "tracker.title": "Trackers",
   "tracker.sub": "Who tracks your opens and clicks",
-  "tracker.ring_title": "of the mails we checked carry a tracker",
+  "tracker.ring_title": "of the mails we checked carry a tracking pixel",
   "tracker.pixel_short": "pixel",
   "tracker.click_short": "click tracking",
   "tracker.safe_line":

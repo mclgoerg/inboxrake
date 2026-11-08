@@ -290,7 +290,7 @@ export const DE: Record<string, string> = {
   "col.status_tags": "Status & Tags",
   "tracker.title": "Tracker",
   "tracker.sub": "Wer deine Öffnungen und Klicks verfolgt",
-  "tracker.ring_title": "der geprüften Mails tragen einen Tracker",
+  "tracker.ring_title": "der geprüften Mails tragen ein Tracking-Pixel",
   "tracker.pixel_short": "Pixel",
   "tracker.click_short": "Klick-Tracking",
   "tracker.safe_line":
