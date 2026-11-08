@@ -232,3 +232,11 @@ test("Clean up: a running attachment analysis shows Running…", () => {
   expect(screen.getByRole("button", { name: /^Attachments/ }).textContent)
     .toContain("Running…");
 });
+
+test("Clean up: a capped duplicates answer is shown as a lower bound", async () => {
+  duplicates.mockResolvedValue(Array.from({ length: 200 }, () =>
+    ({ wasted: 1, mails: [{}, {}] })));
+  render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("200+ copies"));
+});

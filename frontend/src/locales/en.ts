@@ -500,6 +500,7 @@ export const EN: Record<string, string> = {
   "tab.running": "Running…",
   "tab.dup_copies": "{n} copies",
   "tab.dup_copies_one": "1 copy",
+  "tab.dup_copies_more": "{n}+ copies",
   "tab.dup_none": "No copies found",
   "tab.dup_none_value": "0",
   "tab.att_sub": "in attachments",

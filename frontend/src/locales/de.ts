@@ -206,6 +206,7 @@ export const DE: Record<string, string> = {
   "tab.running": "Läuft…",
   "tab.dup_copies": "{n} Kopien",
   "tab.dup_copies_one": "1 Kopie",
+  "tab.dup_copies_more": "{n}+ Kopien",
   "tab.dup_none": "Keine Kopien gefunden",
   "tab.dup_none_value": "0",
   "tab.att_sub": "in Anhängen",

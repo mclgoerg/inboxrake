@@ -101,7 +101,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
   // Duplicates are derived from the scanned index, so the server always has
   // the current result: fetch it once the scan is done (and again after the
   // mailbox changed).
-  const [dups, setDups] = useState<{ copies: number; wasted: number } | null>(
+  const [dups, setDups] = useState<{ copies: number; wasted: number; capped: boolean } | null>(
     null);
   const rev = state?.groups_rev;
   useEffect(() => {
@@ -109,7 +109,9 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
     let alive = true;
     Promise.resolve().then(() => api.duplicates()).then((sets) => alive && setDups({
       copies: sets.reduce((n, s) => n + Math.max(0, s.mails.length - 1), 0),
-      wasted: sets.reduce((n, s) => n + s.wasted, 0) }))
+      wasted: sets.reduce((n, s) => n + s.wasted, 0),
+      // the server returns at most 200 sets: a lower bound then
+      capped: sets.length >= 200 }))
       .catch(() => {});
     return () => { alive = false; };
   }, [account, done, rev]);
@@ -198,7 +200,8 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             value={dups ? (dups.copies > 0 ? fmtSize(dups.wasted)
               : t("tab.dup_none_value")) : null}
             sub={dups ? (dups.copies > 0
-              ? t("tab.dup_copies", { n: dups.copies.toLocaleString() })
+              ? t(dups.capped ? "tab.dup_copies_more" : "tab.dup_copies",
+                { n: dups.copies.toLocaleString() })
               : t("tab.dup_none")) : t("tab.dup_sub")} disabled={!done}
             onClick={() => onOpen("duplicates")} />
         </li>
