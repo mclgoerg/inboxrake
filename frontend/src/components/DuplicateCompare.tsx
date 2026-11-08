@@ -2,15 +2,26 @@ import { Info, Lock } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { fmtSize } from "../lib";
 import { fmtNum } from "../numfmt";
-import { t } from "../i18n";
+import { nowDate } from "../clock";
+import { getLang, t } from "../i18n";
 import type { DupKind, DupSet, Mail } from "../types";
-import { Avatar, Button, PopupSelect, SectionLabel, Segmented, ShortDate, Tag,
+import { Avatar, Button, PopupSelect, SectionLabel, Segmented, Tag,
   Modal, useMediaQuery } from "./ui";
 
 /** "42 s" / "4 min": how far apart two mails arrived. */
 export const gapLabel = (seconds: number): string =>
   seconds < 60 ? t("dups.span_s", { n: Math.max(0, Math.round(seconds)) })
     : t("dups.span_min", { n: Math.round(seconds / 60) });
+
+/** "8 Sept, 12:38:10": the stored `date` has no seconds, so the time of a
+ *  mail comes from its timestamp (local time, like every other clock). */
+const fmtReceived = (ts: number): string =>
+  new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB", {
+    day: "numeric", month: "short",
+    ...(new Date(ts * 1000).getFullYear() === nowDate().getFullYear() ? {}
+      : { year: "numeric" }),
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).format(new Date(ts * 1000));
 
 const letter = (i: number) => String.fromCharCode(65 + (i % 26));
 
@@ -88,8 +99,7 @@ export function DuplicateCompare({ set, kind, busy, onClose, onOpen,
       </div>
       <dl className="space-y-2">
         <Fact label={t("dups.cmp_received")} differs={!same.time}>
-          <ShortDate iso={m.date || ""} />
-          {" "}{(m.date || "").slice(11, 19)}
+          {fmtReceived(m.ts)}
         </Fact>
         <Fact label={t("dups.cmp_size")} differs={!same.size}>
           {sizeText(m)}</Fact>

@@ -1,5 +1,5 @@
-import { CircleCheck, CircleMinus, Copy, Lock, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CircleCheck, CircleMinus, Copy, Lock, Pin, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, mailKey } from "../api";
 import { fmtAgo, fmtSize } from "../lib";
 import { t } from "../i18n";
@@ -29,6 +29,15 @@ const loadAll = async (): Promise<Lists> => {
   return { identical, versions, possible, sum };
 };
 
+/** The one-tap plan: the older copies of every identical set, except sets
+ *  the backend would refuse as a whole (a pinned copy / a protected sender). */
+const planOf = (sets: DupSet[]) => {
+  const open = sets.filter((s) => !s.locked);
+  return { items: open.flatMap((s) => s.mails.slice(1)),
+    wasted: open.reduce((n, s) => n + s.wasted, 0),
+    locked: sets.length - open.length };
+};
+
 /** Duplicate finder: one number and one button for the identical copies
  *  ("Remove N copies" = every identical set but its newest copy, moved to
  *  Trash through the SAME confirm / protected / pinned / undo path as
@@ -36,11 +45,14 @@ const loadAll = async (): Promise<Lists> => {
  *  the manual selection mode, and a Compare sheet for versions and possible
  *  double-sends, which are never pre-marked. "Keep all" hides a set you
  *  checked (remembered per account, restorable). */
-export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
+export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   onClose: () => void;
   onDeleted: () => void;
   /** When the scan the lists come from finished (epoch seconds). */
   scannedTs?: number | null;
+  /** The lists are fetched again whenever this changes (a new scan, an Undo
+   *  elsewhere in the app): the page may stay open while the index moves. */
+  reloadKey?: string | number;
 }) {
   const [lists, setLists] = useState<Lists | null>(null);
   const [error, setError] = useState("");
@@ -52,6 +64,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
   const [note, setNote] = useState("");
   const [working, setWorking] = useState(false);
   const toast = useOptionalToast();
+  const keptToast = useRef<number | null>(null);
   const wide = useMediaQuery("(min-width: 640px)");
 
   const sets = lists?.identical ?? [];
@@ -93,6 +106,15 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
     return () => { alive = false; };
   }, []);
 
+  // The index moved under an open page (new scan, Undo): show what is true.
+  const firstKey = useRef(true);
+  useEffect(() => {
+    if (firstKey.current) { firstKey.current = false; return; }
+    let alive = true;
+    loadAll().then((l) => alive && setLists(l)).catch(() => {});
+    return () => { alive = false; };
+  }, [reloadKey]);
+
   // What a segment says it holds: the summary's full count (no 200 cap),
   // else what was listed.
   const count = (k: DupKind): number => {
@@ -105,14 +127,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
   const dismissed = lists?.sum?.dismissed ?? 0;
   const empty = !!lists && KINDS.every((k) => lists[k].length === 0);
 
-  // The one-tap plan: the older copies of every identical set, except sets
-  // the backend would refuse as a whole (a pinned copy / a protected sender).
-  const plan = useMemo(() => {
-    const open = sets.filter((s) => !s.locked);
-    return { items: open.flatMap((s) => s.mails.slice(1)),
-      wasted: open.reduce((n, s) => n + s.wasted, 0),
-      locked: sets.length - open.length };
-  }, [sets]);
+  const plan = useMemo(() => planOf(sets), [sets]);
   const capped = !!lists?.sum && lists.sum.sets > sets.length;
 
   const toggle = (k: string) => {
@@ -156,10 +171,20 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
     await trashItems(items);
   };
 
+  // The selection is taken from the server's answer of this moment, not
+  // from what the page showed when it was opened: if it changed meanwhile,
+  // the page updates and the confirm names the new count.
   const removeCopies = async () => {
     if (working || plan.items.length === 0) return;
-    if (!await confirmTrashMails(plan.items.length)) return;
-    await trashItems(itemsOf(plan.items));
+    let now = plan;
+    try {
+      const fresh = await loadAll();
+      setLists(fresh);
+      now = planOf(fresh.identical);
+    } catch { /* keep the shown plan: the backend still guards every mail */ }
+    if (now.items.length === 0) { setNote(t("dups.gone")); return; }
+    if (!await confirmTrashMails(now.items.length)) return;
+    await trashItems(itemsOf(now.items));
   };
 
   const trashOlder = async (s: DupSet) => {
@@ -176,6 +201,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
   };
 
   const restore = async (set?: { kind: DupKind; key: string }) => {
+    // "Show hidden" makes an earlier "Hidden - Undo" toast meaningless.
+    if (!set && keptToast.current != null) toast?.dismiss(keptToast.current);
     try { await api.restoreDuplicates(set); }
     catch (e: any) { setNote(t("err.generic", { msg: e.message ?? e })); return; }
     await refresh();
@@ -192,8 +219,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
       return next;
     });
     await refresh();
-    toast?.show(t("dups.kept_toast"), { action: {
-      label: t("Undo"), onClick: () => restore({ kind, key: s.key }) } });
+    keptToast.current = toast?.show(t("dups.kept_toast"), { action: {
+      label: t("Undo"), onClick: () => restore({ kind, key: s.key }) } }) ?? null;
   };
 
   const openMail = (m: Mail) => { setCompare(null); setView(m); };
@@ -226,6 +253,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
         <button type="button" onClick={() => setView(m)}
           className="flex min-h-9 coarse:min-h-11 min-w-0 flex-1 cursor-pointer
             items-center gap-2 px-2 py-1.5 text-left">
+          {m.pinned && (
+            <>
+              <Pin size={14} aria-hidden className="shrink-0 text-muted" />
+              <span className="sr-only">{t("dups.locked_pinned")}</span>
+            </>
+          )}
           {mark === "keep" && <CircleCheck size={16} aria-hidden
             className="shrink-0 text-safe-fg" />}
           {mark === "remove" && <CircleMinus size={16} aria-hidden
@@ -277,35 +310,44 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs }: {
     return (
       <div key={s.key} role="group" aria-label={subject}
         className="rounded-card bg-panel p-3 sm:p-4">
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div className="flex items-start gap-3">
           <Avatar name={head.addr || "?"} size="md" />
-          <div className="min-w-0 flex-1 basis-40">
-            <div className="truncate type-body font-semibold">{subject}</div>
-            <div className="truncate type-meta text-muted">{meta}</div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {kind === "identical" && !s.locked && (
-              <Tag tone="safe">{t("dups.wasted",
-                { size: fmtSize(s.wasted) })}</Tag>
-            )}
-            {s.locked && (
-              <Tag tone="review" className="inline-flex items-center gap-1">
-                <Lock size={14} aria-hidden />
-                {t(`dups.locked_${s.locked}`)}
-              </Tag>
-            )}
-            {kind !== "identical" && (
-              <Button size="sm" variant="tinted"
-                aria-label={t("dups.compare_named", { subject })}
-                onClick={() => setCompare({ kind, key: s.key })}>
-                {t("dups.compare")}
+          {/* phones: the buttons sit under the text; from sm on, at its right */}
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row
+            sm:items-start sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate type-body font-semibold">{subject}</div>
+              <div className="break-words type-meta text-muted">{meta}</div>
+              {((kind === "identical" && !s.locked) || s.locked) && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {kind === "identical" && !s.locked && (
+                    <Tag tone="safe">{t("dups.wasted",
+                      { size: fmtSize(s.wasted) })}</Tag>
+                  )}
+                  {s.locked && (
+                    <Tag tone="review"
+                      className="inline-flex items-center gap-1">
+                      <Lock size={14} aria-hidden />
+                      {t(`dups.locked_${s.locked}`)}
+                    </Tag>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {kind !== "identical" && (
+                <Button size="sm" variant="tinted"
+                  aria-label={t("dups.compare_named", { subject })}
+                  onClick={() => setCompare({ kind, key: s.key })}>
+                  {t("dups.compare")}
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" disabled={working}
+                aria-label={t("dups.keep_all_named", { subject })}
+                onClick={() => keepAll(kind, s)}>
+                {t("dups.keep_all")}
               </Button>
-            )}
-            <Button size="sm" variant="secondary" disabled={working}
-              aria-label={t("dups.keep_all_named", { subject })}
-              onClick={() => keepAll(kind, s)}>
-              {t("dups.keep_all")}
-            </Button>
+            </div>
           </div>
         </div>
         <ul className="mt-2 space-y-1">

@@ -39,8 +39,11 @@ vi.mock("./components/MailList", () => ({
     <div>viewing mail {mail.uid}<button onClick={onBack}>back to list</button></div>,
 }));
 
+// a whole minute, so ":SS" in a test is the same in every time zone
+const BASE = 1767355380;
+
 const mk = (uid: number, folder = "INBOX", over = {}) => ({ uid, folder,
-  date: "2026-01-02T10:30:00", ts: 1000 + uid, subject: "Invoice",
+  date: "2026-01-02 10:30", ts: BASE + uid, subject: "Invoice",
   addr: "a@x.example", size: 2048, seen: false, ai: null,
   msgid: "<inv@x.example>", pinned: false, ...over });
 
@@ -136,15 +139,16 @@ test("the one-tap never takes versions or possible sets", async () => {
 test("pinned or protected sets are left out of the one-tap, and said so",
   async () => {
     duplicates.mockResolvedValue([ident(),
-      dset("<p@x.example>", [mk(9, "INBOX", { msgid: "<p@x.example>" }),
-        mk(8, "INBOX", { msgid: "<p@x.example>" })], { locked: "pinned" })]);
+      dset("<p@x.example>", [mk(9, "INBOX", { msgid: "<p@x.example>", pinned: true }),
+        mk(8, "INBOX", { msgid: "<p@x.example>", pinned: true })], { locked: "pinned" })]);
     duplicatesSummary.mockResolvedValue(summaryOf({ sets: 2, wasted: 6144 }));
     deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
     show();
     await screen.findByRole("button", { name: "Remove 2 copies" });
     expect(screen.getByText(/1 set with protected senders or pinned mails is left alone/))
       .toBeTruthy();
-    expect(screen.getByText("pinned")).toBeTruthy();
+    // the tag, plus a pin on each pinned copy
+    expect(screen.getAllByText("pinned")).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "Remove 2 copies" }));
     await pressDialog(/Move to Trash \(2\)/);
     await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
@@ -157,8 +161,62 @@ test("when every identical set is locked there is no Remove button", async () =>
   duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1 }));
   show();
   await screen.findByText("Nothing to remove in one tap");
+  expect(screen.getByText("protected sender")).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
   expect(screen.getByRole("button", { name: "Review each" })).toBeTruthy();
+});
+
+test("the selection is re-read right before the confirm and names the fresh count",
+  async () => {
+    duplicates.mockResolvedValueOnce([ident()])
+      .mockResolvedValue([dset("<inv@x.example>", [mk(3), mk(2, "Archive")])]);
+    duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
+    deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    const dlg = await findDialog();
+    expect(dlg.textContent).toContain("1 selected mail");
+    expect(dlg.textContent).not.toContain("2 selected");
+    await pressDialog(/Move to Trash \(1\)/);
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+      [["Archive", 2]], "trash"));
+  });
+
+test("when the fresh data has nothing left to remove, no confirm opens",
+  async () => {
+    duplicates.mockResolvedValueOnce([ident()]).mockResolvedValue([]);
+    duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    await screen.findByText(/Nothing left to remove - the list was updated/);
+    await expectNoDialog();
+    expect(deleteMessages).not.toHaveBeenCalled();
+  });
+
+test("a new reloadKey (scan, Undo) fetches the lists again", async () => {
+  duplicates.mockResolvedValueOnce([]).mockResolvedValue([ident()]);
+  duplicatesSummary.mockResolvedValueOnce(summaryOf())
+    .mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
+  const ui = (key: string) => <ToastProvider><DialogProvider>
+    <DuplicatesPanel onClose={() => {}} onDeleted={() => {}} reloadKey={key} />
+  </DialogProvider></ToastProvider>;
+  const { rerender } = render(ui("1:0"));
+  await screen.findByText("No duplicates found");
+  rerender(ui("2:0"));
+  await screen.findByRole("button", { name: "Remove 2 copies" });
+});
+
+test("Show hidden also dismisses the lingering Hidden toast", async () => {
+  duplicates.mockResolvedValue([ident(), dset("<o@x.example>",
+    [mk(20, "INBOX", { subject: "Other" }), mk(21, "Archive", { subject: "Other" })])]);
+  duplicatesSummary.mockResolvedValueOnce(summaryOf({ sets: 2, wasted: 8192 }))
+    .mockResolvedValue(summaryOf({ sets: 2, wasted: 8192, dismissed: 1 }));
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Keep all: Other" }));
+  await screen.findByText(/Hidden - you keep every copy/);
+  fireEvent.click(await screen.findByRole("button", { name: "Show hidden (1)" }));
+  await waitFor(() => expect(screen.queryByText(/Hidden - you keep every copy/))
+    .toBeNull());
 });
 
 test("a refused move (a pinned copy slipped in) shows the error and keeps the "
@@ -301,8 +359,11 @@ test("a queued deletion keeps candidates visible and reconciles a failed job",
 
 test("after a one-tap run every list and the counts refresh, even if versions "
   + "fails", async () => {
-  duplicates.mockResolvedValueOnce([ident()]).mockResolvedValue([]);
+  // load, the re-read before the confirm, then the list after the run
+  duplicates.mockResolvedValueOnce([ident()]).mockResolvedValueOnce([ident()])
+    .mockResolvedValue([]);
   duplicatesSummary.mockResolvedValueOnce(summaryOf({ sets: 1, wasted: 4096 }))
+    .mockResolvedValueOnce(summaryOf({ sets: 1, wasted: 4096 }))
     .mockResolvedValue(summaryOf());
   duplicateVersions.mockRejectedValue(new Error("boom"));
   deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
@@ -405,8 +466,8 @@ const openCompare = async () => {
 test("Compare shows two mails side by side and marks what differs",
   async () => {
     possibleDuplicates.mockResolvedValue([dset("p:abc", [
-      poss(8, { ts: 2000, size: 76800, seen: false, date: "2026-01-02T12:43:52" }),
-      poss(7, { ts: 1958, size: 76800, seen: true, date: "2026-01-02T12:43:10" })],
+      poss(8, { ts: BASE + 52, size: 76800, seen: false, date: "2026-01-02 12:43" }),
+      poss(7, { ts: BASE + 10, size: 76800, seen: true, date: "2026-01-02 12:43" })],
       { wasted: 0 })]);
     duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
     show();
@@ -415,8 +476,9 @@ test("Compare shows two mails side by side and marks what differs",
     expect(cmp.getByText("Mail A")).toBeTruthy();
     expect(cmp.getByText("Mail B")).toBeTruthy();
     expect(cmp.getByText("keep")).toBeTruthy();
-    expect(cmp.getByText(/12:43:52/)).toBeTruthy();
-    expect(cmp.getByText(/12:43:10/)).toBeTruthy();
+    // the stored date has no seconds: the time comes from the timestamp
+    expect(cmp.getByText(/\d\d:\d\d:52$/)).toBeTruthy();
+    expect(cmp.getByText(/\d\d:\d\d:10$/)).toBeTruthy();
     // received, read and Message-ID differ on both sides; size and folder do not
     expect(cmp.getAllByText("(differs)")).toHaveLength(6);
     expect(cmp.getByText(/Same size, 42 s apart - most likely sent twice/))
@@ -424,10 +486,23 @@ test("Compare shows two mails side by side and marks what differs",
     expect(cmp.queryByRole("tablist", { name: "Mails to compare" })).toBeNull();
   });
 
+test("two mails of the same minute are told apart by the seconds, and equal "
+  + "times are not marked", async () => {
+  possibleDuplicates.mockResolvedValue([dset("p:abc", [
+    poss(8, { ts: BASE + 30, date: "2026-01-02 12:43" }),
+    poss(7, { ts: BASE + 30, date: "2026-01-02 12:43" })], { wasted: 0 })]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
+  show();
+  const cmp = within(await openCompare());
+  expect(cmp.getAllByText(/\d\d:\d\d:30$/)).toHaveLength(2);
+  // only the two Message-IDs differ
+  expect(cmp.getAllByText("(differs)")).toHaveLength(2);
+});
+
 test("different sizes: the note says so and equal-looking sizes show bytes",
   async () => {
     possibleDuplicates.mockResolvedValue([dset("p:abc", [
-      poss(8, { ts: 2000, size: 75800 }), poss(7, { ts: 1999, size: 75900 })],
+      poss(8, { ts: BASE + 1, size: 75800 }), poss(7, { ts: BASE, size: 75900 })],
       { wasted: 0 })]);
     duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
     show();
@@ -439,8 +514,8 @@ test("different sizes: the note says so and equal-looking sizes show bytes",
 
 test("the pair switcher walks a bigger set", async () => {
   possibleDuplicates.mockResolvedValue([dset("p:abc", [
-    poss(9, { ts: 3000, folder: "Inbox" }), poss(8, { ts: 2000, folder: "Orders" }),
-    poss(7, { ts: 1000, folder: "Archive" })], { wasted: 0 })]);
+    poss(9, { ts: BASE + 300, folder: "Inbox" }), poss(8, { ts: BASE + 200, folder: "Orders" }),
+    poss(7, { ts: BASE + 100, folder: "Archive" })], { wasted: 0 })]);
   duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
   show();
   const cmp = within(await openCompare());
