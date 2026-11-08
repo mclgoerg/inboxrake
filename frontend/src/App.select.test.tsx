@@ -3,7 +3,7 @@
  * "Done" ends it and clears the selection; the keyboard `x` and the
  * bottom bar keep working; changing the grouping ends it. */
 
-import { cleanup, fireEvent, render, screen, waitFor } from
+import { act, cleanup, fireEvent, render, screen, waitFor } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -98,6 +98,11 @@ const boot = async () => {
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await waitFor(() => expect(screen.getAllByText("Sender A").length)
     .toBeGreaterThan(0));
+  // The rows show in the commit after the state fetch (outside act()); the
+  // window keydown handler that knows them is attached by that commit's
+  // effects, a separate task a loaded machine delays. A key pressed before
+  // it is silently dropped: flush the effects before the test starts.
+  await act(async () => {});
 };
 const boxes = () => document.querySelectorAll(
   "tbody input[type=checkbox]");
