@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 let state: any;
 const protectMany = vi.fn().mockResolvedValue({ protected: [] });
 const unsubscribeBulk = vi.fn().mockResolvedValue(
-  { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0 });
+  { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0, run: 1 });
 const deleteGroups = vi.fn().mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
 const calls: string[] = [];
 

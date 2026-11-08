@@ -1447,7 +1447,8 @@ def test_bulk_unsubscribe_in_smart_covers_own_rows_and_skips_pools(unsubbable):
         "s:news@bigshop.example", "o:acme.example", "k:newsletter"]})
     assert r.status_code == 200
     assert r.json() == {"queued": 1, "skipped_protected": 0, "skipped_done": 0,
-                        "capped": 0, "skipped_pooled": 2}
+                        "capped": 0, "skipped_pooled": 2,
+                        "run": r.json()["run"]}
     wait_unsub_done()
     # only the big sender was unsubscribed - not one of the pooled senders
     assert set(unsubstore.load_account("default")) == {"news@bigshop.example"}

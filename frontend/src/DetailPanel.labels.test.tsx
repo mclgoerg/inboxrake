@@ -37,7 +37,7 @@ const mount = (grouping: "sender" | "domain" | "smart", group: Group,
   <DialogProvider>
     <DetailPanel grouping={grouping} group={group} aiEnabled={false}
       protectedNow={false} unsubscribedNow={null}
-      onTrash={async () => true} folders={[]} sieve={false}
+      onUnsubscribe={() => {}} onTrash={async () => true} folders={[]} sieve={false}
       onClose={() => {}} onDeleted={() => {}} onLabelsSaved={saved ?? undefined}
       labelSender={mkGroup()} categories={[]} />
   </DialogProvider>);

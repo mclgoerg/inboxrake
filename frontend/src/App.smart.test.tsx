@@ -19,7 +19,13 @@ const knowledge = vi.fn();
 const knowledgePut = vi.fn();
 const knowledgeKeepAi = vi.fn();
 const unsubscribeBulk = vi.fn().mockResolvedValue({ queued: 1,
-  skipped_protected: 0, skipped_done: 0, capped: 0 });
+  skipped_protected: 0, skipped_done: 0, capped: 0, run: 1 });
+const unsubscribePreview = vi.fn().mockResolvedValue({
+  senders: [{ addr: "big@shop.example", name: "Big Shop", via: "http",
+    mails: 12, size: 1000 }],
+  skipped_protected: 0, skipped_done: 0, capped: 0, skipped_no_header: 0,
+  skipped_pooled: 0,
+  trash: { groups: [], mails: 0, size: 0, pinned: 0 } });
 const block = vi.fn().mockResolvedValue({ rule: { id: "r1" } });
 const deleteGroups = vi.fn()
   .mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
@@ -35,6 +41,7 @@ vi.mock("./api", async (importOriginal) => ({
     protect: (...a: unknown[]) => protect(...a),
     protectMany: (...a: unknown[]) => protectMany(...a),
     unsubscribeBulk: (...a: unknown[]) => unsubscribeBulk(...a),
+    unsubscribePreview: (...a: unknown[]) => unsubscribePreview(...a),
     aiSortEstimate: (...a: unknown[]) => aiSortEstimate(...a),
     aiSort: (...a: unknown[]) => aiSort(...a),
     aiSortClear: (...a: unknown[]) => aiSortClear(...a),
@@ -164,6 +171,7 @@ afterEach(() => {
   protect.mockClear();
   protectMany.mockClear();
   unsubscribeBulk.mockClear();
+  unsubscribePreview.mockClear();
   aiSortEstimate.mockReset();
   aiSort.mockClear();
   aiSortClear.mockClear();
@@ -644,13 +652,15 @@ test("a selection unsubscribes only from own rows - pooled rows are skipped, "
   tickRow("payco.example");
   expect(unsubOption().disabled).toBe(false);
   barAction("unsubscribe");
+  // the unsubscribe sheet: how the one sender works, and the pooled note
   const dlg = await findDialog();
-  expect(within(dlg).getByText("Unsubscribe from the senders of the selected group?"))
-    .toBeTruthy();
+  expect(await within(dlg).findByText("Web page")).toBeTruthy();
+  expect(unsubscribePreview).toHaveBeenCalledWith("smart", ["s:big@shop.example"]);
+  expect(unsubscribeBulk).not.toHaveBeenCalled();
   expect(within(dlg).getByText(
     "2 pooled rows are skipped: open one to unsubscribe from a single sender."))
     .toBeTruthy();
-  await pressDialog("Unsubscribe");
+  await pressDialog("Unsubscribe 1 sender");
   await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalledTimes(1));
   // exactly the own row's key - never a pool's
   expect(unsubscribeBulk).toHaveBeenCalledWith("smart", ["s:big@shop.example"]);

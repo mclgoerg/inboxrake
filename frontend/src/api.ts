@@ -6,7 +6,8 @@ import type {
   Mail, MessageDetail,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
-  UndoEntry, UndoIdent, UnsubBulkResult, UnsubResult,
+  UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
+  UnsubRunItem,
 } from "./types";
 
 /* Active account: every API call is scoped to exactly one account (strict
@@ -359,6 +360,10 @@ export const api = {
     req<UnsubResult>("/api/unsubscribe", { grouping, key }),
   unsubscribeBulk: (grouping: Grouping, keys: string[]) =>
     req<UnsubBulkResult>("/api/unsubscribe_bulk", { grouping, keys }),
+  unsubscribePreview: (grouping: Grouping, keys: string[], single = false) =>
+    req<UnsubPreview>("/api/unsubscribe/preview", { grouping, keys, single }),
+  unsubscribeResults: () =>
+    req<{ run: number; items: UnsubRunItem[] }>("/api/unsubscribe/results"),
   unsubscribeAck: (addr: string, done = true) =>
     req<{ status?: string; ok?: boolean }>("/api/unsubscribe/ack",
       { addr, done }),

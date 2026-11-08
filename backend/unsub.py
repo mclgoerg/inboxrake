@@ -36,6 +36,7 @@ from . import auditlog
 from . import config as cfgmod
 from . import demo
 from . import mailops
+from . import pinstore
 from . import smtpout
 from . import tenants
 from . import unsubstore
@@ -70,6 +71,22 @@ def parse_unsub(header: str, one_click: bool) -> dict:
         elif low.startswith(("http://", "https://")) and http is None:
             http = u
     return {"mailto": mailto, "http": http, "one_click": one_click}
+
+
+def method_of(parts: dict) -> str | None:
+    """How a parsed List-Unsubscribe header would be acted on - the ONE
+    decision unsubscribe_addr runs and the sheet's preview shows:
+    "one_click" (automated HTTPS POST), "mailto" (an unsubscribe mail from
+    the user's address) or "http" (a page the user confirms), else None.
+    RFC 8058: one-click is https only; an http URL is a plain link."""
+    if (parts["http"] and parts["one_click"]
+            and parts["http"].lower().startswith("https://")):
+        return "one_click"
+    if parts["mailto"]:
+        return "mailto"
+    if parts["http"]:
+        return "http"
+    return None
 
 
 def _public_ip(raw: str):
@@ -201,19 +218,18 @@ def unsubscribe_addr(im: dict, addr: str, header: str, one_click: bool,
     log.info("unsubscribe %r: one_click=%s mailto=%s http_host=%s",
              addr, parts["one_click"], bool(parts["mailto"]), host)
     mailing = False
+    how = method_of(parts)
     try:
-        # RFC 8058: one-click is https only; an http URL is a plain link.
-        if (parts["http"] and parts["one_click"]
-                and parts["http"].lower().startswith("https://")):
+        if how == "one_click":
             _post_one_click(parts["http"])
             return {"status": "done", "method": "one-click POST",
                     "detail": parts["http"], "error": ""}
-        if parts["mailto"]:
+        if how == "mailto":
             mailing = True
             _send_mailto(im, parts["mailto"], account_name)
             return {"status": "done", "method": "unsubscribe mail sent",
                     "detail": parts["mailto"], "error": ""}
-        if parts["http"]:
+        if how == "http":
             # Confirmation pages can't be automated reliably - open in browser.
             return {"status": "link", "method": "open link",
                     "detail": parts["http"], "error": ""}
@@ -226,11 +242,10 @@ def unsubscribe_addr(im: dict, addr: str, header: str, one_click: bool,
             "error": mailops.UNSUB_NO_METHOD}
 
 
-def unsubscribe(grouping: str, key: str, acc=None) -> dict:
-    """Unsubscribe from a group using its newest mail's List-Unsubscribe.
-    Synchronous (one sender, triggered from a group's detail view); the
-    outcome is recorded like a bulk run's."""
-    acc = acc or accounts.get()
+def _newest_unsub(grouping: str, key: str, acc) -> dict:
+    """The newest mail of one group that carries a List-Unsubscribe header
+    (its index record) - what a single-sender unsubscribe acts on. Raises
+    the coded error for an unknown group, a pooled row or no header."""
     mails = mailops.group_mails(grouping, key, acc=acc)
     with acc.lock:
         rec = acc.state["groups"][grouping].get(key)
@@ -246,6 +261,15 @@ def unsubscribe(grouping: str, key: str, acc=None) -> dict:
                 break
     if not newest:
         raise RuntimeError(mailops.coded(mailops.UNSUB_NO_METHOD))
+    return newest
+
+
+def unsubscribe(grouping: str, key: str, acc=None) -> dict:
+    """Unsubscribe from a group using its newest mail's List-Unsubscribe.
+    Synchronous (one sender, triggered from a group's detail view); the
+    outcome is recorded like a bulk run's."""
+    acc = acc or accounts.get()
+    newest = _newest_unsub(grouping, key, acc)
 
     res = unsubscribe_addr(cfgmod.account_imap(acc.name), newest["addr"],
                            newest["unsub"], newest["unsub_post"], acc.name)
@@ -261,7 +285,9 @@ def unsubscribe(grouping: str, key: str, acc=None) -> dict:
     with acc.lock:
         acc.state["groups_rev"] += 1
     return {"action": res["status"], "method": res["method"],
-            "detail": res["detail"], "addr": newest["addr"]}
+            "detail": res["detail"], "addr": newest["addr"],
+            "via": method_of(parse_unsub(newest["unsub"],
+                                         newest["unsub_post"]))}
 
 
 def acknowledge(addr: str, acc=None) -> dict:
@@ -352,6 +378,13 @@ def _run_bulk(acc, items: list) -> None:
                 st[{"done": "done", "link": "links",
                     "failed": "failed"}[res["status"]]] += 1
                 st["progress"] = f"{i}/{total}"
+                # What the result sheet lists (GET /api/unsubscribe/results):
+                # kept off the state, which every live update carries.
+                acc.unsub_results["items"].append({
+                    "addr": addr, "status": res["status"],
+                    "via": method_of(parse_unsub(header, one_click)),
+                    "link": res["detail"] if res["status"] == "link" else "",
+                    "error": res["error"]})
     except Exception as exc:        # config gone, mailbox unreadable, …
         log.exception("[%s] bulk unsubscribe aborted", acc.name)
         with acc.lock:
@@ -387,12 +420,101 @@ def start_bulk(grouping: str, keys: list[str], acc=None) -> dict:
             out["skipped_pooled"] = pooled
         if not items:
             return out
+        # `seq` names the run (like the delete job's): the sheet that started
+        # it waits for ITS run to finish, not for any "done" it sees.
+        run = acc.state["unsub"].get("seq", 0) + 1
         acc.state["unsub"] = {
             "status": "running", "progress": f"0/{len(items)}", "error": "",
             "total": len(items), "done": 0, "links": 0, "failed": 0,
-            "skipped": skipped_protected + skipped_done + capped}
+            "skipped": skipped_protected + skipped_done + capped, "seq": run}
+        acc.unsub_results = {"run": run, "items": []}
+        out["run"] = run
         acc.cancel["unsub"] = False
     threading.Thread(target=tenants.call_in,
                      args=(acc.tenant, _run_bulk, acc, items),
                      daemon=True).start()
     return out
+
+
+# --------------------------------------------------------- sheet: preview
+
+def preview(grouping: str, keys: list[str], acc=None,
+            single: bool = False) -> dict:
+    """What an unsubscribe of these groups would do, per sender, BEFORE it
+    runs - from the same source the run uses (the newest mail's stored
+    List-Unsubscribe header + one-click flag): `senders` [{addr, name, via
+    ("one_click"|"mailto"|"http"), mails, size}] plus the counts a run
+    skips (and the groups with no unsubscribe header at all). `single` = the detail view's one-sender unsubscribe (the newest
+    mail of the one group, not every sender of it).
+
+    `trash` is what "also move their mails to Trash" would move: the
+    groups that consist ONLY of these senders' mails (so trashing the
+    group is exactly trashing them), never a protected group, pinned mails
+    left out: {groups: [{key, addrs, mails, size}], mails, size, pinned}."""
+    acc = acc or accounts.get()
+    pinned_ids = pinstore.load_account(acc.name)
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    if single:
+        newest = _newest_unsub(grouping, keys[0], acc)
+        items = [(newest["addr"], newest["unsub"], newest["unsub_post"])]
+        skipped = (0, 0, 0, 0)
+        keys = keys[:1]
+    with acc.lock:
+        if not single:
+            items, sp, sd, pooled = _targets(grouping, keys, acc)
+            capped = max(0, len(items) - JOB_CAP)
+            items = items[:JOB_CAP]
+            skipped = (sp, sd, pooled, capped)
+        targets = {a: (h, oc) for a, h, oc in items}
+        recs = acc.state["groups"][grouping]
+        paddrs = mailops._protected_addrs(plist, acc)
+        stats = {a: {"mails": 0, "size": 0, "name": "", "ts": -1}
+                 for a in targets}
+        trash = {"groups": [], "mails": 0, "size": 0, "pinned": 0}
+        no_header = 0
+        for key in dict.fromkeys(keys):
+            rec = recs.get(key)
+            if not rec or _pooled(grouping, rec):
+                continue
+            if not mailops.group_unsub_senders(rec, acc):
+                no_header += 1
+            mails = [m for folder, uids in rec["folders"].items()
+                     for uid in uids
+                     if (m := acc.index.get(mailops.ikey(folder, uid)))]
+            for m in mails:
+                st = stats.get(m["addr"])
+                if st is None:
+                    continue
+                st["mails"] += 1
+                st["size"] += m["size"]
+                if m["ts"] > st["ts"]:
+                    st["ts"], st["name"] = m["ts"], m["name"]
+            if mails and all(m["addr"] in targets for m in mails) \
+                    and not mailops._group_protected(rec, paddrs, acc):
+                free = [m for m in mails if m["msgid"] not in pinned_ids]
+                size = sum(m["size"] for m in free)
+                trash["groups"].append({
+                    "key": key, "addrs": sorted({m["addr"] for m in mails}),
+                    "mails": len(free), "size": size})
+                trash["mails"] += len(free)
+                trash["size"] += size
+                trash["pinned"] += len(mails) - len(free)
+    senders = [{"addr": a, "name": st["name"],
+                "via": method_of(parse_unsub(*targets[a])),
+                "mails": st["mails"], "size": st["size"]}
+               for a, st in stats.items()]
+    out = {"senders": senders, "skipped_protected": skipped[0],
+           "skipped_done": skipped[1], "capped": skipped[3],
+           "skipped_no_header": no_header, "trash": trash}
+    if grouping == "smart":
+        out["skipped_pooled"] = skipped[2]
+    return out
+
+
+def last_results(acc=None) -> dict:
+    """The per-sender outcomes of the newest bulk run (this process):
+    {"run": seq, "items": [{addr, status, via, link, error}]}."""
+    acc = acc or accounts.get()
+    with acc.lock:
+        return {"run": acc.unsub_results["run"],
+                "items": list(acc.unsub_results["items"])}

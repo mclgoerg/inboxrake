@@ -33,6 +33,8 @@ import { SpaceMapPanel } from "./components/SpaceMapPanel";
 import { StatsPanel } from "./components/StatsPanel";
 import { AiFilterPanel } from "./components/AiFilterPanel";
 import { TriagePanel } from "./components/TriagePanel";
+import { UnsubscribeSheet, useUnsubscribeOpener, type UnsubRequest }
+  from "./components/UnsubscribeSheet";
 import { WrappedStory } from "./components/WrappedStory";
 import { AccountSwitcher } from "./components/AccountSwitcher";
 import { QueryBuilder } from "./components/QueryBuilder";
@@ -58,7 +60,6 @@ import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
 import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
   unsubscribableKeys }
   from "./smart";
-import { unsubscribeGroup } from "./unsub";
 import { DECK_MAX, protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
@@ -355,6 +356,7 @@ export default function App() {
     setSelectMode(false);
     setDetail(null);
     setSpaceOpen(false);
+    setUnsubSheet(null);
     setFilter("");
     setFocusIdx(-1);
     setAccountState(name);   // effect below reconnects SSE for this account
@@ -449,6 +451,12 @@ export default function App() {
   const seenJobs = useRef<{ scan?: string; d?: string; a?: string;
     u?: string; undo: string[]; seq?: number; maxSeq?: number } | null>(null);
   const startToast = useRef<{ unsub?: number }>({});
+  // The unsubscribe sheet (see UnsubscribeSheet): one for every way to
+  // unsubscribe. `sheetRun` = the bulk run it is following, whose end it
+  // shows itself (no toast).
+  const [unsubSheet, setUnsubSheet] = useState<UnsubRequest | null>(null);
+  const sheetRun = useRef<number | null>(null);
+  useUnsubscribeOpener(setUnsubSheet);
   useEffect(() => {
     if (!state) { seenJobs.current = null; return; }
     const prev = seenJobs.current;
@@ -510,7 +518,9 @@ export default function App() {
         toast.dismiss(startToast.current.unsub);
         startToast.current.unsub = undefined;
       }
-      if (unsub.status === "error")
+      if (sheetRun.current != null && unsub.seq === sheetRun.current) {
+        // the open sheet lists the outcome per sender
+      } else if (unsub.status === "error")
         notify(t("err.unsub", { msg: errorText(unsub.error) }), "error");
       else if (unsub.status === "done" && unsub.total > 0)
         notify(t("unsub.done", { done: unsub.done, links: unsub.links,
@@ -1375,33 +1385,27 @@ export default function App() {
   // one by one, in their own detail view.
   const unsubKeys = (keys: string[]) =>
     unsubscribableKeys(mode === "smart", keys, modeGroups);
-  const unsubscribeSelected = async () => {
+  const unsubscribeSelected = () => {
     const keys = unsubKeys([...selected]);
     const pooled = selected.size - keys.length;
     if (!keys.length) {
       if (pooled) notify(t("toast.unsub_pooled"));
       return;
     }
-    if (!await confirmDialog({
-      title: t("confirm.unsubscribe", { n: keys.length }),
-      body: pooled ? t("confirm.unsub_pooled_skipped", { n: pooled }) : undefined,
-      confirmLabel: t("confirm.unsubscribe_btn") })) return;
-    await runUnsubscribe(keys);
+    // The sheet shows how each sender is unsubscribed and is the confirm.
+    setUnsubSheet({ kind: "bulk", grouping: mode, keys, pooled });
   };
-  // The bulk job itself, after whichever dialog confirmed it. Resolves
-  // whether it was queued without an error.
+  // Triage's bulk job, after its own single confirm: the sheet only follows
+  // the run and lists the outcome per sender. Resolves whether it was queued
+  // without an error.
   const runUnsubscribe = async (keys: string[]): Promise<boolean> => {
     try {
       const r = await api.unsubscribeBulk(mode, keys);
-      const skipped = r.skipped_protected + r.skipped_done + r.capped;
-      const id = toast.show(r.queued
-        ? t("toast.unsub_started", { n: r.queued })
-          + (skipped ? " " + t("toast.unsub_skipped", { n: skipped }) : "")
-        : t("toast.unsub_nothing"));
-      if (r.queued) {
-        // Replaced by the result toast when the job ends.
-        startToast.current.unsub = id;
+      if (r.queued && r.run != null) {
         if (seenJobs.current) seenJobs.current.u = "running";
+        setUnsubSheet({ kind: "run", run: r.run });
+      } else {
+        toast.show(t("toast.unsub_nothing"));
       }
       refresh();
       return true;
@@ -1410,6 +1414,9 @@ export default function App() {
       return false;
     }
   };
+  // One sender (the detail view, a failed run's Retry): same sheet.
+  const unsubscribeOne = (grouping: Grouping, key: string) =>
+    setUnsubSheet({ kind: "single", grouping, key });
 
   // Triage: ONE confirm naming every decision, then the existing paths in
   // order - protect, unsubscribe (bulk job), trash (reversible move with
@@ -1801,6 +1808,7 @@ export default function App() {
         aiEnabled={aiEnabled}
         protectedNow={live?.protected ?? sender.protected}
         unsubscribedNow={live?.unsubscribed ?? sender.unsubscribed}
+        onUnsubscribe={(g) => unsubscribeOne("sender", g.key)}
         onTrash={(g) => actOn("sender", state?.groups?.sender ?? {}, [g.key],
           "trash")}
         onMove={(g, dest) => actOn("sender", state?.groups?.sender ?? {},
@@ -1865,6 +1873,7 @@ export default function App() {
         ?? detail.protected}
       unsubscribedNow={state?.groups[mode][detail.key]?.unsubscribed
         ?? detail.unsubscribed}
+      onUnsubscribe={(g) => unsubscribeOne(mode, g.key)}
       onTrash={(g) => act([g.key], "trash")}
       onMove={(g, dest) => act([g.key], "move", dest)}
       onProtect={shortcutTarget(mode, detail) ? toggleProtect : undefined}
@@ -2315,11 +2324,7 @@ export default function App() {
       <AuditLogPanel key={account} rules={state?.rules ?? []}
         above={undoHistory} reloadKey={undoRev}
         groups={state?.groups.sender}
-        onRetryUnsub={async (g) => {
-          const r = await unsubscribeGroup("sender", g, demo);
-          notify(r.message, r.ok ? "info" : "error");
-          if (r.ok) refresh();
-        }}
+        onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
         onClose={() => closeTool(() => setAuditOpen(false))} />
     )}
     {(shownTool === "junk" || shownTool === "trash") && state && (
@@ -2788,11 +2793,7 @@ export default function App() {
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
         <InsightsPage groups={senderGroups} state={state} onOpen={openTool}
-          onRetryUnsub={async (g) => {
-            const r = await unsubscribeGroup("sender", g, demo);
-            notify(r.message, r.ok ? "info" : "error");
-            if (r.ok) refresh();
-          }} />
+          onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)} />
       ))}
 
       {bare ? null : overview ? (
@@ -2903,6 +2904,23 @@ export default function App() {
           history entry; a tool opened from a tab page / menu pushes its own. */}
       <PageSlot page={wide} parent={shownTool ? backTarget : undefined}
         entry={!routeTool}>{toolPanels}</PageSlot>
+      {/* A real dialog over whatever page is open - not a page of the slot. */}
+      {unsubSheet && state && (
+        <UnsubscribeSheet key={account} request={unsubSheet}
+          groups={state.groups.sender} unsub={state.unsub} demo={demo}
+          onTrash={async (grouping, keys) => {
+            const ok = await actOn(grouping,
+              stateRef.current?.groups?.[grouping] ?? {}, keys, "trash", "",
+              null, null, "groups", true);
+            if (ok && grouping === mode) {
+              setSelected((s) => new Set([...s].filter((k) => !keys.includes(k))));
+            }
+            return ok;
+          }}
+          onChanged={refresh}
+          onRun={(run) => { sheetRun.current = run; }}
+          onClose={() => setUnsubSheet(null)} />
+      )}
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
       {aiFilterOpen && (
         <AiFilterPanel

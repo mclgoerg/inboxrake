@@ -35,7 +35,8 @@ def test_bulk_one_click_post_and_link(bridge, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body == {"queued": 2, "skipped_protected": 0, "skipped_done": 0,
-                    "capped": 0}
+                    "capped": 0, "run": body["run"]}
+    assert body["run"] > 0
 
     st = wait_unsub_done()
     assert st["done"] == 1 and st["links"] == 1 and st["failed"] == 0

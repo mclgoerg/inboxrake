@@ -35,7 +35,7 @@ function renderPanel(group: Group, extra: Partial<Parameters<
   return render(<DialogProvider>
     <DetailPanel grouping="sender" group={group} aiEnabled={false}
       protectedNow={false} unsubscribedNow={null}
-      onTrash={async () => true} folders={[]} sieve={false}
+      onUnsubscribe={noop} onTrash={async () => true} folders={[]} sieve={false}
       onClose={noop} onDeleted={noop} {...extra} />
   </DialogProvider>);
 }

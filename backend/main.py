@@ -676,6 +676,12 @@ class UnsubBulkBody(BaseModel):
     keys: list[str] = Field(min_length=1)
 
 
+class UnsubPreviewBody(BaseModel):
+    grouping: str = "sender"
+    keys: list[str] = Field(min_length=1)
+    single: bool = False           # the detail view's one-sender unsubscribe
+
+
 class UnsubAckBody(BaseModel):
     addr: str
     done: bool = True              # false = forget the record, try again
@@ -1087,6 +1093,30 @@ def post_unsubscribe_bulk(body: UnsubBulkBody,
         raise HTTPException(409, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+
+
+@app.post("/api/unsubscribe/preview")
+def post_unsubscribe_preview(body: UnsubPreviewBody,
+                             account: str | None = Query(None)):
+    """How each sender of these groups would be unsubscribed (nothing is
+    sent): the unsubscribe sheet's list. See unsub.preview."""
+    _check_grouping(body.grouping)
+    acc = _acc(account)
+    try:
+        return unsub.preview(body.grouping, body.keys, acc, body.single)
+    except Exception as exc:
+        code = unsub.classify(exc)
+        if code == mailops.UNSUB_FAILED:
+            logging.getLogger("inboxrake.unsub").exception(
+                "unsubscribe preview failed unexpectedly")
+            raise HTTPException(500, code)
+        raise HTTPException(400, code)
+
+
+@app.get("/api/unsubscribe/results")
+def get_unsubscribe_results(account: str | None = Query(None)):
+    """Per-sender outcomes of the newest bulk unsubscribe run."""
+    return unsub.last_results(_acc(account))
 
 
 @app.post("/api/unsubscribe/ack")
