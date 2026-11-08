@@ -585,6 +585,22 @@ test("the Move-to-folder picker has an explicit Cancel back to the actions, " +
   expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
 });
 
+test("with a pop-up menu open, app shortcuts (# and /) do nothing", async () => {
+  renderWithOneSenderGroup();
+  await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
+    .toBeGreaterThan(0));
+  await selectRowCheckbox();
+  await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
+  barAction("move");
+  fireEvent.click(await screen.findByRole("button", { name: "Move to folder…" }));
+  const menu = screen.getByRole("menu");
+  fireEvent.keyDown(menu, { key: "#" });
+  fireEvent.keyDown(menu, { key: "/" });
+  expect(screen.queryByRole("dialog")).toBeNull();            // no trash confirm
+  expect(document.activeElement)                               // filter not focused
+    .not.toBe(screen.getByPlaceholderText("Search or filter…"));
+});
+
 // Selection-scoped AI review + CSV export: the overflow menu's versions
 // (nothing selected) act on everything, like before; the bar's versions
 // (something selected) scope to just the selected groups.

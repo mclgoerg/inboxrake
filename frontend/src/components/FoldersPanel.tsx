@@ -11,6 +11,9 @@ import { Button, confirmDialog, EmptyState, Input, Loading, MailRow, Modal,
 
 type Grouping = "sender" | "mails";
 
+/** Phone-sized touch height for the toolbar's pop-up buttons. */
+const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
+
 /** Folders panel: the special folders Inboxrake manages (Junk, Trash) in one
  *  place - live contents (also mail that arrived or was deleted elsewhere),
  *  search, a by-sender view, and per-folder actions: Junk "Not junk" (to the
@@ -19,9 +22,6 @@ type Grouping = "sender" | "mails";
  *  irreversible "Delete permanently…" (selection / sender / older than N
  *  days / Empty Junk): always counted live on the server first, confirmed
  *  with the counts, and sent back as the counted UIDVALIDITY + exact UIDs. */
-/** Phone-sized touch height for the toolbar's pop-up buttons. */
-const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
-
 export function FoldersPanel({ state, initialRole = "trash", onClose,
   onRoleChange, onChanged, onEmptyTrash, onUndo, onProtect }: {
   state: AppState;

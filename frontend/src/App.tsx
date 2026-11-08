@@ -1554,8 +1554,10 @@ export default function App() {
       // panel flags don't know about.
       if (anyModal || isModalOpen()
           || ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)
-          // A pop-up button is a select: its keys are its own.
+          // A pop-up button is a select: its keys are its own - and so are
+          // all keys while any menu is open (its items / type-ahead).
           || el.closest?.("[data-popup-select]")
+          || document.querySelector('[role="menu"]')
           // Menus and tablists own their navigation keys while focused
           // (but not j/k etc., e.g. after a mouse click left focus on a tab).
           || (el.closest?.('[role="menu"], [role="tablist"]')
@@ -2435,6 +2437,7 @@ export default function App() {
                 <span className="shrink-0 type-meta text-muted">
                   {t("bar.limit_to")}</span>
                 <PopupSelect<typeof retention> up value={retention}
+                  name={t("bar.limit_to")}
                   triggerProps={{ "data-bar-field": "",
                     title: t("retention.help") }}
                   className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"

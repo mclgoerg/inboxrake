@@ -271,6 +271,12 @@ test("pinned mails are left out of the Trash count; a fully pinned " +
   expect(screen.getByText(/all protected - nothing to move/)).toBeTruthy();
 });
 
+test("the limit pop-up is named after its label", async () => {
+  await selectFirstGroup();
+  openLimit();
+  expect(screen.getByRole("button", { name: /^Limit to All mails/ })).toBeTruthy();
+});
+
 test("an active limit shows as a labelled token in the capsule and can be " +
   "removed from it", async () => {
   state = { ...baseState };

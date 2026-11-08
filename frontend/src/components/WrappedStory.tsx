@@ -316,6 +316,7 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
       // the year select and text fields keep their own arrow keys
       const el = e.target as HTMLInputElement | null;
       if (el?.tagName === "SELECT" || el?.tagName === "TEXTAREA"
+        || el?.closest?.("[data-popup-select], [role=menu]")
         || (el?.tagName === "INPUT" && el.type !== "checkbox")) return;
       if (e.key === "ArrowRight") { e.preventDefault(); next(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }

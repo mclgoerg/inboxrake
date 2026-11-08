@@ -159,6 +159,14 @@ test("a year without mail shows only the intro", async () => {
     "disabled", true);
 });
 
+test("arrow keys on the year pop-up belong to it, not to the cards", async () => {
+  await open();
+  const year = screen.getByRole("button", { name: /^Year/ });
+  year.focus();
+  fireEvent.keyDown(year, { key: "ArrowRight" });
+  expect(screen.getByText("You received")).toBeTruthy();   // still card 1
+});
+
 test("Save image: names are masked unless 'Show names' is on", async () => {
   await open();
   for (let i = 0; i < 8; i++) fireEvent.keyDown(window, { key: "ArrowRight" });

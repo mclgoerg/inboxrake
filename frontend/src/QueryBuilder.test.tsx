@@ -157,6 +157,19 @@ test("on phones it opens as a bottom sheet and Done / Esc close it", () => {
   }
 });
 
+test("Esc with one of its pop-up menus open closes only the menu", () => {
+  setup();
+  const cat = screen.getByRole("button", { name: /^newsletter/ });
+  fireEvent.click(cat);
+  const item = screen.getAllByRole("menuitemradio")[0];
+  fireEvent.keyDown(item, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.getByText("Build a filter")).toBeTruthy();   // builder stays
+  expect(document.activeElement).toBe(cat);
+  fireEvent.keyDown(cat, { key: "Escape" });                 // now it closes
+  expect(screen.queryByText("Build a filter")).toBeNull();
+});
+
 test("closing the popover returns focus to the trigger (Done and Esc)", () => {
   setup();
   fireEvent.click(screen.getByText("Done"));

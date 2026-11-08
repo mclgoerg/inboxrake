@@ -656,11 +656,14 @@ export function placeMenu(wrap: { left: number; right: number }, width: number,
 }
 
 export function Menu({ trigger, label, variant, icon, up, triggerClass,
-  triggerSize = "md", className = "", align, disabled, triggerProps,
+  triggerSize = "md", className = "", align, disabled, triggerProps, scroll,
   children }: {
   trigger: ReactNode;
   /** Disables a `variant` trigger (a busy form). */
   disabled?: boolean;
+  /** Long list: the popover scrolls past 24 rem (always at most the room to
+   *  the viewport edge). */
+  scroll?: boolean;
   /** Extra attributes for a labelled `variant` trigger (`data-bar-field`). */
   triggerProps?: Partial<Record<`data-${string}` | "title", string>>;
   children: ReactNode;
@@ -687,17 +690,22 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
   const [open, setOpen] = useState(false);
   const [alignLeft, setAlignLeft] = useState(false);
   const [shift, setShift] = useState(0);
+  // Popover taller than the room between trigger and viewport edge: clamp.
+  const [maxH, setMaxH] = useState<number | undefined>();
   const ref = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   // Measure right-aligned first, then flip if it overflows the viewport.
   useLayoutEffect(() => {
-    if (!open) { setAlignLeft(false); setShift(0); return; }
+    if (!open) { setAlignLeft(false); setShift(0); setMaxH(undefined); return; }
     const r = pop.current?.getBoundingClientRect();
     const wr = ref.current?.getBoundingClientRect();
     if (!r || !wr || r.width <= 0) return;
     const p = placeMenu(wr, r.width, window.innerWidth, align === "left");
     setAlignLeft(p.left);
     setShift(p.shift);
+    // 8 px from the viewport edge, 4 px (mt-1) / 8 px (mb-2) off the trigger.
+    const room = up ? wr.top - 16 : window.innerHeight - wr.bottom - 12;
+    setMaxH(r.height > room ? Math.max(room, 96) : undefined);
   }, [open]);
   const focusTrigger = () =>
     ref.current?.querySelector<HTMLElement>(":scope > button")?.focus();
@@ -785,8 +793,10 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
       )}
       {open && (
         <div ref={pop} role="menu" onKeyDown={onMenuKey}
-          style={shift ? { transform: `translateX(${shift}px)` } : undefined}
+          style={{ ...(shift ? { transform: `translateX(${shift}px)` } : {}),
+            ...(maxH ? { maxHeight: maxH } : {}) }}
           className={`absolute z-(--z-dropdown) min-w-52
+            ${maxH || scroll ? "overflow-y-auto" : ""} ${scroll ? "max-h-96" : ""}
             ${up ? "bottom-full mb-2" : "top-full mt-1"}
             max-w-[calc(100vw-1rem)] rounded-card border border-line bg-panel
             p-1 shadow-popover ${alignLeft || align === "left" ? "left-0" : "right-0"}`}
@@ -843,7 +853,7 @@ export type PopupOption<T extends string = string> =
  *  `placeholder` and `onChange` runs the action directly. The accessible
  *  name is "label value". Native `<Select>` stays in settings forms. */
 export function PopupSelect<T extends string>({ value, onChange, options,
-  label, placeholder, valueLabel, disabled, up, align, className = "",
+  label, name: nameBase, placeholder, valueLabel, disabled, up, align, className = "",
   triggerClass = "", triggerProps }: {
   value?: T | null;
   onChange: (v: T) => void;
@@ -852,6 +862,8 @@ export function PopupSelect<T extends string>({ value, onChange, options,
   label?: string;
   /** Shown while no option is current (placeholder-style selects). */
   placeholder?: string;
+  /** Accessible-name base when there is no visible `label` ("Limit to"). */
+  name?: string;
   /** Overrides the shown value text (e.g. "Mails ↓"). */
   valueLabel?: ReactNode;
   disabled?: boolean;
@@ -867,10 +879,10 @@ export function PopupSelect<T extends string>({ value, onChange, options,
   const hasValue = valueLabel != null || (cur != null && cur !== "divider");
   const shown = valueLabel ?? (cur && cur !== "divider" ? cur.label
     : placeholder);
-  const name = [label, typeof shown === "string" ? shown : null]
+  const name = [label ?? nameBase, typeof shown === "string" ? shown : null]
     .filter(Boolean).join(" ") || undefined;
   return (
-    <Menu variant="secondary" label={name} up={up} align={align}
+    <Menu variant="secondary" label={name} up={up} align={align} scroll
       disabled={disabled}
       triggerProps={{ "data-popup-select": "", ...triggerProps }}
       className={className}
@@ -884,7 +896,7 @@ export function PopupSelect<T extends string>({ value, onChange, options,
         </span>
         <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-muted" />
       </>}>
-      <div className="max-h-96 overflow-y-auto">
+      <>
         {options.map((o, i) => o === "divider"
           ? <MenuDivider key={`d${i}`} />
           : (
@@ -898,7 +910,7 @@ export function PopupSelect<T extends string>({ value, onChange, options,
               ) : o.label}
             </MenuItem>
           ))}
-      </div>
+      </>
     </Menu>
   );
 }
