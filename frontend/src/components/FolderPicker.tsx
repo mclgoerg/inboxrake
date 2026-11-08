@@ -196,9 +196,9 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     const destName = byRaw.get(dest)?.path ?? dest;
     onClose();
     // A folder counts as used only once the move went through (a declined
-    // confirm returns false).
+    // confirm or a failure does not return true).
     Promise.resolve(onPick(dest)).then(async (ok) => {
-      if (ok === false) return;
+      if (ok !== true) return;
       rememberRecent(account, dest);
       if (!target) return;
       try {

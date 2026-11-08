@@ -190,7 +190,11 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
   // reader closes once the mail is on its way out.
   const readerActions: ReaderActions = {
     trash: async (m) => { if (await actOn([m], "trash")) setView(null); },
-    move: async (m, dest) => { if (await actOn([m], "move", dest)) setView(null); },
+    move: async (m, dest) => {
+      const ok = await actOn([m], "move", dest);
+      if (ok) setView(null);
+      return ok;
+    },
     pin: (m, pinned) => togglePin(m, pinned),
   };
 
