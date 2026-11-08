@@ -3428,6 +3428,8 @@ def index_stats(acc=None) -> dict:
     days: dict[str, dict] = {}
     day_floor = time.strftime("%Y-%m-%d", time.localtime(
         time.time() - (STATS_DAYS - 1) * 86400))
+    # first instant of the floor day: older mails skip the per-day strftime
+    floor_ts = time.mktime(time.strptime(day_floor, "%Y-%m-%d"))
     domains: dict[str, dict] = {}
     categories: dict[str, dict] = {}
     total_size = unread = bulk = oldest = 0
@@ -3456,9 +3458,8 @@ def index_stats(acc=None) -> dict:
                 mo["count"] += 1
                 mo["size"] += m["size"]
                 mo["unread"] += 0 if m["seen"] else 1
-                day = time.strftime("%Y-%m-%d", lt)
-                if day >= day_floor:
-                    dy = days.setdefault(day,
+                if m["ts"] >= floor_ts:
+                    dy = days.setdefault(time.strftime("%Y-%m-%d", lt),
                                          {"count": 0, "size": 0, "unread": 0})
                     dy["count"] += 1
                     dy["size"] += m["size"]

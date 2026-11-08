@@ -187,12 +187,32 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
     : per === "all" && yearsChart
     ? stats.years.map((y) => ({ key: y.year, label: y.year, count: y.count,
         size: y.size, unread: 0, tip: tipOf(y.year, y) }))
-    : (per === "12m" ? (stats.months_all ?? stats.months).slice(-12)
-        : stats.months_all ?? stats.months).map((m) => ({
-          key: m.month, count: m.count, size: m.size,
-          unread: (m as { unread?: number }).unread ?? 0,
-          label: monthName(m.month),
+    : (() => {
+        const all = stats.months_all ?? stats.months;
+        const byMonth = new Map(all.map((m) => [m.month, m]));
+        let rows: { month: string; count: number; size: number;
+          unread?: number }[];
+        if (per === "12m") {
+          // the last 12 CALENDAR months, gaps zero-filled; buckets dated in
+          // the future never count
+          const now = nowDate();
+          rows = Array.from({ length: 12 }, (_, i) => {
+            const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+            const k = `${d.getFullYear()}-${String(d.getMonth() + 1)
+              .padStart(2, "0")}`;
+            return byMonth.get(k) ?? { month: k, count: 0, size: 0, unread: 0 };
+          });
+        } else rows = all;
+        // an All-time axis that spans years shows the year on its labels
+        const years = per === "all"
+          && rows.length > 0 && rows[0].month.slice(0, 4)
+            !== rows[rows.length - 1].month.slice(0, 4);
+        return rows.map((m) => ({
+          key: m.month, count: m.count, size: m.size, unread: m.unread ?? 0,
+          label: years ? `${monthName(m.month)} ’${m.month.slice(2, 4)}`
+            : monthName(m.month),
           tip: tipOf(`${monthName(m.month)} ${m.month.slice(0, 4)}`, m) }));
+      })();
   const step = per === "30d" ? 1 : Math.ceil(buckets.length / 8);
   if (step > 1) buckets.forEach((b, i) => { if (i % step) b.label = ""; });
   // period-based KPIs; without the series they are the all-time figures
@@ -267,7 +287,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                     : per === "12m" ? "stats.per_month"
                       : yearsChart ? "stats.per_year" : "stats.per_month_all")}
                   hint={periods && (
-                    <Segmented label={t("stats.period")} value={per}
+                    <Segmented label={t("stats.period")} value={per} tall={coarse}
                       onChange={setPeriod} options={[
                         { value: "30d", label: t("stats.p30") },
                         { value: "12m", label: t("stats.p12") },

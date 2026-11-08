@@ -181,3 +181,37 @@ test("a single month still gets its chart", async () => {
   render(<StatsPanel onClose={() => {}} />);
   await screen.findByRole("button", { name: "Jan 2026 · 3 mails · 30 B" });
 });
+
+const ym = (back: number) => {
+  const d = new Date(new Date().getFullYear(), new Date().getMonth() - back, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+test("12 months = the last 12 calendar months, gaps zero, future ignored",
+  async () => {
+    actions = {};
+    extra = {
+      months: [], days: [],
+      months_all: [{ month: ym(0), count: 4, size: 40, unread: 0 },
+        { month: ym(5), count: 2, size: 20, unread: 0 },
+        { month: ym(-3), count: 9, size: 90, unread: 0 }],      // future
+    };
+    render(<StatsPanel onClose={() => {}} />);
+    await screen.findByRole("tablist", { name: "Period" });
+    expect(screen.getAllByRole("button", { name: /· \d+ mails? · / }).length)
+      .toBe(12);
+    expect(screen.getAllByRole("button", { name: /· 0 mails · 0 B/ }).length)
+      .toBe(10);
+    expect(document.body.textContent).toContain("mails · last 12 months");
+    expect(screen.getByText("6")).toBeTruthy();            // 4 + 2 mails
+  });
+
+test("an All-time axis across years labels the year", async () => {
+  actions = {};
+  extra = { months: [], days: [], months_all: [
+    { month: "2024-01", count: 1, size: 1, unread: 0 },
+    { month: "2025-06", count: 1, size: 1, unread: 0 }] };
+  render(<StatsPanel onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("tab", { name: "All time" }));
+  expect(screen.getByText("Jan ’24")).toBeTruthy();
+});
