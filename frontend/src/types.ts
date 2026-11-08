@@ -59,6 +59,25 @@ export interface KnowledgeSaved {
 export interface GroupAi {
   verdict: Verdict;
   reason: string;
+  /** "user": the verdict was set by hand (Edit labels) and wins over the AI. */
+  src?: "user";
+  /** "user": the AI said "safe" but the row holds a sender the user put on
+   *  hold, so it is shown as "review" (backend mailops._group_ai). */
+  capped?: "user";
+}
+
+/** One sender's own labels (GET/PUT /api/labels): what the user set, what
+ *  automatic would be, and tags worth suggesting. `verdict` / `tags` are null
+ *  while automatic. */
+export interface SenderLabels {
+  key: string;
+  verdict: Verdict | null;       // the user's choice (null = automatic)
+  tags: string[] | null;         // the user's tags (null = automatic)
+  tags_now: string[];            // what the sender shows now
+  auto_tags: string[];           // what automatic gives (Reset)
+  ai: { verdict: Verdict; reason: string } | null;   // the AI's own answer
+  protected: boolean;            // a protected sender is never "safe"
+  suggestions: string[];
 }
 
 /** Unsubscribe state of one group's senders (null = none ever attempted).

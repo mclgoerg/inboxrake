@@ -15,6 +15,7 @@ from backend import aifilter
 from backend import auditlog
 from backend import errortext
 from backend import knowledgestore
+from backend import labelstore
 from backend import mailops
 from backend.main import app
 from conftest import FakeIMAP, make_msg, wait_delete_done, wait_scan_done
@@ -91,7 +92,9 @@ def _backend_codes() -> set[str]:
     """Every code any backend module answers with (HTTP `detail`)."""
     return set(mailops.FOLDER_ERROR_CODES) | aifilter.CODES | {
         v for k, v in vars(knowledgestore).items()
-        if k.isupper() and isinstance(v, str) and v.startswith("knowledge_")}
+        if k.isupper() and isinstance(v, str) and v.startswith("knowledge_")
+    } | {v for k, v in vars(labelstore).items()
+         if k.isupper() and isinstance(v, str) and v.startswith("labels_")}
 
 
 def test_every_code_has_a_translated_text_in_the_ui():
@@ -105,7 +108,7 @@ def test_every_code_has_a_translated_text_in_the_ui():
 def test_the_ui_maps_no_code_the_backend_does_not_define():
     """Both directions: a UI entry nothing answers with is dead (a typo or a
     code that was removed), so `ERROR_CODES` equals the union of the codes
-    the backend modules define (folder features, pins, knowledge)."""
+    the backend modules define (folder features, pins, knowledge, labels)."""
     assert set(_ui_codes()) == _backend_codes()
 
 

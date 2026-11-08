@@ -19,6 +19,7 @@ from . import demo
 from . import mailops
 from . import pinstore
 from . import tenants
+from . import labelstore
 from . import verdictstore
 
 log = logging.getLogger("inboxrake.ai")
@@ -249,12 +250,17 @@ def _run_ai(grouping: str, acc=None, keys: set[str] | None = None,
                 {"key": r["key"], "label": r["label"], "count": r["count"],
                  "total_size_kb": r["size"] // 1024,
                  "unread": r["unread"], "first": r["first"],
-                 "last": r["last"], "tags": r["tags"],
+                 "last": r["last"],
+                 # only what the keyword rules said: the user's own tags
+                 # (Edit labels) never leave the server
+                 "tags": r.get("auto_tags", r["tags"]),
                  "samples": r["samples"],
                  **({"replied": True} if r.get("replied") else {}),
                  **({"protected": True} if r["key"] in prot_keys else {})}
                 for r in STATE["groups"][grouping].values()
                 if (r["ai"] is None or (rerate and keys is not None))
+                # a verdict the user set is never re-asked (or re-billed)
+                and not labelstore.is_user(r["ai"])
                 and (keys is None or r["key"] in keys)]
             # Pooled rows (smart): the member set the batch was built from.
             fps = {r["key"]: r["fp"]
@@ -319,18 +325,25 @@ def _run_ai(grouping: str, acc=None, keys: set[str] | None = None,
                                 log.info("downgraded delete_safe -> review "
                                          "for protected group %r", rec["key"])
                                 verdict = "review"
-                            rec["ai"] = {"verdict": verdict,
-                                         "reason": v["reason"][:160]}
+                            mine = labelstore.is_user(rec["ai"])
+                            # The answer is always CACHED (Reset to automatic
+                            # shows it), but a verdict the user set stays on
+                            # the row: the user's choice wins over the AI.
+                            new_ai = {"verdict": verdict,
+                                      "reason": v["reason"][:160]}
+                            if not mine:
+                                rec["ai"] = new_ai
                             if grouping == "sender":
                                 # A one-sender Smart row follows it (unless
                                 # it has a verdict of its own).
                                 own = STATE["groups"].get("smart", {}).get(
                                     f"s:{rec['key']}")
                                 if own is not None and not \
+                                        labelstore.is_user(own["ai"]) and not \
                                         verdictstore.has_own_smart_verdict(
                                             acct_cache, own["key"]):
-                                    own["ai"] = dict(rec["ai"])
-                            stored = dict(rec["ai"])
+                                    own["ai"] = dict(new_ai)
+                            stored = dict(new_ai)
                             if "fp" in rec:        # pooled row: see verdictstore
                                 stored["fp"] = rec["fp"]
                             applied[rec["key"]] = stored

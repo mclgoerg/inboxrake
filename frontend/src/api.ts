@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
-  KnowledgeList, KnowledgeSaved, KnowledgeSrc,
+  KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   Config, ConversationResp, DupSet, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
   LookalikeCount, MailsResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
@@ -77,6 +77,15 @@ const ERROR_CODES: Record<string, string> = {
   knowledge_full: "know.err.full",
   knowledge_ai_running: "know.err.ai_running",
   knowledge_unscanned: "know.err.unscanned",
+  // a sender's own verdict / tags (backend/labelstore.py)
+  labels_bad_request: "labels.err.bad_request",
+  labels_bad_key: "labels.err.bad_key",
+  labels_bad_verdict: "labels.err.bad_verdict",
+  labels_bad_tags: "labels.err.bad_tags",
+  labels_full: "labels.err.full",
+  labels_unscanned: "labels.err.unscanned",
+  labels_scan_running: "labels.err.scan_running",
+  labels_unknown_sender: "labels.err.unknown_sender",
   // special-folder choices (backend/mailops.py)
   role_not_candidate: "folder.err.not_candidate",
   role_ambiguous: "folder.err.ambiguous",
@@ -289,6 +298,13 @@ export const api = {
   aiSortEstimate: () => req<SortEstimate>("/api/ai_sort/estimate"),
   aiSort: () => req<{ units: number; senders: number }>("/api/ai_sort", {}),
   aiSortClear: () => req<{ cleared: number }>("/api/ai_sort/clear", {}),
+  // A sender's own verdict / tags (per account). `verdict` / `tags`: a value
+  // sets it, null goes back to automatic, left out = unchanged.
+  labels: (key: string) => req<SenderLabels>(
+    `/api/labels?key=${encodeURIComponent(key)}`),
+  labelsPut: (body: { key: string; verdict?: Verdict | null;
+      tags?: string[] | null; reset?: boolean }) =>
+    req<SenderLabels>("/api/labels", body, "PUT"),
   // Private sender knowledge (per user, shared by all accounts).
   knowledge: () => req<KnowledgeList>("/api/knowledge"),
   // File entries ({key, kind, note?, src?, ts?}) and / or remove keys in one

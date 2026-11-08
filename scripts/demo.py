@@ -60,6 +60,7 @@ os.environ.update(
     TENANTS_DIR=str(DATA / "tenants"),
     SESSION_SECRET_PATH=str(DATA / "session_secret"),
     PINS_PATH=str(DATA / "pinned_mails.json"),
+    LABELS_PATH=str(DATA / "sender_labels.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),

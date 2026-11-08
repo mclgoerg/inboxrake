@@ -80,7 +80,17 @@ const VERDICT_TONE: Record<string, TagTone> = {
 /** Status labels read in sentence case in every language. */
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** The verdict of a group. One the user set by hand (`src: "user"`, Edit
+ *  labels) reads "<verdict> · set by you" in the info tone, so it is told
+ *  apart from the AI's at a glance. */
 export function AiTag({ ai }: { ai: GroupAi }) {
+  if (ai.src === "user") {
+    return (
+      <Tag tone="info" dot>
+        {t("v.set_by_you", { verdict: cap(t(`v.${ai.verdict}`)) })}
+      </Tag>
+    );
+  }
   return (
     <Tag tone={VERDICT_TONE[ai.verdict]}>
       <span title={ai.reason}>{cap(t(`v.${ai.verdict}`))}</span>

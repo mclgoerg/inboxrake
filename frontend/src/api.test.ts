@@ -136,6 +136,35 @@ test("the sender knowledge calls use PUT and POST, carry the account, and a "
 });
 
 
+test("the sender labels calls carry the account, null means automatic, and "
+  + "a stable error code becomes translated text", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true,
+    json: () => Promise.resolve({ key: "a@x.example" }) });
+  vi.stubGlobal("fetch", fetchMock);
+  setAccount("work");
+  await api.labels("a+b@x.example");
+  await api.labelsPut({ key: "a@x.example", verdict: "keep", tags: null });
+  await api.labelsPut({ key: "a@x.example", reset: true });
+  expect(fetchMock.mock.calls.map(([url, init]) =>
+    [url, init?.method, init?.body])).toEqual([
+    ["/api/labels?key=a%2Bb%40x.example&account=work", "GET", undefined],
+    ["/api/labels?account=work", "PUT",
+      JSON.stringify({ key: "a@x.example", verdict: "keep", tags: null })],
+    ["/api/labels?account=work", "PUT",
+      JSON.stringify({ key: "a@x.example", reset: true })]]);
+  for (const [code, text] of [
+    ["labels_bad_verdict", "That verdict is not available."],
+    ["labels_unscanned", "Scan this account first."],
+    ["labels_unknown_sender", "That sender is not in the last scan."]]) {
+    fetchMock.mockResolvedValue({ ok: false,
+      text: () => Promise.resolve(JSON.stringify({ detail: code })) });
+    await expect(api.labelsPut({ key: "a@x.example", verdict: "keep" }))
+      .rejects.toThrow(text);
+  }
+  setAccount("");
+});
+
+
 test("forget / remove unused / import are POSTs of just that, and saveBlob "
   + "hands a blob: link to the browser", async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true,
