@@ -18,7 +18,7 @@ the short version; [install.md](install.md) covers running it and
   senders" with a storage bar and "What fills your inbox" (the last 30 days by
   kind). Everything else is one click away in the sidebar (on screens 1024 px
   and wider) or the tab bar at the bottom (phones and tablets: Overview,
-  Senders, Clean up, Insights). The app always opens on the Overview.
+  Senders, Clean up, Insights). A fresh load without a route in the address opens on the Overview.
 - **Views** - five of them: Sender, Smart (every big sender keeps its own row;
   the long tail of small senders is pooled by company - all `noreply@`,
   `news@`, … of one domain - and by what their mails are about: orders &
@@ -305,11 +305,13 @@ the short version; [install.md](install.md) covers running it and
   probably not junk") with a "Show" button that lists only them.
 - **Delete permanently (Trash and Junk)** - on the Trash and Junk pages,
   select mails or a sender, delete everything received more than N days ago
-  ("Delete older than…"), or use "Empty Junk" / "Empty Trash". The count is read live from the server, the confirm
-  shows it (plus the mails from protected senders and the protected mails
-  that are skipped - they are never deleted; remove the protection first
-  to delete them) and only exactly those mails are deleted, on the
-  server, irreversibly. Junk mails go through Trash first. Refused while
+  ("Delete older than…"), or use "Empty Junk". The count is read live from the
+  server, the confirm shows it (plus the mails from protected senders and the
+  protected mails that are skipped - they are never deleted; remove the
+  protection first to delete them) and only exactly those mails are deleted,
+  on the server, irreversibly. That skipping applies to these actions only:
+  **"Empty Trash" deletes everything in Trash, protected or not**, and its
+  confirm says so. Junk mails go through Trash first. Refused while
   Trash/Junk is ambiguous and not confirmed in Settings. Nothing is ever
   deleted without your click and the confirm.
 - **Purge rules (Trash and Junk)** - an opt-in kind of rule (Rules ->
@@ -423,7 +425,7 @@ the short version; [install.md](install.md) covers running it and
 - **Gestures on phones** - swipe a sender row left for Trash (a full swipe),
   Block and More, right for Protect and Read; swipe a mail row left for Trash,
   right for Pin and Read. Every swipe action asks the same confirmation as its
-  button. Pull down from the top of Overview, Senders or All mail to scan
+  button. Below 1024 px (phones and tablets), pull down from the top of Overview, Senders or All mail to scan
   (the header shows the scan's progress). Sheets close with a swipe down. In the
   installed app (PWA), where no browser chrome answers it, a swipe from the
   left edge goes back from a tool page, a sender or a Settings section.

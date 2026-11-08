@@ -245,7 +245,7 @@ registration in Microsoft Entra ID.
    has the same presets: Gmail, iCloud, Fastmail, GMX, mailbox.org,
    Yahoo, Outlook.)
 2. Hit **Scan** (the setup starts the first one; afterwards it is the
-   Scan button in the page header; on a phone you can also pull down from the top
+   Scan button in the page header; on a phone or tablet you can also pull down from the top
    of Overview, Senders or All mail).
 3. Optional: Settings -> AI review for AI-assisted cleanup verdicts, Settings
    -> Sign-in & users to protect the UI, Settings -> Protected senders for

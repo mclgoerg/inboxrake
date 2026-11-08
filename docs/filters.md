@@ -55,7 +55,8 @@ With `is:still-mailing` a late mail must have arrived in the window, and with
 `in:` alone is refused in a rule (it would act on every match), changes nothing
 on the Senders page, and in the **All mails** list means "mails that arrived in
 the window" (the Overview's "Last week" rows open it that way). A bad value
-such as `in:7w` is read as a free word. Only one `in:` is allowed.
+such as `in:7w` is read as a free word in the filter box, but a rule refuses
+it. A rule also allows only one `in:`.
 Examples: `is:new in:7d`, `is:still-mailing in:2d`, `ai:safe in:1h`.
 
 **Typos can widen a filter.** An unknown qualifier name, or a bad value for
