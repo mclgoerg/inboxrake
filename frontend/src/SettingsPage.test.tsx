@@ -564,7 +564,7 @@ test("the admin sees and saves the shared AI section", async () => {
   expect(screen.getByText(/\$0.50/)).toBeTruthy();
   // "Cleaned (month)": the size is what permanent deletes freed
   // (purged_bytes), never the old move-based `freed`
-  const cleaned = screen.getByText("7").closest("td")!.textContent!;
+  const cleaned = screen.getByText(/Cleaned \(month\)/).textContent!;
   expect(cleaned).toContain("4 KB");
   expect(cleaned).not.toContain("2 KB");
   fireEvent.change(screen.getAllByLabelText(/^Model/)[0],
@@ -912,7 +912,8 @@ test("the AI section has a box for the user's own AI-sorting instructions, "
   saveCalls.length = 0;
   renderWithDialogs();
   openSection("ai");
-  const box = screen.getByLabelText("Your instructions for AI sorting (optional)") as
+  const box = screen.getByRole("textbox",
+    { name: "Your instructions for AI sorting (optional)" }) as
     HTMLTextAreaElement;
   expect(box.value).toBe("");
   expect(box.maxLength).toBe(1500);
@@ -1294,3 +1295,78 @@ test("the sending server folds back when another account is opened",
     await selectAccount("icloud");
     expect(screen.queryByLabelText(/SMTP host/)).toBeNull();
   });
+
+test("protected senders and categories save the same payload the text areas did", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={{ ...cfg, protected: ["boss@work.example"],
+    categories: { insurance: ["allianz"], shipping: [] } }}
+    account="default" section="protected" />);
+  const input = () => screen.getByRole("textbox",
+    { name: "Add address or domain…" });
+  fireEvent.click(screen.getByRole("button", { name: "Add address or domain…" }));
+  fireEvent.change(input(), { target: { value: "bank.example" } });
+  fireEvent.keyDown(input(), { key: "Enter" });
+  openSection("categories");
+  // an empty list = a built-in turned off: visible, and stored as before
+  expect(screen.getByText(/Turned off/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Add a keyword to insurance" }));
+  const kw = screen.getByRole("textbox", { name: "Add a keyword to insurance" });
+  fireEvent.change(kw, { target: { value: "huk" } });
+  fireEvent.keyDown(kw, { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].protected).toEqual(["boss@work.example", "@bank.example"]);
+  expect(saveCalls[0].categories).toEqual(
+    { insurance: ["allianz", "huk"], shipping: [] });
+});
+
+test("AI review: budget ring with spend of cap, key never prefilled, prices and instructions stay", () => {
+  saveCalls.length = 0;
+  render(<Settings section="ai" account="default" cfg={{ ...cfg, ai: {
+    ...cfg.ai, api_key_set: true, budget_usd: 5, month_cost: 0.38 } }} />);
+  expect(screen.getByRole("img", { name: "$0.38 of $5.00" })).toBeTruthy();
+  expect(screen.getByText(/Budget resets/)).toBeTruthy();
+  // a saved key is "•••• set · Change…", the field only appears on Change
+  expect(screen.queryByLabelText("API key")).toBeNull();
+  expect(screen.getByText("•••• set")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+  const key = screen.getByLabelText("API key") as HTMLInputElement;
+  expect(key.value).toBe("");
+  fireEvent.change(key, { target: { value: "sk-new" } });
+  popupPick(/^Provider/, "OpenAI");
+  fireEvent.change(screen.getByLabelText("Input price ($ per 1M tokens)"),
+    { target: { value: "1.5" } });
+  fireEvent.change(screen.getByLabelText(/Monthly AI budget/),
+    { target: { value: "7" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].ai).toMatchObject({ provider: "openai",
+    api_key: "sk-new", price_in: 1.5, price_out: 0, budget_usd: 7 });
+});
+
+test("AI review without a cap shows what was spent, no ring", () => {
+  render(<Settings section="ai" account="default"
+    cfg={{ ...cfg, ai: { ...cfg.ai, month_cost: 1.25 } }} />);
+  expect(screen.queryByRole("img", { name: /of/ })).toBeNull();
+  expect(screen.getByText(/spent this month: \$1\.25/)).toBeTruthy();
+  // no saved key: the field is there at once
+  expect(screen.getByLabelText("API key")).toBeTruthy();
+});
+
+test("Sign-in & users: the login method is a choice of rows with their own fields", () => {
+  saveCalls.length = 0;
+  render(<Settings section="signin" account="default" cfg={cfg} />);
+  const none = screen.getByRole("radio", { name: /None/ });
+  expect(none.getAttribute("aria-checked")).toBe("true");
+  expect(screen.queryByLabelText("Login password")).toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: "Password" }));
+  fireEvent.change(screen.getByLabelText("Login password"),
+    { target: { value: "s3cret" } });
+  fireEvent.click(screen.getByRole("radio", { name: /SSO/ }));
+  expect(screen.queryByLabelText("Login password")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Issuer URL"),
+    { target: { value: "https://id.example" } });
+  fireEvent.click(screen.getByRole("radio", { name: "Password" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].auth.mode).toBe("password");
+  expect(saveCalls[0].auth.password).toBe("s3cret");
+  expect(saveCalls[0].auth.oidc.issuer).toBe("https://id.example");
+});

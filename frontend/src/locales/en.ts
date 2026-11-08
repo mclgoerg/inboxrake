@@ -40,6 +40,18 @@ export const EN: Record<string, string> = {
   "confirm.restore": "Restore {count} mails ({label})?",
   "confirm.restore_one": "Restore 1 mail ({label})?",
   "ai.usage": "Usage",
+  "ai.month_title": "This month",
+  "ai.budget_of": "{spent} of {cap}",
+  "ai.budget_resets": "Budget resets {date}",
+  "ai.budget_reached": "Budget reached - AI review is paused.",
+  "ai.key_set": "•••• set",
+  "ai.key_change": "Change…",
+  "ai.prices": "Prices",
+  "ai.price_in": "Input price ($ per 1M tokens)",
+  "ai.price_out": "Output price ($ per 1M tokens)",
+  "ai.price_auto": "auto: {n}",
+  "ai.runs": "Runs",
+  "ai.tokens": "Tokens in / out",
   "ai.reset_spend": "Reset spend…",
   "ai.clear_verdicts": "Clear AI verdict cache…",
   "confirm.clear_verdicts": "Clear all cached AI verdicts",
@@ -624,9 +636,17 @@ export const EN: Record<string, string> = {
   "qw.ai_safe": "The AI says safe to delete",
   "qw.ai_safe_hint": "Rated safe to delete by your AI review",
   "protected.help":
-    "One entry per line: an address (user@example.com) or a domain "
-    + "(@example.com). Protected senders are skipped by bulk deletions and "
-    + "selection presets, and the AI never rates them safe to delete.",
+    "Never deleted by bulk actions, presets or rules, and the AI never "
+    + "rates them safe to delete.",
+  "protected.add": "Add address or domain…",
+  "protected.add_ph": "name@example.com or @example.com",
+  "protected.everyone": "Everyone at",
+  "protected.remove": "Remove {entry}",
+  "protected.err_invalid":
+    "“{entry}” is neither an address (name@example.com) nor a domain "
+    + "(@example.com).",
+  "protected.err_dup": "Already protected: {entry}",
+  "settings.add": "Add",
   "ai.rate": "AI rate mails",
   "sel.ai_safe": "AI: safe to delete",
   "sel.ai_review": "AI: review",
@@ -970,12 +990,28 @@ export const EN: Record<string, string> = {
   "budget.none": "no cap",
   "budget.month": "spent this month: {spent}",
   "categories.help":
-    "One category per line: \"name: keyword1, keyword2\". A name matching "
-    + "a built-in category (shipping, finance, shopping, social, travel, "
-    + "dev/cloud) replaces its keywords; an empty keyword list disables "
-    + "it; new names add categories. A category you define or edit also "
-    + "decides the rows of the Smart tab. Applies right away to the Sender "
-    + "and Smart tabs, to the other tabs on the next scan.",
+    "A name matching a built-in category (shipping, finance, shopping, "
+    + "social, travel, dev/cloud) replaces its keywords; turn it off to "
+    + "disable it. New names add categories. A category you define or edit "
+    + "also decides the rows of the Smart tab. Applies right away to the "
+    + "Sender and Smart tabs, to the other tabs on the next scan.",
+  "categories.add": "Add category…",
+  "categories.add_ph": "Category name, e.g. insurance",
+  "categories.none": "No custom categories yet.",
+  "categories.builtin": "Built-in",
+  "categories.enabled": "{name} enabled",
+  "categories.off": "Turned off - this built-in category matches nothing.",
+  "categories.replaced": "Your keywords replace the built-in ones.",
+  "categories.no_kw": "No keywords yet - this category matches nothing.",
+  "categories.kw_ph": "keyword",
+  "categories.kw_add_to": "Add a keyword to {name}",
+  "categories.kw_remove": "Remove keyword {kw} from {name}",
+  "categories.rename": "Rename {name}",
+  "categories.delete": "Delete {name}",
+  "categories.restore": "Restore the built-in keywords of {name}",
+  "categories.err_empty": "Enter a name.",
+  "categories.err_colon": "A name can't contain a colon.",
+  "categories.err_dup": "There already is a category “{name}”.",
   "new_sender.window_label": "\"New\" sender window (days)",
   "new_sender.window_help":
     "How many days a sender stays flagged \"New\" (is:new, the New badge) "
@@ -990,6 +1026,8 @@ export const EN: Record<string, string> = {
     + "and the senders you filed as a file; import restores such a file. The "
     + "file lists sender addresses - keep it private. Passwords and API keys "
     + "are never part of a backup.",
+  "backup.export": "Export settings",
+  "backup.import": "Import settings",
   "import.title": "Import this backup",
   "import.settings": "Settings are overwritten.",
   "import.rules": "Rules are replaced (back in report mode).",

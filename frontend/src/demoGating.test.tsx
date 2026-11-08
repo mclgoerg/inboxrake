@@ -80,7 +80,7 @@ test("settings: add account, digest and AI key are disabled with the hint", () =
 test("settings: shared AI key and SSO login are disabled in the demo", () => {
   setDemo(true);
   settings("signin");
-  const sso = screen.getByRole("option", { name: /SSO/ }) as HTMLOptionElement;
+  const sso = screen.getByRole("radio", { name: /SSO/ }) as HTMLButtonElement;
   expect(sso.disabled).toBe(true);
   expect(sso.textContent).toContain(HINT);
   expect(screen.getByRole("switch", { name: "Share this key with all users" })
@@ -88,7 +88,7 @@ test("settings: shared AI key and SSO login are disabled in the demo", () => {
   cleanup();
   setDemo(false);
   settings("signin");
-  expect((screen.getByRole("option", { name: /SSO/ }) as HTMLOptionElement)
+  expect((screen.getByRole("radio", { name: /SSO/ }) as HTMLButtonElement)
     .disabled).toBe(false);
   expect(document.querySelector("fieldset")).toBeNull();
 });

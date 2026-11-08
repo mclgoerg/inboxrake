@@ -15,12 +15,14 @@ import type { AdminTenantStats, AppState, AuthMethod, AuthMode, AutoScanUnit, Bo
 import { FolderSettings } from "./FolderSettings";
 import { IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
+import { CategoryList, parseCategories as parseCategoryText, ProtectedList }
+  from "./SettingsLists";
 import { demoHint, useDemo } from "../demoMode";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
-  LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, Segmented, Select,
-  SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag, type TagTone,
-  TextArea, useBulkBarHeight, useToast } from "./ui";
+  LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, RadioRow, Ring,
+  Segmented, Select, SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag,
+  type TagTone, TextArea, useBulkBarHeight, useToast } from "./ui";
 
 /* Settings as a page (`#/settings/<section>`). From 1024 px a section column
  * (with a search field) sits beside the form; below it an iOS-style root list
@@ -440,18 +442,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     }
   };
 
-  const parseCategories = (): Record<string, string[]> => {
-    const out: Record<string, string[]> = {};
-    for (const line of categoriesText.split("\n")) {
-      const i = line.indexOf(":");
-      if (i < 1) continue;
-      const name = line.slice(0, i).trim().toLowerCase();
-      if (!name) continue;
-      out[name] = line.slice(i + 1).split(",")
-        .map((s) => s.trim().toLowerCase()).filter(Boolean);
-    }
-    return out;
-  };
+  const parseCategories = (): Record<string, string[]> =>
+    Object.fromEntries(parseCategoryText(categoriesText)
+      .map((c) => [c.name, c.kws]));
 
   /** Back to the saved copy (the save bar's Revert, a discarded leave). */
   const revert = () => {
@@ -1207,28 +1200,16 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const protectedBody = (
-    <SettingsGroup padded footnote={t("protected.help")}>
-      <TextArea aria-label={t("Protected senders")}
-        value={protectedText}
-        placeholder={"boss@work.example\n@mybank.example"}
-        onChange={(e) => setProtectedText(e.target.value)} />
-    </SettingsGroup>
+    <ProtectedList text={protectedText} onChange={setProtectedText} />
   );
 
   const categoriesBody = (
-    <SettingsGroup padded footnote={t("categories.help")}>
-      <TextArea className="!min-h-16" aria-label={t("Custom categories")}
-        value={categoriesText}
-        placeholder={"insurance: allianz, huk, versicherung\nshipping: dhl, dpd"}
-        onChange={(e) => setCategoriesText(e.target.value)} />
-    </SettingsGroup>
+    <CategoryList text={categoriesText} onChange={setCategoriesText} />
   );
 
   const filedBody = (
-    <SettingsGroup padded className="min-w-0">
-      <KnowledgeSettings aiAnswers={aiAnswers}
-        onChanged={onKnowledgeChanged} />
-    </SettingsGroup>
+    <KnowledgeSettings aiAnswers={aiAnswers}
+      onChanged={onKnowledgeChanged} />
   );
 
   const digestBody = (<>
@@ -1301,93 +1282,134 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsGroup>
   );
 
+  // The key is never prefilled: a saved one shows "•••• set · Change…".
+  const [changingKey, setChangingKey] = useState(false);
+  const providerOptions = [
+    { value: "anthropic", label: "Anthropic API" },
+    { value: "openai", label: "OpenAI" },
+    { value: "foundry", label: "Microsoft Foundry" },
+    { value: "ollama", label: "Ollama / local (OpenAI-compatible)" }];
+  const aiCap = cfg.ai.source === "shared" ? cfg.ai.shared_budget_usd
+    : cfg.ai.budget_usd;
+  const aiSpent = cfg.ai.month_cost ?? 0;
+  // The month is the server's calendar month; the cap starts over on the 1st.
+  const resets = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+    .toLocaleDateString(getLang(), { day: "numeric", month: "short" });
+  const keyInput = (
+    <Input className="w-full" type="password" value={f.apiKey}
+      aria-label={t("API key")} autoFocus={changingKey}
+      placeholder={cfg.ai.api_key_set
+        ? t("(unchanged)")
+        : f.provider === "ollama"
+          ? t("key.optional")
+          : cfg.ai.source === "shared"
+            ? t("ai.shared_key_ph")
+            : t("(no key - AI features hidden)")}
+      onChange={set("apiKey")} />
+  );
+
   const aiBody = (<>
     <DemoHint className="mb-3" />
-    <DemoFieldset>
-    <SettingsGroup padded header={t("AI review (optional)")}
-      footnote={t("ai.data_note")}>
-      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        <Field label={t("Provider")}>
-          <Select className="w-full" value={f.provider}
-            onChange={set("provider")}>
-            <option value="anthropic">Anthropic API</option>
-            <option value="openai">OpenAI</option>
-            <option value="foundry">Microsoft Foundry</option>
-            <option value="ollama">Ollama / local (OpenAI-compatible)</option>
-          </Select>
-        </Field>
-        <Field label={t("Model")}>
-          <Input className="w-full" value={f.model} onChange={set("model")} />
-        </Field>
-        {(f.provider === "foundry" || f.provider === "ollama") && (
-          <div className="sm:col-span-2">
-            <Field label={f.provider === "foundry"
-              ? "Foundry endpoint (https://…services.ai.azure.com/anthropic)"
-              : `${t("endpoint.label")} (http://…:11434)`}>
-              <Input className="w-full" value={f.endpoint}
-                onChange={set("endpoint")} />
-            </Field>
-          </div>
-        )}
-        <div className="sm:col-span-2">
-          <Field label={t("API key")}>
-            <Input className="w-full" type="password" value={f.apiKey}
-              placeholder={cfg.ai.api_key_set
-                ? t("(unchanged)")
-                : f.provider === "ollama"
-                  ? t("key.optional")
-                  : cfg.ai.source === "shared"
-                    ? t("ai.shared_key_ph")
-                    : t("(no key - AI features hidden)")}
-              onChange={set("apiKey")} />
-          </Field>
-          {cfg.ai.source === "shared" && (
-            <p className="mt-1 type-meta text-muted">
-              {t("ai.shared_note", {
-                cap: cfg.ai.shared_budget_usd
-                  ? fmtUsd(cfg.ai.shared_budget_usd) : t("budget.none"),
-              })}
-            </p>
+    <SettingsGroup padded>
+      <div className="flex items-center gap-4">
+        {aiCap > 0 ? (
+          <Ring px={88} frac={aiSpent / aiCap}
+            label={t("ai.budget_of", { spent: fmtUsd(aiSpent),
+              cap: fmtUsd(aiCap) })}>
+            <span className="type-body font-semibold">{fmtUsd(aiSpent)}</span>
+          </Ring>
+        ) : null}
+        <div className="min-w-0">
+          <div className="type-heading">{t("ai.month_title")}</div>
+          {aiCap > 0 ? (<>
+            <div className="type-body">
+              {t("ai.budget_of", { spent: fmtUsd(aiSpent),
+                cap: fmtUsd(aiCap) })}
+            </div>
+            <div className="type-meta text-muted">
+              {aiSpent >= aiCap ? t("ai.budget_reached")
+                : t("ai.budget_resets", { date: resets })}
+            </div>
+          </>) : (
+            <div className="type-body">
+              {t("budget.month", { spent: fmtUsd(aiSpent) })}
+              <span className="type-meta text-muted">
+                {" "}· {t("budget.none")}</span>
+            </div>
           )}
-        </div>
-        <Field label={`$ / 1M in (auto: ${pi})`}>
-          <Input className="w-full" type="number" step="0.01" min="0"
-            value={f.priceIn} placeholder={`auto: ${pi}`}
-            onChange={set("priceIn")} />
-        </Field>
-        <Field label={`$ / 1M out (auto: ${po})`}>
-          <Input className="w-full" type="number" step="0.01" min="0"
-            value={f.priceOut} placeholder={`auto: ${po}`}
-            onChange={set("priceOut")} />
-        </Field>
-        <Field label={t("budget.label")}>
-          <Input className="w-full" type="number" step="0.5" min="0"
-            value={f.budget} placeholder={t("budget.none")}
-            onChange={set("budget")} />
-        </Field>
-        <div className="self-end pb-2 type-meta text-muted">
-          {t("budget.month", { spent: fmtUsd(cfg.ai.month_cost ?? 0) })}
-        </div>
-        <div className="sm:col-span-2">
-          <Field label={t("ai.sort_instructions")}>
-            <TextArea className="!min-h-16" maxLength={1500}
-              value={f.sortInstructions}
-              onChange={set("sortInstructions")} />
-          </Field>
-          <p className="mt-1 type-meta text-muted">
-            {t("ai.sort_instructions_help")}
-          </p>
         </div>
       </div>
     </SettingsGroup>
+    <DemoFieldset>
+    <SettingsGroup header={t("AI review (optional)")}
+      footnote={t("ai.data_note")}>
+      <SettingsRow label={t("Provider")}>
+        <PopupSelect name={t("Provider")} value={f.provider}
+          onChange={(v) => put("provider", v as Form["provider"])}
+          options={providerOptions} />
+      </SettingsRow>
+      <SettingsRow label={t("Model")}>
+        <Input className="w-56 max-w-full" value={f.model}
+          aria-label={t("Model")} onChange={set("model")} />
+      </SettingsRow>
+      {(f.provider === "foundry" || f.provider === "ollama") && (
+        <SettingsRow stack label={f.provider === "foundry"
+          ? "Foundry endpoint (https://…services.ai.azure.com/anthropic)"
+          : `${t("endpoint.label")} (http://…:11434)`}>
+          <Input className="w-full" value={f.endpoint}
+            aria-label={t("endpoint.label")} onChange={set("endpoint")} />
+        </SettingsRow>
+      )}
+      {cfg.ai.api_key_set && !changingKey && !f.apiKey ? (
+        <SettingsRow label={t("API key")} value={t("ai.key_set")}>
+          <Button variant="secondary" size="sm"
+            onClick={() => setChangingKey(true)}>
+            {t("ai.key_change")}
+          </Button>
+        </SettingsRow>
+      ) : (
+        <SettingsRow stack label={t("API key")}
+          sub={cfg.ai.source === "shared" ? t("ai.shared_note", {
+            cap: cfg.ai.shared_budget_usd
+              ? fmtUsd(cfg.ai.shared_budget_usd) : t("budget.none") })
+            : undefined}>
+          {keyInput}
+        </SettingsRow>
+      )}
+    </SettingsGroup>
+    <SettingsGroup header={t("ai.prices")}>
+      <SettingsRow label={t("ai.price_in")}
+        sub={t("ai.price_auto", { n: pi })}>
+        <Input className="w-28" type="number" step="0.01" min="0"
+          aria-label={t("ai.price_in")} value={f.priceIn}
+          placeholder={`auto: ${pi}`} onChange={set("priceIn")} />
+      </SettingsRow>
+      <SettingsRow label={t("ai.price_out")}
+        sub={t("ai.price_auto", { n: po })}>
+        <Input className="w-28" type="number" step="0.01" min="0"
+          aria-label={t("ai.price_out")} value={f.priceOut}
+          placeholder={`auto: ${po}`} onChange={set("priceOut")} />
+      </SettingsRow>
+      <SettingsRow label={t("budget.label")}>
+        <Input className="w-28" type="number" step="0.5" min="0"
+          aria-label={t("budget.label")} value={f.budget}
+          placeholder={t("budget.none")} onChange={set("budget")} />
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup padded header={t("ai.sort_instructions")}
+      footnote={t("ai.sort_instructions_help")}>
+      <TextArea className="!min-h-16" maxLength={1500}
+        aria-label={t("ai.sort_instructions")}
+        value={f.sortInstructions} onChange={set("sortInstructions")} />
+    </SettingsGroup>
     </DemoFieldset>
-    <SettingsGroup padded header={t("ai.usage")}>
-      <p className="type-meta text-muted">
-        {t("AI spend")}: <b className="text-body">{fmtUsd(s.cost)}</b>
-        {" "}- {s.runs} {t("runs")}, {s.input_tokens.toLocaleString()} /{" "}
-        {s.output_tokens.toLocaleString()}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <SettingsGroup header={t("ai.usage")}>
+      <SettingsRow label={t("AI spend")} value={fmtUsd(s.cost)} />
+      <SettingsRow label={t("ai.runs")} value={s.runs.toLocaleString()} />
+      <SettingsRow label={t("ai.tokens")}
+        value={`${s.input_tokens.toLocaleString()} / ${
+          s.output_tokens.toLocaleString()}`} />
+      <div className="flex flex-wrap gap-2 px-4 py-2.5">
         <Button variant="danger-quiet" size="sm" onClick={resetStats}>
           {t("ai.reset_spend")}
         </Button>
@@ -1398,228 +1420,162 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsGroup>
   </>);
 
+  const stackInput = (label: string, k: keyof Form, over: {
+    type?: string; placeholder?: string } = {}) => (
+    <SettingsRow stack label={label}>
+      <Input className="w-full" aria-label={label} value={f[k] as string}
+        onChange={set(k)} {...over} />
+    </SettingsRow>
+  );
+
   const signinBody = !admin ? null : (<>
-    <SettingsGroup padded header={t("login.section")}
-      footnote={t("login.help")}>
-      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        <Field label={t("login.mode")}>
-          <Select className="w-full" value={f.authMode}
-            onChange={set("authMode")}>
-            <option value="none">{t("login.mode_none")}</option>
-            <option value="password">{t("login.mode_password")}</option>
-            <option value="oidc" disabled={demo}>
-              {t("login.mode_oidc")}{demo ? ` - ${demoHint()}` : ""}
-            </option>
-          </Select>
-        </Field>
-        {f.authMode === "password" && (
-          <Field label={t("login.password_label")}>
-            <Input className="w-full" type="password" value={f.authPassword}
-              placeholder={cfg.auth.password_set
-                ? t("(unchanged)") : t("required")}
-              onChange={set("authPassword")} />
-          </Field>
-        )}
-        {f.authMode === "oidc" && (
-          <>
-            <Field label={t("login.oidc_issuer")}>
-              <Input className="w-full" value={f.oidcIssuer}
-                placeholder="https://id.example.com"
-                onChange={set("oidcIssuer")} />
-            </Field>
-            <Field label={t("login.oidc_client")}>
-              <Input className="w-full" value={f.oidcClientId}
-                onChange={set("oidcClientId")} />
-            </Field>
-            <Field label={t("login.oidc_secret")}>
-              <Input className="w-full" type="password" value={f.oidcSecret}
-                placeholder={cfg.auth.oidc?.client_secret_set
-                  ? t("(unchanged)") : t("required")}
-                onChange={set("oidcSecret")} />
-            </Field>
-            <Field label={t("login.oidc_redirect")}>
-              <Input className="w-full" value={f.oidcRedirect}
-                placeholder={t("login.oidc_redirect_ph")}
-                onChange={set("oidcRedirect")} />
-            </Field>
-            <Field label={t("login.oidc_admin")}>
-              <Input className="w-full" value={f.oidcAdmin}
-                placeholder={t("login.oidc_admin_ph")}
-                onChange={set("oidcAdmin")} />
-            </Field>
-            <div className="self-end pb-2 type-meta text-muted">
-              {t("login.tenancy_note")}
-            </div>
-            <div className="sm:col-span-2">
-              <Field label={t("login.oidc_allowed")}>
-                <TextArea className="!min-h-16" value={f.oidcAllowed}
-                  placeholder={"me@corp.example"}
-                  onChange={(e) => put("oidcAllowed", e.target.value)} />
-              </Field>
-              <p className="mt-1 type-meta text-muted">
-                {t("login.oidc_allowed_help")}
-              </p>
-              {(!f.oidcAllowed.trim() || !f.oidcAdmin.trim()) && (
-                <Notice tone="warn" className="mt-2"
-                  icon={<TriangleAlert size={16} />}>
-                  {[!f.oidcAllowed.trim() && t("login.oidc_open_warn"),
-                    !f.oidcAdmin.trim() && t("login.oidc_noadmin_warn"),
-                  ].filter(Boolean).join(" ")}
-                </Notice>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+    <SettingsGroup header={t("login.mode")} footnote={t("login.help")}>
+      <RadioRow label={t("login.mode_none")} checked={f.authMode === "none"}
+        onSelect={() => put("authMode", "none")} />
+      <RadioRow label={t("login.mode_password")}
+        checked={f.authMode === "password"}
+        onSelect={() => put("authMode", "password")} />
+      <RadioRow checked={f.authMode === "oidc"} disabled={demo}
+        label={t("login.mode_oidc")}
+        sub={demo ? demoHint() : undefined}
+        onSelect={() => put("authMode", "oidc")} />
     </SettingsGroup>
+    {f.authMode === "password" && (
+      <SettingsGroup>
+        {stackInput(t("login.password_label"), "authPassword", {
+          type: "password", placeholder: cfg.auth.password_set
+            ? t("(unchanged)") : t("required") })}
+      </SettingsGroup>
+    )}
+    {f.authMode === "oidc" && (
+      <SettingsGroup footnote={t("login.tenancy_note")}>
+        {stackInput(t("login.oidc_issuer"), "oidcIssuer",
+          { placeholder: "https://id.example.com" })}
+        {stackInput(t("login.oidc_client"), "oidcClientId")}
+        {stackInput(t("login.oidc_secret"), "oidcSecret", {
+          type: "password", placeholder: cfg.auth.oidc?.client_secret_set
+            ? t("(unchanged)") : t("required") })}
+        {stackInput(t("login.oidc_redirect"), "oidcRedirect",
+          { placeholder: t("login.oidc_redirect_ph") })}
+        {stackInput(t("login.oidc_admin"), "oidcAdmin",
+          { placeholder: t("login.oidc_admin_ph") })}
+        <SettingsRow stack label={t("login.oidc_allowed")}
+          sub={t("login.oidc_allowed_help")}>
+          <TextArea className="!min-h-16" aria-label={t("login.oidc_allowed")}
+            value={f.oidcAllowed} placeholder={"me@corp.example"}
+            onChange={(e) => put("oidcAllowed", e.target.value)} />
+          {(!f.oidcAllowed.trim() || !f.oidcAdmin.trim()) && (
+            <Notice tone="warn" className="mt-2"
+              icon={<TriangleAlert size={16} />}>
+              {[!f.oidcAllowed.trim() && t("login.oidc_open_warn"),
+                !f.oidcAdmin.trim() && t("login.oidc_noadmin_warn"),
+              ].filter(Boolean).join(" ")}
+            </Notice>
+          )}
+        </SettingsRow>
+      </SettingsGroup>
+    )}
     {cfg.auth.mode !== "none" && (
-      <SettingsGroup padded footnote={t("login.sign_out_all_help")}>
-        <Button variant="danger-quiet" size="sm" onClick={signOutAll}>
-          {t("login.sign_out_all")}
-        </Button>
+      <SettingsGroup footnote={t("login.sign_out_all_help")}>
+        <div className="px-4 py-2.5">
+          <Button variant="danger-quiet" size="sm" onClick={signOutAll}>
+            {t("login.sign_out_all")}
+          </Button>
+        </div>
       </SettingsGroup>
     )}
 
     <DemoHint className="mb-3" />
     <DemoFieldset>
-    <SettingsGroup padded header={t("shared.section")}
-      footnote={t("shared.help")}>
-      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        <Switch checked={f.sharedEnabled} className="justify-self-start"
-          label={t("shared.enabled")}
+    <SettingsGroup header={t("shared.section")} footnote={t("shared.help")}>
+      <SettingsRow label={t("shared.enabled")}>
+        <Switch checked={f.sharedEnabled}
           onChange={(on) => put("sharedEnabled", on)} />
-        <Field label={t("shared.budget")}>
-          <Input className="w-full" type="number" step="0.5" min="0"
-            value={f.sharedBudget} placeholder={t("budget.none")}
-            onChange={set("sharedBudget")} />
-        </Field>
-        {f.sharedEnabled && (<>
-          <Field label={t("Provider")}>
-            <Select className="w-full" value={f.sharedProvider}
-              onChange={set("sharedProvider")}>
-              <option value="anthropic">Anthropic API</option>
-              <option value="openai">OpenAI</option>
-              <option value="foundry">Microsoft Foundry</option>
-              <option value="ollama">
-                Ollama / local (OpenAI-compatible)
-              </option>
-            </Select>
-          </Field>
-          <Field label={t("Model")}>
-            <Input className="w-full" value={f.sharedModel}
-              onChange={set("sharedModel")} />
-          </Field>
-          {(f.sharedProvider === "foundry"
-            || f.sharedProvider === "ollama") && (
-            <div className="sm:col-span-2">
-              <Field label={t("endpoint.label")}>
-                <Input className="w-full" value={f.sharedEndpoint}
-                  onChange={set("sharedEndpoint")} />
-              </Field>
-            </div>
-          )}
-          <div className="sm:col-span-2">
-            <Field label={t("API key")}>
-              <Input className="w-full" type="password" value={f.sharedKey}
-                placeholder={cfg.shared_ai?.api_key_set
-                  ? t("(unchanged)") : t("required")}
-                onChange={set("sharedKey")} />
-            </Field>
-          </div>
-        </>)}
-      </div>
+      </SettingsRow>
+      <SettingsRow label={t("shared.budget")}>
+        <Input className="w-28" type="number" step="0.5" min="0"
+          aria-label={t("shared.budget")} value={f.sharedBudget}
+          placeholder={t("budget.none")} onChange={set("sharedBudget")} />
+      </SettingsRow>
+      {f.sharedEnabled && (<>
+        <SettingsRow label={t("Provider")}>
+          <PopupSelect name={t("Provider")} value={f.sharedProvider}
+            onChange={(v) => put("sharedProvider", v as Form["sharedProvider"])}
+            options={providerOptions} />
+        </SettingsRow>
+        <SettingsRow label={t("Model")}>
+          <Input className="w-56 max-w-full" value={f.sharedModel}
+            aria-label={t("Model")} onChange={set("sharedModel")} />
+        </SettingsRow>
+        {(f.sharedProvider === "foundry"
+          || f.sharedProvider === "ollama") && (
+          stackInput(t("endpoint.label"), "sharedEndpoint")
+        )}
+        {stackInput(t("API key"), "sharedKey", {
+          type: "password", placeholder: cfg.shared_ai?.api_key_set
+            ? t("(unchanged)") : t("required") })}
+      </>)}
     </SettingsGroup>
     </DemoFieldset>
 
-    <SettingsGroup padded header={t("usage.section")}
-      footnote={t("usage.help")} className="min-w-0">
+    <SettingsGroup header={t("usage.section")} footnote={t("usage.help")}
+      className="min-w-0">
       {!tenantStats && !tenantStatsErr && <Loading className="!p-3" />}
       {tenantStatsErr && (
-        <div className="type-meta text-danger-fg">{tenantStatsErr}</div>
+        <p className="px-4 py-3 type-meta text-danger-fg">{tenantStatsErr}</p>
       )}
-      {tenantStats && (
-        <div className="overflow-x-auto rounded-card border border-line">
-          <table className="w-full min-w-[560px] table-fixed type-meta">
-            <thead>
-              <tr className="border-b border-line text-left text-muted">
-                <th className="w-[26%] px-2 py-1.5 font-medium">
-                  {t("usage.user")}</th>
-                <th className="w-[16%] px-2 py-1.5 font-medium">
-                  {t("usage.mails")}</th>
-                <th className="w-[14%] px-2 py-1.5 font-medium">
-                  {t("usage.cleaned")}</th>
-                <th className="w-[18%] px-2 py-1.5 font-medium">
-                  {t("usage.ai_month")}</th>
-                <th className="w-[13%] px-2 py-1.5 font-medium">
-                  {t("usage.last_scan")}</th>
-                <th className="w-[13%] px-2 py-1.5 font-medium">
-                  {t("usage.disk")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenantStats.map((u) => (
-                <tr key={u.id} className="border-b border-line
-                  last:border-0 align-top">
-                  <td className="truncate px-2 py-1.5"
-                    title={t("tenant.row_tip", { id: u.id,
-                      accounts: u.accounts, scans: u.scans,
-                      rules: u.rules, verdicts: u.verdicts })}>
-                    {u.is_admin_workspace && (
-                      <Star size={14}
-                        className="mr-1 inline align-text-bottom" />
-                    )}
-                    {u.label || u.id}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {u.mails.toLocaleString()}
-                    <span className="text-muted">
-                      {" "}· {fmtSize(u.size)}</span>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {u.actions_month.trash.toLocaleString()}
-                    {(u.actions_month.purged_bytes ?? 0) > 0 && (
-                      <span className="text-muted">
-                        {" "}· {fmtSize(u.actions_month.purged_bytes ?? 0)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {fmtUsd(u.ai.month_cost)}
-                    <span className="text-muted">
-                      {u.ai.budget_usd
-                        ? ` / ${fmtUsd(u.ai.budget_usd)}` : ""}
-                      {u.ai.source === "shared"
-                        ? ` (${t("usage.shared")})` : ""}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {fmtAgo(u.last_scan_ts) || "-"}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    {fmtSize(u.disk_bytes)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tenantStats?.map((u) => {
+        const stat = (label: string, value: ReactNode) => (
+          <span className="mr-4 inline-block">
+            {label} <span className="text-body">{value}</span>
+          </span>
+        );
+        return (
+          <SettingsRow key={u.id}
+            label={<span title={t("tenant.row_tip", { id: u.id,
+              accounts: u.accounts, scans: u.scans, rules: u.rules,
+              verdicts: u.verdicts })}>
+              {u.is_admin_workspace && (
+                <Star size={14} className="mr-1 inline align-text-bottom" />
+              )}
+              {u.label || u.id}
+            </span>}
+            sub={<>
+              {stat(t("usage.mails"), <>{u.mails.toLocaleString()}
+                {" "}· {fmtSize(u.size)}</>)}
+              {stat(t("usage.cleaned"), <>
+                {u.actions_month.trash.toLocaleString()}
+                {(u.actions_month.purged_bytes ?? 0) > 0
+                  && <> · {fmtSize(u.actions_month.purged_bytes ?? 0)}</>}
+              </>)}
+              {stat(t("usage.ai_month"), <>
+                {fmtUsd(u.ai.month_cost)}
+                {u.ai.budget_usd ? ` / ${fmtUsd(u.ai.budget_usd)}` : ""}
+                {u.ai.source === "shared"
+                  ? ` (${t("usage.shared")})` : ""}</>)}
+              {stat(t("usage.last_scan"), fmtAgo(u.last_scan_ts) || "-")}
+              {stat(t("usage.disk"), fmtSize(u.disk_bytes))}
+            </>} />
+        );
+      })}
     </SettingsGroup>
   </>);
 
   const backupBody = (
-    <SettingsGroup padded footnote={t("backup.help")}>
-      <div className="flex flex-wrap gap-2">
+    <SettingsGroup footnote={t("backup.help")}>
+      <SettingsRow label={t("backup.export")} sub={t("export.tip")}>
         <Button variant="secondary"
-          onClick={() => downloadFile("/api/export_config")}
-          title={t("export.tip")}>{t("Export")}</Button>
-        <Button variant="secondary"
-          onClick={() => importInput.current?.click()}>
+          onClick={() => downloadFile("/api/export_config")}>
+          {t("Export")}
+        </Button>
+      </SettingsRow>
+      <SettingsRow label={t("backup.import")}>
+        <Button variant="secondary" onClick={() => importInput.current?.click()}>
           {t("Import…")}
         </Button>
         <input ref={importInput} type="file" accept="application/json"
           className="hidden" onChange={importBackup} />
-      </div>
+      </SettingsRow>
     </SettingsGroup>
   );
 

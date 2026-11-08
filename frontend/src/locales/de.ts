@@ -42,6 +42,18 @@ export const DE: Record<string, string> = {
   "confirm.restore": "{count} Mails wiederherstellen ({label})?",
   "confirm.restore_one": "1 Mail wiederherstellen ({label})?",
   "ai.usage": "Nutzung",
+  "ai.month_title": "Diesen Monat",
+  "ai.budget_of": "{spent} von {cap}",
+  "ai.budget_resets": "Budget startet am {date} neu",
+  "ai.budget_reached": "Budget erreicht – die KI-Prüfung pausiert.",
+  "ai.key_set": "•••• gesetzt",
+  "ai.key_change": "Ändern…",
+  "ai.prices": "Preise",
+  "ai.price_in": "Preis Eingabe ($ pro 1 Mio. Token)",
+  "ai.price_out": "Preis Ausgabe ($ pro 1 Mio. Token)",
+  "ai.price_auto": "automatisch: {n}",
+  "ai.runs": "Läufe",
+  "ai.tokens": "Token ein / aus",
   "ai.reset_spend": "Kosten zurücksetzen…",
   "ai.clear_verdicts": "KI-Bewertungscache leeren…",
   "confirm.clear_verdicts": "Alle gespeicherten KI-Bewertungen löschen",
@@ -289,10 +301,17 @@ export const DE: Record<string, string> = {
   "protected": "geschützt",
   "Protected senders": "Geschützte Absender",
   "protected.help":
-    "Ein Eintrag pro Zeile: eine Adresse (user@example.com) oder eine "
-    + "Domain (@example.com). Geschützte Absender werden von "
-    + "Massenlöschungen und Auswahl-Voreinstellungen übersprungen; die KI "
-    + "stuft sie nie als sicher löschbar ein.",
+    "Werden von Massenlöschungen, Voreinstellungen und Regeln nie "
+    + "gelöscht; die KI stuft sie nie als sicher löschbar ein.",
+  "protected.add": "Adresse oder Domain hinzufügen…",
+  "protected.add_ph": "name@example.com oder @example.com",
+  "protected.everyone": "Alle bei",
+  "protected.remove": "{entry} entfernen",
+  "protected.err_invalid":
+    "„{entry}“ ist weder eine Adresse (name@example.com) noch eine Domain "
+    + "(@example.com).",
+  "protected.err_dup": "Bereits geschützt: {entry}",
+  "settings.add": "Hinzufügen",
 
   "Scan": "Scannen",
   "Sender": "Absender",
@@ -753,13 +772,29 @@ export const DE: Record<string, string> = {
   "budget.month": "diesen Monat ausgegeben: {spent}",
   "Custom categories": "Eigene Kategorien",
   "categories.help":
-    "Eine Kategorie pro Zeile: „name: stichwort1, stichwort2“. Ein Name "
-    + "einer eingebauten Kategorie (shipping, finance, shopping, social, "
-    + "travel, dev/cloud) ersetzt deren Stichwörter; eine leere Liste "
-    + "deaktiviert sie; neue Namen ergänzen Kategorien. Eine Kategorie, die "
-    + "du anlegst oder änderst, bestimmt auch die Zeilen im Tab Smart. Gilt "
-    + "sofort im Tab Absender und Smart, in den anderen Tabs ab dem nächsten "
-    + "Scan.",
+    "Ein Name einer eingebauten Kategorie (shipping, finance, shopping, "
+    + "social, travel, dev/cloud) ersetzt deren Stichwörter; schalte sie "
+    + "aus, um sie zu deaktivieren. Neue Namen ergänzen Kategorien. Eine "
+    + "Kategorie, die du anlegst oder änderst, bestimmt auch die Zeilen im "
+    + "Tab Smart. Gilt sofort im Tab Absender und Smart, in den anderen "
+    + "Tabs ab dem nächsten Scan.",
+  "categories.add": "Kategorie hinzufügen…",
+  "categories.add_ph": "Name der Kategorie, z. B. insurance",
+  "categories.none": "Noch keine eigenen Kategorien.",
+  "categories.builtin": "Eingebaut",
+  "categories.enabled": "{name} aktiv",
+  "categories.off": "Ausgeschaltet – diese eingebaute Kategorie trifft auf nichts zu.",
+  "categories.replaced": "Deine Stichwörter ersetzen die eingebauten.",
+  "categories.no_kw": "Noch keine Stichwörter – diese Kategorie trifft auf nichts zu.",
+  "categories.kw_ph": "Stichwort",
+  "categories.kw_add_to": "Stichwort zu {name} hinzufügen",
+  "categories.kw_remove": "Stichwort {kw} aus {name} entfernen",
+  "categories.rename": "{name} umbenennen",
+  "categories.delete": "{name} löschen",
+  "categories.restore": "Eingebaute Stichwörter von {name} wiederherstellen",
+  "categories.err_empty": "Gib einen Namen ein.",
+  "categories.err_colon": "Ein Name darf keinen Doppelpunkt enthalten.",
+  "categories.err_dup": "Es gibt schon eine Kategorie „{name}“.",
   "new_sender.window_label": "„Neu“-Fenster für Absender (Tage)",
   "new_sender.window_help":
     "Wie viele Tage ein Absender als „Neu“ markiert bleibt (is:new, das "
@@ -777,6 +812,8 @@ export const DE: Record<string, string> = {
     + "Import spielt eine solche Datei wieder ein. Die Datei listet "
     + "Absenderadressen – halte sie privat. Passwörter und API-Schlüssel sind "
     + "nie Teil eines Backups.",
+  "backup.export": "Einstellungen exportieren",
+  "backup.import": "Einstellungen importieren",
   "import.title": "Dieses Backup importieren",
   "import.settings": "Einstellungen werden überschrieben.",
   "import.rules": "Regeln werden ersetzt (wieder im Bericht-Modus).",
