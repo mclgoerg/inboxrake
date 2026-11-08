@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { FILE_KINDS, filedKindName, keptMessage } from "../smart";
 import type { KnowledgeEntry, KnowledgeList, KnowledgeStored } from "../types";
 import { Avatar, Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
-  Menu, MenuItem, Segmented, Select, SettingsGroup, Tag, useToast } from "./ui";
+  Menu, MenuGroup, MenuItem, Segmented, Select, SettingsGroup, Tag, useToast } from "./ui";
 
 /* "What Inboxrake knows about your senders" (Settings > Senders): everything
  * the user filed in Smart - by sender address or company - and the AI answers
@@ -18,6 +18,15 @@ import { Avatar, Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
  * Every change applies at once on the server, so there is nothing to Save. */
 
 type Seg = "all" | "user" | "ai" | "unused";
+/** What the list is sorted by (`status` = needs a look first - the default). */
+export type SortBy = "key" | "kind" | "src" | "senders" | "status" | "ts";
+type Dir = "asc" | "desc";
+const SORT_KEYS: SortBy[] = ["status", "key", "kind", "src", "senders", "ts"];
+// Picking a key: biggest / newest first; the rest A-Z.
+const FIRST_DIR: Record<SortBy, Dir> = { key: "asc", kind: "asc", src: "asc",
+  senders: "desc", status: "asc", ts: "desc" };
+const SORT_STORE = "pmc_know_sort";
+const DIR_STORE = "pmc_know_dir";
 const PAGE = 50;
 const NOTE_MAX = 200;
 
@@ -38,10 +47,21 @@ const STATUS_TONE: Record<string, "safe" | "review" | "keep" | "neutral"> = {
 const STATUS_ORDER: Record<string, number> = { inert: 0, inactive: 1,
   unused: 2, no_effect: 3, unknown: 4, active: 5 };
 
-/** Needs-a-look first, then A-Z. */
-export function sortEntries(list: KnowledgeEntry[]): KnowledgeEntry[] {
-  return [...list].sort((a, b) =>
-    (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+/** Sort within a group; ties fall back to A-Z. Default: needs a look first. */
+export function sortEntries(list: KnowledgeEntry[], by: SortBy = "status",
+    dir: Dir = "asc"): KnowledgeEntry[] {
+  const sign = dir === "asc" ? 1 : -1;
+  const cmp = (a: KnowledgeEntry, b: KnowledgeEntry): number => {
+    switch (by) {
+      case "kind": return filedKindName(a.kind).localeCompare(filedKindName(b.kind));
+      case "src": return a.src.localeCompare(b.src);
+      case "senders": return a.senders - b.senders;
+      case "status": return (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+      case "ts": return a.ts - b.ts;
+      default: return nameOf(a).localeCompare(nameOf(b));
+    }
+  };
+  return [...list].sort((a, b) => sign * cmp(a, b)
     || nameOf(a).localeCompare(nameOf(b)) || a.key.localeCompare(b.key));
 }
 
@@ -58,19 +78,24 @@ const KIND_ICON: Record<string, typeof Package> = { orders: Package,
 
 /** Entries grouped by Smart group in Smart's own order (the fixed kinds,
  *  then the user's categories, then anything else), each group sorted. */
-export function groupEntries(list: KnowledgeEntry[]):
-    { kind: string; entries: KnowledgeEntry[] }[] {
+export function groupEntries(list: KnowledgeEntry[], by_: SortBy = "status",
+    dir: Dir = "asc"): { kind: string; entries: KnowledgeEntry[] }[] {
   const by = new Map<string, KnowledgeEntry[]>();
-  for (const e of sortEntries(list)) {
+  for (const e of sortEntries(list, by_, dir)) {
     by.set(e.kind, [...(by.get(e.kind) ?? []), e]);
   }
   const rank = (k: string) => {
     const i = (FILE_KINDS as readonly string[]).indexOf(k);
     return i >= 0 ? i : k.startsWith("cat:") ? FILE_KINDS.length : FILE_KINDS.length + 1;
   };
-  return [...by.entries()].map(([kind, entries]) => ({ kind, entries }))
-    .sort((a, b) => rank(a.kind) - rank(b.kind)
-      || filedKindName(a.kind).localeCompare(filedKindName(b.kind)));
+  const groups = [...by.entries()].map(([kind, entries]) => ({ kind, entries }));
+  // "Filed under" orders the groups themselves, by name
+  if (by_ === "kind") {
+    return groups.sort((a, b) => (dir === "asc" ? 1 : -1)
+      * filedKindName(a.kind).localeCompare(filedKindName(b.kind)));
+  }
+  return groups.sort((a, b) => rank(a.kind) - rank(b.kind)
+    || filedKindName(a.kind).localeCompare(filedKindName(b.kind)));
 }
 
 /** Free-text search over the address / company, the kind, the note and the
@@ -96,6 +121,18 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [seg, setSeg] = useState<Seg>("all");
+  const [sortBy, setSortBy] = useState<SortBy>(() => {
+    const k = localStorage.getItem(SORT_STORE) as SortBy | null;
+    return k && SORT_KEYS.includes(k) ? k : "status";
+  });
+  const [dir, setDir] = useState<Dir>(() => {
+    const d = localStorage.getItem(DIR_STORE);
+    return d === "asc" || d === "desc" ? d : "asc";
+  });
+  useEffect(() => {
+    localStorage.setItem(SORT_STORE, sortBy);
+    localStorage.setItem(DIR_STORE, dir);
+  }, [sortBy, dir]);
   const [selecting, setSelecting] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -124,9 +161,9 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   const entries = data?.entries ?? [];
   const list = useMemo(
     () => sortEntries(filterEntries(entries, query)
-      .filter((e) => inSegment(e, seg))),
-    [entries, query, seg]);
-  useEffect(() => { setShown(PAGE); }, [query, seg]);
+      .filter((e) => inSegment(e, seg)), sortBy, dir),
+    [entries, query, seg, sortBy, dir]);
+  useEffect(() => { setShown(PAGE); }, [query, seg, sortBy, dir]);
   const unused = entries.filter((e) => e.status === "unused");
   const kept = entries.filter((e) => e.src === "ai");
   // the kept AI answers, counted in the senders they decide right now (the
@@ -359,6 +396,20 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
               onChange={(ev) => setQuery(ev.target.value)} />
             <Menu variant="secondary" icon label={t("know.more_menu")}
               trigger={<MoreHorizontal size={16} />}>
+              <MenuGroup label={t("sort.by")}>
+                {SORT_KEYS.map((k) => (
+                  <MenuItem key={k} active={sortBy === k} onClick={() => {
+                    if (k !== sortBy) { setSortBy(k); setDir(FIRST_DIR[k]); }
+                  }}>{t(`know.sort.${k}`)}</MenuItem>
+                ))}
+              </MenuGroup>
+              <MenuGroup label={t("sort.order")}>
+                {(["desc", "asc"] as Dir[]).map((d) => (
+                  <MenuItem key={d} active={dir === d}
+                    onClick={() => setDir(d)}>{d === "asc" ? t("sort.ascending") : t("sort.descending")}</MenuItem>
+                ))}
+              </MenuGroup>
+              <MenuGroup label={t("know.menu_list")}>
               <MenuItem disabled={!entries.length} sub={t("know.download_tip")}
                 onClick={download}>
                 <Download size={14} aria-hidden className="mr-2 inline" />
@@ -389,6 +440,7 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
                   ? t("know.forget_btn", { n: keptSenders })
                   : t("know.forget_btn_unused", { n: kept.length })}
               </MenuItem>
+              </MenuGroup>
             </Menu>
             <input ref={upload} type="file" accept="application/json"
               className="hidden" aria-label={t("know.upload")}
@@ -434,7 +486,7 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
       ) : list.length === 0 ? (
         <p className="p-2 type-body text-muted">{t("know.none")}</p>
       ) : (
-        groupEntries(visible).map((g) => (
+        groupEntries(visible, sortBy, dir).map((g) => (
           <SettingsGroup key={g.kind} header={
             <span className="flex items-center gap-2 type-body font-semibold
               text-body">

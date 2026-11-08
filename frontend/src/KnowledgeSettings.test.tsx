@@ -67,7 +67,9 @@ const names = () => [...document.querySelectorAll("[data-entry]")]
 const pick = (menu: string | RegExp, item: string | RegExp,
     scope: { getByRole: typeof screen.getByRole } = screen) => {
   fireEvent.click(scope.getByRole("button", { name: menu }));
-  fireEvent.click(screen.getByRole("menuitem", { name: item }));
+  const hit = screen.queryByRole("menuitem", { name: item })
+    ?? screen.getByRole("menuitemradio", { name: item });   // sort choices
+  fireEvent.click(hit);
 };
 const moreMenu = "More actions";
 
@@ -76,6 +78,7 @@ beforeEach(() => {
   for (const f of [knowledge, knowledgePut, knowledgeKeepAi, knowledgeForgetAi,
     knowledgeRemoveUnused, knowledgeImport, saveBlob, onChanged]) f.mockReset();
   list();
+  localStorage.clear();
   knowledgePut.mockResolvedValue({ ok: true, saved: 1, removed: 0, previous: {} });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); setLang("en"); });
@@ -152,6 +155,38 @@ describe("the list", () => {
     expect(names()).toEqual(["amy@solo.example"]);
     fireEvent.click(seg("AI 1"));
     expect(screen.getByText("No entries match.")).toBeTruthy();
+  });
+
+  it("sorts from the header menu, within the groups, and remembers it", async () => {
+    localStorage.removeItem("pmc_know_sort");
+    localStorage.removeItem("pmc_know_dir");
+    list({ entries: [
+      entry({ key: "a:b@x.example", senders: 1, ts: 10 }),
+      entry({ key: "a:a@x.example", senders: 5, ts: 20 }),
+      entry({ key: "a:c@x.example", senders: 3, ts: 30 }),
+      entry({ key: "a:z@y.example", kind: "jobs", src: "ai", ts: 5 })] });
+    mount();
+    await screen.findByText("a@x.example");
+    expect(names()).toEqual(["a@x.example", "b@x.example", "c@x.example",
+      "z@y.example"]);                                   // today's default
+    pick(moreMenu, "Senders");                           // most first
+    expect(names().slice(0, 3)).toEqual(["a@x.example", "c@x.example", "b@x.example"]);
+    pick(moreMenu, "Ascending");
+    expect(names().slice(0, 3)).toEqual(["b@x.example", "c@x.example", "a@x.example"]);
+    pick(moreMenu, "Newest");                            // newest first again
+    expect(names().slice(0, 3)).toEqual(["c@x.example", "a@x.example", "b@x.example"]);
+    expect(localStorage.getItem("pmc_know_sort")).toBe("ts");
+    expect(localStorage.getItem("pmc_know_dir")).toBe("desc");
+    pick(moreMenu, "Filed under");                       // orders the groups
+    expect(names()[0]).toBe("z@y.example");
+    cleanup();
+    mount();                                             // remembered
+    await screen.findByText("a@x.example");
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    expect(screen.getByRole("menuitemradio", { name: "Filed under" })
+      .getAttribute("aria-checked")).toBe("true");
+    localStorage.removeItem("pmc_know_sort");
+    localStorage.removeItem("pmc_know_dir");
   });
 
   it("the sort helpers are pure and stable on ties", () => {
