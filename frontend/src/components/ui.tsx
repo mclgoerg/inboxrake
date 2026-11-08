@@ -645,6 +645,8 @@ export function PanelHeader({ title, sub, actions, onClose, closeLabel,
       <div className="px-4 pt-2 pb-3">
         <div className="-mx-2 flex items-center gap-1">
           <button type="button" onClick={onClose}
+            aria-label={closeLabel ? undefined
+              : parent ? t("nav.back_to", { page: parent }) : undefined}
             className="inline-flex min-h-11 min-w-11 items-center gap-0.5
               rounded-control px-1 type-body-mobile text-accent
               focus-visible:ring-2 focus-visible:ring-accent">
