@@ -259,6 +259,13 @@ test("Clean up: no copies of any kind reads 0 / No copies found", async () => {
     { name: /^Duplicates/ }).textContent).toContain("No copies found"));
 });
 
+test("Clean up: nothing left but kept sets says how many are kept", async () => {
+  duplicates.mockResolvedValue(sum({ dismissed: 3 }));
+  render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("Nothing to remove · 3 kept"));
+});
+
 test("Clean up: the Attachments tile asks for a check until a size is known", () => {
   render(<CleanupPage {...cleanupProps()} />);
   expect(screen.getByRole("button", { name: /^Attachments/ }).textContent)

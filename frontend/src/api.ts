@@ -2,7 +2,7 @@ import { t } from "./i18n";
 import type {
   AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
-  AttSummary, Config, ConversationResp, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
+  AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
@@ -426,6 +426,13 @@ export const api = {
   duplicatesSummary: () => req<DupSummary>("/api/duplicates/summary"),
   duplicateVersions: () => req<DupSet[]>("/api/duplicates/versions"),
   possibleDuplicates: () => req<DupSet[]>("/api/duplicates/possible"),
+  /** "Keep all": hide one duplicate set (nothing is moved). */
+  dismissDuplicates: (kind: DupKind, key: string) =>
+    req<{ ok: boolean }>("/api/duplicates/dismiss", { kind, key }),
+  /** Show one hidden set again, or (no arguments) every hidden set. */
+  restoreDuplicates: (set?: { kind: DupKind; key: string }) =>
+    req<{ ok: boolean }>("/api/duplicates/restore",
+      set ? { ...set } : { all: true }),
   stats: () => req<StatsResp>("/api/stats"),
   /** `tz` = the browser's offset in minutes EAST of UTC. */
   wrapped: (year?: number) =>

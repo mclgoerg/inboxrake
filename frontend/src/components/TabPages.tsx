@@ -204,7 +204,10 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             sub={dupReady ? (dups.sets > 0
               ? [t("tab.dup_sets", { n: dups.sets.toLocaleString() }),
                 ...(dupCompare > 0 ? [compareText] : [])].join(" · ")
-              : dupCompare > 0 ? compareText : t("tab.dup_none"))
+              : dupCompare > 0 ? compareText
+                : (dups.dismissed ?? 0) > 0
+                  ? t("tab.dup_kept", { n: dups.dismissed })
+                  : t("tab.dup_none"))
               : t("tab.dup_sub")} disabled={!done}
             onClick={() => onOpen("duplicates")} />
         </li>

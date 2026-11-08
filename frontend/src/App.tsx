@@ -2286,7 +2286,8 @@ export default function App() {
       />
     )}
     {toolShown("duplicates") && (
-      <DuplicatesPanel key={account}
+      <DuplicatesPanel key={account} scannedTs={state?.scanned_ts}
+        reloadKey={`${state?.scanned_ts ?? 0}:${undoRev}`}
         onClose={() => closeTool(() => { setDupsOpen(false); refresh(); })}
         onDeleted={refresh}
       />

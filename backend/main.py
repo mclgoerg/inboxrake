@@ -34,6 +34,7 @@ from . import autoscan as autoscanmod
 from . import config as cfgmod
 from . import csvsafe
 from . import digest as digestmod
+from . import dupstore
 from . import demo as demomod
 from . import errortext
 from . import knowledge as knowledgemod
@@ -1141,6 +1142,40 @@ def get_possible_duplicates(account: str | None = Query(None)):
     return mailops.possible_duplicates_list(acc=_acc(account))
 
 
+class DupDismissBody(BaseModel):
+    kind: str                      # identical | versions | possible
+    key: str                       # the set's `key` from the list payload
+
+
+class DupRestoreBody(BaseModel):
+    kind: str | None = None
+    key: str | None = None
+    all: bool = False              # show every hidden set again
+
+
+@app.post("/api/duplicates/dismiss")
+def post_duplicates_dismiss(body: DupDismissBody,
+                            account: str | None = Query(None)):
+    """"Keep all": hide one duplicate set (nothing is moved or deleted)."""
+    acc = _acc(account)
+    try:
+        return mailops.dismiss_duplicate_set(body.kind, body.key, acc=acc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/duplicates/restore")
+def post_duplicates_restore(body: DupRestoreBody,
+                            account: str | None = Query(None)):
+    """Show one hidden set again (kind + key), or all of them (all)."""
+    acc = _acc(account)
+    try:
+        return mailops.restore_duplicate_sets(body.kind, body.key, body.all,
+                                              acc=acc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.get("/api/admin/stats")
 def get_admin_stats():
     """Usage overview over ALL tenants - admin only. Counts, spend and
@@ -2022,6 +2057,7 @@ def post_config(body: dict, request: Request, response: Response):
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
+        dupstore.drop_account(str(body["delete_account"]))
         rulesmod.drop_account(str(body["delete_account"]))
         autoscanmod.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
@@ -2045,6 +2081,7 @@ def post_config(body: dict, request: Request, response: Response):
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
             labelstore.rename_account(old, new)
+            dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)
             auditlog.rename_account(old, new)
             logging.getLogger("inboxrake.mail").info(
