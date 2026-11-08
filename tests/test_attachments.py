@@ -208,3 +208,70 @@ def test_a_snapshot_without_analysis_leaves_it_idle(bridge):
     assert mailops.load_snapshot(fresh)
     assert fresh.state["atts"]["status"] == "idle"
     assert fresh.state["atts"]["mails"] == 0
+
+
+# ------------------------------------------------- kinds, summary, repeats
+
+def test_kind_comes_from_the_extension_only():
+    assert mailops.att_kind("Scan.PDF") == "pdf"
+    assert mailops.att_kind("a.b.jpeg") == "images"
+    assert mailops.att_kind("clip.mov") == "video"
+    assert mailops.att_kind("song.flac") == "audio"
+    assert mailops.att_kind("album.zip") == "archives"
+    assert mailops.att_kind("report.xlsx") == "documents"
+    assert mailops.att_kind("calendar.ics") == "other"
+    assert mailops.att_kind("README") == "other"
+    assert mailops.att_kind(".pdf") == "other"      # a dotfile, no extension
+    assert mailops.att_ext("Scan.PDF") == "pdf" and mailops.att_ext("x") == ""
+    # every listed extension belongs to exactly one known kind
+    assert set(mailops._ATT_KIND_OF.values()) <= set(mailops.ATT_KINDS)
+
+
+def _annotate(files_by_uid):
+    acc = mailops.accounts.get()
+    with acc.lock:
+        for m in acc.index.values():
+            m["atts"], m["att_size"] = [], 0
+        for (folder, uid), files in files_by_uid.items():
+            m = acc.index[(folder, uid)] if (folder, uid) in acc.index \
+                else next(x for x in acc.index.values()
+                          if x["folder"] == folder and x["uid"] == uid)
+            m["atts"] = [{"name": n, "size": s} for n, s in files]
+            m["att_size"] = sum(s for _, s in files)
+
+
+def test_summary_per_kind_and_repeats_over_the_whole_index(bridge):
+    mailops.run_scan()
+    _annotate({
+        ("INBOX", 1): [("scan.pdf", 5000), ("a.jpg", 100)],
+        ("INBOX", 2): [("Scan.pdf", 5000)],      # same file, case differs
+        ("INBOX", 3): [("scan.pdf", 5000), ("b.jpg", 100)],
+        ("INBOX", 4): [("scan.pdf", 6000)],      # same name, other size
+    })
+    s = client.get("/api/attachments/summary").json()
+    by = {k["kind"]: k for k in s["kinds"]}
+    assert by["pdf"] == {"kind": "pdf", "bytes": 21000, "count": 4}
+    assert by["images"] == {"kind": "images", "bytes": 200, "count": 2}
+    assert "video" not in by                       # empty kinds are omitted
+    assert s["total"] == 21200 and s["mails"] == 4
+    # scan.pdf @5000 sits in three mails: 1 file, 3 mails, 2 copies extra
+    assert s["repeats"] == {"files": 1, "mails": 3, "bytes": 10000}
+
+    lst = {m["uid"]: m for m in client.get("/api/attachments").json()}
+    a = lst[1]["atts"]
+    assert a[0] == {"name": "scan.pdf", "size": 5000, "kind": "pdf",
+                    "ext": "pdf", "copies": 3}
+    assert a[1]["copies"] == 1 and a[1]["kind"] == "images"
+    assert lst[4]["atts"][0]["copies"] == 1
+
+
+def test_summary_without_analysis_is_empty(bridge):
+    mailops.run_scan()
+    s = client.get("/api/attachments/summary").json()
+    assert s == {"total": 0, "mails": 0, "kinds": [],
+                 "repeats": {"files": 0, "mails": 0, "bytes": 0}}
+
+
+def test_summary_account_param():
+    assert client.get("/api/attachments/summary",
+                      params={"account": "nope"}).status_code == 400

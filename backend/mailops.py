@@ -3544,15 +3544,91 @@ def start_att_scan(acc=None) -> None:
                      daemon=True).start()
 
 
-def attachments_list(limit: int = 300, acc=None) -> list[dict]:
-    """Mails with attachments, largest first."""
+# File kinds for the attachment overview, from the extension only. One map,
+# shared by the summary and the list; anything unlisted is "other".
+ATT_KINDS = ("pdf", "images", "video", "audio", "archives", "documents",
+             "other")
+_ATT_EXTS = {
+    "pdf": ("pdf",),
+    "images": ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp",
+               "tif", "tiff", "svg", "raw", "cr2", "nef", "arw", "dng"),
+    "video": ("mov", "mp4", "m4v", "avi", "mkv", "webm", "wmv", "mpg",
+              "mpeg", "3gp"),
+    "audio": ("mp3", "m4a", "wav", "flac", "ogg", "aac", "wma", "aiff"),
+    "archives": ("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"),
+    "documents": ("doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods",
+                  "odp", "txt", "rtf", "csv", "pages", "numbers", "key",
+                  "md", "epub"),
+}
+_ATT_KIND_OF = {e: k for k, exts in _ATT_EXTS.items() for e in exts}
+
+
+def att_ext(name: str) -> str:
+    """Lower-case extension of a file name ("" when it has none)."""
+    base = (name or "").rsplit(".", 1)
+    return base[1].strip().lower() if len(base) == 2 and base[0] else ""
+
+
+def att_kind(name: str) -> str:
+    """Kind of file (one of ATT_KINDS) from the file name's extension."""
+    return _ATT_KIND_OF.get(att_ext(name), "other")
+
+
+def _att_repeats(mails) -> dict:
+    """(lower-cased name, size) -> set of mail keys carrying that file, for
+    every file that appears in more than one mail."""
+    seen: dict = {}
+    for m in mails:
+        for a in m.get("atts") or ():
+            seen.setdefault((a["name"].lower(), a["size"]), set()).add(
+                (m["folder"], m["uid"]))
+    return {k: v for k, v in seen.items() if len(v) > 1}
+
+
+def attachments_summary(acc=None) -> dict:
+    """Numbers behind the attachment page, over the WHOLE index (no cap):
+    bytes + file count per kind of file, and the repeats - the same
+    (name, size) in more than one mail: `files` distinct repeated files,
+    `mails` mails carrying one, `bytes` what the copies beyond the first of
+    each take."""
     acc = acc or accounts.get()
     with acc.lock:
+        mails = [m for m in acc.index.values() if m.get("att_size")]
+    kinds = {k: {"kind": k, "bytes": 0, "count": 0} for k in ATT_KINDS}
+    for m in mails:
+        for a in m.get("atts") or ():
+            row = kinds[att_kind(a["name"])]
+            row["bytes"] += a["size"]
+            row["count"] += 1
+    reps = _att_repeats(mails)
+    return {"total": sum(m["att_size"] for m in mails),
+            "mails": len(mails),
+            "kinds": [r for r in kinds.values() if r["count"]],
+            "repeats": {"files": len(reps),
+                        "mails": len(set().union(*reps.values()))
+                        if reps else 0,
+                        "bytes": sum(size * (len(ks) - 1)
+                                     for (_, size), ks in reps.items())}}
+
+
+def attachments_list(limit: int = 2000, acc=None) -> list[dict]:
+    """Mails with attachments, largest first. Each attachment also says its
+    `kind`, `ext` and how many mails carry the same file (`copies`, 1 =
+    unique)."""
+    acc = acc or accounts.get()
+    with acc.lock:
+        src = [m for m in acc.index.values() if m.get("att_size")]
+        reps = _att_repeats(src)
         out = [{"uid": m["uid"], "folder": m["folder"], "date": m["date"],
                 "ts": m["ts"], "subject": m["subject"], "addr": m["addr"],
                 "size": m["size"], "seen": m["seen"], "ai": None,
-                "att_size": m["att_size"], "atts": m["atts"]}
-               for m in acc.index.values() if m.get("att_size")]
+                "att_size": m["att_size"],
+                "atts": [{**a, "kind": att_kind(a["name"]),
+                          "ext": att_ext(a["name"]),
+                          "copies": len(reps.get(
+                              (a["name"].lower(), a["size"]), ())) or 1}
+                         for a in m["atts"]]}
+               for m in src]
     out.sort(key=lambda m: -m["att_size"])
     return out[:limit]
 
