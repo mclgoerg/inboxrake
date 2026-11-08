@@ -121,6 +121,8 @@ const open = async (groups = FIXTURE) => {
 const card = () => screen.getByTestId("triage-card");
 const btn = (dlg: HTMLElement, name: string | RegExp) =>
   within(dlg).getByRole("button", { name });
+/** Header button: "Done", or "Apply N decisions" once something is decided. */
+const DONE = /^(Done|Apply \d+ decisions?)$/;
 const key = (k: string) => fireEvent.keyDown(window, { key: k });
 
 test("deck follows the current list order and shows the card details", async () => {
@@ -245,7 +247,7 @@ test("without reduced motion the card flies out before the next shows", async ()
 });
 
 const toSummary = async (dlg: HTMLElement) => {
-  fireEvent.click(btn(dlg, "Done"));
+  fireEvent.click(btn(dlg, DONE));
   await within(dlg).findByRole("button", { name: "Apply" });
 };
 
@@ -339,7 +341,7 @@ test("a group protected since the deck was dealt is skipped and said so", async 
   const dlg = await open();
   fireEvent.click(btn(dlg, /Unsubscribe/));                   // News A
   fireEvent.click(btn(dlg, /Trash/));                         // Shop B
-  fireEvent.click(btn(dlg, "Done", ));
+  fireEvent.click(btn(dlg, DONE));
   await within(dlg).findByRole("button", { name: "Apply" });
   state = baseState(FIXTURE.map((x) => x.key === "b@shop.example"
     ? { ...x, protected: true } : x));
@@ -374,7 +376,7 @@ test("a step failing after another ran ends the deck (no resend)", async () => {
   const dlg = await open();
   fireEvent.click(btn(dlg, /Unsubscribe/));
   fireEvent.click(btn(dlg, /Trash/));
-  fireEvent.click(btn(dlg, "Done"));
+  fireEvent.click(btn(dlg, DONE));
   fireEvent.click(btn(dlg, "Apply"));
   await pressDialog("Apply");
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
@@ -386,7 +388,7 @@ test("a failing step stops the rest and keeps the deck open", async () => {
   const dlg = await open();
   fireEvent.click(btn(dlg, /Unsubscribe/));
   fireEvent.click(btn(dlg, /Trash/));
-  fireEvent.click(btn(dlg, "Done"));
+  fireEvent.click(btn(dlg, DONE));
   fireEvent.click(btn(dlg, "Apply"));
   await pressDialog("Apply");
   await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalled());
@@ -452,7 +454,7 @@ test("German strings", async () => {
   fireEvent.click(btn(dlg, /Papierkorb/));
   await waitFor(() => expect(within(dlg).getByRole("status").textContent)
     .toBe("1 Gruppe in den Papierkorb · 5000 B"));
-  fireEvent.click(btn(dlg, "Fertig"));
+  fireEvent.click(btn(dlg, /^(Fertig|\d+ Entscheidung(en)? anwenden)$/));
   fireEvent.click(btn(dlg, "Anwenden"));
   const c = await findDialog();
   expect(c.textContent).toContain("50 Mails aus 1 Gruppe in den Papierkorb verschieben");

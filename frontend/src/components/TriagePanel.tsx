@@ -1,4 +1,7 @@
-import { Check, Layers, ShieldCheck, Trash2, Undo2, X } from "lucide-react";
+import {
+  ArrowLeft, ArrowRight, ArrowUp, BellOff, Check, Layers, ShieldCheck, Trash2,
+  Undo2, X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtSize } from "../api";
 import { t } from "../i18n";
@@ -25,9 +28,13 @@ const STAMP: Record<Exclude<Decision, "protect">, string> = {
   trash: "text-danger-fg", keep: "text-safe-fg", unsub: "text-accent",
 };
 
-function Card({ g, grouping, reduced, onCommit }: {
+type Intent = Exclude<Decision, "protect">;
+
+function Card({ g, grouping, reduced, onCommit, onIntent }: {
   g: Group; grouping: Grouping; reduced: boolean;
   onCommit: (d: Decision) => void;
+  /** The direction the card is being dragged towards (null at rest). */
+  onIntent: (i: Intent | null) => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number; at: number; id: number } | null>(null);
@@ -87,12 +94,15 @@ function Card({ g, grouping, reduced, onCommit }: {
   };
 
   const pos = leaving ?? drag;
-  const intent: Exclude<Decision, "protect"> | null = !pos ? null
+  const intent: Intent | null = !pos ? null
     : Math.abs(pos.dx) >= Math.abs(pos.dy)
       ? (pos.dx < 0 ? "trash" : pos.dx > 0 ? "keep" : null)
       : (pos.dy < 0 ? "unsub" : null);
   const progress = pos ? Math.min(1, Math.max(Math.abs(pos.dx),
     Math.abs(pos.dy)) / ((el.current?.offsetWidth || 300) * 0.3)) : 0;
+  const shown = intent && allowed(intent) ? intent : null;
+  useEffect(() => { onIntent(shown); }, [shown, onIntent]);
+  useEffect(() => () => onIntent(null), [onIntent]);
   const style = pos ? {
     transform: `translate(${pos.dx}px, ${pos.dy}px) rotate(${pos.dx / 25}deg)`,
     transition: leaving ? `transform ${EXIT_MS}ms ease-out, opacity ${EXIT_MS}ms`
@@ -106,8 +116,8 @@ function Card({ g, grouping, reduced, onCommit }: {
     <div ref={el} data-testid="triage-card" style={style}
       onPointerDown={down} onPointerMove={move} onPointerUp={up}
       onPointerCancel={cancel}
-      className="relative w-full max-w-sm touch-none select-none rounded-card
-        border border-line bg-panel2 p-4 shadow-popover">
+      className="relative w-full touch-none select-none rounded-card
+        border border-line bg-panel2 p-4 shadow-popover sm:p-5">
       {intent && allowed(intent) && (
         <div aria-hidden style={{ opacity: progress }}
           className={`absolute right-3 top-3 rounded-badge border-2
@@ -133,18 +143,16 @@ function Card({ g, grouping, reduced, onCommit }: {
         </div>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-        <div>
-          <div className="type-heading tabular-nums">{g.count}</div>
-          <div className="type-meta text-muted">{t("triage.mails")}</div>
-        </div>
-        <div>
-          <div className="type-heading tabular-nums">{fmtSize(g.size)}</div>
-          <div className="type-meta text-muted">{t("triage.size")}</div>
-        </div>
-        <div>
-          <div className="type-heading tabular-nums">{unreadPct(g)}%</div>
-          <div className="type-meta text-muted">{t("unread")}</div>
-        </div>
+        {[
+          [g.count, t("triage.mails")],
+          [fmtSize(g.size), t("triage.size")],
+          [`${unreadPct(g)}%`, t("unread")],
+        ].map(([v, label]) => (
+          <div key={label} className="min-w-0 rounded-card bg-chip px-2 py-2">
+            <div className="truncate type-heading tabular-nums">{v}</div>
+            <div className="truncate type-meta text-muted">{label}</div>
+          </div>
+        ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <EngagementMeter g={g} />
@@ -161,7 +169,8 @@ function Card({ g, grouping, reduced, onCommit }: {
         </span>
       </div>
       {g.samples.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-line pt-3">
+        <ul aria-label={t("triage.latest")}
+          className="mt-3 space-y-1 border-t border-line pt-3">
           {g.samples.slice(0, 3).map((s, i) => (
             <li key={i} className="truncate type-meta text-muted">{s}</li>
           ))}
@@ -176,13 +185,25 @@ function Card({ g, grouping, reduced, onCommit }: {
   );
 }
 
+/** Round button colours per decision (disabled falls back to the chip grey). */
 const DECISION_BTN: {
-  d: Decision; icon: typeof Trash2; key: string;
+  d: Decision; icon: typeof Trash2; key: string; tone: string;
 }[] = [
-  { d: "trash", icon: Trash2, key: "triage.trash" },
-  { d: "keep", icon: Check, key: "triage.keep" },
-  { d: "unsub", icon: X, key: "triage.unsub" },
-  { d: "protect", icon: ShieldCheck, key: "triage.protect" },
+  { d: "trash", icon: Trash2, key: "triage.trash", tone: "bg-keep-bg text-keep-fg" },
+  { d: "unsub", icon: BellOff, key: "triage.unsub", tone: "bg-info-bg text-info-fg" },
+  { d: "protect", icon: ShieldCheck, key: "triage.protect", tone: "bg-chip text-body" },
+  { d: "keep", icon: Check, key: "triage.keep", tone: "bg-safe-bg text-safe-fg" },
+];
+
+/** The direction hints beside the deck (a decision the card does not allow
+ *  is not offered, as with the buttons and the swipe). */
+const HINTS: { d: Intent; icon: typeof ArrowUp; tone: string; pos: string }[] = [
+  { d: "trash", icon: ArrowLeft, tone: "bg-keep-bg text-keep-fg",
+    pos: "left-3 top-1/2 -translate-y-1/2" },
+  { d: "keep", icon: ArrowRight, tone: "bg-safe-bg text-safe-fg",
+    pos: "right-3 top-1/2 -translate-y-1/2" },
+  { d: "unsub", icon: ArrowUp, tone: "bg-info-bg text-info-fg",
+    pos: "left-1/2 top-3 -translate-x-1/2" },
 ];
 
 /** One group per card: Trash / Keep / Unsubscribe / Protect. Decisions only
@@ -204,9 +225,9 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
   const [history, setHistory] = useState<string[]>([]);
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [intent, setIntent] = useState<Intent | null>(null);
   const isPage = useIsPage();
   const reduced = useMediaQuery(REDUCED);
-  const phone = useMediaQuery("(width < 40rem)");
 
   const finished = idx >= deck.length;
   const summaryOpen = review || finished;
@@ -292,14 +313,35 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
         sub={summaryOpen ? t("triage.summary_title")
           : t("triage.progress", { n: idx + 1, total: deck.length })}
         actions={!summaryOpen && (
-          <Button variant="secondary" size="sm"
-            onClick={() => setReview(true)}>{t("triage.done")}</Button>
+          <Button variant={sum.actions > 0 ? "primary" : "secondary"} size="sm"
+            onClick={() => setReview(true)}>
+            {sum.actions > 0 ? t("triage.apply_decisions", { n: sum.actions })
+              : t("triage.done")}
+          </Button>
         )}
         onClose={close} />
       <ProgressBar thin value={idx} max={deck.length} />
-      <div role="status" className="border-b border-line px-4 py-2 type-meta
-        text-muted">
-        {line}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line
+        px-4 py-2">
+        <span role="status" className="sr-only">{line}</span>
+        <span aria-hidden className="contents">
+          <Tag tone={sum.trash.groups ? "keep" : "neutral"}>
+            <Trash2 size={14} className="mr-1 inline align-text-bottom" />
+            {sum.trash.groups}
+          </Tag>
+          <Tag tone={sum.keep ? "safe" : "neutral"}>
+            <Check size={14} className="mr-1 inline align-text-bottom" />
+            {sum.keep}
+          </Tag>
+          <Tag tone={sum.unsub ? "info" : "neutral"}>
+            <BellOff size={14} className="mr-1 inline align-text-bottom" />
+            {sum.unsub}
+          </Tag>
+          <Tag tone="neutral">
+            <ShieldCheck size={14} className="mr-1 inline align-text-bottom" />
+            {sum.protect}
+          </Tag>
+        </span>
       </div>
       {summaryOpen ? (
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
@@ -334,13 +376,34 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
           </p>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center
+        <div className="relative flex min-h-0 flex-1 flex-col items-center
           justify-center gap-3 overflow-hidden p-4">
-          <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
-            onCommit={decide} />
-          <p className="max-w-sm text-center type-meta text-muted">
+          <div className="relative mb-6 w-full max-w-md">
+            {/* The deck: the next two cards peek out from under this one. */}
+            {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
+              <div key={n} aria-hidden
+                className="absolute inset-0 rounded-card border border-line
+                  bg-panel2"
+                style={{ transform: `translateY(${n * 14}px) scale(${1 - n * 0.06})`,
+                  opacity: 1 - n * 0.2 }} />
+            ))}
+            <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
+              onCommit={decide} onIntent={setIntent} />
+          </div>
+          <p className="mt-4 max-w-sm text-center type-meta text-muted">
             {t("triage.hint")}
           </p>
+          {/* Direction hints; on phones only while dragging. */}
+          {HINTS.filter(({ d }) => can(d, g, grouping)).map(
+            ({ d, icon: Icon, tone, pos }) => (
+              <span key={d} aria-hidden
+                className={`pointer-events-none absolute rounded-full px-3 py-1.5
+                  type-meta font-medium transition-opacity ${tone} ${pos}
+                  ${intent === d ? "opacity-100" : "opacity-0 sm:opacity-60"}`}>
+                <Icon size={14} className="mr-1 inline align-text-bottom" />
+                {t(`triage.${d}`)}
+              </span>
+            ))}
         </div>
       )}
       <div className="border-t border-line px-4 py-3 sm:px-5
@@ -360,25 +423,28 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
             </Button>
           </div>
         ) : (
-          <div className="flex items-stretch gap-2">
+          <div className="flex items-start justify-center gap-3 sm:gap-5">
             <Button variant="secondary" size="icon" label={t("triage.undo")}
-              disabled={!history.length} onClick={undo}>
+              className="mt-2 rounded-full" disabled={!history.length}
+              onClick={undo}>
               <Undo2 size={18} />
             </Button>
-            <div className="grid flex-1 grid-cols-4 gap-2">
-              {DECISION_BTN.map(({ d, icon: Icon, key }) => (
-                <Button key={d} variant="secondary"
-                  disabled={!can(d, g, grouping)}
-                  title={d === "trash" && g.protected
-                    ? t("triage.protected_kept") : undefined}
-                  className={`flex flex-col items-center justify-center gap-0.5
-                    ${phone ? "px-1" : ""}`}
-                  onClick={() => decide(d)}>
-                  <Icon size={16} aria-hidden />
-                  <span className="type-caption">{t(key)}</span>
-                </Button>
-              ))}
-            </div>
+            {DECISION_BTN.map(({ d, icon: Icon, key, tone }) => (
+              <button key={d} type="button" disabled={!can(d, g, grouping)}
+                title={d === "trash" && g.protected
+                  ? t("triage.protected_kept") : undefined}
+                onClick={() => decide(d)}
+                className="group flex min-w-0 cursor-pointer flex-col
+                  items-center gap-1 disabled:cursor-not-allowed">
+                <span className={`flex size-14 items-center justify-center
+                  rounded-full transition-transform group-enabled:group-active:scale-95
+                  sm:size-16 ${tone} group-disabled:bg-chip
+                  group-disabled:text-faint`}>
+                  <Icon size={18} aria-hidden />
+                </span>
+                <span className="type-caption text-muted">{t(key)}</span>
+              </button>
+            ))}
           </div>
         )}
       </div>
