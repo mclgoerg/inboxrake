@@ -1712,7 +1712,8 @@ export default function App() {
     const live = state?.groups.sender[sender.key];
     return (
       <DetailPanel variant="inline" key={sender.key} grouping="sender"
-        group={sender} aiEnabled={aiEnabled}
+        group={live ? { ...sender, ai: live.ai, tags: live.tags } : sender}
+        aiEnabled={aiEnabled}
         protectedNow={live?.protected ?? sender.protected}
         unsubscribedNow={live?.unsubscribed ?? sender.unsubscribed}
         onTrash={(g) => actOn("sender", state?.groups?.sender ?? {}, [g.key],
@@ -1734,6 +1735,8 @@ export default function App() {
             rev={state.groups_rev} onFile={fileSenders} onReset={resetFiling} />
         )}
         onClose={back} backLabel={t("senders.back")} onEmptied={back}
+        onFile={fileSenders} onUnfile={resetFiling} categories={ownCategories}
+        labelSender={live ?? sender} onLabelsSaved={refresh}
         onDeleted={refresh} />
     );
   };
@@ -1744,12 +1747,22 @@ export default function App() {
   // of it, senders trashed from its list): its header, counts and the Trash
   // all label follow the live row; everything else stays the snapshot taken
   // when it was opened.
+  // The verdict and the tags are always live too: Edit labels changes them
+  // under the open panel.
   const liveGroup = (g: Group): Group => {
     const live = state?.groups[mode]?.[g.key];
-    return live && isPooled(g) ? { ...g, kind: live.kind, label: smartLabel(live),
+    if (!live) return g;
+    const now = { ...g, ai: live.ai, tags: live.tags };
+    return isPooled(g) ? { ...now, kind: live.kind, label: smartLabel(live),
       count: live.count, size: live.size, pinned: live.pinned,
-      n_senders: live.n_senders } : g;
+      n_senders: live.n_senders } : now;
   };
+  // The live sender record behind a Sender row or a one-sender Smart row
+  // (Edit labels shows where Smart files it).
+  const detailSender = (g: Group): Group | undefined =>
+    mode === "sender" ? state?.groups.sender?.[g.key]
+      : mode === "smart" && g.kind === "sender" && g.addr
+        ? state?.groups.sender?.[g.addr] : undefined;
   const renderDetail = (variant: "modal" | "pane") => detail
     && state?.groups[mode]?.[detail.key] && (
     <DetailPanel
@@ -1779,7 +1792,8 @@ export default function App() {
       senders={mode === "smart" && isPooled(detail)
         ? members?.get(detail.key) : undefined}
       onSenderAct={actOnSenders} onSenderProtect={protectSenders}
-      onFile={fileSenders} categories={ownCategories}
+      onFile={fileSenders} onUnfile={resetFiling} categories={ownCategories}
+      labelSender={detailSender(detail)} onLabelsSaved={refresh}
       renderSender={renderSender}
       aiSort={mode === "smart" && isPooled(detail) ? {
         total: aiSortedCount, checked: aiCheckedCount,

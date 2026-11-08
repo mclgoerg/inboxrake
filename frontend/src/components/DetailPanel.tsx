@@ -1,6 +1,6 @@
 import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
-  FolderInput, MessagesSquare, MoreHorizontal, Pin, PinOff, Shield, Trash2,
-  TriangleAlert, Wand2, X } from "lucide-react";
+  FolderInput, MessagesSquare, MoreHorizontal, Pencil, Pin, PinOff, Shield,
+  Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
@@ -13,6 +13,7 @@ import { fmtDate, fmtSize, fmtUsd, mailKey, olderThan, shortcutTarget, sieveSnip
   type SieveAction } from "../lib";
 import { isPooled, smartContent, smartWhy } from "../smart";
 import type { AppState, Group, Grouping, GroupUnsub, Mail } from "../types";
+import { EditLabels } from "./EditLabels";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { MailRows, MessageView } from "./MailList";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
@@ -41,7 +42,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   unsubscribedNow, onTrash, onMove, onProtect, onBlock, onUnblock, blocked, folders,
   sieve = true, smartMin = 10, onClose, onEmptied, onDeleted, variant = "modal", hideGroupActions = false,
   senders, onSenderAct, onSenderProtect, renderSender, backLabel,
-  aiSort, onFile, categories, filingBox }: {
+  aiSort, onFile, onUnfile, categories, filingBox, onLabelsSaved,
+  labelSender }: {
   grouping: Grouping;
   group: Group;
   aiEnabled: boolean;
@@ -92,8 +94,15 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // user's own categories they can be filed into. One sender opened inside
   // a pool shows `filingBox` ("How Inboxrake files this sender") on top.
   onFile?: (entries: FileEntry[], senders: number) => Promise<boolean>;
+  onUnfile?: (keys: string[]) => Promise<boolean>;
   categories?: string[];
   filingBox?: ReactNode;
+  // One sender (a Sender row, the one-sender Smart row, a sender opened in a
+  // pool): "Edit labels" - the user's own verdict, categories and Smart
+  // group. `labelSender` is the sender's live record (its Smart placement);
+  // `onLabelsSaved` reloads the state after a change. Absent: no button.
+  onLabelsSaved?: () => void;
+  labelSender?: Group;
 }) {
   const demo = useDemo();
   const hasSenders = !!senders && !!onSenderAct && !!onSenderProtect
@@ -116,6 +125,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const [moveOpen, setMoveOpen] = useState(false);   // whole-group Move picker
   const [vFilter, setVFilter] = useState("all");
   const [sieveOpen, setSieveOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const [sieveAction, setSieveAction] = useState<SieveAction>("fileinto");
   const [sieveFolder, setSieveFolder] = useState("Archive");
   const cancelAi = useRef(false);
@@ -409,6 +419,12 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const sub = group.sub ? localizedSub(group.sub) : "";
   const since = group.first
     ? fmtDate(group.first, nowDate(), { lang: getLang() }) : "";
+  // Edit labels belongs to ONE sender: a Sender row, or a Smart row that
+  // stands for exactly one (its `addr`). Pools, domains, subjects and
+  // threads have no sender of their own.
+  const labelKey = !onLabelsSaved ? ""
+    : grouping === "sender" ? group.key
+    : grouping === "smart" && group.kind === "sender" ? group.addr ?? "" : "";
   const canBlock = !!onBlock && !blocked;
   // One scope at a time: group Move steps aside like the footer button does.
   const canMove = !!onMove && tab === "mails" && group.count > 0
@@ -469,6 +485,17 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
         {group.ai && <AiTag ai={group.ai} />}
+        {labelKey && (
+          <Button variant="secondary" size="sm"
+            onClick={() => setLabelsOpen(true)}>
+            <span className="inline-flex items-center gap-1.5">
+              <Pencil size={14} aria-hidden /> {t("labels.edit")}
+            </span>
+          </Button>
+        )}
+        {group.ai?.capped && (
+          <span className="type-meta text-muted">{t("v.held_by_you")}</span>
+        )}
         {group.ratings && <RatingChips ratings={group.ratings} />}
         <EngagementMeter g={group} />
         <TrackerBadge g={group} />
@@ -980,6 +1007,11 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
             </div>
           )}
         </>
+      )}
+      {labelsOpen && labelKey && (
+        <EditLabels senderKey={labelKey} sender={labelSender}
+          categories={categories ?? []} onFile={onFile} onReset={onUnfile}
+          onSaved={onLabelsSaved!} onClose={() => setLabelsOpen(false)} />
       )}
     </>
   );

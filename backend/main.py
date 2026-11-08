@@ -37,6 +37,8 @@ from . import digest as digestmod
 from . import demo as demomod
 from . import errortext
 from . import knowledge as knowledgemod
+from . import labels as labelsmod
+from . import labelstore
 from . import knowledgestore
 from . import knownsenders
 from . import mailops
@@ -1011,6 +1013,34 @@ def post_knowledge_remove_unused():
         raise _knowledge_refusal(exc)
 
 
+# ------------------------------------------------------- sender labels
+# The user's own verdict / tags per sender (backend/labels.py); per account.
+# Refusals are stable codes (labelstore.*) - never a message naming a sender.
+
+def _label_refusal(exc: labelstore.LabelError) -> HTTPException:
+    return HTTPException(409 if exc.code == labelstore.UNSCANNED else 400,
+                         exc.code)
+
+
+@app.get("/api/labels")
+def get_labels(key: str = Query(...), account: str | None = Query(None)):
+    """One sender's labels now, what automatic would be, tag suggestions."""
+    try:
+        return labelsmod.detail(_acc(account), key)
+    except labelstore.LabelError as exc:
+        raise _label_refusal(exc)
+
+
+@app.put("/api/labels")
+def put_labels(body: dict, account: str | None = Query(None)):
+    """Set / clear one sender's verdict and / or tags ({key, verdict?, tags?}
+    - null = automatic - or {key, reset: true}); returns the new detail."""
+    try:
+        return labelsmod.put(_acc(account), body)
+    except labelstore.LabelError as exc:
+        raise _label_refusal(exc)
+
+
 @app.post("/api/ai_group")
 def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
@@ -1773,6 +1803,8 @@ def get_export_config():
         # sender addresses the user filed in Smart (private; see the export
         # note in the UI - `replied` and the AI verdicts list addresses too)
         "knowledge": knowledgemod.export_section(),
+        # per account: the verdicts / tags the user set per sender (private)
+        "labels": labelstore.export_section(),
     }
     return StreamingResponse(
         iter([json.dumps(data, indent=1)]), media_type="application/json",
@@ -1830,6 +1862,13 @@ def post_import_config(body: dict):
                 verdictstore.save(grouping, clean, account)
                 n += len(clean)
         return n
+
+    nlabels = labelstore.import_section(body.get("labels"),
+                                        set(accountsmod.names()))
+    if nlabels:
+        for name in accountsmod.names():
+            labelsmod.refresh(accountsmod.get(name),
+                              labelstore.load_account(name))
 
     nverdicts = 0
     verdicts = body.get("verdicts")
@@ -1961,6 +2000,7 @@ def post_config(body: dict, request: Request, response: Response):
         digestmod.drop_account(str(body["delete_account"]))
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
+        labelstore.drop_account(str(body["delete_account"]))
         rulesmod.drop_account(str(body["delete_account"]))
         autoscanmod.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
@@ -1983,6 +2023,7 @@ def post_config(body: dict, request: Request, response: Response):
             digestmod.rename_account(old, new)
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
+            labelstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)
             auditlog.rename_account(old, new)
             logging.getLogger("inboxrake.mail").info(

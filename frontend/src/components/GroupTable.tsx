@@ -122,6 +122,9 @@ function rowPill(g: Group, blocked: boolean): ReactNode {
   if (u?.status === "link") return pill("review", t("unsub.pill_link"));
   if (blocked) return pill("keep", t("Blocked"));
   if (g.new) return pill("new", t("New"), t("new_sender.tip"));
+  if (g.ai?.src === "user") {
+    return pill("info", t("v.set_by_you", { verdict: cap(t(`v.${g.ai.verdict}`)) }));
+  }
   if (g.ai) {
     return pill(VERDICT_PILL[g.ai.verdict] ?? "neutral",
       cap(t(`v.${g.ai.verdict}`)), g.ai.reason);

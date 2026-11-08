@@ -6,6 +6,20 @@ import type { Group, KnowledgeEntry } from "../types";
 import type { FileEntry } from "./SenderList";
 import { LINK, PopupSelect, Tag } from "./ui";
 
+/** What the "Filed under" select shows for one sender: the user's own filing
+ *  of THIS sender, else "auto". (Until the entries are loaded - or when they
+ *  cannot be - the sender's own reason says it: a filing by its own entry is
+ *  `rule` / `by: a`.) `own` is that entry, when loaded. */
+export function currentFiling(sender: Group,
+    entries: Map<string, KnowledgeEntry>): { mine: string; own?: KnowledgeEntry } {
+  const why = sender.smart_why;
+  const own = entries.get(`a:${sender.key}`);
+  const ownKind = why?.r === "rule" && why.by === "a"
+    ? (why.k === "category" ? `cat:${why.name ?? ""}` : why.k) : undefined;
+  return { own, mine: own ? (own.src === "user" ? own.kind : "auto")
+    : (ownKind ?? "auto") };
+}
+
 /** "How Inboxrake files this sender": where the sender sits and why, a kind
  *  select to file it yourself (or back to Automatic), who filed it (you, or
  *  an AI answer you kept) and - when a filing of yours has no effect right
@@ -32,16 +46,10 @@ export function SenderFiling({ sender, rowLabel, categories, rev, onFile,
   }, [rev]);
 
   const why = sender.smart_why;
-  const own = entries.get(`a:${sender.key}`);
   const decided = why?.r === "rule" || why?.r === "kept_ai";
   const deciding = decided && why?.entry ? entries.get(why.entry) : undefined;
   const byCompany = decided && why?.by === "co";
-  // What the select shows: the user's own filing of THIS sender, else Auto.
-  // (Until the entries are loaded - or when they cannot be - the sender's
-  // own reason says it: a filing by its own entry is `rule` / `by: a`.)
-  const ownKind = why?.r === "rule" && why.by === "a"
-    ? (why.k === "category" ? `cat:${why.name ?? ""}` : why.k) : undefined;
-  const mine = own ? (own.src === "user" ? own.kind : "auto") : (ownKind ?? "auto");
+  const { mine, own } = currentFiling(sender, entries);
   const source = (deciding ?? own)?.src;
   // A filing of this sender (or its company) that does not decide right now.
   const idle = [own, deciding].find((e) => e && e.status !== "active");

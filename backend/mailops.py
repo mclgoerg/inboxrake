@@ -36,6 +36,7 @@ from . import bodyindex
 from . import config as cfgmod
 from . import demo
 from . import knownsenders
+from . import labelstore
 from . import pinstore
 from . import aisortstore
 from . import knowledgestore
@@ -563,7 +564,7 @@ def load_snapshot(acc) -> bool:
         return False
     try:
         role_index, role_uv = _read_role_snapshot(data)
-        cached = verdictstore.apply_to_groups(data["groups"], acc.name)
+        cached = apply_verdicts(data["groups"], acc.name)
         with acc.lock:
             if acc.state["status"] != "idle" or acc.index:
                 return False              # never clobber live state
@@ -664,12 +665,38 @@ def _undo_summaries(acc) -> list[dict]:
 
 def clear_ai_marks() -> None:
     """Drop in-memory AI marks of EVERY account (verdict cache cleared)."""
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
     for acc in accounts.all_instantiated():
         with acc.lock:
             for recs in acc.state["groups"].values():
                 for rec in recs.values():
                     rec["ai"] = None
+            # the user's own verdicts are not AI verdicts: they stay
+            labelstore.apply_to_groups(
+                acc.state["groups"], acc.name,
+                lambda a: cfgmod.is_protected(a, plist))
             acc.state["groups_rev"] += 1
+
+
+def apply_verdicts(groups: dict, account: str,
+                   protected: list[str] | None = None) -> int:
+    """Put every verdict a group shows on freshly built / restored groups:
+    the cached AI verdicts, then - on top, they always win - the user's own
+    (labelstore). Returns how many cached AI verdicts were applied.
+
+    User labels, see labelstore.py: this is the entry for scan, snapshot
+    restore and Smart rebuilds; the AI review (aihelper) never overwrites a
+    user verdict; public_state caps what pooled / domain / subject / thread
+    rows may claim and re-applies "protected wins" at read time;
+    `refresh_sender_labels` is the live path after an edit."""
+    if protected is None:
+        protected = cfgmod.normalize_protected(
+            cfgmod.load_config().get("protected"))
+    labelstore.strip_user_marks(groups)
+    cached = verdictstore.apply_to_groups(groups, account)
+    labelstore.apply_to_groups(groups, account,
+                               lambda a: cfgmod.is_protected(a, protected))
+    return cached
 
 
 def ikey(folder: str, uid: int) -> str:
@@ -1687,12 +1714,17 @@ def build_groups(messages: list, replied_to: set[str] | None = None,
                  protected: list[str] | None = None,
                  user_categories=None,
                  ai_kinds: dict[str, dict] | None = None,
-                 knowledge: dict[str, dict] | None = None) -> dict:
+                 knowledge: dict[str, dict] | None = None,
+                 tag_overrides: dict[str, list[str]] | None = None) -> dict:
     """Every grouping from the scanned mails. `categories` decide the tags
     (all of them); `user_categories` - the NAMES of the categories the user
     defined or edited (SmartParams.user) - decide which tags may place a
-    Smart row. Omitting it means: no category row, whatever the tags."""
+    Smart row. Omitting it means: no category row, whatever the tags.
+    `tag_overrides` ({address: tags}, labelstore): the user's own tags replace
+    a Sender row's automatic ones (and so the Smart rows built from it); the
+    domain / subject / thread rows of that sender gain them."""
     replied_to = replied_to or set()
+    tag_over = tag_overrides or {}
     now = time.time()
     groups: dict = {g: {} for g in GROUPINGS}
     threads = assign_threads(messages)
@@ -1737,6 +1769,13 @@ def build_groups(messages: list, replied_to: set[str] | None = None,
             localpart = rec["key"].split("@", 1)[0] if grouping == "sender" else ""
             rec["tags"] = categorize(rec.pop("_hay"), localpart, rec["bulk"],
                                      categories)
+            if tag_over:
+                if grouping == "sender" and rec["key"] in tag_over:
+                    rec["tags"] = list(tag_over[rec["key"]])
+                elif grouping != "sender":
+                    rec["tags"] = list(dict.fromkeys(
+                        rec["tags"] + [t for a in sorted(senders)
+                                       for t in tag_over.get(a, ())]))
             names = rec.pop("_names")
             rec["first"] = day(rec.pop("_min"))
             rec["last"] = day(rec.pop("_max"))
@@ -2029,6 +2068,7 @@ class SmartParams(NamedTuple):
     ai_digest: str
     knowledge: dict                           # the tenant's sender knowledge
     knowledge_digest: str
+    tag_overrides: dict                       # {address: tags} set by the user
 
 
 def _custom_categories(cfg: dict) -> dict[str, list[str]]:
@@ -2050,15 +2090,19 @@ def smart_params(acc, cfg: dict | None = None) -> SmartParams:
     custom = _custom_categories(cfg)
     ai_kinds = aisortstore.load_account(acc.name)
     knowledge = knowledgestore.load()
+    tag_over = labelstore.tag_overrides(acc.name)
     return SmartParams(
         clamp_smart_min(block.get("smart_min", SMART_MIN_DEFAULT)),
         cfgmod.normalize_protected(cfg.get("protected")),
         effective_categories(cfg.get("categories")),
         user_categories(cfg),
-        hashlib.sha1(json.dumps(sorted(custom.items())).encode())
+        # of the category config AND the per-sender tag overrides: both
+        # re-tag the sender records (rebuild_smart)
+        hashlib.sha1(json.dumps([sorted(custom.items()),
+                                 labelstore.tags_digest(tag_over)]).encode())
         .hexdigest()[:12],
         ai_kinds, aisortstore.digest(ai_kinds),
-        knowledge, knowledgestore.digest(knowledge))
+        knowledge, knowledgestore.digest(knowledge), tag_over)
 
 
 def smart_sig(p: SmartParams) -> tuple:
@@ -2069,7 +2113,8 @@ def smart_sig(p: SmartParams) -> tuple:
             p.ai_digest, p.knowledge_digest)
 
 
-def retag_senders(acc, categories: list[tuple[str, list[str]]]) -> None:
+def retag_senders(acc, categories: list[tuple[str, list[str]]],
+                  tag_overrides: dict[str, list[str]] | None = None) -> None:
     """Re-derive every SENDER record's category tags from the index with the
     current categories (lock held) - the same haystack build_groups uses -
     so a category edit applies to the sender records, and so to Smart,
@@ -2080,9 +2125,10 @@ def retag_senders(acc, categories: list[tuple[str, list[str]]]) -> None:
         a = m["addr"]
         if len(hay.get(a, "")) < 600:
             hay[a] = hay.get(a, "") + f" {a} {m['name']} {m['subject']}"
+    over = tag_overrides or {}
     for addr, rec in acc.state["groups"]["sender"].items():
-        rec["tags"] = categorize(hay.get(addr, ""), addr.split("@", 1)[0],
-                                 rec["bulk"], categories)
+        rec["tags"] = list(over[addr]) if addr in over else categorize(
+            hay.get(addr, ""), addr.split("@", 1)[0], rec["bulk"], categories)
 
 
 def rebuild_smart(acc, cfg: dict | None = None, force: bool = False) -> bool:
@@ -2103,12 +2149,12 @@ def rebuild_smart(acc, cfg: dict | None = None, force: bool = False) -> bool:
                 and acc.state["groups"].get("smart"):
             return False
         if acc.smart_sig is None or acc.smart_sig[3] != params.digest:
-            retag_senders(acc, params.categories)
+            retag_senders(acc, params.categories, params.tag_overrides)
         smart = build_smart(acc.state["groups"]["sender"], acc.index.values(),
                             params.smart_min, params.protected, params.user,
                             ai_kinds=params.ai_kinds,
                             knowledge=params.knowledge)
-        verdictstore.apply_to_groups({"smart": smart}, acc.name)
+        apply_verdicts({"smart": smart}, acc.name, params.protected)
         acc.state["groups"]["smart"] = smart
         acc.smart_sig = sig
         acc.state["groups_rev"] += 1
@@ -2143,13 +2189,21 @@ def purpose_summary(rec: dict, acc) -> dict[str, int]:
     return out
 
 
-def _rating_counts(rec: dict, mail_verdicts: dict, acc) -> dict | None:
+def _mail_verdict_fn(acc, plist: list[str]):
+    """m -> the verdict of one mail: the AI's per-mail rating, or the
+    sender's own override on top (labelstore.mail_verdicts)."""
+    return labelstore.mail_verdicts(
+        getattr(acc, "name", None), verdictstore.load_mails(),
+        lambda addr: cfgmod.is_protected(addr, plist))
+
+
+def _rating_counts(rec: dict, verdict_of, acc) -> dict | None:
     """Per-mail AI rating summary for one group (None if nothing rated)."""
     counts = {"delete_safe": 0, "review": 0, "keep": 0}
     for folder, uids in rec["folders"].items():
         for uid in uids:
             m = acc.index.get(ikey(folder, uid))
-            v = mail_verdicts.get(m["msgid"]) if m else None
+            v = verdict_of(m) if m else None
             if v in counts:
                 counts[v] += 1
     return counts if any(counts.values()) else None
@@ -2175,6 +2229,35 @@ def _group_protected(rec: dict, paddrs: set[str], acc) -> bool:
             if m and m["addr"] in paddrs:
                 return True
     return False
+
+
+def _group_has_sender(rec: dict, addrs: set[str], acc) -> bool:
+    """True if any mail in this group comes from one of `addrs` (lock held)."""
+    for folder, uids in rec["folders"].items():
+        for uid in uids:
+            m = acc.index.get(ikey(folder, uid))
+            if m and m["addr"] in addrs:
+                return True
+    return False
+
+
+def _group_ai(rec: dict, protected: bool, held: set[str], acc) -> dict | None:
+    """The verdict a group SHOWS (lock held) - what the UI, the filters, the
+    rules engine and every selection read (see labelstore.py):
+    - a user verdict on a protected row is never "safe" (the protected list
+      may have changed after the choice);
+    - an automatic "safe" on a row that CONTAINS a sender the user did not
+      mark safe (`held`: review / keep) is capped to "review" - a pooled
+      Smart row, a domain, a subject or a thread must not offer for deletion
+      what the user has put on hold. The AI's own answer stays stored."""
+    ai = rec.get("ai")
+    if not ai or ai.get("verdict") != "delete_safe":
+        return ai
+    if labelstore.is_user(ai):
+        return {**ai, "verdict": "review"} if protected else ai
+    if held and _group_has_sender(rec, held, acc):
+        return {**ai, "verdict": "review", "capped": labelstore.USER_SRC}
+    return ai
 
 
 def _group_new(rec: dict, new_addrs: set[str], acc) -> bool:
@@ -2311,9 +2394,11 @@ def public_state(acc=None) -> dict:
     """One account's state for the API: group records without the internal
     UID lists, plus each group's per-mail rating summary."""
     acc = acc or accounts.get()
-    mail_verdicts = verdictstore.load_mails()
     cfg = cfgmod.load_config()
     plist = cfgmod.normalize_protected(cfg.get("protected"))
+    verdict_of = _mail_verdict_fn(acc, plist)
+    held = {a for a, v in labelstore.verdicts(acc.name).items()
+            if v != "delete_safe"}
     unsub_entries = unsubstore.load_account(acc.name)
     still_cut = _still_mailing_cutoffs(unsub_entries)
     new_addrs = knownsenders.new_since(acc.name, cfg.get(
@@ -2328,8 +2413,9 @@ def public_state(acc=None) -> dict:
         out["account"] = acc.name
         out["groups"] = {
             g: {k: {**{kk: vv for kk, vv in rec.items() if kk != "folders"},
-                    "ratings": _rating_counts(rec, mail_verdicts, acc),
-                    "protected": _group_protected(rec, paddrs, acc),
+                    "ratings": _rating_counts(rec, verdict_of, acc),
+                    "protected": (prot := _group_protected(rec, paddrs, acc)),
+                    "ai": _group_ai(rec, prot, held, acc),
                     "unsubscribed": _group_unsub(rec, unsub_entries, acc),
                     "new": _group_new(rec, new_addrs, acc),
                     "still_mailing": _group_still_mailing(
@@ -2423,8 +2509,9 @@ def run_scan(acc=None) -> None:
             sp = smart_params(acc)
             groups = build_groups(messages, replied, sp.categories,
                                   sp.smart_min, sp.protected, sp.user,
-                                  sp.ai_kinds, sp.knowledge)
-            cached = verdictstore.apply_to_groups(groups, acc.name)
+                                  sp.ai_kinds, sp.knowledge,
+                                  sp.tag_overrides)
+            cached = apply_verdicts(groups, acc.name, sp.protected)
             with acc.lock:
                 acc.index.clear()
                 for m in messages:
@@ -3428,7 +3515,8 @@ def index_stats(acc=None) -> dict:
     """Live numbers from the scanned index: totals, unread/newsletter
     share, per-year and per-month histograms, category breakdown, top
     domains by size and senders by count, AI coverage, replied share."""
-    mail_verdicts = verdictstore.load_mails()
+    verdict_of = _mail_verdict_fn(acc or accounts.get(), cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
     years: dict[str, dict] = {}
     months: dict[str, dict] = {}
     days: dict[str, dict] = {}
@@ -3474,7 +3562,7 @@ def index_stats(acc=None) -> dict:
             d = domains.setdefault(dom, {"count": 0, "size": 0})
             d["count"] += 1
             d["size"] += m["size"]
-            v = mail_verdicts.get(m["msgid"])
+            v = verdict_of(m)
             if v in rated:
                 rated[v] += 1
 
@@ -5486,7 +5574,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
     cutoff = (time.time() - f["age_days"] * 86400
               if f["age_days"] is not None else None)
     pinned = pinstore.load_account(acc.name)
-    mail_verdicts = verdictstore.load_mails()
+    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
     with acc.lock:
         hits = []
         for m in acc.index.values():
@@ -5520,7 +5609,7 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                  "sender": lambda m: (m["addr"], m["name"].lower())}[sort]
         hits.sort(key=keyfn, reverse=direction == "desc")
         page = hits[offset:offset + limit]
-        mails = [{**_search_row(m), "ai": mail_verdicts.get(m["msgid"]) or None,
+        mails = [{**_search_row(m), "ai": verdict_of(m),
                   "pinned": m["msgid"] in pinned} for m in page]
     return {"total": len(hits), "offset": offset, "mails": mails,
             "ignored": f["ignored"]}
@@ -5531,7 +5620,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
 def group_mails(grouping: str, key: str,
                 with_msgid: bool = False, acc=None) -> list[dict]:
     acc = acc or accounts.get()
-    mail_verdicts = verdictstore.load_mails()
+    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
     pinned = pinstore.load_account(acc.name)
     with acc.lock:
         rec = acc.state["groups"][grouping].get(key)
@@ -5546,7 +5636,7 @@ def group_mails(grouping: str, key: str,
                              "date": m["date"], "ts": m["ts"],
                              "subject": m["subject"], "addr": m["addr"],
                              "size": m["size"], "seen": m["seen"],
-                             "ai": mail_verdicts.get(m["msgid"]) or None,
+                             "ai": verdict_of(m),
                              "pinned": m["msgid"] in pinned}
                     if with_msgid:
                         entry["msgid"] = m["msgid"]
