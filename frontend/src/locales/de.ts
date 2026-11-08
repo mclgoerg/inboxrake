@@ -1622,6 +1622,7 @@ export const DE: Record<string, string> = {
   "menu.more": "Mehr",
   "menu.account_switch": "Konto: {name}",
   "nav.label": "Hauptnavigation",
+  "nav.back_to": "Zurück zu {page}",
   "nav.overview": "Übersicht",
   "nav.senders": "Absender",
   "nav.all_mail": "Alle Mails",

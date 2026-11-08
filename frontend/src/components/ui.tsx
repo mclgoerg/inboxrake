@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CheckCircle2, ChevronRight, ChevronsUpDown, Eye, Info, Minus,
+import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, ChevronsUpDown, Eye, Info, Minus,
   MousePointerClick, Pin, Plus, Shield, TriangleAlert, X }
   from "lucide-react";
 import { createPortal } from "react-dom";
@@ -590,19 +590,28 @@ export function Field({ label, children }: {
  *  the modal stack, no focus trap, no Esc. "page": inside such a page, where
  *  `PanelHeader` has nothing to close. "modal" (default, and inside every
  *  real modal): a dialog; dialogs opened from a page stay real modals. */
-type Presentation = "modal" | "slot" | "page";
+type Presentation = "modal" | "slot" | "page" | "tool" | "screen";
 const PresentationContext = createContext<Presentation>("modal");
+/** Name of the page a full-screen tool goes back to (set by `PageSlot`). */
+const ScreenParentContext = createContext<string | null>(null);
 
 /** Presents the panels inside as pages filling the content column (`page`)
  *  or as dialogs. The element tree stays the same either way, so a panel
  *  keeps its state when the presentation changes (a window crossing 1024 px). */
-export function PageSlot({ page, children }: {
-  page: boolean; children: ReactNode;
+export function PageSlot({ page, parent, children }: {
+  page: boolean;
+  /** Below the page width: the name of the page a tool goes back to. Its
+   *  header then reads as a full-screen page ("tool"/"screen": back link
+   *  + large title) while the panel stays a modal. */
+  parent?: string; children: ReactNode;
 }) {
   return (
-    <PresentationContext.Provider value={page ? "slot" : "modal"}>
-      {children}
-    </PresentationContext.Provider>
+    <ScreenParentContext.Provider value={parent ?? null}>
+      <PresentationContext.Provider
+        value={page ? "slot" : parent ? "tool" : "modal"}>
+        {children}
+      </PresentationContext.Provider>
+    </ScreenParentContext.Provider>
   );
 }
 
@@ -613,9 +622,13 @@ export const useIsPage = (): boolean =>
 /** How many dialogs are open right now (a page is none). */
 export const modalCount = (): number => openModals.length;
 
-/** Standard panel/modal header: title (+optional subtitle) left, optional
- *  action elements, close button right. Used by every modal. On a page there
- *  is nothing to close (the sidebar navigates), but a back button stays. */
+/** Standard panel/modal header. Three looks, one component: a dialog keeps
+ *  the compact head (title + subtitle left, actions, close button right); a
+ *  page in the content column (>= 1024) shows the page title + subtitle with
+ *  the actions on the right and nothing to close (the sidebar navigates, a
+ *  `closeLabel` button stays); a full-screen tool below 1024 gets an iOS
+ *  head: back link to its parent page (or `closeLabel`) + the actions as icon
+ *  buttons, then the large title and subtitle. */
 export function PanelHeader({ title, sub, actions, onClose, closeLabel,
   closeIcon }: {
   title: ReactNode; sub?: ReactNode; actions?: ReactNode;
@@ -623,13 +636,40 @@ export function PanelHeader({ title, sub, actions, onClose, closeLabel,
   /** A panel that opens inside another goes BACK instead of closing. */
   closeLabel?: string; closeIcon?: ReactNode;
 }) {
-  const onPage = useContext(PresentationContext) === "page"
-    && closeLabel === undefined;
+  const presentation = useContext(PresentationContext);
+  const parent = useContext(ScreenParentContext);
+  const subLine = sub != null && sub !== "";
+  if (presentation === "screen") {
+    // The panels put an icon before their title; the large title has none.
+    return (
+      <div className="px-4 pt-2 pb-3">
+        <div className="-mx-2 flex items-center gap-1">
+          <button type="button" onClick={onClose}
+            aria-label={closeLabel ? undefined
+              : parent ? t("nav.back_to", { page: parent }) : undefined}
+            className="inline-flex min-h-11 min-w-11 items-center gap-0.5
+              rounded-control px-1 type-body-mobile text-accent
+              focus-visible:ring-2 focus-visible:ring-accent">
+            {closeIcon ?? <ChevronLeft size={18} aria-hidden />}
+            {closeLabel ?? parent ?? t("Close")}
+          </button>
+          <div className="flex-1" />
+          {actions}
+        </div>
+        <div className="mt-1 type-largetitle [&_svg]:hidden">{title}</div>
+        {subLine && <div className="type-body text-muted">{sub}</div>}
+      </div>
+    );
+  }
+  const onPage = presentation === "page" && closeLabel === undefined;
+  const wide = presentation === "page";
   return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+    <div className={`flex items-center gap-3 border-b border-line px-4
+      ${wide ? "py-4" : "py-3"}`}>
       <div className="min-w-0 flex-1">
-        <div className="truncate type-heading">{title}</div>
-        {sub != null && sub !== "" && (
+        <div className={`truncate ${wide ? "type-title2 [&_svg]:hidden"
+          : "type-heading"}`}>{title}</div>
+        {subLine && (
           <div className="truncate type-meta text-muted">{sub}</div>
         )}
       </div>
@@ -1466,7 +1506,9 @@ export function Modal({ children, onClose, full = false, size, label,
   labelledBy?: string; describedBy?: string;
 }) {
   const sz = size ?? (full ? "lg" : "md");
-  const slot = useContext(PresentationContext) === "slot";
+  const presentation = useContext(PresentationContext);
+  const slot = presentation === "slot";
+  const tool = presentation === "tool";
   const id = useRef(Symbol("modal")).current;
   const dialog = useRef<HTMLDivElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -1590,7 +1632,8 @@ export function Modal({ children, onClose, full = false, size, label,
           {/* Children see "page" on a page (PanelHeader drops its close
               button) and "modal" in a dialog, so a dialog opened from a page
               is a real modal again. */}
-          <PresentationContext.Provider value={slot ? "page" : "modal"}>
+          <PresentationContext.Provider
+            value={slot ? "page" : tool ? "screen" : "modal"}>
             {children}
           </PresentationContext.Provider>
         </div>

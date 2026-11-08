@@ -1938,6 +1938,16 @@ export default function App() {
     if (routeTool) goPage(TOOL_TAB[routeTool] ?? to, true);
   };
   const toolShown = (id: ToolPage) => shownTool === id;
+  // The page a tool's back link (below 1024) returns to - what `closeTool`
+  // does: a tool route goes to the tab page that lists it (Overview for
+  // Search), a tool opened as a modal drops back to the page underneath.
+  const backTarget = t(((): string => {
+    const to = routeTool ? TOOL_TAB[routeTool] ?? DEFAULT_PAGE : page;
+    return to === "cleanup" ? "tools.group_cleanup"
+      : to === "insights" ? "tools.group_insights"
+      : to === "all" ? "nav.all_mail"
+      : to === "senders" ? "nav.senders" : "nav.overview";
+  })());
 
   // The profile menu: the header trigger below 1024, the sidebar's account
   // switcher from there (same items).
@@ -2821,7 +2831,7 @@ export default function App() {
       )}
 
       {detail && !splitPane && renderDetail("modal")}
-      <PageSlot page={wide}>{toolPanels}</PageSlot>
+      <PageSlot page={wide} parent={shownTool ? backTarget : undefined}>{toolPanels}</PageSlot>
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
       {aiFilterOpen && (
         <AiFilterPanel

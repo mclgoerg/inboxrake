@@ -532,6 +532,7 @@ export const EN: Record<string, string> = {
   "tab.recent": "Recent activity",
   "menu.account_switch": "Account: {name}",
   "nav.label": "Main navigation",
+  "nav.back_to": "Back to {page}",
   "nav.overview": "Overview",
   "nav.senders": "Senders",
   "nav.all_mail": "All mail",
