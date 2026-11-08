@@ -214,8 +214,8 @@ test("the phone avatar menu has Activity (opens the audit log); the sidebar "
   mount(false);
   fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
   fireEvent.click(await screen.findByRole("menuitem", { name: /Activity/ }));
-  expect(await screen.findByRole("dialog")).toBeTruthy();
-  expect(screen.getByText("Audit Log")).toBeTruthy();
+  const dlg = await screen.findByRole("dialog");
+  expect(within(dlg).getByText("Activity")).toBeTruthy();
   cleanup();
   mount(true);
   fireEvent.click(within(await side()).getByRole("button", { name: /proton/ }));
@@ -315,13 +315,13 @@ test("Activity page: the undo history above the audit log, each restorable",
   fireEvent.click(within(await side()).getByRole("button",
     { name: /Activity/ }));
   expect(window.location.hash).toBe("#/activity");
-  const list = await screen.findByRole("list");
-  const items = within(list).getAllByRole("listitem");
+  const cards = await screen.findByRole("region", { name: "Undo history" });
+  const undos = within(cards).getAllByRole("button", { name: "Undo" });
   // newest first
-  expect(items[0].textContent).toContain("Newer");
-  expect(items[1].textContent).toContain("Older");
-  expect(screen.getByText("Audit Log")).toBeTruthy();
-  fireEvent.click(within(items[0]).getByRole("button", { name: "Undo" }));
+  expect(undos.length).toBe(2);
+  expect(undos[0].parentElement!.textContent).toContain("Newer");
+  expect(undos[1].parentElement!.textContent).toContain("Older");
+  fireEvent.click(undos[0]);
   // the same confirm as the status line's menu (a real dialog over the page)
   expect(await findDialog()).toBeTruthy();
 });
