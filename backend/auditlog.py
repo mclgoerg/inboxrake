@@ -77,8 +77,7 @@ def record(action: str, actor: str = "user", account: str | None = None,
     the mailbox action it is recording.
 
     Optional, additive fields (absent on older entries): `id` (`entry_id`),
-    `from_role` ("junk" | "trash": a move OUT of that role folder, i.e. a
-    rescue rather than cleaning) and `undoes` ({id, count}: this undo entry
+    `from_role` ("junk" | "trash": mails moved out of that role folder) and `undoes` ({id, count}: this undo entry
     restored `count` mails of the entry with that `id`)."""
     account = account or accounts.default_name()
     entry = {"ts": int(time.time()), "account": account, "actor": actor,

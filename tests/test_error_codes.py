@@ -209,6 +209,27 @@ def test_a_purge_that_stops_after_the_move_names_both_numbers(monkeypatch):
     assert (err.value.deleted, err.value.unverified) == (0, 3)
 
 
+def test_stranded_junk_mails_record_a_linked_audit_entry(monkeypatch):
+    from backend import auditlog
+    fake = _junk_via(monkeypatch, True)
+    c = mailops.purge_preview("junk", everything=True)
+    orig = fake.uid
+
+    def uid(cmd, *a):
+        if cmd == "EXPUNGE":
+            return "NO", [b"denied"]
+        return orig(cmd, *a)
+    fake.uid = uid
+    with pytest.raises(mailops.PurgeError):
+        mailops.purge_mails("junk", c["uids"], c["uv"], folder=c["folder"],
+                            trash_folder=c["trash_folder"])
+    entry = next(e for e in auditlog.load("default", 0, 99)["entries"]
+                 if e["action"] == "trash")
+    assert entry["from_role"] == "junk" and entry["id"]
+    (undo,) = mailops.accounts.get().undo_log
+    assert undo["audit_id"] == entry["id"]
+
+
 def test_a_purge_that_deleted_some_then_stranded_some_nests_both(monkeypatch):
     monkeypatch.setattr(mailops, "MOVE_CHUNK", 2)
     fake = _env(monkeypatch, junk=_mails(range(1, 6)),

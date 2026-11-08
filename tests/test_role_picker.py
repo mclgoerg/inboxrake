@@ -179,9 +179,12 @@ def test_move_contents_moves_exact_uids_records_undo_and_audit(monkeypatch):
     assert body["undo"]["count"] == 3
     entry = next(e for e in _audit() if e["action"] == "move_contents")
     assert entry["count"] == 3 and entry["outcome"] == "ok"
+    assert entry["id"] and mailops.accounts.get().undo_log[0]["audit_id"] == entry["id"]
     # undo puts every mail back where it came from
     r = client.post("/api/undo", json={"ident": body["undo"]})
     assert r.status_code == 200 and r.json()["restored"] == 3
+    undo = next(e for e in _audit() if e["action"] == "undo")
+    assert undo["undoes"] == {"id": entry["id"], "count": 3}
     assert len(fake.mailbox["Deleted Items"]) == 3
     assert len(fake.mailbox["Trash"]) == n_trash
 

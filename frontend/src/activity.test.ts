@@ -91,3 +91,24 @@ test("from_role marks a rescue without the label text", () => {
   ], now);
   expect(s.mails).toBe(2);
 });
+
+test("an undo that restores more than the entry had never makes a negative", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 2), { id: "a", count: 3, bytes: 300 }),
+    e(at(2026, 10, 3), { action: "undo", id: "u1", undoes: { id: "a", count: 9 } }),
+    e(at(2026, 10, 4), { count: 2, bytes: 200 }),
+  ], now);
+  expect(s.mails).toBe(2);
+  expect(s.weeks).toEqual([2, 0, 0, 0]);
+  expect(s.bytes).toBe(200);
+});
+
+test("an undone rule move does not let the rule run count instead", () => {
+  const t0 = at(2026, 10, 5);
+  const s = monthSummary([
+    e(t0, { action: "rule_execute", actor: "rule:r1", count: 7, bytes: 0 }),
+    e(t0 - 5, { id: "m", actor: "rule:r1", count: 7 }),
+    e(t0 + 60, { action: "undo", id: "u1", undoes: { id: "m", count: 7 } }),
+  ], now);
+  expect(s.mails).toBe(0);
+});

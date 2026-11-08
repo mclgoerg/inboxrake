@@ -184,3 +184,18 @@ test("an entry that a later undo restored carries an undone pill", async () => {
   expect(screen.getAllByText("undone")).toHaveLength(1);
   audit.mockResolvedValue({ total: 3, entries });
 });
+
+test("a partly undone entry shows how many were restored", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const mk = (over: Partial<AuditEntry>): AuditEntry => ({
+    ts: now, account: "default", actor: "user", action: "trash", count: 4,
+    bytes: 0, label: "", outcome: "ok", error: "", ...over });
+  audit.mockResolvedValue({ total: 2, entries: [
+    mk({ action: "undo", id: "u1", count: 1, undoes: { id: "a", count: 1 } }),
+    mk({ id: "a", label: "trashed-part" })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText(/trashed-part/));
+  expect(screen.getAllByText("1 undone")).toHaveLength(1);
+  expect(screen.queryByText("undone")).toBeNull();
+  audit.mockResolvedValue({ total: 3, entries });
+});
