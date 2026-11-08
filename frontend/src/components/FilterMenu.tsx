@@ -302,8 +302,6 @@ export function FilterMenu(props: RowsProps & { onClear: () => void }) {
       </Button>
       {open && (
         <Modal size="sm" label={label} onClose={() => setOpen(false)}>
-          <div aria-hidden className="mx-auto mt-2 h-1 w-9 shrink-0
-            rounded-full bg-line" />
           <div className="flex shrink-0 items-center justify-between px-4
             py-2">
             <Button variant="plain" disabled={!active} onClick={onClear}>

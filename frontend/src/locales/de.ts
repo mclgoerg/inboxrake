@@ -1408,6 +1408,7 @@ export const DE: Record<string, string> = {
   "n.groups": "{n} Gruppen",
   "n.groups_one": "1 Gruppe",
   "status.groups_of": "{n} von {total} Gruppen",
+  "status.groups_of_one": "{n} von {total} Gruppe",
   "filter.syntax_hint":
     "Kombinierbar: tag:shipping ai:safe age:>1y unread:>80 is:unsub Text",
   "tenant.row_tip":

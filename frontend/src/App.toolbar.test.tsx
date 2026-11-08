@@ -315,7 +315,7 @@ test("phone: the summary is the short two-line form", async () => {
   expect(screen.queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
   fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
     { target: { value: "acme" } });
-  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1 groups/));
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1 group/));
 });
 
 test("phone: Filter opens the sheet; a row filters live, the field shows "
