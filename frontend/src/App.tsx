@@ -2229,6 +2229,12 @@ export default function App() {
         bodyMode={acct?.body_search === "local" ? "local" : "server"}
         onClose={() => closeTool(() => { setSearchOpen(false); refresh(); })}
         onDeleted={refresh}
+        groups={state?.groups.sender}
+        onOpenSender={(g) => { setSearchOpen(false); openSender(g); }}
+        onOpenFiltered={(query) => {
+          setSearchOpen(false);
+          openSendersFiltered(query);
+        }}
       />
     )}
     {toolShown("stats") && (

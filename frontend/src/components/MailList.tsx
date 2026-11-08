@@ -1,5 +1,6 @@
 import { ArrowLeft, MessagesSquare } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode }
+  from "react";
 import { api, fmtSize, mailKey } from "../api";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
@@ -68,7 +69,7 @@ export function MessageView({ mail, onBack, actions }: {
 }
 
 export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
-  paged }: {
+  paged, mark }: {
   mails: Mail[];
   sel: Set<string>;
   onToggle: (k: string) => void;
@@ -81,6 +82,9 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   // The caller pages the list itself: no client-side render cap / "show
   // more" (it would sit next to the caller's own load-more button).
   paged?: boolean;
+  // Wraps the subject and the sender address (search results highlight
+  // their match with it).
+  mark?: (text: string) => ReactNode;
 }) {
   const [cap, setCap] = useState(RENDER_CAP);
   // Sender/folder only earn a spot on the meta line when they actually
@@ -95,10 +99,11 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   return (
     <>
       {(paged ? mails : mails.slice(0, cap)).map((m) => {
-        const meta: string[] = [];
+        const meta: ReactNode[] = [];
         if (multiFolder) meta.push(m.folder);
-        if (multiSender) meta.push(m.addr);
+        if (multiSender) meta.push(mark ? mark(m.addr) : m.addr);
         meta.push(fmtSize(m.size));
+        const subject = m.subject || t("(no subject)");
         const trailing = (m.ai || onPin) ? (
           <>
             {m.ai && <AiTag ai={{ verdict: m.ai, reason: "" }} />}
@@ -111,7 +116,11 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
         return (
           <MailRow key={mailKey(m)} checked={sel.has(mailKey(m))}
             onToggle={() => onToggle(mailKey(m))} unread={!m.seen}
-            subject={m.subject || t("(no subject)")} meta={meta.join(" · ")} dateIso={m.date || ""}
+            subject={mark && m.subject ? mark(subject) : subject}
+            meta={meta.every((x) => typeof x === "string")
+              ? meta.join(" · ")
+              : <span className="min-w-0 truncate">{meta.map((x, i) => (
+                <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>))}</span>} dateIso={m.date || ""}
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
             pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing} />
         );
