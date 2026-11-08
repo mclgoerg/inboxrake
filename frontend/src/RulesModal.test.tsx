@@ -66,7 +66,7 @@ const choose = (field: string, option: string) => {
 const SCOPE = { mail: "Inbox & folders", junk: "Junk", trash: "Trash" };
 const pickScope = (value: keyof typeof SCOPE) =>
   choose("Applies to", SCOPE[value]);
-const tab = (name: string) => screen.getByRole("tab", { name });
+const tab = (name: string) => screen.getByRole("radio", { name });
 const clickDelete = () => {
   fireEvent.click(screen.getByRole("button", { name: /^More: / }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
@@ -99,7 +99,7 @@ test("editing a rule prefills the retention selector and shows its tag",
   () => {
     render(<RulesModal state={{ ...baseState, rules: [rule] }}
       onClose={() => {}} onChanged={() => {}} />);
-    expect(screen.getByText("older than 30d")).toBeTruthy();
+    expect(screen.getByText("if older than 30 days")).toBeTruthy();
     fireEvent.click(screen.getByText("Edit"));
     expect(popup("Apply to").textContent)
       .toContain("Only mails older than N days");
@@ -159,20 +159,102 @@ test("a card: Run now, Edit, More (Delete inside), Report only / Active",
     .map((b) => b.textContent?.trim() || b.getAttribute("aria-label"))
     .filter((x) => ["Run now", "Edit", "More: Old shop mail"].includes(x!));
   expect(names).toEqual(["Run now", "Edit", "More: Old shop mail"]);
-  expect(tab("Report only").getAttribute("aria-selected")).toBe("true");
-  expect(tab("Active").getAttribute("aria-selected")).toBe("false");
+  expect(tab("Report only").getAttribute("aria-checked")).toBe("true");
+  expect(tab("Active").getAttribute("aria-checked")).toBe("false");
   fireEvent.click(screen.getByRole("button", { name: /^More: / }));
   expect(screen.getByRole("menuitem", { name: "Delete" }).className)
     .toContain("text-danger-fg");
+});
+
+const sentence = () => document.querySelector("p.leading-9")!.textContent!
+  .replace(/\u00a0/g, " ");
+const sentenceOf = (r: Partial<Rule>) => {
+  cleanup();
+  renderCards([{ ...rule, ...r }]);
+  return sentence();
+};
+
+test("every kind of rule reads as a sentence in English", () => {
+  expect(sentenceOf({ action: "trash", older_than_days: 30, query: "" }))
+    .toBe("When Sender groups match everything then move to Trash "
+      + "if older than 30 days · manual");
+  expect(sentenceOf({ action: "archive", grouping: "domain", query: "x:1",
+    older_than_days: 1 })).toContain("then archive if older than 1 day");
+  expect(sentenceOf({ action: "mark_read", older_than_days: null,
+    schedule: "daily" })).toBe("When Sender groups match everything then "
+      + "mark as read · daily");
+  expect(sentenceOf({ scope: "junk", action: "purge", query: "",
+    schedule: "weekly" })).toBe("When Sender groups in Junk match all senders "
+      + "then delete permanently if older than 30 days · weekly");
+  expect(sentenceOf({ scope: "trash", action: "purge", query: "from:a",
+    older_than_days: 60, schedule: "weekly" })).toBe("When Sender groups in "
+      + "Trash match from:a then delete permanently if older than 60 days · weekly");
+});
+
+test("and in German, with the right case and word order", () => {
+  setLang("de");
+  expect(sentenceOf({ action: "trash", older_than_days: 30, query: "" }))
+    .toBe("Wenn Gruppen nach Absender zu allem passen, dann in den "
+      + "Papierkorb verschieben wenn älter als 30 Tage · manuell");
+  expect(sentenceOf({ action: "move", dest: "Pakete", keep_latest: 3,
+    older_than_days: null, schedule: "daily", query: "tag:a" }))
+    .toBe("Wenn Gruppen nach Absender zu tag:a passen, dann in Pakete "
+      + "verschieben außer den neuesten 3 · täglich");
+  expect(sentenceOf({ action: "mark_read", older_than_days: null,
+    query: "tag:a" })).toBe("Wenn Gruppen nach Absender zu tag:a passen, "
+      + "dann als gelesen markieren · manuell");
+  expect(sentenceOf({ scope: "junk", action: "purge", query: "",
+    schedule: "weekly" })).toBe("Wenn Gruppen nach Absender im Spam zu allen "
+      + "Absendern passen, dann endgültig löschen wenn älter als 30 Tage · "
+      + "wöchentlich");
+  expect(sentenceOf({ scope: "trash", action: "purge", query: "from:a",
+    older_than_days: 1, schedule: "weekly" })).toContain("im Papierkorb zu "
+      + "from:a passen, dann endgültig löschen wenn älter als 1 Tag");
+});
+
+test("the editor's first row follows each language's word order", () => {
+  renderNew();
+  expect(popup("Grouping").closest("span")!.parentElement!.textContent)
+    .toMatch(/^When .*groups in /);
+  cleanup();
+  setLang("de");
+  renderNew();
+  expect(popup("Gruppierung").closest("span")!.parentElement!.textContent)
+    .toMatch(/^Wenn Gruppen nach .* im /);
+});
+
+test("the mode switch is a radiogroup", () => {
+  renderCards([rule]);
+  expect(screen.getByRole("radiogroup", { name: "Mode" })).toBeTruthy();
+  expect(screen.queryByRole("tab")).toBeNull();
+});
+
+test("a failed run or mode switch is shown on its own card", async () => {
+  runRule.mockRejectedValueOnce(new Error("nope"));
+  renderCards([rule, { ...rule, id: "zz", name: "Other" }]);
+  fireEvent.click(screen.getAllByText("Run now")[0]);
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("nope");
+  expect(alert.closest(".rounded-card")!.textContent).toContain("Old shop mail");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+});
+
+test("Esc in an open pop-up closes the menu, not the editor; Esc again " +
+  "closes it", () => {
+  renderNew();
+  fireEvent.click(popup("Action"));
+  expect(screen.getByRole("menu")).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "Archive" }),
+    { key: "Escape" });
+  expect(screen.getByLabelText("Name")).toBeTruthy();
 });
 
 test("a card reads as a sentence", () => {
   renderCards([{ ...rule, query: "tag:shipping age:>1y", action: "move",
     dest: "Parcels", keep_latest: 3, older_than_days: null,
     schedule: "weekly" }]);
-  const p = screen.getByText("When").closest("p")!;
-  expect(p.textContent).toBe("WhenSendergroups matchtag:shipping age:>1y"
-    + "thenMove to folder → Parcelskeep newest 3·weekly");
+  expect(sentence()).toBe("When Sender groups match tag:shipping age:>1y "
+    + "then move to Parcels except the newest 3 · weekly");
 });
 
 test("Delete asks first, then deletes the rule", async () => {
@@ -334,8 +416,8 @@ test("a purge rule card shows folder, action, mode and a sender-level " +
   renderCards([ran]);
   const tags = [...document.querySelectorAll("span")].map((e) => e.textContent);
   expect(tags).toContain("Junk");           // the folder tag (not the option)
-  expect(screen.getByText("Delete permanently")).toBeTruthy();
-  expect(tab("Report only").getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByText("delete permanently")).toBeTruthy();
+  expect(tab("Report only").getAttribute("aria-checked")).toBe("true");
   expect(screen.getByText(/5 mails would be deleted permanently · senders: 2/))
     .toBeTruthy();
   expect(screen.getByText(/Anna \(3\) · b@gone.example \(2\)/)).toBeTruthy();
@@ -434,7 +516,7 @@ test("a purge run's unverified mails are named", () => {
 test("German: folder select, warning, defaults and the confirm", async () => {
   setLang("de");
   renderCards([purgeRule]);
-  expect(screen.getByText("Endgültig löschen")).toBeTruthy();
+  expect(screen.getByText("endgültig löschen")).toBeTruthy();
   fireEvent.click(screen.getByText("Bearbeiten"));
   expect(popup("Gilt für")).toBeTruthy();
   choose("Gilt für", "Papierkorb");
@@ -532,7 +614,7 @@ test("a filter with text does not claim ALL senders", async () => {
 test("German: empty filter says alle Absender in both confirms", async () => {
   setLang("de");
   renderCards([{ ...purgeRule, query: "" }]);
-  expect(screen.getByText("alle Absender")).toBeTruthy();
+  expect(screen.getByText("allen Absendern")).toBeTruthy();
   fireEvent.click(tab("Aktiv"));
   expect((await findDialog()).textContent)
     .toContain("gilt für ALLE Absender im Ordner Spam");
@@ -776,4 +858,43 @@ test("a failed run's error shows in the report", () => {
   fireEvent.click(screen.getByText("See last report"));
   expect(screen.getByRole("dialog", { name: "Last report" }).textContent)
     .toContain("boom");
+});
+
+test("on a page too, Esc in a pop-up leaves the panel open", () => {
+  render(<PageSlot page><RulesModal state={baseState} onClose={() => {}}
+    onChanged={() => {}} /></PageSlot>);
+  openNew();
+  fireEvent.click(popup("Action"));
+  fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "Archive" }),
+    { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.getByRole("complementary")).toBeTruthy();
+});
+
+test("the side panel takes focus on open and gives it back on every close",
+  async () => {
+  render(<DialogProvider><PageSlot page>
+    <RulesModal state={{ ...baseState, rules: [rule] }} onClose={() => {}}
+      onChanged={() => {}} /></PageSlot></DialogProvider>);
+  const newBtn = screen.getByRole("button", { name: /New rule/ });
+  const editBtn = screen.getByText("Edit").closest("button")!;
+  const cycle = (opener: HTMLElement, close: () => void) => {
+    opener.focus();
+    fireEvent.click(opener);
+    expect(document.activeElement).toBe(screen.getByLabelText("Name"));
+    close();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  };
+  cycle(newBtn, () => fireEvent.click(
+    screen.getByRole("button", { name: "Close" })));
+  cycle(editBtn, () => fireEvent.click(screen.getByText("Cancel")));
+  cycle(newBtn, () => fireEvent.keyDown(screen.getByLabelText("Name"),
+    { key: "Escape" }));
+  // Save
+  newBtn.focus(); fireEvent.click(newBtn);
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "n" } });
+  fireEvent.click(screen.getByText("Create rule (report only)"));
+  await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  expect(document.activeElement).toBe(newBtn);
 });

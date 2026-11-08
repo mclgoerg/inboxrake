@@ -1580,7 +1580,7 @@ export function ChipSegment({ on = false, children, className = "", ...rest }:
  *  next to a long one no longer looks small). */
 export function Segmented<T extends string>({ value, onChange, options,
   label, fill = false, tall = false, equal = false, className = "",
-  idPrefix }: {
+  idPrefix, role = "tab" }: {
   value: T | null;
   onChange: (v: T) => void;
   /** `disabled` greys one segment out (a state the user cannot pick yet). */
@@ -1596,12 +1596,17 @@ export function Segmented<T extends string>({ value, onChange, options,
    *  selected one gets `aria-controls="${idPrefix}-panel"` (render the panel
    *  with `tabPanelProps(idPrefix, value)`). */
   idPrefix?: string;
+  /** `radio`: a choice (radiogroup, `aria-checked`) rather than tabs that
+   *  switch a panel - e.g. a mode switch on a card. */
+  role?: "tab" | "radio";
 }) {
+  const radio = role === "radio";
   // Roving tabindex: Tab enters on the selected segment, Left/Right/Home/End
   // move FOCUS only; Enter/Space (a native click) activates. Selection must
   // not follow focus: a change can have side effects (clears a selection).
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
+    const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="tab"], [role="radio"]')];
     const i = tabs.indexOf(document.activeElement as HTMLElement);
     if (i < 0) return;
     const to = e.key === "ArrowRight" ? tabs[(i + 1) % tabs.length]
@@ -1613,16 +1618,20 @@ export function Segmented<T extends string>({ value, onChange, options,
   const tabStop = options.some((o) => o.value === value) ? value
     : options[0]?.value;
   return (
-    <div role="tablist" aria-label={label} onKeyDown={onKey}
+    <div role={radio ? "radiogroup" : "tablist"} aria-label={label}
+      onKeyDown={onKey}
       className={`${equal ? "inline-grid grid-flow-col auto-cols-fr"
         : "inline-flex items-stretch"} gap-0.5 rounded-control bg-chip p-0.5
         ${fill ? "w-full" : ""} ${className}`}>
       {options.map((o) => {
         const on = o.value === value;
         return (
-          <button key={o.value} type="button" role="tab" aria-selected={on}
+          <button key={o.value} type="button" role={radio ? "radio" : "tab"}
+            aria-selected={radio ? undefined : on}
+            aria-checked={radio ? on : undefined}
             id={idPrefix && `${idPrefix}-tab-${o.value}`}
-            aria-controls={idPrefix && on ? `${idPrefix}-panel` : undefined}
+            aria-controls={idPrefix && on && !radio
+              ? `${idPrefix}-panel` : undefined}
             tabIndex={o.value === tabStop ? 0 : -1}
             disabled={o.disabled}
             onClick={() => onChange(o.value)}

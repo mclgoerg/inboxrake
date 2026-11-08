@@ -1584,3 +1584,21 @@ test("MiniBars with a label is an image; dimLast fades the last bar", () => {
   expect(bars[0].style.height).toBe("25%");
   expect(bars[2].className).toContain("opacity-40");
 });
+
+test("Segmented role=radio is a radiogroup with aria-checked; a disabled " +
+  "option cannot be picked", () => {
+  const onChange = vi.fn();
+  render(<Segmented label="Mode" role="radio" value="a" onChange={onChange}
+    options={[{ value: "a", label: "A" }, { value: "b", label: "B", disabled: true },
+      { value: "c", label: "C" }]} />);
+  expect(screen.getByRole("radiogroup", { name: "Mode" })).toBeTruthy();
+  expect(screen.queryByRole("tab")).toBeNull();
+  expect(screen.getByRole("radio", { name: "A" }).getAttribute("aria-checked"))
+    .toBe("true");
+  expect(screen.getByRole("radio", { name: "C" }).getAttribute("aria-checked"))
+    .toBe("false");
+  fireEvent.click(screen.getByRole("radio", { name: "B" }));
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("radio", { name: "C" }));
+  expect(onChange).toHaveBeenCalledWith("c");
+});

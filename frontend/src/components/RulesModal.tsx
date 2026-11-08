@@ -1,6 +1,6 @@
-import { Archive, ClipboardList, FolderInput, MailOpen, MoreHorizontal, Pin, Plus, Shield,
+import { Archive, CalendarClock, ClipboardList, FolderInput, MailOpen, MoreHorizontal, Pin, Plus, Shield,
   Trash2, TriangleAlert, X } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { t } from "../i18n";
 import { matchGroup, parseFilter } from "../lib";
@@ -80,6 +80,29 @@ function Part({ children, tone = "neutral" }: {
   );
 }
 
+/** Fills a translated sentence template: each `{name}` becomes the matching
+ *  node (a chip, a pop-up), a missing / null one drops out with its spaces.
+ *  Every language owns its word order and case in the template itself. */
+function Sentence({ template, parts, className = "" }: {
+  template: string; parts: Record<string, ReactNode>; className?: string;
+}) {
+  const out: ReactNode[] = [];
+  let text = "";
+  const flush = () => {
+    if (text) out.push(text.replace(/ +(?=\u00a0)/g, "").replace(/ {2,}/g, " "));
+    text = "";
+  };
+  template.split(/(\{\w+\})/).forEach((seg, i) => {
+    const name = /^\{(\w+)\}$/.exec(seg)?.[1];
+    if (name === undefined) { text += seg; return; }
+    if (parts[name] == null) return;
+    flush();
+    out.push(<Fragment key={i}>{parts[name]}</Fragment>);
+  });
+  flush();
+  return <span className={className}>{out}</span>;
+}
+
 const GROUPING_KEY: Record<string, string> = {
   sender: "Sender", domain: "Domain", subject: "Subject", thread: "Thread" };
 
@@ -128,8 +151,8 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
 
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
-function RuleCard({ rule, busy, onRun, onEdit, onReport, onMode, onDelete }: {
-  rule: Rule; busy: boolean;
+function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete }: {
+  rule: Rule; busy: boolean; error?: string;
   onRun: () => void; onEdit: () => void; onReport: () => void;
   onMode: (mode: "report" | "execute") => void; onDelete: () => void;
 }) {
@@ -149,7 +172,7 @@ function RuleCard({ rule, busy, onRun, onEdit, onReport, onMode, onDelete }: {
           <div className="type-meta text-muted"><RunSummary rule={rule} /></div>
         </div>
         {/* On phones the switch gets its own full-width line. */}
-        <Segmented value={rule.mode} label={t("rule.f_mode")} equal
+        <Segmented value={rule.mode} label={t("rule.f_mode")} equal role="radio"
           className="max-sm:w-full"
           onChange={(m) => m !== rule.mode && onMode(m)}
           options={[
@@ -163,32 +186,27 @@ function RuleCard({ rule, busy, onRun, onEdit, onReport, onMode, onDelete }: {
           {t("rule.need_report")}
         </div>
       )}
-      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5
-        type-body text-muted">
-        <span>{t("rule.s_when")}</span>
-        <Part>{t(GROUPING_KEY[rule.grouping])}</Part>
-        {purge && <>
-          <span>{t("rule.s_in")}</span>
-          <Part tone="danger">{t(rule.scope === "junk" ? "Junk" : "Trash")}</Part>
-        </>}
-        <span>{t("rule.s_groups_match")}</span>
-        {rule.query
-          ? <code className="rounded-control bg-chip px-2 py-0.5 type-meta
-              text-chiptext">{rule.query}</code>
-          : <Part>{t(purge ? "rule.purge_all_short" : "rule.s_everything")}</Part>}
-        <span>{t("rule.s_then")}</span>
-        <Part tone={danger ? "danger" : "neutral"}>
-          {t(`action.${rule.action}`)}{rule.dest ? ` → ${rule.dest}` : ""}
-        </Part>
-        {rule.keep_latest != null && (
-          <Part>{t("retention.tag_keep_latest", { n: rule.keep_latest })}</Part>
-        )}
-        {rule.older_than_days != null && (
-          <Part>{t(purge ? "rule.purge_age_tag" : "retention.tag_older_than_days",
-            { n: rule.older_than_days })}</Part>
-        )}
-        <span aria-hidden>·</span>
-        <Part>{t(`sched.${rule.schedule}`)}</Part>
+      <p className="mt-3 type-body leading-9 text-muted">
+        <Sentence template={t(purge ? "rule.sent_purge" : "rule.sent_mail")}
+          parts={{
+            grouping: <Part>{t(GROUPING_KEY[rule.grouping])}</Part>,
+            scope: purge ? <Part tone="danger">
+              {t(rule.scope === "junk" ? "Junk" : "Trash")}</Part> : null,
+            filter: rule.query
+              ? <code className="rounded-control bg-chip px-2 py-0.5 type-meta
+                  text-chiptext">{rule.query}</code>
+              : <Part>{t(purge ? "rule.s_all_senders" : "rule.s_everything")}</Part>,
+            action: <Part tone={danger ? "danger" : "neutral"}>
+              {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
+            retention: rule.keep_latest != null
+              ? <Part>{t("rule.ret_keep", { n: rule.keep_latest })}</Part>
+              : rule.older_than_days != null
+                ? <Part>{t("rule.ret_older", { n: rule.older_than_days })}</Part>
+                : null,
+            schedule: <Part><CalendarClock size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+              {t(`sched.${rule.schedule}`)}</Part>,
+          }} />
       </p>
       {!!rule.filter_invalid?.length && (
         <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
@@ -201,6 +219,9 @@ function RuleCard({ rule, busy, onRun, onEdit, onReport, onMode, onDelete }: {
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {t(`rule.reset_${rule.reset_reason}`)}
         </div>
+      )}
+      {error && (
+        <div role="alert" className="mt-2 type-meta text-danger-fg">{error}</div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button size="sm"
@@ -240,7 +261,11 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   const [editing, setEditing] = useState(!!initialQuery);
   const onPage = useIsPage();
   const [busyId, setBusyId] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState("");      // a refused save, in the editor
+  // a refused run / mode switch / delete, on that rule's card
+  const [cardErr, setCardErr] = useState<{ id: string; text: string } | null>(null);
+  // where focus returns when the side panel closes
+  const opener = useRef<Element | null>(null);
   const [filterErr, setFilterErr] = useState("");
   // the refusal belongs to the filter text it was given for
   useEffect(() => setFilterErr(""), [form.query, editId]);
@@ -282,8 +307,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 
   const closeEditor = () => {
     setEditing(false); setEditId(null); setForm({ ...EMPTY });
+    // the side panel unmounts with its focus: give it back to the opener
+    const back = opener.current as HTMLElement | null;
+    if (onPage && back?.isConnected) back.focus();
   };
   const openNew = () => {
+    opener.current = document.activeElement;
     setEditId(null); setForm({ ...EMPTY }); setEditing(true);
   };
 
@@ -341,7 +370,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   };
 
   const run = async (rule: Rule) => {
-    setMsg("");
+    setCardErr(null);
     try {
       if (rule.mode === "execute" && !(isPurge(rule.scope)
         ? await purgeConfirm(rule,
@@ -350,7 +379,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           title: t("rule.confirm_execute", { name: rule.name }),
           tone: "danger", confirmLabel: t("rule.run_now") }))) return;
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
       return;
     }
     setBusyId(rule.id);
@@ -358,13 +387,13 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       await api.runRule(rule.id);
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
     setBusyId("");
   };
 
   const toggleMode = async (rule: Rule, mode: "report" | "execute") => {
-    setMsg("");
+    setCardErr(null);
     try {
       if (mode === "execute" && !(isPurge(rule.scope)
         ? await purgeConfirm(rule,
@@ -376,7 +405,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       await api.updateRule(rule.id, { mode });
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
   };
 
@@ -389,11 +418,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       if (editId === rule.id) closeEditor();
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
   };
 
   const edit = (rule: Rule) => {
+    opener.current = document.activeElement;
     setEditId(rule.id);
     setForm({ name: rule.name, scope: rule.scope ?? "mail",
       grouping: rule.grouping, query: rule.query,
@@ -406,7 +436,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 
   const editor = (
     <div onKeyDown={(e) => {
-      if (e.key === "Escape" && !e.defaultPrevented) {
+      // an open pop-up menu takes this Esc (it closes just the menu)
+      if (e.key === "Escape" && !e.defaultPrevented
+          && !document.querySelector('[role="menu"]')) {
         e.preventDefault(); closeEditor();
       }
     }}>
@@ -420,25 +452,26 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       <div className="space-y-4 p-4 sm:p-5">
         <Field label={t("rule.f_name")}>
           <Input className="w-full" placeholder={t("rule.name")}
+            autoFocus={onPage}
             value={form.name} onChange={set("name")} />
         </Field>
         {/* The sentence builder: every field of the rule as a pop-up. */}
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="type-body text-muted">{t("rule.s_when")}</span>
-            {purge
-              ? <Part>{t("Sender")}</Part>
-              : <PopupSelect value={form.grouping} onChange={pick("grouping")}
-                  name={t("rule.f_grouping")} options={(
-                    ["sender", "domain", "subject", "thread"] as Grouping[])
-                    .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />}
-            <span className="type-body text-muted">{t("rule.s_groups_in")}</span>
-            <PopupSelect value={form.scope} onChange={setScope}
-              name={t("rule.f_scope")} options={[
-                { value: "mail", label: t("rule.scope_mail") },
-                { value: "junk", label: t("Junk") },
-                { value: "trash", label: t("Trash") }]} />
-          </div>
+          <Sentence template={t("rule.ed_when")}
+            className="flex flex-wrap items-center gap-2 type-body text-muted"
+            parts={{
+              grouping: purge
+                ? <Part>{t("Sender")}</Part>
+                : <PopupSelect value={form.grouping} onChange={pick("grouping")}
+                    name={t("rule.f_grouping")} options={(
+                      ["sender", "domain", "subject", "thread"] as Grouping[])
+                      .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />,
+              scope: <PopupSelect value={form.scope} onChange={setScope}
+                name={t("rule.f_scope")} options={[
+                  { value: "mail", label: t("rule.scope_mail") },
+                  { value: "junk", label: t("Junk") },
+                  { value: "trash", label: t("Trash") }]} />,
+            }} />
           {purge && (
             <Notice tone="danger" icon={<TriangleAlert size={16} />}>
               {t("rule.purge_warning")}
@@ -491,13 +524,15 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="type-body text-muted">{t("rule.s_apply")}</span>
+            {!purge && <span className="type-body text-muted">
+              {t("rule.s_apply")}</span>}
             {purge ? (
-              <Field label={t("rule.purge_age_label")}>
-                <Input className="w-full" type="number" min={1}
-                  max={36500} placeholder={t("retention.n_placeholder")}
-                  value={form.retentionN} onChange={set("retentionN")} />
-              </Field>
+              <Sentence template={t("rule.ed_older")}
+                className="flex flex-wrap items-center gap-2 type-body text-muted"
+                parts={{ n: <Input className="w-24" type="number" min={1}
+                  max={36500} aria-label={t("rule.purge_age_label")}
+                  placeholder={t("retention.n_placeholder")}
+                  value={form.retentionN} onChange={set("retentionN")} /> }} />
             ) : <>
               <PopupSelect value={form.retention} onChange={pick("retention")}
                 name={t("rule.f_apply")} options={[
@@ -594,14 +629,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           <p className="type-meta text-muted">{t("rules.help")}</p>
           {rules.map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
+              error={cardErr?.id === rule.id ? cardErr.text : undefined}
               onRun={() => run(rule)} onEdit={() => edit(rule)}
               onReport={() => setReportId(rule.id)}
               onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
           ))}
           {!rules.length && <EmptyState>{t("rules.empty")}</EmptyState>}
-          {!editing && msg && (
-            <div role="alert" className="type-meta text-danger-fg">{msg}</div>
-          )}
         </div>
         {/* >= 1024 (the page): the builder is a side panel next to the
             list; otherwise a full-screen sheet over it. */}
