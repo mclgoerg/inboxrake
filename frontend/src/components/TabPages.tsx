@@ -98,6 +98,27 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
     ready.size > 0 ? p.size : p.mails;
   const attBytes = useMemo(
     () => groups.reduce((n, g) => n + g.att_size, 0), [groups]);
+  // Duplicates are derived from the scanned index, so the server always has
+  // the current result: fetched on mount, account change and scan done only
+  // (AI batches bump groups_rev every few seconds; the call is not free).
+  type Dups = { sets: number; wasted: number; capped: boolean };
+  const [dups, setDups] = useState<Dups | "failed" | null>(null);
+  useEffect(() => {
+    if (!done) { setDups(null); return; }
+    let alive = true;
+    Promise.resolve().then(() => api.duplicates()).then((sets) => alive
+      && setDups({ sets: sets.length,
+        wasted: sets.reduce((n, s) => n + s.wasted, 0),
+        // the server returns at most 200 sets: a lower bound then
+        capped: sets.length >= 200 }))
+      .catch(() => alive && setDups("failed"));
+    return () => { alive = false; };
+  }, [account, done]);
+  const dupReady = dups != null && dups !== "failed";
+  const dupLoading = done && dups == null;
+  const atts = state?.atts;
+  const attRunning = atts?.status === "running";
+  const attSize = atts && atts.size > 0 ? atts.size : attBytes;
   const aiSafe = useMemo(() => groups.reduce(
     (n, g) => n + (g.ratings?.delete_safe ?? 0), 0), [groups]);
   const rules = state?.rules ?? [];
@@ -177,14 +198,24 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<Copy size={18} aria-hidden />}
             tone="bg-info-bg text-info-fg" label={t("Duplicates")}
-            value={null} sub={t("tab.dup_sub")} disabled={!done}
+            value={dupLoading ? <Skeleton className="h-6 w-14" />
+              : dupReady ? (dups.sets > 0
+                ? `${dups.capped ? "≥ " : ""}${fmtSize(dups.wasted)}`
+                : t("tab.dup_none_value")) : null}
+            sub={dupReady ? (dups.sets > 0
+              ? t(dups.capped ? "tab.dup_sets_more" : "tab.dup_sets",
+                { n: dups.sets.toLocaleString() })
+              : t("tab.dup_none")) : t("tab.dup_sub")} disabled={!done}
             onClick={() => onOpen("duplicates")} />
         </li>
         <li className="contents">
           <Tile icon={<Paperclip size={18} aria-hidden />}
             tone="bg-attach-bg text-attach-fg" label={t("Attachments")}
-            value={attBytes > 0 ? fmtSize(attBytes) : null}
-            sub={t("tab.att_sub")} onClick={() => onOpen("attachments")} />
+            value={attRunning ? t("tab.running")
+              : attSize > 0 ? fmtSize(attSize) : null}
+            sub={!attRunning && atts && atts.mails > 0 && atts.size > 0
+              ? t("tab.in_mails", { n: atts.mails.toLocaleString() })
+              : t("tab.att_sub")} onClick={() => onOpen("attachments")} />
         </li>
         {aiShown && (
           <li className="contents">

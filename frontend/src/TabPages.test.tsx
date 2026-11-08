@@ -8,9 +8,10 @@ const stats = vi.fn();
 const trackers = vi.fn();
 const audit = vi.fn();
 const wrapped = vi.fn();
+const duplicates = vi.fn();
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
-  api: { stats: () => stats(), trackers: () => trackers(),
+  api: { duplicates: () => duplicates(), stats: () => stats(), trackers: () => trackers(),
     wrapped: () => wrapped(),
     audit: (...a: unknown[]) => audit(...a) },
 }));
@@ -30,7 +31,7 @@ const state = (over: Partial<AppState> = {}) => ({
 }) as unknown as AppState;
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
-beforeEach(() => { wrapped.mockRejectedValue(new Error("x")); });
+beforeEach(() => { duplicates.mockRejectedValue(new Error("x")); wrapped.mockRejectedValue(new Error("x")); });
 
 const cleanupProps = (over = {}) => ({
   account: "a", groups: [] as Group[], state: state(), deckSize: 0,
@@ -51,10 +52,10 @@ test("Clean up: every tool is reachable and opens its tool", () => {
   expect(p.onReviewAi).toHaveBeenCalled();
 });
 
-test("Clean up: live numbers where known, Check where a run is needed", () => {
+test("Clean up: live numbers where known, Check where a run is needed", async () => {
   render(<CleanupPage {...cleanupProps()} />);
   const dup = screen.getByRole("button", { name: /^Duplicates/ });
-  expect(dup.textContent).toContain("Check");
+  await waitFor(() => expect(dup.textContent).toContain("Check"));
   expect(screen.getByRole("button", { name: /^Junk/ }).textContent)
     .toContain("11");
   expect(screen.getByRole("button", { name: /^Trash/ }).textContent)
@@ -206,4 +207,65 @@ test("Insights: the Space map asks for a scan on a never-scanned mailbox",
   expect(screen.getByText("Scan your mailbox to see the biggest senders."))
     .toBeTruthy();
   expect(screen.queryByText("Nothing to map yet.")).toBeNull();
+});
+
+test("Clean up: Duplicates shows the server's result, Attachments its last run",
+  async () => {
+  duplicates.mockResolvedValue([
+    { wasted: 2 * MB, mails: [{}, {}, {}] }, { wasted: MB, mails: [{}, {}] }]);
+  const st = state({ atts: { status: "done", mails: 12, size: 5 * MB,
+    progress: "", error: "" }, groups_rev: 1 } as never);
+  render(<CleanupPage {...cleanupProps({ state: st })} />);
+  const dup = screen.getByRole("button", { name: /^Duplicates/ });
+  await waitFor(() => expect(dup.textContent).toContain("2 duplicate sets"));
+  expect(dup.textContent).toContain("3.0 MB");
+  expect(dup.textContent).not.toContain("Check");
+  const att = screen.getByRole("button", { name: /^Attachments/ });
+  expect(att.textContent).toContain("12 mails");
+  expect(att.textContent).not.toContain("Check");
+});
+
+test("Clean up: a running attachment analysis shows Running…", () => {
+  const st = state({ atts: { status: "running", mails: 0, size: 0,
+    progress: "", error: "" } } as never);
+  render(<CleanupPage {...cleanupProps({ state: st })} />);
+  expect(screen.getByRole("button", { name: /^Attachments/ }).textContent)
+    .toContain("Running…");
+});
+
+test("Clean up: a capped duplicates answer is shown as a lower bound", async () => {
+  duplicates.mockResolvedValue(Array.from({ length: 200 }, () =>
+    ({ wasted: 1, mails: [{}, {}] })));
+  render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("200+ duplicate sets"));
+});
+
+test("Clean up: no Check flash while loading; no refetch on groups_rev",
+  async () => {
+  let res: (v: unknown) => void = () => {};
+  duplicates.mockReturnValue(new Promise((r) => { res = r; }));
+  const props = cleanupProps({ state: state({ groups_rev: 1 } as never) });
+  const { rerender } = render(<CleanupPage {...props} />);
+  const dup = () => screen.getByRole("button", { name: /^Duplicates/ });
+  expect(dup().textContent).not.toContain("Check");
+  res([{ wasted: MB, mails: [{}, {}] }]);
+  await waitFor(() => expect(dup().textContent).toContain("1 duplicate set"));
+  rerender(<CleanupPage {...props}
+    state={state({ groups_rev: 2 } as never)} />);
+  expect(duplicates).toHaveBeenCalledTimes(1);
+});
+
+test("Clean up: a capped size is a lower bound, a failed fetch shows Check",
+  async () => {
+  duplicates.mockResolvedValue(Array.from({ length: 200 }, () =>
+    ({ wasted: MB, mails: [{}, {}] })));
+  const { unmount } = render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("≥ 200.0 MB"));
+  unmount();
+  duplicates.mockRejectedValue(new Error("x"));
+  render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("Check"));
 });
