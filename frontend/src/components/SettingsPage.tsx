@@ -1099,6 +1099,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           onChange={(v) => { void (async () => {
             if (v === getLang() || !await resolveUnsaved()) return;
             setLang(v as Lang);
+            leaving.current = true;     // our own reload: no "Leave site?"
             window.location.reload();
           })(); }}
           options={[{ value: "en", label: "English" },

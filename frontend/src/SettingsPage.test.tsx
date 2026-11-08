@@ -1163,3 +1163,26 @@ test("changing the language with unsaved edits asks first (the switch reloads)",
     await expectNoDialog();
     expect(localStorage.getItem("pmc_lang")).not.toBe("de");
   });
+
+test("the language switch reloads without the 'Leave site?' prompt after Save or Discard",
+  async () => {
+    for (const choice of ["Save", "Discard changes"]) {
+      saveResult = Promise.resolve(cfg);
+      try {
+        renderWithDialogs({ section: "general" });
+        fireEvent.click(screen.getByRole("switch",
+          { name: "Search inside mail text" }));
+        popupPick(screen.getByRole("button", { name: /^Language/ }), "Deutsch");
+        await pressDialog(choice);
+        await waitFor(() => expect(localStorage.getItem("pmc_lang")).toBe("de"));
+        const ev = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(ev);
+        expect(ev.defaultPrevented, choice).toBe(false);
+      } finally {
+        saveResult = null;
+        localStorage.removeItem("pmc_lang");
+        setLang("en");
+        cleanup();
+      }
+    }
+  });
