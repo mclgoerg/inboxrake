@@ -68,7 +68,7 @@ test("resolves a rule actor to its current name when known", async () => {
 test("CSV export fetches and saves a blob instead of navigating", async () => {
   render(<AuditLogPanel rules={[]} onClose={() => {}} />);
   await waitFor(() => screen.getByText(/item 0/));
-  fireEvent.click(screen.getByText("CSV"));
+  fireEvent.click(screen.getByLabelText("Export audit log as CSV"));
   expect(downloadFile).toHaveBeenCalledWith("/api/audit/export");
 });
 
@@ -79,7 +79,7 @@ test("an empty log hides the pager, the CSV button and the 0-0 summary",
     await waitFor(() => screen.getByText("Nothing recorded yet"));
     expect(screen.queryByText(/Next/)).toBeNull();
     expect(screen.queryByText(/Previous/)).toBeNull();
-    expect(screen.queryByText("CSV")).toBeNull();
+    expect(screen.queryByLabelText("Export audit log as CSV")).toBeNull();
     expect(screen.queryByText(/of 0/)).toBeNull();
   });
 
@@ -91,7 +91,7 @@ test("with entries the pager sits below the list as small buttons",
     const prev = screen.getByText(/Previous/).closest("button")!;
     expect(prev.compareDocumentPosition(list)
       & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
-    expect(screen.getByText("CSV")).toBeTruthy();
+    expect(screen.getByLabelText("Export audit log as CSV")).toBeTruthy();
   });
 
 test("the tooltip of a failed entry words a coded error in the interface " +
@@ -109,4 +109,51 @@ test("the tooltip of a failed entry words a coded error in the interface " +
     + "(3 mails were permanently deleted before the failure)")).toBeTruthy();
   expect(screen.getByTitle(/could not verify for permanent deletion/))
     .toBeTruthy();
+});
+
+test("groups the log by month and shows a status pill per entry", async () => {
+  audit.mockResolvedValue({ total: 2, entries: [
+    { ts: 1700000000, action: "trash", actor: "user", account: "a", count: 4,
+      bytes: 0, label: "from x.example", outcome: "ok", error: "" },
+    { ts: 1690000000, action: "unsubscribe", actor: "user", account: "a",
+      count: 1, bytes: 0, label: "x.example", outcome: "failed", error: "" }] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("from x.example"));
+  expect(screen.getAllByRole("region", { name: /^(July|November)/ }).length)
+    .toBe(2);
+  expect(screen.getByText("failed")).toBeTruthy();
+  expect(screen.getByText("ok")).toBeTruthy();
+  audit.mockResolvedValue({ total: 3, entries });
+});
+
+test("renders the undo cards given above the timeline", async () => {
+  render(<AuditLogPanel rules={[]} onClose={() => {}}
+    above={<div>UNDO-CARDS</div>} />);
+  await waitFor(() => screen.getByText(/item 0/));
+  expect(screen.getByText("UNDO-CARDS")).toBeTruthy();
+});
+
+test("a failed unsubscribe of a known sender offers Retry", async () => {
+  audit.mockResolvedValue({ total: 1, entries: [
+    { ts: 5, action: "unsubscribe", actor: "user", account: "a", count: 1,
+      bytes: 0, label: "news@x.example", outcome: "failed", error: "" }] });
+  const group = { key: "news@x.example", unsub: { mailto: "a@b.example" },
+    unsubscribed: null } as any;
+  const onRetryUnsub = vi.fn().mockResolvedValue(undefined);
+  render(<AuditLogPanel rules={[]} onClose={() => {}}
+    groups={{ "news@x.example": group }} onRetryUnsub={onRetryUnsub} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(onRetryUnsub).toHaveBeenCalledWith(group));
+  audit.mockResolvedValue({ total: 3, entries });
+});
+
+test("no Retry when the sender is gone", async () => {
+  audit.mockResolvedValue({ total: 1, entries: [
+    { ts: 5, action: "unsubscribe", actor: "user", account: "a", count: 1,
+      bytes: 0, label: "gone@x.example", outcome: "failed", error: "" }] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} groups={{}}
+    onRetryUnsub={vi.fn()} />);
+  await waitFor(() => screen.getByText("gone@x.example"));
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  audit.mockResolvedValue({ total: 3, entries });
 });

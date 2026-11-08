@@ -2,7 +2,7 @@ import { Archive, BellOff, ChevronDown, ChevronsUpDown,
   Download, FolderInput, Info, ListChecks, Mail, Monitor, Moon, Paperclip, Pencil, Plus,
   MoreHorizontal, Power,
   RefreshCw, ScrollText, Search, Settings as SettingsIcon, Sparkles, Star, Sun,
-  Trash2, User, Wand2, X }
+  Trash2, Undo2, User, Wand2, X }
   from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
@@ -217,6 +217,7 @@ export default function App() {
   const [foldersOpen, setFoldersOpen] = useState<FolderRole | null>(null);
   // Bumped after a restore: the Activity page reloads its audit log.
   const [undoRev, setUndoRev] = useState(0);
+  const [undoAll, setUndoAll] = useState(false);
   // The open tool, in either presentation: its route (the truth from 1024
   // px, and a deep link below) or the modal flag the tab pages / menus set
   // below 1024. A panel stays mounted when a resize flips the presentation,
@@ -2126,35 +2127,40 @@ export default function App() {
     </Menu>
   );
 
-  // The undo history (the status line's Undo menu, newest first): the top of
-  // the Activity page.
-  const undoHistory = (
-    <div>
-      <SectionLabel className="px-1 pb-1 pt-3">
-        {t("activity.undo")}
-      </SectionLabel>
-      {state?.undo.length ? (
-        <ul className="divide-y divide-line">
-          {[...state.undo].map((u, i) => ({ u, i })).reverse()
-            .map(({ u, i }) => (
-            <li key={i} className="flex items-center gap-3 px-1 py-2">
-              <span className="min-w-0 flex-1 type-body">
-                {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
-                {" "}- <span className="text-muted">{undoLabel(u)}</span>
-              </span>
-              <Button variant="secondary" size="sm" disabled={deleting}
-                onClick={() => undo(i)}>
-                {t("Undo")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="px-1 py-2 type-meta text-muted">
-          {t("activity.undo_empty")}
-        </p>
+  // What can still be undone (the status line's Undo menu), as cards under
+  // the Activity page's month summary: the newest three, the rest behind
+  // "Show all".
+  const undoHistory = state?.undo.length ? (
+    <section aria-label={t("activity.undo")} className="flex flex-col gap-2">
+      {[...state.undo].map((u, i) => ({ u, i })).reverse()
+        .slice(0, undoAll ? undefined : 3).map(({ u, i }) => (
+        <div key={undoId(u)} className="flex items-center gap-3 rounded-card
+          bg-accent-tint px-3 py-3">
+          <Undo2 size={18} aria-hidden className="shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="block type-body-mobile font-medium md:type-body">
+              {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
+            </span>
+            <span className="block type-meta text-muted">
+              {undoLabel(u)}
+            </span>
+          </span>
+          <Button variant="primary" size="sm" disabled={deleting}
+            onClick={() => undo(i)}>
+            {t("Undo")}
+          </Button>
+        </div>
+      ))}
+      {state.undo.length > 3 && (
+        <Button variant="quiet" size="sm" className="self-start"
+          aria-expanded={undoAll} onClick={() => setUndoAll((v) => !v)}>
+          {undoAll ? t("activity.undo_fewer")
+            : t("activity.undo_all", { n: state.undo.length })}
+        </Button>
       )}
-    </div>
+    </section>
+  ) : (
+    <p className="px-1 type-meta text-muted">{t("activity.undo_empty")}</p>
   );
 
   // The tool panels: modals below 1024 px, pages in the content column from
@@ -2193,7 +2199,13 @@ export default function App() {
     )}
     {toolShown("activity") && (
       <AuditLogPanel key={account} rules={state?.rules ?? []}
-        above={wide ? undoHistory : undefined} reloadKey={undoRev}
+        above={undoHistory} reloadKey={undoRev}
+        groups={state?.groups.sender}
+        onRetryUnsub={async (g) => {
+          const r = await unsubscribeGroup("sender", g, demo);
+          notify(r.message, r.ok ? "info" : "error");
+          if (r.ok) refresh();
+        }}
         onClose={() => closeTool(() => setAuditOpen(false))} />
     )}
     {(shownTool === "junk" || shownTool === "trash") && state && (

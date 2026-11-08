@@ -365,7 +365,7 @@ test("Activity: restoring an undo entry reloads the audit log below",
   state = { ...state, undo: [{ action: "delete", count: 2, label: "Older",
     ts: 1 }] };
   fireEvent.click(within(await side()).getByRole("button", { name: /Activity/ }));
-  const item = (await screen.findAllByRole("listitem"))[0];
+  const item = await screen.findByRole("region", { name: "Undo history" });
   await waitFor(() => expect(auditCalls).toBeGreaterThan(0));
   const before = auditCalls;
   fireEvent.click(within(item).getByRole("button", { name: "Undo" }));

@@ -1,12 +1,19 @@
-import { ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Archive, BellOff, ChevronLeft, ChevronRight, Download, FolderInput,
+  ListChecks, Mail, MailCheck, ScrollText, Send, Trash2, Undo2,
+  type LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { groupByMonth, localIso, monthSummary } from "../activity";
+import { nowDate } from "../clock";
 import { api, downloadFile, errorText, fmtSize } from "../api";
-import { t } from "../i18n";
-import type { AuditEntry, Rule } from "../types";
-import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel }
-  from "./ui";
+import { getLang, t } from "../i18n";
+import type { AuditEntry, Group, Rule } from "../types";
+import { retryableGroup } from "../unsub";
+import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
+  ShortDate, Tag, type TagTone } from "./ui";
 
 const PAGE_SIZE = 50;
+/** Newest entries fetched for the month summary (the API caps at 500). */
+const SUMMARY_LIMIT = 500;
 
 /** Rules are referenced by id (stable across renames); resolve to the
  *  rule's current name for display, falling back to the id if it was
@@ -26,19 +33,147 @@ export const tOr = (prefix: string, key: string): string => {
   return s === full ? key : s;
 };
 
+/** Icon + tint of an action's tile in the timeline. */
+const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
+  trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
+  purge: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
+  empty_trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
+  archive: { icon: Archive, tone: "bg-safe-bg text-safe-fg" },
+  move: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
+  move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
+  mark_read: { icon: MailCheck, tone: "bg-chip text-chiptext" },
+  rule_execute: { icon: ListChecks, tone: "bg-review-bg text-review-fg" },
+  rule_report: { icon: ListChecks, tone: "bg-chip text-chiptext" },
+  unsubscribe: { icon: BellOff, tone: "bg-info-bg text-info-fg" },
+  undo: { icon: Undo2, tone: "bg-chip text-chiptext" },
+  digest_sent: { icon: Send, tone: "bg-chip text-chiptext" },
+};
+const FALLBACK_LOOK = { icon: Mail, tone: "bg-chip text-chiptext" };
+
+const OUTCOME_TONE: Record<string, TagTone> = {
+  ok: "safe", done: "safe", link: "info", partial: "review",
+  cancelled: "neutral", error: "keep", failed: "keep",
+};
+
+const monthName = (ts: number): string => {
+  const d = new Date(ts * 1000);
+  const sameYear = d.getFullYear() === nowDate().getFullYear();
+  return new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB",
+    sameYear ? { month: "long" } : { month: "long", year: "numeric" })
+    .format(d);
+};
+
+/** "This month" card: mails cleaned (+ size when the log has it) and the
+ *  weekly bars, all from the audit log. */
+function MonthCard({ entries }: { entries: AuditEntry[] | null }) {
+  const sum = useMemo(() => entries && monthSummary(entries, nowDate()),
+    [entries]);
+  if (!sum) return null;
+  const max = Math.max(1, ...sum.weeks);
+  return (
+    <section aria-label={t("activity.month")}
+      className="rounded-card border border-line bg-panel p-4">
+      <div className="type-meta text-muted">{t("activity.month")}</div>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="type-largetitle tabular-nums">{sum.mails}</span>
+        <span className="type-body text-muted">
+          {t("activity.cleaned", { n: sum.mails })}
+          {sum.bytes > 0 ? ` · ${fmtSize(sum.bytes)}` : ""}
+        </span>
+      </div>
+      {sum.mails === 0 ? (
+        <p className="mt-2 type-meta text-muted">
+          {t("activity.month_empty")}</p>
+      ) : (
+        <ul className="mt-3 grid grid-cols-4 gap-3">
+          {sum.weeks.map((v, i) => (
+            <li key={i} className="flex flex-col items-stretch gap-1">
+              <div className="flex h-16 items-end">
+                <div className="w-full rounded-badge bg-accent/70"
+                  // bar height = this week's share of the busiest week
+                  style={{ height: `${v ? Math.max(6, (100 * v) / max) : 2}%` }} />
+              </div>
+              <span className="text-center type-meta text-muted">
+                {t("activity.week", { n: i + 1 })}
+                <span className="sr-only">: {t("n.mails", { n: v })}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TimelineRow({ e, rules, retry }: {
+  e: AuditEntry; rules: Rule[];
+  /** The Retry button of a failed unsubscribe, when there is one. */
+  retry?: ReactNode;
+}) {
+  const look = ACTION_LOOK[e.action] ?? FALLBACK_LOOK;
+  const Icon = look.icon;
+  const failed = e.outcome === "error" || e.outcome === "failed";
+  return (
+    <li className="flex items-start gap-3 px-3 py-3">
+      <span aria-hidden className={`grid size-10 shrink-0 place-items-center
+        rounded-control ${look.tone}`}>
+        <Icon size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block type-body-mobile font-medium md:type-body">
+          {tOr("audit.act", e.action)}
+        </span>
+        {e.label && (
+          <span className="block truncate type-meta text-muted"
+            title={e.label}>{e.label}</span>
+        )}
+        <span className="block type-meta text-muted">
+          {actorLabel(e.actor, rules)}
+          {e.count > 0 && ` · ${t("n.mails", { n: e.count })}${
+            e.bytes > 0 ? ` · ${fmtSize(e.bytes)}` : ""}`}
+        </span>
+        {failed && e.error && (
+          <span className="block type-meta text-danger-fg">
+            {errorText(e.error)}</span>
+        )}
+        {retry}
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1">
+        <span title={new Date(e.ts * 1000).toLocaleString()}>
+          <ShortDate iso={localIso(e.ts)} className="type-meta text-muted" />
+        </span>
+        <span title={e.error ? errorText(e.error) : undefined}>
+          <Tag tone={OUTCOME_TONE[e.outcome] ?? "neutral"}
+            className={failed ? "font-semibold" : ""}>
+            {tOr("audit.outcome", e.outcome)}
+          </Tag>
+        </span>
+      </span>
+    </li>
+  );
+}
+
 /** Append-only history of every action Inboxrake took on this mailbox:
  *  bulk/rule trash-archive-move-mark_read, rule runs, unsubscribes, undo,
- *  empty-trash. Paged, newest first, CSV export. */
-export function AuditLogPanel({ rules, onClose, above, reloadKey }: {
+ *  empty-trash. The Activity page: a month summary, `above` (the undo
+ *  cards), then the log as a timeline grouped by month. Paged, newest
+ *  first, CSV export. */
+export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetryUnsub }: {
   rules: Rule[]; onClose: () => void;
-  /** The Activity page puts the undo history here, above the log. */
+  /** The Activity page puts the undo cards here, under the month summary. */
   above?: ReactNode;
   /** Changes when something new was logged behind the panel (an undo). */
   reloadKey?: number;
+  /** Sender groups + the retry action (the detail panel's unsubscribe):
+   *  a failed unsubscribe whose sender can still be retried gets "Retry". */
+  groups?: Record<string, Group>;
+  onRetryUnsub?: (g: Group) => Promise<void>;
 }) {
+  const [retrying, setRetrying] = useState(false);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
+  const [recent, setRecent] = useState<AuditEntry[] | null>(null);
   const [error, setError] = useState("");
 
   const load = (off: number) => {
@@ -48,67 +183,73 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey }: {
       .catch((e) => setError(String(e.message ?? e)));
   };
   useEffect(() => load(offset), [offset, reloadKey]);
+  // The month summary needs the whole month, not just this page.
+  useEffect(() => {
+    api.audit(0, SUMMARY_LIMIT).then((r) => setRecent(r.entries))
+      .catch(() => setRecent([]));
+  }, [reloadKey]);
+
+  const retryButton = (e: AuditEntry): ReactNode => {
+    const g = onRetryUnsub && e.action === "unsubscribe"
+      && (e.outcome === "failed" || e.outcome === "error")
+      ? retryableGroup(groups, e.label) : null;
+    if (!g) return null;
+    return (
+      <Button variant="secondary" size="sm" className="mt-2 coarse:min-h-11"
+        disabled={retrying}
+        onClick={async () => {
+          setRetrying(true);
+          await onRetryUnsub!(g);
+          setRetrying(false);
+          load(offset);
+        }}>
+        {t("tab.retry")}
+      </Button>
+    );
+  };
+
+  const months = useMemo(() => groupByMonth(entries ?? []), [entries]);
 
   return (
     <Modal onClose={onClose} size="lg"
       full={!!above || !entries || entries.length > 0}>
       <PanelHeader
         title={<span className="inline-flex items-center gap-2">
-          <ScrollText size={18} /> {t(above ? "nav.activity" : "Audit Log")}
+          <ScrollText size={18} /> {t("nav.activity")}
         </span>}
         sub={total == null ? t("loading…") : total === 0 ? "" : t("audit.page", {
           from: offset + 1, to: Math.min(offset + PAGE_SIZE, total), total })}
         actions={!!total && (
-          <Button variant="secondary"
-            onClick={() => downloadFile(api.auditExportUrl())}
-            title={t("audit.export")}>CSV</Button>)}
+          <Button variant="secondary" size="icon"
+            label={t("audit.export")}
+            onClick={() => downloadFile(api.auditExportUrl())}>
+            <Download size={18} />
+          </Button>)}
         onClose={onClose}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        {above}
-        {above && <SectionLabel className="px-1 pb-1 pt-4">
-          {t("Audit Log")}</SectionLabel>}
-        {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
-        {!entries && !error && <Loading />}
-        {entries && entries.length === 0 && (
-          <EmptyState icon={<ScrollText size={18} />}
-            title={t("audit.empty")} hint={t("audit.empty_hint")} />
-        )}
-        {entries?.map((e, i) => (
-          <div key={`${e.ts}-${i}`}
-            className="flex flex-wrap items-baseline gap-2 border-b
-              border-line/60 px-1 py-2 type-body">
-            <span className="w-36 shrink-0 type-meta whitespace-nowrap
-              text-muted">
-              {new Date(e.ts * 1000).toLocaleString()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">
-                {tOr("audit.act", e.action)}
-              </span>
-              {e.label && (
-                <span className="ml-1 text-muted" title={e.label}>
-                  — {e.label}
-                </span>
-              )}
-              <span className="block truncate type-meta text-muted">
-                {actorLabel(e.actor, rules)}
-              </span>
-            </span>
-            {e.count > 0 && (
-              <span className="type-meta whitespace-nowrap text-muted">
-                {t("n.mails", { n: e.count })}
-                {e.bytes > 0 ? ` · ${fmtSize(e.bytes)}` : ""}
-              </span>
-            )}
-            <span className={`type-meta whitespace-nowrap ${
-              e.outcome === "error" || e.outcome === "failed"
-                ? "text-danger-fg" : "text-muted"}`}
-              title={e.error ? errorText(e.error) : undefined}>
-              {tOr("audit.outcome", e.outcome)}
-            </span>
-          </div>
-        ))}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
+        <div className="mx-auto flex max-w-180 flex-col gap-4">
+          {total !== 0 && <MonthCard entries={recent} />}
+          {above}
+          {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
+          {!entries && !error && <Loading />}
+          {entries && entries.length === 0 && (
+            <EmptyState icon={<ScrollText size={18} />}
+              title={t("audit.empty")} hint={t("audit.empty_hint")} />
+          )}
+          {months.map((m) => (
+            <section key={m.key} aria-label={monthName(m.ts)}>
+              <SectionLabel className="px-1 pb-1">{monthName(m.ts)}</SectionLabel>
+              <ul className="divide-y divide-line rounded-card border
+                border-line bg-panel">
+                {m.entries.map((e, i) => (
+                  <TimelineRow key={`${e.ts}-${i}`} e={e} rules={rules}
+                    retry={retryButton(e)} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </div>
       {!!total && (
         <div className="flex justify-end gap-2 border-t border-line px-4 py-2
