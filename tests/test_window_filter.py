@@ -29,7 +29,10 @@ def test_parse_in_window_units():
 def test_validate_and_purge_treat_in_like_any_qualifier():
     assert rulesmod.validate_filter("is:new in:7d") == []
     assert rulesmod.validate_filter("in:7") == ["in:7"]
-    assert rulesmod.validate_filter("in:7d in:1d") == ["in:1d"]   # repeat
+    assert rulesmod.validate_filter("is:new in:7d in:1d") == ["in:1d"]  # repeat
+    for ok in ("is:new in:7d", "is:still-mailing in:2h", "ai:safe in:90min",
+               "tag:x ai:keep in:1d"):
+        assert rulesmod.validate_filter(ok) == [], ok
     assert "in:" in rulesmod.purge_unsupported("in:7d")
     assert rulesmod.purge_unsupported("age:>1y") == []
 
@@ -119,3 +122,28 @@ def test_mail_list_in_window(monkeypatch):
     assert uids("") == [1, 2, 3]
     assert uids("in:7d age:>1d") == [2]          # combines with age:
     assert mailops.list_mails(q="in:7")["ignored"] == []   # plain text
+
+
+def test_a_window_alone_is_refused_in_rules():
+    """Alone `in:` would act on every match (`in:7d tag:newsletter` = all
+    newsletters) - refuse it, with its own message, on save and on run."""
+    assert rulesmod.validate_filter("in:7d") == ["in:7d"]
+    assert rulesmod.validate_filter("in:7d tag:newsletter") == ["in:7d"]
+    assert rulesmod.validate_filter("in:bogus") == ["in:bogus"]
+    err = rulesmod._filter_error(["in:7d"])
+    assert err.startswith("rule_filter_window:")
+    assert rulesmod._filter_error(["in:7d"], run=True).startswith(
+        "rule_filter_window_run:")
+    # another bad part: the generic text
+    assert rulesmod._filter_error(["in:7d", "age:x"]).startswith(
+        "rule_filter_invalid:")
+    assert rulesmod._filter_error(["in:bogus"]).startswith(
+        "rule_filter_invalid:")
+    import pytest
+    with pytest.raises(ValueError, match="^rule_filter_window:"):
+        rulesmod.create_rule({"name": "w", "grouping": "sender",
+                              "query": "in:7d tag:newsletter",
+                              "action": "trash"})
+    rule = rulesmod.create_rule({"name": "w", "grouping": "sender",
+                                 "query": "is:new in:7d", "action": "trash"})
+    assert rule["query"] == "is:new in:7d"

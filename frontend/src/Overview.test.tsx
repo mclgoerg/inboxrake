@@ -46,6 +46,7 @@ const win = (o: Partial<OverviewWindow> = {}): OverviewWindow => ({
 const resp = (o: Partial<OverviewResp> = {}): OverviewResp => ({
   now: NOW, weeks: [10, 20, 30, 25, 15, 20, 40, 81],
   weeks_estimated: [false, false, false, false, false, false, false, false],
+  weeks_in_mailbox: [10, 20, 30, 25, 15, 20, 40, 81],
   week: win(),
   since: null,
   kinds: { days: 30, total: 100, items: [
@@ -432,4 +433,23 @@ test("rev bumps refetch at most every 30 s; scans, accounts and Retry at once",
   await waitFor(() => expect(overview.mock.calls.length)
     .toBeGreaterThanOrEqual(5));
   spy.mockRestore();
+});
+
+
+test("a counted week says how many of its mails are no longer in the mailbox",
+  async () => {
+  overview.mockResolvedValue(resp({ weeks: [10, 20, 30, 25, 15, 20, 40, 120],
+    weeks_in_mailbox: [10, 20, 30, 25, 15, 20, 40, 81] }));
+  show();
+  const cols = await columns();
+  expect(cols[7].getAttribute("aria-label")).toContain(
+    "Last 7 days: 120 arrived (incl. 39 no longer in your mailbox)");
+  expect(cols[6].getAttribute("aria-label")).not.toContain("no longer");
+  // an estimate is the index's own number: nothing to add
+  cleanup();
+  overview.mockResolvedValue(resp({ weeks: [10, 20, 30, 25, 15, 20, 40, 120],
+    weeks_estimated: [true, true, true, true, true, true, true, true] }));
+  show();
+  expect((await columns())[7].getAttribute("aria-label"))
+    .not.toContain("no longer");
 });

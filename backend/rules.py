@@ -210,11 +210,11 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
     {"qualifier": "in", "values": None, "check": "in",
      "syntax": "in:<N>(min|h|d)",
      "meaning": "a time window of N minutes, hours or days back from now. "
-                "It only narrows is:new (the sender was first seen in the "
-                "window), is:still-mailing (a mail arrived in it) and ai:... "
-                "(the verdict was given in it); on its own it matches "
-                "everything. Without it is:new uses the configured "
-                "new-sender window and the other two ignore time",
+                "It is only valid together with is:new (the sender was first "
+                "seen in the window; the window REPLACES the configured "
+                "new-sender window, so it can widen it), is:still-mailing "
+                "(a late mail arrived in it) or ai:... (the verdict was given "
+                "in it) - for the last two it narrows. Alone it is refused",
      "example": "is:new in:7d"},
     {"qualifier": "from", "values": None, "check": "text",
      "syntax": "from:<address>",
@@ -274,9 +274,14 @@ def validate_filter(q: str, tags=None) -> list[str]:
     wrote. With `tags` (the accepted tag names) a `tag:` value must also
     be part of (a substring of) one of them. Free words are always valid.
     A single-value qualifier given twice (`_slot`) reports the repeat: the
-    parsers keep the last one, which could widen the match unnoticed."""
+    parsers keep the last one, which could widen the match unnoticed.
+    `in:<N>…` is only valid next to is:new / is:still-mailing / ai:...: alone
+    it would act on ALL matches (a rule `in:7d tag:newsletter` would take
+    every newsletter), while in the All mail list it means "arrived in the
+    window" - so it is refused rather than silently ignored."""
     bad = []
     seen = set()
+    windowed = timed = False
     for tok in (q or "").strip().lower().split():
         if ":" not in tok:
             continue
@@ -289,7 +294,24 @@ def validate_filter(q: str, tags=None) -> list[str]:
             if slot in seen:
                 bad.append(tok)
             seen.add(slot)
+        windowed = windowed or kind == "in"
+        timed = timed or kind == "ai" or (
+            kind == "is" and val in ("new", "still-mailing"))
+    if windowed and not timed:
+        bad.extend(t for t in q.strip().lower().split()
+                   if t.startswith("in:") and t not in bad)
     return bad
+
+
+def _filter_error(bad: list[str], run: bool = False) -> str:
+    """The coded refusal for the bad parts of a filter: its own text when the
+    only problem is a window without the condition it narrows."""
+    names = ", ".join(bad)
+    if all(t.startswith("in:") and _IN_RE.match(t[3:]) for t in bad):
+        return mailops.coded(mailops.RULE_FILTER_WINDOW_RUN if run
+                             else mailops.RULE_FILTER_WINDOW, names=names)
+    return mailops.coded(mailops.RULE_FILTER_INVALID_RUN if run
+                         else mailops.RULE_FILTER_INVALID, names=names)
 
 
 def match_group(g: dict, f: dict, now: float | None = None) -> bool:
@@ -577,8 +599,7 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
         # one: it comes in flagged, report mode, execute runs blocked)
         bad = validate_filter(rule["query"])
         if bad and not lenient_filter:
-            raise ValueError(mailops.coded(
-                mailops.RULE_FILTER_INVALID, names=", ".join(bad)))
+            raise ValueError(_filter_error(bad))
     if "action" in body:
         if body["action"] not in (*mailops.ACTIONS, PURGE_ACTION):
             raise ValueError("bad action")
@@ -913,8 +934,7 @@ def _filter_gate(rule: dict) -> None:
     still run (they show the numbers and change nothing)."""
     bad = validate_filter(rule.get("query", ""))
     if rule["mode"] == "execute" and bad:
-        raise RuntimeError(mailops.coded(
-            mailops.RULE_FILTER_INVALID_RUN, names=", ".join(bad)))
+        raise RuntimeError(_filter_error(bad, run=True))
 
 
 def _disarm(rule_id: str, reason: str) -> None:

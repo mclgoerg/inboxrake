@@ -639,14 +639,15 @@ export const EN: Record<string, string> = {
   "overview.trend_days_one": "1 day ago",
   "overview.last_7_days": "Last 7 days",
   "overview.days_ago_range": "{from}-{to} days ago",
-  "overview.balance_tip": "{range}: {arrived} arrived · {cleaned} cleaned",
-  "overview.balance_tip_arrived": "{range}: {arrived} arrived",
+  "overview.balance_tip": "{range}: {arrived} arrived{gone} · {cleaned} cleaned",
+  "overview.balance_tip_arrived": "{range}: {arrived} arrived{gone}",
   "overview.balance_from": "{n} weeks ago",
   "overview.balance_now": "now",
   "overview.balance_arrived": "arrived",
   "overview.balance_cleaned": "you cleaned",
   "overview.balance_note": "Lighter bars are estimates from the mails still in your mailbox - mails you cleaned before the weekly count started are missing.",
   "overview.balance_est": "about {n}",
+  "overview.balance_gone": " (incl. {n} no longer in your mailbox)",
   "overview.load_failed": "Couldn't load these numbers.",
   "overview.week_title": "Last week",
   "overview.week_range": "Time range",
@@ -2062,6 +2063,13 @@ export const EN: Record<string, string> = {
     + "never matches senders - use plain text such as the domain name).",
   "ferr.rule_filter_invalid":
     "This filter has parts Inboxrake doesn't understand: {names}",
+  "ferr.rule_filter_window":
+    "A time window ({names}) only works together with is:new, "
+    + "is:still-mailing or ai:... - alone it would match everything.",
+  "ferr.rule_filter_window_run":
+    "The filter has a time window ({names}) without is:new, "
+    + "is:still-mailing or ai:... - edit the rule. Its execute runs are "
+    + "skipped until then.",
   "ferr.rule_filter_invalid_run":
     "The filter has parts Inboxrake doesn't understand: {names} - edit the "
     + "rule. Its execute runs are skipped until then.",

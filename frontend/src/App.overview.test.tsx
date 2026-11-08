@@ -226,7 +226,8 @@ const week = (o: object = {}) => ({ from: 0, mails: 7, senders: 3,
 const withWeek = (o: object = {}) => {
   overviewResp = { now: Math.floor(Date.now() / 1000),
     weeks: [1, 2, 3, 4, 5, 6, 7, 8],
-    weeks_estimated: [true, true, true, true, true, true, true, true], week: week(o), since: null,
+    weeks_estimated: [true, true, true, true, true, true, true, true],
+    weeks_in_mailbox: [1, 2, 3, 4, 5, 6, 7, 8], week: week(o), since: null,
     kinds: { days: 30, total: 0, items: [] }, trend: null };
 };
 

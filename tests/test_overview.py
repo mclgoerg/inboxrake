@@ -183,8 +183,8 @@ def test_endpoint_is_per_account_and_additive():
     r = c.get("/api/overview")
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"now", "weeks", "weeks_estimated", "week", "since",
-                         "kinds", "trend"}
+    assert set(body) == {"now", "weeks", "weeks_estimated", "weeks_in_mailbox",
+                         "week", "since", "kinds", "trend"}
     assert body["weeks"] == [0] * 8 and body["since"] is None
     r = c.get("/api/overview", params={"since": int(time.time()) - 60})
     assert r.json()["since"]["mails"] == 0
@@ -264,10 +264,13 @@ def test_build_reports_tracked_weeks(monkeypatch):
     out = overview.build(_acc([_mail(1)]), now=NOW)
     assert out["weeks_estimated"] == [False] * 8
     assert out["weeks"][-1] == 3            # recorded, not the index's 1
+    assert out["weeks_in_mailbox"][-1] == 1
 
 
 def test_a_real_scan_records_what_arrived_since_the_last_one(monkeypatch):
-    from conftest import FakeIMAP, make_msg
+    """Through start_scan (the button, auto-scan, rules): it clears the
+    public scan time, the diff must still know the previous scan."""
+    from conftest import FakeIMAP, make_msg, wait_scan_done
     t = int(time.time())
     imap_date = lambda ts: time.strftime("%d-%b-%Y %H:%M:%S +0000",
                                          time.gmtime(ts))
@@ -275,14 +278,36 @@ def test_a_real_scan_records_what_arrived_since_the_last_one(monkeypatch):
            "Sent": [], "Trash": []}
     fake = FakeIMAP(box)
     monkeypatch.setattr(mailops, "connect", lambda im, n=None: fake)
-    mailops.run_scan()
-    first = statsmod.load("default")["scans"][-1]
+
+    def scan():
+        n = len(statsmod.load("default")["scans"])
+        mailops.start_scan()
+        wait_scan_done()
+        end = time.time() + 5          # the record follows the "done" state
+        while time.time() < end \
+                and len(statsmod.load("default")["scans"]) == n:
+            time.sleep(0.01)
+        return statsmod.load("default")["scans"][-1]
+
+    first = scan()
     assert "new" not in first                       # the baseline
     box["INBOX"].append(make_msg(2, frm='"B" <b@shop.example>',
                                  date=imap_date(t - 60)))
-    mailops.run_scan()
-    second = statsmod.load("default")["scans"][-1]
+    second = scan()
     assert second["new"] == 1
     assert second["new_since"] == first["ts"]
-    mailops.run_scan()                               # nothing new
-    assert statsmod.load("default")["scans"][-1]["new"] == 0
+    assert scan()["new"] == 0                       # nothing new
+    # ... and the weekly balance takes the record, bar for the tracked week
+    box["INBOX"].append(make_msg(3, frm='"C" <c@shop.example>',
+                                 date=imap_date(t - 30)))
+    scan()
+    out = overview.build(mailops.accounts.get(), now=t + 5)
+    assert out["weeks_estimated"][-1] is True       # tracking began minutes ago
+    data = statsmod._load_all()
+    for s in data["accounts"]["default"]["scans"]:
+        if "new_since" in s:
+            s["new_since"] -= 90 * 86400            # as if tracked for months
+    statsmod._write(data)
+    out = overview.build(mailops.accounts.get(), now=t + 5)
+    assert out["weeks_estimated"] == [False] * 8
+    assert out["weeks"][-1] == 2                    # the two that arrived

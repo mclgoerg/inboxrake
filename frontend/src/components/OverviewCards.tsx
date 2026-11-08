@@ -106,12 +106,16 @@ export function BalanceCard({ accountLine, size, mails, senders, trend,
   const tips = weeks.map((a, i) => {
     const c = cleaned?.[i];
     const range = weekLabel(i, weeks.length);
+    const kept = data?.weeks_in_mailbox?.[i] ?? a;
     const arrived = est[i] ? t("overview.balance_est", { n: a }) : a;
+    // counted at the scans: some may be cleaned or moved since
+    const gone = !est[i] && a > kept
+      ? t("overview.balance_gone", { n: a - kept }) : "";
     const partial = cleanedFloor !== null && data
       && data.now - (weeks.length - i) * WEEK_S < cleanedFloor;
     return c === undefined
-      ? t("overview.balance_tip_arrived", { range, arrived })
-      : t("overview.balance_tip", { range, arrived,
+      ? t("overview.balance_tip_arrived", { range, arrived, gone })
+      : t("overview.balance_tip", { range, arrived, gone,
         cleaned: partial ? t("activity.at_least", { n: c }) : c });
   });
   const tr = trend && TREND_TONE[trend.dir];

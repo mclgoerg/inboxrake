@@ -799,6 +799,8 @@ export interface OverviewResp {
   /** Per bucket: true = an estimate from the mails still in the mailbox
    *  (no arrival record covers it), false = counted at the scans. */
   weeks_estimated: boolean[];
+  /** Per bucket: what the mails still in the mailbox alone give. */
+  weeks_in_mailbox: number[];
   week: OverviewWindow;
   /** The window since the previous visit; null without one. */
   since: OverviewWindow | null;

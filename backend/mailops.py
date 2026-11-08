@@ -142,6 +142,10 @@ RULE_PURGE_FILTER_DOMAIN = "rule_purge_filter_domain"    # names=
 # a rule filter with parts the parsers would silently drop (all rules)
 RULE_FILTER_INVALID = "rule_filter_invalid"              # names=
 RULE_FILTER_INVALID_RUN = "rule_filter_invalid_run"      # names=
+# `in:` without the condition it is a window for (is:new / is:still-mailing /
+# ai:...): it would act on every match
+RULE_FILTER_WINDOW = "rule_filter_window"                # names=
+RULE_FILTER_WINDOW_RUN = "rule_filter_window_run"        # names=
 RULE_FILTER_TOO_LONG = "rule_filter_too_long"            # max=
 # a request body over the size cap (backend/bodylimit.py)
 REQUEST_TOO_LARGE = "request_too_large"
@@ -239,7 +243,7 @@ FOLDER_ERROR_CODES = frozenset({
     RULE_PURGE_FILTER,
     RULE_PURGE_FILTER_DOMAIN,
     RULE_FILTER_INVALID,
-    RULE_FILTER_INVALID_RUN,
+    RULE_FILTER_INVALID_RUN, RULE_FILTER_WINDOW, RULE_FILTER_WINDOW_RUN,
     RULE_FILTER_TOO_LONG,
     REQUEST_TOO_LARGE,
     BLOCK_KEY_INVALID,
@@ -2548,8 +2552,8 @@ def run_scan(acc=None) -> None:
             with acc.lock:
                 # new since the previous scan (for the Overview's balance)
                 arrived = statsmod.arrivals(
-                    list(acc.index.values()), acc.state.get("scanned_ts"),
-                    messages)
+                    list(acc.index.values()),
+                    acc.state.get("scanned_ts") or acc.prev_scan_ts, messages)
                 acc.index.clear()
                 for m in messages:
                     acc.index[ikey(m["folder"], m["uid"])] = m
@@ -2569,6 +2573,7 @@ def run_scan(acc=None) -> None:
                 acc.state["ai"] = {"status": "idle", "grouping": "",
                                "progress": "", "error": "", "usage": None}
                 acc.state["scanned_ts"] = int(time.time())
+                acc.prev_scan_ts = None
                 acc.state["groups_rev"] += 1
                 analysed = [m.get("att_size", 0) for m in acc.index.values()
                             if m.get("att_size")]
@@ -2647,6 +2652,7 @@ def start_scan(acc=None, notice: dict | None = None) -> None:
                 or acc.state["unsub"]["status"] == "running" \
                 or acc.state["index"]["status"] == "running":
             raise RuntimeError("busy")
+        acc.prev_scan_ts = acc.state.get("scanned_ts") or acc.prev_scan_ts
         # `groups` is left as-is (not reset to {}) so the UI keeps showing
         # the last-known-good table instead of flashing empty - important
         # now that scans can also fire unattended on a schedule. `status`

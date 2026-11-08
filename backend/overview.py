@@ -162,6 +162,9 @@ def build(acc, since: int | None = None, now: float | None = None) -> dict:
     history = statsmod.load(acc.name)["scans"]
     arrived, estimated = weekly_arrivals(history, weeks, now)
     return {"now": int(now), "weeks": arrived, "weeks_estimated": estimated,
+            # what the index alone says (mails still here, by date): the UI
+            # shows how many of a counted week are gone from the mailbox
+            "weeks_in_mailbox": weeks,
             "week": out["week"],
             "since": out.get("since"),
             "kinds": {"days": KIND_DAYS, "total": sum(kinds.values()),

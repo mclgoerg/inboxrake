@@ -122,8 +122,8 @@ export const DE: Record<string, string> = {
   "overview.trend_days_one": "vor 1 Tag",
   "overview.last_7_days": "Letzte 7 Tage",
   "overview.days_ago_range": "vor {from}-{to} Tagen",
-  "overview.balance_tip": "{range}: {arrived} angekommen · {cleaned} aufgeräumt",
-  "overview.balance_tip_arrived": "{range}: {arrived} angekommen",
+  "overview.balance_tip": "{range}: {arrived} angekommen{gone} · {cleaned} aufgeräumt",
+  "overview.balance_tip_arrived": "{range}: {arrived} angekommen{gone}",
   "overview.balance_from": "vor {n} Wochen",
   "overview.balance_now": "jetzt",
   "overview.balance_arrived": "angekommen",
@@ -131,6 +131,7 @@ export const DE: Record<string, string> = {
   "overview.balance_note":
     "Hellere Balken sind Schätzungen aus den Mails, die noch in deinem Postfach liegen - was du vor Beginn der wöchentlichen Zählung aufgeräumt hast, fehlt.",
   "overview.balance_est": "ca. {n}",
+  "overview.balance_gone": " (davon {n} nicht mehr in deinem Postfach)",
   "overview.load_failed": "Diese Zahlen konnten nicht geladen werden.",
   "overview.week_title": "Letzte Woche",
   "overview.week_range": "Zeitraum",
@@ -2309,6 +2310,13 @@ export const DE: Record<string, string> = {
     + "stattdessen Freitext wie den Domainnamen).",
   "ferr.rule_filter_invalid":
     "Dieser Filter enthält Teile, die Inboxrake nicht versteht: {names}",
+  "ferr.rule_filter_window":
+    "Ein Zeitfenster ({names}) funktioniert nur zusammen mit is:new, "
+    + "is:still-mailing oder ai:... – allein würde es alles treffen.",
+  "ferr.rule_filter_window_run":
+    "Der Filter hat ein Zeitfenster ({names}) ohne is:new, is:still-mailing "
+    + "oder ai:... – bearbeite die Regel. Ausführungsläufe werden bis dahin "
+    + "übersprungen.",
   "ferr.rule_filter_invalid_run":
     "Der Filter enthält Teile, die Inboxrake nicht versteht: {names} – "
     + "bearbeite die Regel. Ausführungsläufe werden bis dahin "

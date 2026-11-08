@@ -132,6 +132,8 @@ const ERROR_CODES: Record<string, string> = {
   rule_purge_filter_domain: "ferr.rule_purge_filter_domain",
   rule_filter_invalid: "ferr.rule_filter_invalid",
   rule_filter_invalid_run: "ferr.rule_filter_invalid_run",
+  rule_filter_window: "ferr.rule_filter_window",
+  rule_filter_window_run: "ferr.rule_filter_window_run",
   rule_filter_too_long: "ferr.rule_filter_too_long",
   request_too_large: "ferr.request_too_large",
   block_key_invalid: "ferr.block_key_invalid",

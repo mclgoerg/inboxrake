@@ -163,9 +163,12 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   att:>10m att:>500k  attachment size above N (needs attachment analysis)
  *   from:<addr>         exact sender address (sender grouping only)
  *   domain:<domain>     exact domain (domain grouping only)
- *   in:7d|12h|90min     a window back from now; narrows is:new (first seen in
- *                       it), is:still-mailing (a late mail arrived in it) and
- *                       ai:... (verdict given in it); alone it changes nothing
+ *   in:7d|12h|90min     a window back from now, next to is:new (first seen in
+ *                       it - REPLACES the configured new-sender window, so it
+ *                       can widen it), is:still-mailing (a late mail arrived
+ *                       in it) or ai:... (verdict given in it), which it
+ *                       narrows. Alone it changes nothing here (rules refuse
+ *                       it; in the All mail list it means "arrived in it")
  *   anything else       substring match on name / address / key
  * A new qualifier also goes into FILTER_GRAMMAR (backend/rules.py): the AI
  * filter writer is taught from it, and a test fails when one is missing.
