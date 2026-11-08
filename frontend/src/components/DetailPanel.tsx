@@ -857,7 +857,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         {!shown && !error && <Loading />}
         {shown && (
           <MailRows mails={shown} sel={sel} onToggle={toggle}
-            onOpen={setView} onPin={togglePin} />
+            onOpen={setView} onPin={togglePin}
+            swipe={{ trash: (m) => actOn([m], "trash", "", true),
+              read: (m) => actOn([m], "mark_read", "", true) }} />
         )}
       </div>
     </>
@@ -1038,6 +1040,6 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       {content}
     </section>
   ) : (
-    <Modal onClose={onClose} full>{content}</Modal>
+    <Modal onClose={onClose} full edgeBack>{content}</Modal>
   );
 }

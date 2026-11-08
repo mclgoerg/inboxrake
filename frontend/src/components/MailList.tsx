@@ -1,10 +1,11 @@
-import { ArrowLeft, MessagesSquare } from "lucide-react";
+import { ArrowLeft, MailOpen, MessagesSquare, Pin, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
-import { AiTag, Button, MailRow, PinButton, Spinner } from "./ui";
+import { AiTag, Button, MailRow, PinButton, Spinner, SwipeRow,
+  type SwipeAction } from "./ui";
 import { ThreadView } from "./ThreadView";
 
 const RENDER_CAP = 500;
@@ -68,8 +69,20 @@ export function MessageView({ mail, onBack, actions }: {
   );
 }
 
+/** What swiping a mail row does (touch only): Trash on a swipe left, Pin
+ *  (`onPin`) and Read on a swipe right. Each is the handler of the same
+ *  action's button, so the pinned-mail warning, the confirm and the undo
+ *  toast are the button's. */
+export interface MailSwipe {
+  trash: (m: Mail) => void;
+  read: (m: Mail) => void;
+  /** The row's own background, which the sliding row must cover the buttons
+   *  with (default the panel's). */
+  bg?: string;
+}
+
 export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
-  paged, mark }: {
+  paged, mark, swipe }: {
   mails: Mail[];
   sel: Set<string>;
   onToggle: (k: string) => void;
@@ -85,8 +98,30 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   // Wraps the subject and the sender address (search results highlight
   // their match with it).
   mark?: (text: string) => ReactNode;
+  // Row swipe; off while mails are ticked (the selection bar is the way).
+  swipe?: MailSwipe;
 }) {
   const [cap, setCap] = useState(RENDER_CAP);
+  const swipeActions = (m: Mail) => {
+    if (!swipe) return { leading: [], trailing: [] };
+    const trailing: SwipeAction[] = [
+      { key: "trash", label: t("Trash"), tone: "danger",
+        ariaLabel: t("trash_this.btn"), icon: <Trash2 size={18} aria-hidden />,
+        onAction: () => swipe.trash(m) },
+    ];
+    const leading: SwipeAction[] = [
+      ...(onPin ? [{ key: "pin", tone: "new" as const,
+        label: t(m.pinned ? "swipe.unprotect" : "btn.protect"),
+        ariaLabel: t(m.pinned ? "pin.unprotect_tip" : "pin.protect_tip"),
+        icon: <Pin size={18} aria-hidden fill={m.pinned ? "currentColor" : "none"} />,
+        onAction: () => onPin(m) }] : []),
+      ...(!m.seen ? [{ key: "read", tone: "attach" as const,
+        label: t("swipe.read"), ariaLabel: t("Mark read"),
+        icon: <MailOpen size={18} aria-hidden />,
+        onAction: () => swipe.read(m) }] : []),
+    ];
+    return { leading, trailing };
+  };
   // Sender/folder only earn a spot on the meta line when they actually
   // vary across the visible mails - a single-sender group (the common
   // case) stays as uncluttered as a plain date/size line.
@@ -113,8 +148,9 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             )}
           </>
         ) : undefined;
-        return (
-          <MailRow key={mailKey(m)} checked={sel.has(mailKey(m))}
+        const row = (
+          <MailRow key={swipe ? undefined : mailKey(m)}
+            checked={sel.has(mailKey(m))}
             onToggle={() => onToggle(mailKey(m))} unread={!m.seen}
             subject={mark && m.subject ? mark(subject) : subject}
             meta={meta.every((x) => typeof x === "string")
@@ -124,6 +160,12 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
             pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing} />
         );
+        return swipe ? (
+          <SwipeRow key={mailKey(m)} {...swipeActions(m)}
+            className={swipe.bg ?? "bg-panel"} enabled={sel.size === 0}>
+            {row}
+          </SwipeRow>
+        ) : row;
       })}
       {!paged && mails.length > cap && (
         <div className="py-3 text-center">

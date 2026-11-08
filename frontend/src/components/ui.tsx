@@ -9,6 +9,8 @@ import { createContext, useCallback, useContext, useEffect, useId,
 import { nowDate } from "../clock";
 import { demoHint, useDemo } from "../demoMode";
 import { getLang, t } from "../i18n";
+import { EDGE_PX, GESTURE_SLOP, prefersReducedMotion, useCoarsePointer,
+  useEdgeBack } from "../gestures";
 import { engagementTier, fmtDate } from "../lib";
 import { decimalToInput, inputToDecimal, isBadDecimal } from "../numfmt";
 import type { GroupAi, GroupTrackers, StillMailing } from "../types";
@@ -1500,10 +1502,13 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
  *  `lg` (768) are full-screen there. `full` = `lg` at a fixed 88vh; other
  *  modals shrink to their content. `label` / `labelledBy` / `describedBy` name it for AT. */
 export function Modal({ children, onClose, full = false, size, label,
-  labelledBy, describedBy }: {
+  labelledBy, describedBy, edgeBack = false }: {
   children: ReactNode; onClose: () => void; full?: boolean;
   size?: "sm" | "md" | "lg"; label?: string;
   labelledBy?: string; describedBy?: string;
+  /** A full-screen page with a back target (a tool page always is): in an
+   *  installed app a drag from the left edge calls `onClose` (`useEdgeBack`). */
+  edgeBack?: boolean;
 }) {
   const sz = size ?? (full ? "lg" : "md");
   const presentation = useContext(PresentationContext);
@@ -1523,6 +1528,10 @@ export function Modal({ children, onClose, full = false, size, label,
   // the modal and reshuffles the stack.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // Edge swipe back, only for the modal on top (a confirm over it wins).
+  useEdgeBack(dialog, () => closeRef.current(),
+    !slot && sz !== "sm" && (tool || edgeBack),
+    () => openModals[openModals.length - 1] === id);
   // Layout effect: the stack is current as soon as the modal is in the DOM,
   // before any key event can arrive.
   useLayoutEffect(() => {
@@ -2452,6 +2461,256 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
           {trailing}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------ swipe actions ----------------------------- */
+
+export type SwipeTone = "danger" | "info" | "new" | "attach" | "neutral";
+
+/** One button behind a swiped row (`SwipeRow`). */
+export interface SwipeAction {
+  key: string;
+  /** The caption under the icon. */
+  label: string;
+  /** The button's accessible name when it is longer than the caption. */
+  ariaLabel?: string;
+  icon: ReactNode;
+  tone: SwipeTone;
+  onAction: () => void;
+}
+
+// Solid fills: the semantic foreground with the on-accent text, which flips
+// with the theme exactly like it does on the accent (near-black on the light
+// dark-theme hues, white on the dark light-theme ones).
+const SWIPE_TONE: Record<SwipeTone, string> = {
+  danger: "bg-danger text-white",
+  info: "bg-info-fg text-on-accent",
+  new: "bg-new-fg text-on-accent",
+  attach: "bg-attach-fg text-on-accent",
+  neutral: "bg-chiph text-chiptext",
+};
+
+const SWIPE_ACTION_W = 72;       // px per revealed button (>= 44 touch target)
+const SWIPE_SLOP = 10;           // px before the direction is decided
+const SWIPE_COMMIT_EXTRA = 56;   // px past the buttons that make a full swipe
+const SWIPE_COMMIT_FRACTION = 0.65;   // ... or this share of the row width
+const SWIPE_FLICK = 0.5;         // px/ms
+
+// One open row at a time; a touch anywhere else (or a scroll) closes it.
+type OpenSwipe = { el: HTMLElement; close: () => void };
+let openSwipe: OpenSwipe | null = null;
+const swipeOutside = (e: Event) => {
+  if (openSwipe && !openSwipe.el.contains(e.target as Node)) openSwipe.close();
+};
+const swipeScroll = () => openSwipe?.close();
+function markSwipeOpen(row: OpenSwipe) {
+  const prev = openSwipe;
+  openSwipe = row;
+  if (prev && prev !== row) prev.close();
+  else if (!prev) {
+    document.addEventListener("pointerdown", swipeOutside, true);
+    document.addEventListener("scroll", swipeScroll, true);
+  }
+}
+function markSwipeClosed(row: OpenSwipe) {
+  if (openSwipe !== row) return;
+  openSwipe = null;
+  document.removeEventListener("pointerdown", swipeOutside, true);
+  document.removeEventListener("scroll", swipeScroll, true);
+}
+
+/** A row that reveals buttons when swiped sideways (touch and pen only, never
+ *  a mouse; the rows' own buttons stay the way to do the same on a desktop).
+ *  Swipe left shows `trailing`, swipe right `leading`; the FIRST action of a
+ *  list sits at the outer edge and is what a full swipe runs. Every
+ *  `onAction` must be the handler the row's button already has: a swipe never
+ *  skips a confirm, a guard or the undo. Vertical scroll wins unless the move
+ *  is clearly horizontal; one row is open at a time; a tap elsewhere or a
+ *  scroll closes it; a tap on the open row only closes it. `enabled` off (a
+ *  Select mode) switches the gesture off. A drag from the left 20 px is left
+ *  to the edge swipe back. Reduced motion: the row does not follow the
+ *  finger, the distance alone decides. `className` is the row's background
+ *  (it must be opaque: it covers the buttons). */
+export function SwipeRow({ leading = [], trailing = [], enabled = true,
+  className = "bg-panel", children }: {
+  leading?: SwipeAction[]; trailing?: SwipeAction[]; enabled?: boolean;
+  className?: string; children: ReactNode;
+}) {
+  const coarse = useCoarsePointer();
+  const live = enabled && coarse && (leading.length > 0 || trailing.length > 0);
+  const wrap = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const under = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState<"leading" | "trailing" | null>(null);
+  const sideRef = useRef(side);
+  sideRef.current = side;
+  // x: where the row is now; rest: the side it stays open on
+  const pos = useRef({ x: 0, rest: null as "leading" | "trailing" | null,
+    swallow: false });
+  const ctl = useRef<{ close: () => void } | null>(null);
+  const actions = useRef({ leading, trailing });
+  actions.current = { leading, trailing };
+
+  useEffect(() => {
+    const el = body.current, root = wrap.current;
+    if (!live || !el || !root) return;
+    type Gesture = { id: number; x: number; y: number; base: number;
+      last: number; dragging: boolean; samples: { t: number; x: number }[] };
+    let g: Gesture | null = null;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const reveal = (s: "leading" | "trailing") =>
+      actions.current[s].length * SWIPE_ACTION_W;
+    const show = (x: number, ms: number) => {
+      pos.current.x = x;
+      el.style.transition = ms ? `transform ${ms}ms ease-out` : "none";
+      el.style.transform = x ? `translateX(${x}px)` : "";
+      if (under.current) {
+        under.current.style.transition = ms ? `width ${ms}ms ease-out` : "none";
+        under.current.style.width = `${Math.abs(x)}px`;
+      }
+    };
+    const anim = () => (prefersReducedMotion() ? 0 : 200);
+    const row: OpenSwipe = { el: root, close: () => close() };
+    function close() {
+      pos.current.rest = null;
+      markSwipeClosed(row);
+      show(0, anim());
+      clearTimeout(settle);
+      // The buttons leave the DOM once the row has covered them again.
+      settle = setTimeout(() => { if (!pos.current.rest && !g) setSide(null); },
+        anim() ? 220 : 0);
+    }
+    const open = (s: "leading" | "trailing") => {
+      pos.current.rest = s;
+      setSide(s);
+      show((s === "leading" ? 1 : -1) * reveal(s), anim());
+      markSwipeOpen(row);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      g = null;
+    };
+    const down = (e: PointerEvent) => {
+      if (g || e.pointerType === "mouse" || !e.isPrimary) return;
+      if (e.clientX <= EDGE_PX) return;   // the edge is swipe back's
+      if ((e.target as HTMLElement).closest(
+        "input, textarea, select, [data-no-swipe]")) return;
+      pos.current.swallow = false;
+      clearTimeout(settle);
+      g = { id: e.pointerId, x: e.clientX, y: e.clientY, base: pos.current.x,
+        last: pos.current.x, dragging: false,
+        samples: [{ t: e.timeStamp, x: e.clientX }] };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", cancel);
+    };
+    function move(e: PointerEvent) {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x, dy = e.clientY - g.y;
+      if (!g.dragging) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_SLOP) return;
+        // Vertical scroll wins unless the move is clearly horizontal.
+        if (Math.abs(dx) < 1.5 * Math.abs(dy)) { stop(); return; }
+        g.dragging = true;
+      }
+      const w = root!.offsetWidth;
+      const lo = actions.current.trailing.length ? -w : 0;
+      const hi = actions.current.leading.length ? w : 0;
+      const x = Math.min(hi, Math.max(lo, g.base + dx));
+      g.last = x;
+      g.samples.push({ t: e.timeStamp, x: e.clientX });
+      if (g.samples.length > 6) g.samples.shift();
+      const s = x < 0 ? "trailing" : x > 0 ? "leading" : sideRef.current;
+      if (s && s !== sideRef.current) { sideRef.current = s; setSide(s); }
+      if (!prefersReducedMotion()) show(x, 0);
+    }
+    function up(e: PointerEvent) {
+      if (!g || e.pointerId !== g.id) return;
+      const { dragging, last, samples } = g;
+      stop();
+      if (!dragging) return;
+      pos.current.swallow = true;
+      setTimeout(() => { pos.current.swallow = false; }, 350);
+      const s = last < 0 ? "trailing" : "leading";
+      const r = reveal(s), abs = Math.abs(last);
+      if (!last || !r) { close(); return; }
+      if (abs >= Math.max(r + SWIPE_COMMIT_EXTRA,
+        root!.offsetWidth * SWIPE_COMMIT_FRACTION)) {
+        // A full swipe: the first button's action, through its own handler.
+        const first = actions.current[s][0];
+        close();
+        first?.onAction();
+        return;
+      }
+      const from = samples.find((p) => e.timeStamp - p.t <= 100) ?? samples[0];
+      const dt = e.timeStamp - from.t;
+      const v = dt > 0 ? (e.clientX - from.x) / dt : 0;
+      const outward = s === "trailing" ? -v : v;
+      if (outward >= SWIPE_FLICK || (abs > r * 0.5 && outward > -SWIPE_FLICK))
+        open(s); else close();
+    }
+    function cancel(e: PointerEvent) {
+      if (!g || e.pointerId !== g.id) return;
+      const was = g.dragging;
+      stop();
+      if (!was) return;
+      if (pos.current.rest) open(pos.current.rest); else close();
+    }
+    ctl.current = { close };
+    el.addEventListener("pointerdown", down);
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      clearTimeout(settle);
+      stop();
+      markSwipeClosed(row);
+      ctl.current = null;
+      // Switched off (Select mode) or gone: back to rest at once.
+      pos.current = { x: 0, rest: null, swallow: false };
+      el.style.transition = "";
+      el.style.transform = "";
+      setSide(null);
+    };
+  }, [live]);
+
+  return (
+    <div ref={wrap} data-swipe-row
+      className={`relative ${live ? "overflow-x-clip" : ""}`}>
+      {live && side && (
+        <div ref={under}
+          className={`absolute inset-y-0 flex ${side === "trailing"
+            ? "right-0 flex-row-reverse" : "left-0"}`}
+          style={{ width: Math.abs(pos.current.x) }}>
+          {(side === "trailing" ? trailing : leading).map((a, i) => (
+            <button key={a.key} type="button" aria-label={a.ariaLabel}
+              onClick={() => { ctl.current?.close(); a.onAction(); }}
+              className={`flex flex-col items-center justify-center gap-1
+                type-caption ${i === 0 ? "min-w-18 flex-1" : "w-18 shrink-0"}
+                ${SWIPE_TONE[a.tone]}`}>
+              {a.icon}
+              <span>{a.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={body} data-swipe-body
+        // A tap on an open row only closes it; the click that ends a drag is
+        // not a tap on what is under the finger.
+        onClickCapture={(e) => {
+          if (pos.current.swallow || pos.current.rest) {
+            pos.current.swallow = false;
+            e.stopPropagation();
+            e.preventDefault();
+            ctl.current?.close();
+          }
+        }}
+        className={`relative ${className} ${live
+          ? "touch-pan-y touch-pinch-zoom" : ""}`}>
+        {children}
+      </div>
     </div>
   );
 }

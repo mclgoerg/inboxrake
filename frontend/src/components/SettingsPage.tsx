@@ -4,6 +4,7 @@ import { Archive, Bell, Check, ChevronLeft, Folder, KeyRound, Mail, Plus,
 import { useEffect, useLayoutEffect, useRef, useState,
   type MutableRefObject, type ReactNode } from "react";
 import { api, downloadFile, fmtUsd } from "../api";
+import { useEdgeBack } from "../gestures";
 import { fmtNum, getNumFormat, isBadDecimal, setNumFormat, type NumFormat } from "../numfmt";
 import { getLang, setLang, t, type Lang } from "../i18n";
 import { accountAuth, fmtAgo, fmtSize } from "../lib";
@@ -1780,6 +1781,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </div>
   );
 
+  // Installed app: a drag from the left edge goes up from a section (the
+  // back link's own handler). The save bar stays out of the sliding part.
+  const phoneSlide = useRef<HTMLDivElement>(null);
+  useEdgeBack(phoneSlide, () => onSection(null), !wide && !!open,
+    () => !isModalOpen());
+
   const saveBar = dirty && (
     <SaveBar summary={badDecimal ? t("decimal.invalid") : summary.text}
       saving={saving} blocked={badDecimal} onRevert={revert}
@@ -1802,6 +1809,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   }
   return (
     <div className="pb-4">
+      <div ref={phoneSlide}>
       {open ? (<>
         <button type="button" onClick={() => onSection(null)}
           className="-ml-1 mb-1 inline-flex min-h-11 items-center gap-0.5
@@ -1815,6 +1823,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         <h1 className="mb-3 type-largetitle">{t("Settings")}</h1>
         {rootList}
       </>)}
+      </div>
       {saveBar}
     </div>
   );

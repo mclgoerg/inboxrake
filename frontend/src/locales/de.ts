@@ -1417,6 +1417,9 @@ export const DE: Record<string, string> = {
   "update.reload": "Neu laden",
   "menu.version": "v{version} (Build {id})",
   "scan.age": "gescannt vor {ago}",
+  "scan.progress": "Scanne… {done} von {total} Mails",
+  "pull.hint": "Zum Scannen ziehen",
+  "pull.release": "Loslassen zum Scannen",
   "login.section": "Anmeldung (optional)",
   "login.help":
     "Schützt die API mit einem Login. \"Keine\" vertraut dem Netzwerk "
@@ -1815,6 +1818,11 @@ export const DE: Record<string, string> = {
   "Remove": "Entfernen",
   "View details": "Details anzeigen",
   "menu.more": "Mehr",
+  "swipe.read": "Gelesen",
+  "swipe.unprotect": "Schutz aus",
+  "swipe.protected": "{label} ist geschützt",
+  "swipe.unprotected": "{label} ist nicht mehr geschützt",
+  "swipe.open": "Details öffnen",
   "menu.account_switch": "Konto: {name}",
   "nav.label": "Hauptnavigation",
   "nav.back_to": "Zurück zu {page}",
