@@ -272,6 +272,9 @@ test("pinned mails are left out of the Trash count; a fully pinned " +
 });
 
 test("the limit pop-up is named after its label", async () => {
+  state = { ...baseState };
+  mountReady();
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await selectFirstGroup();
   openLimit();
   expect(screen.getByRole("button", { name: /^Limit to All mails/ })).toBeTruthy();
