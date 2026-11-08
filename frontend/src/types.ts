@@ -869,6 +869,8 @@ export interface WrappedResp {
   top_senders: WrappedSender[];
   /** 1-12 */
   loudest_month: { month: number; mails: number } | null;
+  /** Mails per month (Jan..Dec), per weekday (Mon..Sun), per hour (0-23). */
+  by_month: number[]; by_weekday: number[]; by_hour: number[];
   /** 0 = Monday */
   busiest_weekday: { weekday: number; mails: number } | null;
   busiest_hour: { hour: number; mails: number } | null;

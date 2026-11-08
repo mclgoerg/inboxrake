@@ -19,6 +19,9 @@ const base: WrappedResp = {
     { label: "Shop News", addr: "news@shop.example", mails: 900, bytes: 5000 },
     { label: "Ann", addr: "ann@friends.example", mails: 40, bytes: 100 }],
   loudest_month: { month: 3, mails: 2000 },
+  by_month: [100, 200, 2000, 300, 0, 0, 0, 0, 0, 0, 0, 0],
+  by_weekday: [1, 3000, 2, 3, 4, 5, 6],
+  by_hour: [...Array(24).fill(1).map((_, i) => (i === 9 ? 1500 : i))],
   busiest_weekday: { weekday: 1, mails: 3000 },
   busiest_hour: { hour: 9, mails: 1500 },
   biggest: { label: "Shop News", addr: "news@shop.example", bytes: 9000000 },
@@ -214,4 +217,49 @@ test("German", async () => {
   expect(screen.getByText("Mails bisher in 2026")).toBeTruthy();
   fireEvent.keyDown(window, { key: "ArrowRight" });
   expect(screen.getByText("Gesendet von")).toBeTruthy();
+});
+
+test("month and rhythm cards draw bar charts with a text alternative",
+  async () => {
+    await open();
+    for (let i = 0; i < 3; i++) fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByText("March")).toBeTruthy();
+    const months = screen.getByRole("img", { name: /^Mails per month/ });
+    expect(months.getAttribute("aria-label")).toContain("Mar 2000");
+    expect(months.children).toHaveLength(12);
+    expect(screen.getByText(/^Mar: .*your busiest month/)).toBeTruthy();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByRole("img", { name: /^Mails per weekday/ }).children)
+      .toHaveLength(7);
+    expect(screen.getByRole("img", { name: /^Mails per hour/ }).children)
+      .toHaveLength(24);
+  });
+
+test("loudest sender: avatar hero, places 2+ as rows", async () => {
+  await open();
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  expect(screen.getByText("Shop News")).toBeTruthy();
+  expect(screen.getByText("Ann")).toBeTruthy();
+  expect(screen.getByText(/900 mails · about .* a day/)).toBeTruthy();
+});
+
+test("a horizontal swipe turns the card and is not a tap", async () => {
+  await open();
+  const right = zone("right");
+  fireEvent.pointerDown(right, { clientX: 300, clientY: 400 });
+  fireEvent.pointerUp(right, { clientX: 120, clientY: 410 });
+  fireEvent.click(right);                // the click after a swipe: ignored
+  expect(screen.getByText("They came from")).toBeTruthy();
+  fireEvent.pointerDown(right, { clientX: 100, clientY: 400 });
+  fireEvent.pointerUp(right, { clientX: 260, clientY: 400 });
+  expect(screen.getByText("You received")).toBeTruthy();
+});
+
+test("the cleanup card shows four tiles", async () => {
+  await open();
+  for (let i = 0; i < 7; i++) fireEvent.keyDown(window, { key: "ArrowRight" });
+  for (const l of ["to Trash", "archived", "unsubscribed", "rules ran"]) {
+    expect(screen.getByText(l)).toBeTruthy();
+  }
 });

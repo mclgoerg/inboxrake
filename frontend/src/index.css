@@ -102,6 +102,11 @@
   font-size: clamp(2.75rem, 12vw, 4.5rem); line-height: 1; font-weight: 700;
   overflow-wrap: anywhere;
 }
+/* The same headline when it is a word (a month, a weekday), which must not
+   break inside the 9:16 desktop card. */
+@utility type-display-word {
+  font-size: clamp(2rem, 10vw, 3rem); line-height: 1.05; font-weight: 700;
+}
 @utility type-section {
   font-size: 0.75rem; line-height: 1rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: var(--tracking-wide);
@@ -366,3 +371,16 @@ body {
     linear-gradient(#4a4540 0 0) 0 100% / 70% 3px no-repeat,
     linear-gradient(#d98d2b 0 0) 0 260% / 40% 5px no-repeat;
 }
+
+/* "Your year in mail" story: every card has its own deep gradient and fixed
+   light text (the story is the same in both themes, like the saved image). */
+.story-g0 { background: linear-gradient(160deg, #b45f2c 0%, #6a2f93 45%, #1d1a4a 100%); }
+.story-g1 { background: linear-gradient(160deg, #1a3f8a 0%, #15665f 50%, #14224a 100%); }
+.story-g2 { background: linear-gradient(160deg, #7a2d86 0%, #3b2b8c 50%, #151540 100%); }
+.story-g3 { background: linear-gradient(160deg, #8c2c4a 0%, #4a2b7a 50%, #19163d 100%); }
+.story-g4 { background: linear-gradient(160deg, #1d6a58 0%, #214a8a 50%, #14183f 100%); }
+.story-g5 { background: linear-gradient(160deg, #8a5a1c 0%, #7a2f5c 50%, #1b1640 100%); }
+.story-tile { background: rgb(255 255 255 / 0.12); }
+.story-bar { background: rgb(255 255 255 / 0.38); }
+.story-bar-hi { background: #fff; }
+.story-track { background: rgb(255 255 255 / 0.3); }

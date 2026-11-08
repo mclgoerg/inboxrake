@@ -39,6 +39,8 @@ const esc = (s: string): string => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\
   .replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+const STORY_TEXT = "#ffffff";
+const STORY_MUTED = "rgba(255,255,255,0.72)";
 const FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 /** Display name of a top-sender row in the image. */
@@ -46,42 +48,61 @@ export const senderName = (
   s: { label: string; addr: string }, showNames: boolean,
 ): string => (showNames ? s.label || s.addr : maskAddr(s.addr));
 
-/** The summary card as a standalone SVG document (pure). */
+/** The summary card as a standalone SVG document (pure). It carries the
+ *  story's look: the same deep gradient, light text, translucent tiles and
+ *  the month bars - fixed colours, like the story, not the theme's. */
 export function buildSummarySvg(
-  d: WrappedResp, str: SummaryStrings, pal: SummaryPalette, showNames: boolean,
+  d: WrappedResp, str: SummaryStrings, _pal: SummaryPalette,
+  showNames: boolean,
 ): string {
   const text = (x: number, y: number, size: number, weight: number,
     fill: string, s: string, anchor = "start") =>
     `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" `
     + `fill="${fill}" text-anchor="${anchor}">${esc(s)}</text>`;
   const parts: string[] = [
-    `<rect width="${SVG_W}" height="${SVG_H}" fill="${pal.bg}"/>`,
-    text(90, 200, 44, 600, pal.accent, str.title),
-    text(90, 330, 48, 500, pal.muted, str.lead),
-    text(90, 500, 190, 700, pal.body, str.big),
-    text(90, 580, 52, 500, pal.muted, str.unit),
+    `<defs><linearGradient id="g" x1="0.2" y1="0" x2="0.8" y2="1">`
+    + `<stop offset="0" stop-color="#8a3f8f"/>`
+    + `<stop offset="0.5" stop-color="#3b2b8c"/>`
+    + `<stop offset="1" stop-color="#151540"/></linearGradient></defs>`,
+    `<rect width="${SVG_W}" height="${SVG_H}" fill="url(#g)"/>`,
+    text(90, 200, 44, 600, STORY_TEXT, str.title),
+    text(90, 330, 48, 500, STORY_MUTED, str.lead),
+    text(90, 500, 190, 700, STORY_TEXT, str.big),
+    text(90, 580, 52, 500, STORY_TEXT, str.unit),
   ];
+  const months = d.by_month ?? [];
+  if (months.some((v) => v > 0)) {
+    const max = Math.max(...months);
+    const peak = months.indexOf(max);
+    months.forEach((v, i) => {
+      const h = Math.max(8, (180 * v) / max);
+      // below the big number and its unit line (baseline 580)
+      parts.push(`<rect x="${90 + i * 75}" y="${840 - h}" width="63" `
+        + `height="${h}" rx="8" fill="${i === peak ? STORY_TEXT
+          : "rgba(255,255,255,0.38)"}"/>`);
+    });
+  }
   str.stats.slice(0, 6).forEach((s, i) => {
     const x = 90 + (i % 2) * 450;
-    const y = 700 + Math.floor(i / 2) * 190;
+    const y = 880 + Math.floor(i / 2) * 160;
     parts.push(
-      `<rect x="${x}" y="${y}" width="420" height="160" rx="24" `
-      + `fill="${pal.panel}" stroke="${pal.line}" stroke-width="2"/>`,
-      text(x + 30, y + 78, 64, 700, pal.body, s.value),
-      text(x + 30, y + 126, 32, 400, pal.muted, s.label));
+      `<rect x="${x}" y="${y}" width="420" height="140" rx="24" `
+      + `fill="rgba(255,255,255,0.14)"/>`,
+      text(x + 30, y + 70, 60, 700, STORY_TEXT, s.value),
+      text(x + 30, y + 114, 32, 400, STORY_MUTED, s.label));
   });
   const top = d.top_senders.slice(0, 5);
   if (top.length) {
-    parts.push(text(90, 1340, 36, 600, pal.accent, str.topTitle));
+    parts.push(text(90, 1440, 36, 600, STORY_TEXT, str.topTitle));
     top.forEach((s, i) => {
-      const y = 1410 + i * 80;
+      const y = 1510 + i * 70;
       parts.push(
-        text(90, y, 42, 500, pal.body, `${i + 1}. ${senderName(s, showNames)}`),
-        text(990, y, 38, 400, pal.muted, str.topRows[i] ?? "", "end"));
+        text(90, y, 42, 500, STORY_TEXT, `${i + 1}. ${senderName(s, showNames)}`),
+        text(990, y, 38, 400, STORY_MUTED, str.topRows[i] ?? "", "end"));
     });
   }
-  parts.push(text(90, 1840, 30, 400, pal.muted, str.note));
-  parts.push(text(990, 1840, 30, 600, pal.accent, str.footer, "end"));
+  parts.push(text(90, 1860, 30, 400, STORY_MUTED, str.note));
+  parts.push(text(990, 1860, 30, 600, STORY_TEXT, str.footer, "end"));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_W}" `
     + `height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}" `
     + `font-family="${FONT}">${parts.join("")}</svg>`;

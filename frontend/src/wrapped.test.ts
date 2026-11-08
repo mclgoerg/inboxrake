@@ -8,6 +8,8 @@ const data: WrappedResp = {
   top_senders: [
     { label: "Ann Example", addr: "ann@shop.example", mails: 40, bytes: 9 },
     { label: "Bob <&>", addr: "bob@news.example", mails: 30, bytes: 9 }],
+  by_month: Array(12).fill(0), by_weekday: Array(7).fill(0),
+  by_hour: Array(24).fill(0),
   loudest_month: null, busiest_weekday: null, busiest_hour: null,
   biggest: null, ghosts: { count: 0, top: [] },
   cleanup: { trashed: 0, archived: 0, purged: 0, freed_bytes: 0,
@@ -60,4 +62,22 @@ test("control characters in names never reach the SVG", () => {
   const svg = buildSummarySvg(d, str, pal, true);
   expect(svg).toContain("Ann X");
   expect(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(svg)).toBe(false);
+});
+
+test("the month bars never overlap the text above them", () => {
+  const d = { ...data, by_month: [3, 9, 4, 1, 0, 2, 5, 7, 8, 1, 2, 6] };
+  const svg = buildSummarySvg(d, str, pal, true);
+  const bars = [...svg.matchAll(/<rect x="\d+" y="([\d.]+)" width="63" height="([\d.]+)"/g)]
+    .map((m) => [Number(m[1]), Number(m[1]) + Number(m[2])]);
+  expect(bars).toHaveLength(12);
+  const texts = [...svg.matchAll(/<text x="\d+" y="(\d+)" font-size="(\d+)"/g)]
+    .map((m) => [Number(m[1]) - Number(m[2]), Number(m[1])]);
+  const top = Math.min(...bars.map((b) => b[0]));
+  const bottom = Math.max(...bars.map((b) => b[1]));
+  for (const [a, b] of texts) {
+    expect(b <= top || a >= bottom).toBe(true);
+  }
+  // tiles start below the bars
+  const tiles = [...svg.matchAll(/<rect x="\d+" y="(\d+)" width="420"/g)];
+  for (const m of tiles) expect(Number(m[1])).toBeGreaterThanOrEqual(bottom);
 });

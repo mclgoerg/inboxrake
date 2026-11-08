@@ -107,6 +107,10 @@ def compute(mails: list[dict], year: int | None, tz: int, now: int,
             TOP_SENDERS)],
         "loudest_month": None, "busiest_weekday": None,
         "busiest_hour": None, "biggest": None,
+        # the full distributions behind the peaks (the story's bar charts)
+        "by_month": [months[i] for i in range(1, 13)],
+        "by_weekday": [weekdays[i] for i in range(7)],
+        "by_hour": [hours[i] for i in range(24)],
         "ghosts": {"count": len(ghosts),
                    "top": [sender_row(a)
                            for a, _ in _top(ghost_counts, TOP_GHOSTS)]},

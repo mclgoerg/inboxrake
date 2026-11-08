@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, ListChecks, MailMinus, Sparkles,
+  Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type ReactNode } from "react";
+  type PointerEvent, type ReactNode } from "react";
 import { api, fmtSize, saveBlob } from "../api";
 import { getLang, t } from "../i18n";
 import { fmtNum } from "../numfmt";
@@ -9,12 +10,14 @@ import {
   buildSummarySvg, paletteFromTheme, senderName, svgToPngBlob,
   type SummaryStrings,
 } from "../wrapped";
-import { Button, Checkbox, Loading, Modal, PopupSelect } from "./ui";
+import { Avatar, Button, Checkbox, Loading, Modal, PopupSelect } from "./ui";
 
 /** How long an auto-advancing card stays up. */
 export const CARD_MS = 6000;
 const TICK_MS = 100;
 const HOLD_MS = 250;
+/** Horizontal travel that counts as a swipe. */
+const SWIPE_PX = 50;
 
 const num = (n: number) => fmtNum(n);
 const pct = (n: number, of: number) => (of ? Math.round((100 * n) / of) : 0);
@@ -51,34 +54,41 @@ function reducedMotion(): boolean {
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** A card: small lead line, one big figure, a unit line, extra content. */
-function Slide({ lead, big, unit, children }: {
-  lead: string; big: ReactNode; unit?: ReactNode; children?: ReactNode;
+/** A card: small lead line, one big figure, a unit line, extra content. The
+ *  gradient and light text belong to the story, not to the theme. */
+function Slide({ lead, big, unit, word = false, children }: {
+  lead: string; big: ReactNode; unit?: ReactNode; word?: boolean;
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-3 px-6 py-8
       sm:px-10">
-      <div className="type-heading text-muted">{lead}</div>
-      <div className="type-display text-accent">{big}</div>
-      {unit && <div className="type-title text-body">{unit}</div>}
+      <div className="type-heading text-knob/80">{lead}</div>
+      <div className={`${word ? "type-display-word" : "type-display"}
+        text-knob`}>{big}</div>
+      {unit && <div className="type-title text-knob">{unit}</div>}
       {children}
     </div>
   );
 }
 
-function Rows({ rows, showNames }: {
-  rows: WrappedSender[]; showNames: boolean;
+/** Ranked sender rows (avatar, name, count) on a story card. */
+function Rows({ rows, showNames, from = 1 }: {
+  rows: WrappedSender[]; showNames: boolean; from?: number;
 }) {
   return (
-    <ol className="mt-3 space-y-1.5">
+    <ol className="mt-3 space-y-2">
       {rows.map((s, i) => (
-        <li key={s.addr} className="flex items-baseline gap-2 type-body">
-          <span className="w-5 shrink-0 text-muted tabular-nums">{i + 1}.</span>
-          <span className="min-w-0 flex-1 truncate">
+        <li key={s.addr} className="story-tile flex items-center gap-3
+          rounded-card px-3 py-2 type-body text-knob">
+          <span className="w-4 shrink-0 text-knob/70 tabular-nums">
+            {i + from}</span>
+          <Avatar name={showNames ? s.label || s.addr : "?"} size="md" />
+          <span className="min-w-0 flex-1 truncate font-medium">
             {senderName(s, showNames)}
           </span>
-          <span className="shrink-0 text-muted tabular-nums">
-            {t("n.mails", { n: s.mails })}
+          <span className="shrink-0 text-knob/70 tabular-nums">
+            {s.mails}
           </span>
         </li>
       ))}
@@ -88,9 +98,38 @@ function Rows({ rows, showNames }: {
 
 function Stat({ value, label }: { value: ReactNode; label: string }) {
   return (
-    <div className="rounded-card bg-panel2 p-3">
+    <div className="story-tile rounded-card p-3 text-knob">
       <div className="type-title tabular-nums">{value}</div>
-      <div className="type-meta text-muted">{label}</div>
+      <div className="type-meta text-knob/70">{label}</div>
+    </div>
+  );
+}
+
+/** Plain-CSS column chart. The peak column is solid white; the chart is an
+ *  image for assistive tech, with its values as the text alternative. */
+function Bars({ values, peak, label, height = "h-32", labels, alt }: {
+  values: number[]; peak: number; label: string; height?: string;
+  labels?: [ReactNode, ReactNode, ReactNode]; alt: string;
+}) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="mt-4">
+      <div role="img" aria-label={`${label}: ${alt}`}
+        className={`flex ${height} items-end gap-1`}>
+        {values.map((v, i) => (
+          <div key={i} aria-hidden
+            className={`min-w-0 flex-1 rounded-t-sm ${i === peak
+              ? "story-bar-hi" : "story-bar"}`}
+            style={{ height: `${Math.max(4, (100 * v) / max)}%` }} />
+        ))}
+      </div>
+      {labels && (
+        <div aria-hidden className="mt-1 flex justify-between type-caption
+          text-knob/70">
+          <span>{labels[0]}</span><span>{labels[1]}</span>
+          <span>{labels[2]}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -125,10 +164,29 @@ function summaryStrings(d: WrappedResp): SummaryStrings {
   };
 }
 
-function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
+/** Gradient per card (CSS classes `story-g0..5`, cycling). */
+const GRAD: Record<CardKey, number> = { intro: 0, senders: 1, loudest: 1,
+  month: 0, rhythm: 4, ghosts: 3, biggest: 5, cleanup: 2, summary: 2 };
+
+const shortMonth = (m: number) =>
+  new Date(2001, m - 1, 1).toLocaleString(getLang(), { month: "short" });
+const shortWeekday = (d: number) =>
+  new Date(2001, 0, 1 + d).toLocaleString(getLang(), { weekday: "short" });
+
+/** Days the mails of the year were spread over (a running year: so far). */
+function daysSpan(d: WrappedResp): number {
+  const now = new Date();
+  if (d.partial) {
+    return Math.max(1, Math.round((now.getTime()
+      - new Date(d.year, 0, 1).getTime()) / 864e5) + 1);
+  }
+  return (d.year % 4 === 0 && d.year % 100 !== 0) || d.year % 400 === 0
+    ? 366 : 365;
+}
+
+function Card({ card, d, showNames, onYear }: {
   card: CardKey; d: WrappedResp; showNames: boolean;
-  setShowNames: (v: boolean) => void; onYear: (y: number) => void;
-  onSave: () => void; saving: boolean;
+  onYear: (y: number) => void;
 }) {
   const r = d.received;
   const c = d.cleanup;
@@ -151,14 +209,14 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
                   value: String(y), label: String(y) }))} />
             </div>
           )}
-          <p className="mt-2 type-meta text-muted">{t("wrapped.based_on")}</p>
+          <p className="mt-2 type-meta text-knob/70">{t("wrapped.based_on")}</p>
         </Slide>
       );
     case "senders":
       return (
         <Slide lead={t("wrapped.senders.lead")} big={num(r.senders)}
           unit={t("wrapped.senders.unit", { n: r.senders })}>
-          <p className="type-body text-muted">
+          <p className="type-body text-knob/80">
             {t("wrapped.senders.sub", { pct: pct(r.read, r.mails),
               new: r.new_senders })}
           </p>
@@ -166,30 +224,67 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
       );
     case "loudest": {
       const top = d.top_senders[0];
+      const every = daysSpan(d) / Math.max(1, top.mails);
+      const rate = every >= 1
+        ? t("wrapped.loudest.rate", { mails: t("n.mails", { n: top.mails }),
+          days: (Math.round(every * 10) / 10).toLocaleString(getLang()) })
+        : t("wrapped.loudest.rate_day", { mails: t("n.mails", { n: top.mails }),
+          per: (Math.round(10 / every) / 10).toLocaleString(getLang()) });
       return (
-        <Slide lead={t("wrapped.loudest.lead")} big={top.label || top.addr}
-          unit={`${t("n.mails", { n: top.mails })} · ${fmtSize(top.bytes)}`}>
-          <Rows rows={d.top_senders} showNames />
+        <div className="flex flex-1 flex-col justify-center gap-3 px-6 py-8
+          text-center text-knob sm:px-10">
+          <div className="type-heading text-knob/80">
+            {t("wrapped.loudest.lead")}</div>
+          <Avatar name={top.label || top.addr} size="xl"
+            className="mx-auto ring-4 ring-knob/30" />
+          <div className="type-title2 break-words">{top.label || top.addr}</div>
+          <div className="type-body text-knob/80">
+            {rate} · {fmtSize(top.bytes)}</div>
+          <div className="text-left">
+            <Rows rows={d.top_senders.slice(1)} showNames from={2} />
+          </div>
+        </div>
+      );
+    }
+    case "month": {
+      const peak = d.loudest_month!;
+      return (
+        <Slide lead={t("wrapped.month.lead")}
+          word big={monthName(peak.month)}
+          unit={t("wrapped.month.unit", { n: peak.mails })}>
+          <Bars values={d.by_month} peak={peak.month - 1}
+            label={t("wrapped.month.chart")}
+            alt={d.by_month.map((v, i) => `${shortMonth(i + 1)} ${v}`)
+              .join(", ")}
+            labels={[shortMonth(1),
+              t("wrapped.month.peak", { month: shortMonth(peak.month),
+                n: peak.mails }), shortMonth(12)]} />
         </Slide>
       );
     }
-    case "month":
-      return (
-        <Slide lead={t("wrapped.month.lead")}
-          big={monthName(d.loudest_month!.month)}
-          unit={t("wrapped.month.unit", { n: d.loudest_month!.mails })} />
-      );
-    case "rhythm":
+    case "rhythm": {
+      const day = d.busiest_weekday!;
+      const hour = d.busiest_hour!;
       return (
         <Slide lead={t("wrapped.rhythm.lead")}
-          big={weekdayName(d.busiest_weekday!.weekday)}
-          unit={t("wrapped.rhythm.unit", { n: d.busiest_weekday!.mails })}>
-          <p className="type-body text-muted">
-            {t("wrapped.rhythm.hour", {
-              hour: `${d.busiest_hour!.hour}:00`, n: d.busiest_hour!.mails })}
+          word big={weekdayName(day.weekday)}
+          unit={t("wrapped.rhythm.unit", { n: day.mails })}>
+          <Bars values={d.by_weekday} peak={day.weekday} height="h-20"
+            label={t("wrapped.rhythm.chart_days")}
+            alt={d.by_weekday.map((v, i) => `${shortWeekday(i)} ${v}`)
+              .join(", ")}
+            labels={[shortWeekday(0), "", shortWeekday(6)]} />
+          <p className="type-body text-knob/80">
+            {t("wrapped.rhythm.hour", { hour: `${hour.hour}:00`,
+              n: hour.mails })}
           </p>
+          <Bars values={d.by_hour} peak={hour.hour} height="h-20"
+            label={t("wrapped.rhythm.chart_hours")}
+            alt={d.by_hour.map((v, i) => `${i}:00 ${v}`).join(", ")}
+            labels={["0:00", "12:00", "23:00"]} />
         </Slide>
       );
+    }
     case "ghosts":
       return (
         <Slide lead={t("wrapped.ghosts.lead")} big={num(d.ghosts.count)}
@@ -210,18 +305,30 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
           big={num(c.trashed + c.archived + c.purged)}
           unit={t("wrapped.cleanup.unit", {
             n: c.trashed + c.archived + c.purged })}>
-          <ul className="space-y-1 type-body text-muted">
-            <li>{t("wrapped.cleanup.trashed", { n: c.trashed })}</li>
-            <li>{t("wrapped.cleanup.archived", { n: c.archived })}</li>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {[
+              { icon: <Trash2 size={18} />, value: c.trashed,
+                label: t("wrapped.cleanup.tile_trashed") },
+              { icon: <Archive size={18} />, value: c.archived,
+                label: t("wrapped.cleanup.tile_archived") },
+              { icon: <MailMinus size={18} />, value: c.unsubscribes,
+                label: t("wrapped.cleanup.tile_unsubs") },
+              { icon: <ListChecks size={18} />, value: c.rule_runs,
+                label: t("wrapped.cleanup.tile_rules") },
+            ].map((x) => (
+              <div key={x.label} className="story-tile rounded-card p-3
+                text-knob">
+                <span aria-hidden>{x.icon}</span>
+                <div className="mt-1 type-title2 tabular-nums">
+                  {num(x.value)}</div>
+                <div className="type-meta text-knob/70">{x.label}</div>
+              </div>
+            ))}
+          </div>
+          <ul className="space-y-1 type-body text-knob/80">
             {c.purged > 0 && (
               <li>{t("wrapped.cleanup.purged",
                 { n: c.purged, size: fmtSize(c.freed_bytes) })}</li>
-            )}
-            {c.unsubscribes > 0 && (
-              <li>{t("wrapped.cleanup.unsubs", { n: c.unsubscribes })}</li>
-            )}
-            {c.rule_runs > 0 && (
-              <li>{t("wrapped.cleanup.rules", { n: c.rule_runs })}</li>
             )}
             {c.top_rule && (
               <li>{c.top_rule.deleted
@@ -242,19 +349,10 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
               <Stat key={s.label} value={s.value} label={s.label} />
             ))}
           </div>
-          <Rows rows={d.top_senders} showNames={showNames} />
-          <div className={`${interactive} mt-2 flex flex-wrap items-center
-            gap-3`}>
-            <Checkbox label={t("wrapped.show_names")} checked={showNames}
-              onChange={(e) => setShowNames(e.target.checked)} />
-            <Button disabled={saving} onClick={onSave}>
-              {t("wrapped.save")}
-            </Button>
+          {/* short windows: the card keeps tiles and controls, not rows */}
+          <div className="hidden [@media(min-height:60rem)]:block">
+            <Rows rows={d.top_senders.slice(0, 3)} showNames={showNames} />
           </div>
-          <p className="type-meta text-muted">
-            {showNames ? t("wrapped.names_shown") : t("wrapped.names_hidden")}
-            {" "}{t("wrapped.local_only")}
-          </p>
         </Slide>
       );
   }
@@ -275,6 +373,7 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const held = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasHeld = useRef(false);
+  const start = useRef<{ x: number; y: number } | null>(null);
   const motion = useMemo(() => !reducedMotion(), []);
 
   useEffect(() => {
@@ -326,17 +425,28 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const pressStart = () => {
+  const pressStart = (e: PointerEvent<HTMLElement>) => {
     wasHeld.current = false;
+    start.current = { x: e.clientX, y: e.clientY };
     held.current = setTimeout(() => {
       wasHeld.current = true;
       setPaused(true);
     }, HOLD_MS);
   };
-  const pressEnd = () => {
+  const pressEnd = (e?: PointerEvent<HTMLElement>) => {
     if (held.current) clearTimeout(held.current);
     held.current = null;
     setPaused(false);
+    // A horizontal swipe turns the card; the click that follows is no tap.
+    const s0 = start.current;
+    start.current = null;
+    if (e && s0) {
+      const dx = e.clientX - s0.x;
+      if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(e.clientY - s0.y)) {
+        wasHeld.current = true;
+        if (dx < 0) next(); else back();
+      }
+    }
   };
   const tap = (fn: () => void) => () => {
     if (wasHeld.current) { wasHeld.current = false; return; }
@@ -357,65 +467,103 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const zone = "absolute inset-y-0 z-0 w-1/2 cursor-pointer";
+  const zone = "absolute inset-y-0 z-0 w-1/2 cursor-pointer touch-pan-y";
+  // Phones: screen-reader-only until focused (then a visible corner button)
+  const arrow = `max-sm:sr-only max-sm:focus-visible:not-sr-only
+    max-sm:focus-visible:absolute max-sm:focus-visible:bottom-4
+    max-sm:focus-visible:z-20 sm:shrink-0`;
+  const cur = cards[idx];
   return (
     <Modal full onClose={onClose} label={t("wrapped.menu")}>
-      <div className="flex items-center gap-3 px-4 pt-4">
-        <div role="progressbar" aria-label={t("wrapped.progress")}
-          aria-valuemin={1} aria-valuemax={Math.max(1, cards.length)}
-          aria-valuenow={idx + 1} className="flex min-w-0 flex-1 gap-1">
-          {cards.map((k, i) => (
-            <div key={k} aria-hidden className="h-1 flex-1 overflow-hidden
-              rounded-full bg-chip">
-              <div className="h-full rounded-full bg-accent"
-                style={{ width: i < idx || (i === idx && !timed) ? "100%"
-                  : i === idx ? `${Math.min(100, (100 * elapsed) / CARD_MS)}%`
-                  : "0%" }} />
-            </div>
-          ))}
-        </div>
-        <Button variant="secondary" size="icon" label={t("Close")}
-          onClick={onClose}>
-          <X size={18} />
-        </Button>
-      </div>
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {error && <div className="p-6 text-danger-fg">{error}</div>}
-        {!data && !error && <Loading />}
-        {data && cards[idx] && (
-          <>
-            {/* The tap zones sit under the content; text lets taps through,
-                controls (year, save) opt back in. They are not tab stops:
-                the buttons below and the arrow keys do the same. */}
-            <button type="button" tabIndex={-1} aria-hidden
-              className={`${zone} left-0`}
-              onPointerDown={pressStart} onPointerUp={pressEnd}
-              onPointerLeave={pressEnd} onPointerCancel={pressEnd}
-              onClick={tap(back)} />
-            <button type="button" tabIndex={-1} aria-hidden
-              className={`${zone} right-0`}
-              onPointerDown={pressStart} onPointerUp={pressEnd}
-              onPointerLeave={pressEnd} onPointerCancel={pressEnd}
-              onClick={tap(next)} />
-            <div className="pointer-events-none relative z-10 flex flex-1 flex-col">
-              <Card card={cards[idx]} d={data} showNames={showNames}
-                setShowNames={setShowNames} saving={saving} onSave={save}
-                onYear={(y) => { setYear(y); setIdx(0); setElapsed(0); }} />
-            </div>
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-2 border-t border-line px-4 py-3">
+      <div className="flex min-h-0 flex-1 items-center justify-center
+        sm:gap-3 sm:p-4">
         <Button variant="secondary" size="icon" label={t("wrapped.back")}
-          disabled={idx === 0} onClick={back}>
+          className={`${arrow} max-sm:focus-visible:left-4`} disabled={idx === 0} onClick={back}>
           <ChevronLeft size={18} />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5
-          type-meta text-muted">
-          <Sparkles size={14} /> {t("wrapped.menu")}
-          {data?.partial && <> · {t("wrapped.so_far")}</>}
+        {/* Phones: the card is the whole screen. Desktop: a 9:16 card. */}
+        <div className={`${cur ? `story-g${GRAD[cur] % 6}` : "bg-panel2"}
+          relative flex h-full min-h-0 w-full flex-col overflow-hidden
+          sm:aspect-9/16 sm:w-auto sm:max-w-full sm:rounded-dialog`}>
+          <div className="relative z-10 flex items-center gap-3 px-4 pt-4">
+            <div role="progressbar" aria-label={t("wrapped.progress")}
+              aria-valuemin={1} aria-valuemax={Math.max(1, cards.length)}
+              aria-valuenow={idx + 1} className="flex min-w-0 flex-1 gap-1">
+              {cards.map((k, i) => (
+                <div key={k} aria-hidden className="story-track h-1 flex-1
+                  overflow-hidden rounded-full">
+                  <div className="story-bar-hi h-full rounded-full"
+                    style={{ width: i < idx || (i === idx && !timed) ? "100%"
+                      : i === idx
+                        ? `${Math.min(100, (100 * elapsed) / CARD_MS)}%`
+                        : "0%" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="relative z-10 flex items-center gap-2 px-4 pt-3
+            text-knob">
+            <Sparkles size={14} aria-hidden />
+            <span className="min-w-0 flex-1 truncate type-meta font-medium">
+              {data ? t("wrapped.title_year", { year: data.year })
+                : t("wrapped.menu")}
+              {data?.partial && <> · {t("wrapped.so_far")}</>}
+            </span>
+            <Button variant="secondary" size="icon" label={t("Close")}
+              onClick={onClose}>
+              <X size={18} />
+            </Button>
+          </div>
+          <div className="relative flex min-h-0 flex-1 flex-col
+            overflow-y-auto text-knob">
+            {error && <div className="p-6 text-knob">{error}</div>}
+            {!data && !error && <Loading />}
+            {data && cur && (
+              <>
+                {/* The tap zones sit under the content; text lets taps
+                    through, controls (year, save) opt back in. They are not
+                    tab stops: the buttons beside the card and the arrow keys
+                    do the same. */}
+                <button type="button" tabIndex={-1} aria-hidden
+                  className={`${zone} left-0`}
+                  onPointerDown={pressStart} onPointerUp={pressEnd}
+                  onPointerLeave={() => pressEnd()}
+                  onPointerCancel={() => pressEnd()}
+                  onClick={tap(back)} />
+                <button type="button" tabIndex={-1} aria-hidden
+                  className={`${zone} right-0`}
+                  onPointerDown={pressStart} onPointerUp={pressEnd}
+                  onPointerLeave={() => pressEnd()}
+                  onPointerCancel={() => pressEnd()}
+                  onClick={tap(next)} />
+                <div className="pointer-events-none relative z-10 flex flex-1
+                  flex-col">
+                  <Card card={cur} d={data} showNames={showNames}
+                    onYear={(y) => { setYear(y); setIdx(0); setElapsed(0); }} />
+                </div>
+              </>
+            )}
+          </div>
+          {data && cur === "summary" && (
+            <div className="relative z-10 flex shrink-0 flex-col gap-2 px-6
+              pb-5 pt-2 text-knob sm:px-10">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button disabled={saving} onClick={save}>
+                  {t("wrapped.save")}
+                </Button>
+                <Checkbox label={t("wrapped.show_names")} checked={showNames}
+                  onChange={(e) => setShowNames(e.target.checked)} />
+              </div>
+              <p className="type-meta text-knob/70">
+                {showNames ? t("wrapped.names_shown")
+                  : t("wrapped.names_hidden")}
+                {" "}{t("wrapped.local_only")}
+              </p>
+            </div>
+          )}
         </div>
         <Button variant="secondary" size="icon" label={t("wrapped.next")}
+          className={`${arrow} max-sm:focus-visible:right-4`}
           disabled={!data || idx >= last} onClick={next}>
           <ChevronRight size={18} />
         </Button>
