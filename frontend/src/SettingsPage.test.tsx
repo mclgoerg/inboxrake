@@ -1373,8 +1373,9 @@ test("Sign-in & users: the login method is a choice of rows with their own field
 
 test("AI key: after Save or Revert the key shows '•••• set' again", async () => {
   saveCalls.length = 0;
-  render(<Settings section="ai" account="default"
-    cfg={{ ...cfg, ai: { ...cfg.ai, api_key_set: true } }} />);
+  const withKey = { ...cfg, ai: { ...cfg.ai, api_key_set: true } };
+  saveResult = Promise.resolve(withKey);
+  render(<Settings section="ai" account="default" cfg={withKey} />);
   const change = () => fireEvent.click(screen.getByRole("button", { name: "Change…" }));
   change();
   fireEvent.change(screen.getByLabelText("API key", { selector: "input" }), { target: { value: "sk-1" } });
@@ -1385,4 +1386,5 @@ test("AI key: after Save or Revert the key shows '•••• set' again", asyn
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByText("•••• set")).toBeTruthy();
   expect(saveCalls.at(-1).ai.api_key).toBe("sk-2");
+  saveResult = null;
 });
