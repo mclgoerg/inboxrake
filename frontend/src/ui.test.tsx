@@ -13,7 +13,7 @@ import {
   MenuGroup, MenuHeading, PopupSelect, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
-  ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar,
+  ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
   currentTheme, watchSystemTheme, ensureAiAck, promptDialog, ProtectButton, useToast,
 } from "./components/ui";
 
@@ -1551,4 +1551,24 @@ describe("PopupSelect", () => {
       expect(screen.getByRole("menuitemradio", { name: "Alpha" }).parentElement!
         .className).toContain("overflow-y-auto");
     });
+});
+
+test("Ring is hidden unless labelled; MiniBars is decorative", () => {
+  const { container } = render(<><Ring frac={0.5} /><MiniBars values={[1, 3]} />
+    <Ring frac={2} label="75 percent" /></>);
+  expect(screen.getByRole("img", { name: "75 percent" })).toBeTruthy();
+  expect(container.querySelectorAll("[aria-hidden='true']").length)
+    .toBeGreaterThanOrEqual(2);
+  // frac is clamped: a full ring, never an overdrawn one
+  const arcs = container.querySelectorAll("circle.stroke-accent");
+  expect(arcs[1].getAttribute("stroke-dasharray")!.split(" ")[0])
+    .toBe(arcs[1].getAttribute("stroke-dasharray")!.split(" ")[1]);
+});
+
+test("Donut draws one slice per entry and exposes its label", () => {
+  const { container } = render(<Donut label="By category" slices={[3, 1]}>
+    <b>4</b></Donut>);
+  expect(screen.getByRole("img", { name: "By category" })).toBeTruthy();
+  expect(container.querySelectorAll("div.inset-0").length)
+    .toBe(2);
 });

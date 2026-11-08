@@ -2130,6 +2130,12 @@ export default function App() {
         onWrapped={() => {
           if (!wide) setStatsOpen(false);
           setWrappedOpen(true);
+        }}
+        onOpenSender={(key) => {
+          const g = state?.groups.sender?.[key];
+          if (!g) return;
+          setStatsOpen(false);
+          openSender(g);
         }} />
     )}
     {toolShown("space") && state && (
