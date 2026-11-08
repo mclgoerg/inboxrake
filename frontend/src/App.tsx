@@ -457,6 +457,8 @@ export default function App() {
   const [unsubSheet, setUnsubSheet] = useState<UnsubRequest | null>(null);
   const sheetRun = useRef<number | null>(null);
   useUnsubscribeOpener(setUnsubSheet);
+  // The account generation the open sheet was rendered in (see its onTrash).
+  const sheetGeneration = accountGeneration.current;
   useEffect(() => {
     if (!state) { seenJobs.current = null; return; }
     const prev = seenJobs.current;
@@ -1294,8 +1296,9 @@ export default function App() {
       return false;
     try {
       if (generation !== accountGeneration.current) return false;
-      await api.deleteGroups(grouping, effective, action, dest, force,
-        keepLatest, olderThanDays);
+      const r = await api.deleteGroups(grouping, effective, action, dest,
+        force, keepLatest, olderThanDays);
+      lastQueued.current = r?.queued ?? null;
       if (generation !== accountGeneration.current) return false;
       if (seenJobs.current) seenJobs.current.d = "running";   // see effect
       refresh();   // runs in the background; SSE/polling follows it
@@ -1306,6 +1309,9 @@ export default function App() {
     }
   };
 
+  // How many mails the last group action queued (the unsubscribe sheet words
+  // its Trash step with the real number, not the preview's).
+  const lastQueued = useRef<number | null>(null);
   const act = async (keys: string[], action: string, dest = "",
       keepLatest: number | null = null,
       olderThanDays: number | null = null,
@@ -1403,7 +1409,8 @@ export default function App() {
       const r = await api.unsubscribeBulk(mode, keys);
       if (r.queued && r.run != null) {
         if (seenJobs.current) seenJobs.current.u = "running";
-        setUnsubSheet({ kind: "run", run: r.run });
+        setUnsubSheet({ kind: "run", run: r.run,
+          skipped: r.skipped_protected + r.skipped_done + r.capped });
       } else {
         toast.show(t("toast.unsub_nothing"));
       }
@@ -2909,15 +2916,18 @@ export default function App() {
         <UnsubscribeSheet key={account} request={unsubSheet}
           groups={state.groups.sender} unsub={state.unsub} demo={demo}
           onTrash={async (grouping, keys) => {
-            const ok = await actOn(grouping,
-              stateRef.current?.groups?.[grouping] ?? {}, keys, "trash", "",
-              null, null, "groups", true);
-            if (ok && grouping === mode) {
-              setSelected((s) => new Set([...s].filter((k) => !keys.includes(k))));
-            }
-            return ok;
-          }}
-          onChanged={refresh}
+          // The sheet belongs to the account it was opened in.
+          if (sheetGeneration !== accountGeneration.current) return null;
+          lastQueued.current = null;
+          const ok = await actOn(grouping,
+            stateRef.current?.groups?.[grouping] ?? {}, keys, "trash", "",
+            null, null, "groups", true);
+          if (ok && grouping === mode) {
+            setSelected((s) => new Set([...s].filter((k) => !keys.includes(k))));
+          }
+          return ok ? lastQueued.current ?? 0 : null;
+        }}
+        onChanged={refresh}
           onRun={(run) => { sheetRun.current = run; }}
           onClose={() => setUnsubSheet(null)} />
       )}

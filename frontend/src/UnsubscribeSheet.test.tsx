@@ -3,7 +3,7 @@
  * sent, the optional Trash step, the per-sender result, and that every
  * action goes through the existing calls (api mocked; no mail is sent). */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLang } from "./i18n";
@@ -68,7 +68,7 @@ const BULK: UnsubRequest = { kind: "bulk", grouping: "sender",
 interface Props {
   request?: UnsubRequest; unsub?: UnsubState; demo?: boolean;
   groups?: Record<string, Group>;
-  onTrash?: (g: string, keys: string[]) => Promise<boolean>;
+  onTrash?: (g: string, keys: string[]) => Promise<number | null>;
   onChanged?: () => void; onRun?: (r: number | null) => void;
   onClose?: () => void;
 }
@@ -76,7 +76,7 @@ const tree = (p: Props = {}) => (
   <ToastProvider><DialogProvider>
     <UnsubscribeSheet request={p.request ?? BULK} groups={p.groups ?? {}}
       unsub={p.unsub ?? idle} demo={p.demo ?? false}
-      onTrash={p.onTrash ?? (async () => true)}
+      onTrash={p.onTrash ?? (async () => 1)}
       onChanged={p.onChanged ?? (() => {})} onRun={p.onRun ?? (() => {})}
       onClose={p.onClose ?? (() => {})} />
   </DialogProvider></ToastProvider>);
@@ -301,11 +301,12 @@ describe("a bulk run", () => {
     expect(screen.getByText(/In your own install this opens/)).toBeTruthy();
   });
 
-  it("with Trash on: moves only the groups whose senders did not fail",
+  it("with Trash on: moves only the groups of senders the run reports done",
     async () => {
-    const onTrash = vi.fn().mockResolvedValue(true);
+    const onTrash = vi.fn().mockResolvedValue(97);
     const view = await start({ onTrash });
     fireEvent.click(screen.getByRole("switch"));
+    expect(screen.getByText(/that still needs you on its web page/)).toBeTruthy();
     press("Unsubscribe and move to Trash");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
     expect(onTrash).not.toHaveBeenCalled();          // only AFTER the run
@@ -318,14 +319,31 @@ describe("a bulk run", () => {
     view.rerender(tree({ onTrash,
       unsub: { ...idle, status: "done", seq: 7 } }));
     await waitFor(() => expect(onTrash).toHaveBeenCalledTimes(1));
-    expect(onTrash).toHaveBeenCalledWith("sender",
-      ["one@chirper.example", "news@stream.example"]);
+    // not the failed one, not the one that needs its web page
+    expect(onTrash).toHaveBeenCalledWith("sender", ["one@chirper.example"]);
+    // the number the trash path actually queued, not the preview's 120
     expect(await screen.findByText(
-      "Moved their 188 mails to Trash - you can undo it.")).toBeTruthy();
+      "Moved their 97 mails to Trash - you can undo it.")).toBeTruthy();
+  });
+
+  it("with Trash on but nobody done, nothing is moved and it says so",
+    async () => {
+    const onTrash = vi.fn();
+    const view = await start({ onTrash });
+    fireEvent.click(screen.getByRole("switch"));
+    press("Unsubscribe and move to Trash");
+    await waitFor(() => expect(bulk).toHaveBeenCalled());
+    results.mockResolvedValue({ run: 7, items: [
+      item("news@stream.example", "link", "http", { link: "https://s.example/" }),
+    ] });
+    view.rerender(tree({ onTrash, unsub: { ...idle, status: "done", seq: 7 } }));
+    expect(await screen.findByText(/none of these senders is done yet/))
+      .toBeTruthy();
+    expect(onTrash).not.toHaveBeenCalled();
   });
 
   it("with Trash off nothing is moved", async () => {
-    const onTrash = vi.fn().mockResolvedValue(true);
+    const onTrash = vi.fn().mockResolvedValue(12);
     const view = await start({ onTrash });
     press("Unsubscribe 3 senders");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
@@ -337,7 +355,7 @@ describe("a bulk run", () => {
   });
 
   it("a trash step that was refused is reported, not hidden", async () => {
-    const onTrash = vi.fn().mockResolvedValue(false);
+    const onTrash = vi.fn().mockResolvedValue(null);
     const view = await start({ onTrash });
     fireEvent.click(screen.getByRole("switch"));
     press("Unsubscribe and move to Trash");
@@ -380,6 +398,106 @@ describe("a bulk run", () => {
     expect(await screen.findByText(/Their mails were not moved to Trash/))
       .toBeTruthy();
     expect(onTrash).not.toHaveBeenCalled();
+  });
+
+  // The run's end arrives while (or after) the sheet is closed: its Trash
+  // step must not happen, however the sheet was closed.
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+  const closedBefore = (how: "hide" | "esc") => async () => {
+    const onTrash = vi.fn().mockResolvedValue(5);
+    const late = deferred<{ run: number; items: UnsubRunItem[] }>();
+    results.mockReturnValue(late.promise);
+    let view!: ReturnType<typeof render>;
+    const onClose = vi.fn(() => view.unmount());
+    view = render(tree({ onTrash, onClose }));
+    await screen.findByText("Chirper");
+    fireEvent.click(screen.getByRole("switch"));
+    press("Unsubscribe and move to Trash");
+    await waitFor(() => expect(bulk).toHaveBeenCalled());
+    // the run ended and its results are being fetched ...
+    const live = { ...idle, status: "done" as const, seq: 7 };
+    view.rerender(tree({ onTrash, onClose, unsub: live }));
+    await waitFor(() => expect(results).toHaveBeenCalled());
+    // ... when the sheet is closed
+    if (how === "hide") fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    else fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+    await act(async () => {
+      late.resolve({ run: 7, items: [item("one@chirper.example", "done", "one_click")] });
+      await late.promise;
+    });
+    expect(onTrash).not.toHaveBeenCalled();
+  };
+  it("Hide while the results are on their way: no Trash step",
+    closedBefore("hide"));
+  it("Esc / Back while the results are on their way: no Trash step",
+    closedBefore("esc"));
+
+  it("closing a single unsubscribe mid-call: no Trash step either", async () => {
+    const onTrash = vi.fn().mockResolvedValue(5);
+    const call = deferred<unknown>();
+    single.mockReturnValue(call.promise);
+    preview.mockResolvedValue({ ...PREVIEW, senders: [PREVIEW.senders[0]] });
+    let view!: ReturnType<typeof render>;
+    const onClose = vi.fn(() => view.unmount());
+    view = render(tree({ request: { kind: "single", grouping: "sender",
+      key: "one@chirper.example" }, onTrash, onClose }));
+    await screen.findByText("Chirper");
+    fireEvent.click(screen.getByRole("switch"));
+    press("Unsubscribe and move to Trash");
+    fireEvent.click(await screen.findByRole("button", { name: "Hide" }));
+    await act(async () => {
+      call.resolve({ action: "done", method: "m", detail: "",
+        addr: "one@chirper.example", via: "one_click" });
+      await call.promise;
+    });
+    expect(onTrash).not.toHaveBeenCalled();
+  });
+
+  it("does not spin for ever when its run's state never shows up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      results.mockResolvedValue({ run: 7, items: [
+        item("one@chirper.example", "done", "one_click")] });
+      const view = await start();
+      press("Unsubscribe 3 senders");
+      await waitFor(() => expect(bulk).toHaveBeenCalled());
+      // the server was restarted: the state carries another id, idle
+      view.rerender(tree({ unsub: { ...idle, status: "idle", seq: 99 } }));
+      expect(screen.getByText("Unsubscribing…")).toBeTruthy();
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+      expect(await screen.findByText("1 done")).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("... and says so when the stored results are another run's", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      results.mockResolvedValue({ run: 8, items: [] });
+      const view = await start();
+      press("Unsubscribe 3 senders");
+      await waitFor(() => expect(bulk).toHaveBeenCalled());
+      view.rerender(tree({ unsub: { ...idle, status: "idle", seq: 8 } }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+      expect((await screen.findByRole("alert")).textContent)
+        .toBe("The result of this run is no longer available.");
+      expect(screen.getByText("Nothing was unsubscribed")).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a run's skipped senders still show in the result (Triage)", async () => {
+    results.mockResolvedValue({ run: 9, items: [
+      item("one@chirper.example", "done", "one_click")] });
+    const req: UnsubRequest = { kind: "run", run: 9, skipped: 3 };
+    render(tree({ request: req,
+      unsub: { ...idle, status: "done", seq: 9 } }));
+    expect(await screen.findByText("1 done")).toBeTruthy();
+    expect(screen.getByText("3 senders are left out: already handled, "
+      + "protected or over the per-run limit.")).toBeTruthy();
   });
 
   it("hands the run over to the app while it shows it, and lets go", async () => {
@@ -465,7 +583,7 @@ describe("one sender", () => {
   it("with Trash on, moves that sender's group after it worked", async () => {
     single.mockResolvedValue({ action: "done", method: "one-click POST",
       detail: "", addr: "one@chirper.example", via: "one_click" });
-    const onTrash = vi.fn().mockResolvedValue(true);
+    const onTrash = vi.fn().mockResolvedValue(12);
     render(tree({ request: ONE, onTrash }));
     await screen.findByText("Chirper");
     fireEvent.click(screen.getByRole("switch"));

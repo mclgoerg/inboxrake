@@ -287,6 +287,8 @@ test("Apply runs protect, unsubscribe, then trash with exactly the decided keys"
   expect(deleteGroups.mock.calls[0].slice(0, 3))
     .toEqual(["sender", ["b@shop.example"], "trash"]);
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
+  // the run's outcome is listed in the unsubscribe sheet (no toast)
+  expect(await screen.findByRole("dialog", { name: "Unsubscribe" })).toBeTruthy();
 });
 
 test("pinned mails are left out of the counted mails", async () => {

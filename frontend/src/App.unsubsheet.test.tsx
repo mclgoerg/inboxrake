@@ -36,6 +36,7 @@ vi.mock("./api", async (importOriginal) => ({
     unsubscribeBulk: (...a: unknown[]) => unsubscribeBulk(...a),
     unsubscribeResults: (...a: unknown[]) => unsubscribeResults(...a),
     deleteGroups: (...a: unknown[]) => deleteGroups(...a),
+    accountsSummary: () => Promise.resolve({}),
   },
   setAccount: () => {},
   withAccount: (p: string) => p,
@@ -59,7 +60,7 @@ const acct = {
     align_minute: 0 },
 };
 const cfg = {
-  accounts: { proton: acct }, default_account: "proton",
+  accounts: { proton: acct, work: acct }, default_account: "proton",
   oauth_providers: [], oauth_ms_device_available: false,
   auth: { mode: "none", is_admin: false },
   protected: [], categories: {}, new_sender_window_days: 7,
@@ -222,4 +223,27 @@ test("any component can open the sheet through the registered opener", async () 
   expect(await screen.findByText("One click")).toBeTruthy();
   cleanup();
   expect(openUnsubscribeSheet({ kind: "run", run: 1 })).toBe(false);   // unmounted
+});
+
+test("switching account mid-run: the pending Trash step never runs in the "
+  + "other account", async () => {
+  const dlg = await openBulkSheet();
+  fireEvent.click(within(dlg).getByRole("switch"));
+  let release!: (v: unknown) => void;
+  unsubscribeResults.mockReturnValue(new Promise((r) => { release = r; }));
+  await pressDialog("Unsubscribe and move to Trash");
+  await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalled());
+  tick({ unsub: unsubState("done") });                 // results being fetched
+  await waitFor(() => expect(unsubscribeResults).toHaveBeenCalled());
+  // the user switches to the other account
+  fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
+  fireEvent.click((await screen.findByText("work")).closest("button")!);
+  await waitFor(() => expect(screen.queryByRole("dialog",
+    { name: "Unsubscribe" })).toBeNull());
+  await act(async () => {
+    release({ run: 5, items: [
+      { addr: KEY, status: "done", via: "one_click", link: "", error: "" }] });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(deleteGroups).not.toHaveBeenCalled();
 });

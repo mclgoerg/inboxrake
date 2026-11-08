@@ -1035,9 +1035,12 @@ export const EN: Record<string, string> = {
   "unsub.also_trash_sub_pinned":
     "{size} · {n} pinned stay · you can undo it",
   "unsub.trash_note":
-    "The button below does both: it unsubscribes and then moves their mails "
-    + "to Trash. Protected senders and pinned mails stay, and so do the mails "
-    + "of a sender whose unsubscribe fails.",
+    "The button below does both: it unsubscribes and then moves the mails of "
+    + "the senders that are done to Trash. Protected senders and pinned mails "
+    + "stay, and so do the mails of a sender that still needs you on its web "
+    + "page or whose unsubscribe fails.",
+  "unsub.trash_none":
+    "No mails were moved to Trash: none of these senders is done yet.",
   "unsub.still_note":
     "If one of them keeps writing, Inboxrake marks it \u201cStill mailing\u201d "
     + "and offers to block it.",

@@ -29,7 +29,10 @@ export type UnsubRequest =
       /** Pooled rows left out of the selection before it got here. */
       pooled?: number }
   | { kind: "single"; grouping: Grouping; key: string }
-  | { kind: "run"; run: number };
+  | { kind: "run"; run: number;
+      /** Senders the run left out (protected / already handled / over the
+       *  per-run limit): the caller knows it from the queue answer. */
+      skipped?: number };
 
 let opener: ((r: UnsubRequest) => void) | null = null;
 
@@ -49,6 +52,10 @@ export function useUnsubscribeOpener(open: (r: UnsubRequest) => void): void {
     return () => { if (opener === open) opener = null; };
   }, [open]);
 }
+
+/** How long a run may go without its state showing up before the sheet
+ *  falls back to the stored results. */
+const RUN_STATE_WAIT_MS = 8000;
 
 type Phase = "loading" | "review" | "running" | "result";
 
@@ -143,8 +150,9 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
   unsub: UnsubState | undefined;
   demo: boolean;
   /** The app's trash path for these group keys of `grouping` (confirmed by
-   *  this sheet). Resolves whether the move was queued. */
-  onTrash: (grouping: Grouping, keys: string[]) => Promise<boolean>;
+   *  this sheet). Resolves the number of mails queued to move, null when
+   *  nothing was (declined, refused, another account by now). */
+  onTrash: (grouping: Grouping, keys: string[]) => Promise<number | null>;
   /** The persisted unsubscribe state changed (refresh the lists). */
   onChanged: () => void;
   /** The id of the bulk run this sheet follows (the app then leaves the
@@ -167,6 +175,13 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
   // Phone: the sheet's button lands under the finger that opened it.
   const armedAt = useRef(0);
   const finished = useRef(false);
+  // False once the sheet is gone (hidden, Back, account switch): a Trash
+  // step that was still waiting for the run must then never happen.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const live = useRef({ alsoTrash, preview, phase });
   live.current = { alsoTrash, preview, phase };
 
@@ -206,19 +221,24 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
       || groups[addr]?.label || addr;
 
   // Optional second step, after the unsubscribe: the groups made up only of
-  // these senders, minus any sender whose unsubscribe failed or never ran.
+  // senders whose unsubscribe the run reported DONE (never one that still
+  // needs the user on a web page, never a failed one, nor one that never ran).
   const trashAfter = async (done: Outcome[]) => {
     const { alsoTrash: want, preview: p } = live.current;
-    if (!want || !p || request.kind === "run") return;
-    const ok = new Set(done.filter((o) => o.status !== "failed")
+    if (!want || !p || request.kind === "run" || !alive.current) return;
+    const ok = new Set(done.filter((o) => o.status === "done")
       .map((o) => o.addr));
     const groupsToTrash = p.trash.groups.filter(
       (g) => g.addrs.every((a) => ok.has(a)));
-    if (!groupsToTrash.length) return;
-    const n = groupsToTrash.reduce((a, g) => a + g.mails, 0);
-    const queued = await onTrash(request.grouping,
+    if (!groupsToTrash.length) {
+      setTrashNote(t("unsub.trash_none"));
+      return;
+    }
+    const moved = await onTrash(request.grouping,
       groupsToTrash.map((g) => g.key));
-    setTrashNote(queued ? t("unsub.trashed", { n }) : t("unsub.trash_failed"));
+    if (!alive.current) return;
+    setTrashNote(moved ? t("unsub.trashed", { n: moved })
+      : t("unsub.trash_failed"));
   };
 
   const finish = async (done: Outcome[]) => {
@@ -245,6 +265,28 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
         await finish([]);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, run, unsub?.seq, unsub?.status]);
+
+  // The run's own state never arrives (the server restarted and re-seeded
+  // its run ids, another run started meanwhile): do not spin for ever - look
+  // at the stored results once, then end with what is there.
+  useEffect(() => {
+    if (phase !== "running" || run == null || finished.current
+        || unsub?.seq === run || unsub?.status === "running") return;
+    const timer = setTimeout(async () => {
+      if (finished.current) return;
+      try {
+        const r = await api.unsubscribeResults();
+        if (r.run === run) {
+          await finish(r.items.map(fromRunItem));
+          return;
+        }
+      } catch { /* fall through to the note */ }
+      setProblem(t("unsub.results_gone"));
+      await finish([]);
+    }, RUN_STATE_WAIT_MS);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, run, unsub?.seq, unsub?.status]);
 
@@ -306,8 +348,9 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
 
   const senders = preview?.senders ?? [];
   const trash = preview?.trash;
-  const skipped = preview
-    ? preview.skipped_protected + preview.skipped_done + preview.capped : 0;
+  const skipped = request.kind === "run" ? request.skipped ?? 0
+    : preview
+      ? preview.skipped_protected + preview.skipped_done + preview.capped : 0;
   const titleId = "unsub-sheet-title";
   const title = phase === "result" ? outcomeTitle(outcomes)
     : t("unsub.sheet_title");
@@ -450,6 +493,7 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
               {outcomes.some((o) => o.status === "link") && (
                 <p>{t("unsub.res_note")}</p>
               )}
+              {skipped > 0 && <p>{t("unsub.skipped", { n: skipped })}</p>}
               {trashNote && <p role="status">{trashNote}</p>}
               {note && <p role="status">{note}</p>}
             </div>

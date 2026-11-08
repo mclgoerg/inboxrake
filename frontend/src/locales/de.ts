@@ -754,9 +754,13 @@ export const DE: Record<string, string> = {
     "{size} · {n} angeheftete bleiben · du kannst es rückgängig machen",
   "unsub.trash_note":
     "Der Button unten erledigt beides: Er bestellt ab und verschiebt dann "
-    + "ihre Mails in den Papierkorb. Geschützte Absender und angeheftete "
-    + "Mails bleiben, ebenso die Mails eines Absenders, bei dem das "
-    + "Abbestellen fehlschlägt.",
+    + "die Mails der Absender, die erledigt sind, in den Papierkorb. "
+    + "Geschützte Absender und angeheftete Mails bleiben, ebenso die Mails "
+    + "eines Absenders, bei dem du noch auf dessen Webseite bestätigen musst "
+    + "oder das Abbestellen fehlschlägt.",
+  "unsub.trash_none":
+    "Es wurden keine Mails in den Papierkorb verschoben: Noch keiner dieser "
+    + "Absender ist erledigt.",
   "unsub.still_note":
     "Schreibt einer davon weiter, markiert Inboxrake ihn als "
     + "\u201eSchreibt weiter\u201c und bietet an, ihn zu blockieren.",
