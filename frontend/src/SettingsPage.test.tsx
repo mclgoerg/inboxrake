@@ -1326,10 +1326,10 @@ test("AI review: budget ring with spend of cap, key never prefilled, prices and 
   expect(screen.getByRole("img", { name: "$0.38 of $5.00" })).toBeTruthy();
   expect(screen.getByText(/Budget resets/)).toBeTruthy();
   // a saved key is "•••• set · Change…", the field only appears on Change
-  expect(screen.queryByLabelText("API key")).toBeNull();
+  expect(screen.queryByLabelText("API key", { selector: "input" })).toBeNull();
   expect(screen.getByText("•••• set")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Change…" }));
-  const key = screen.getByLabelText("API key") as HTMLInputElement;
+  const key = screen.getByLabelText("API key", { selector: "input" }) as HTMLInputElement;
   expect(key.value).toBe("");
   fireEvent.change(key, { target: { value: "sk-new" } });
   popupPick(/^Provider/, "OpenAI");
@@ -1348,7 +1348,7 @@ test("AI review without a cap shows what was spent, no ring", () => {
   expect(screen.queryByRole("img", { name: /of/ })).toBeNull();
   expect(screen.getByText(/spent this month: \$1\.25/)).toBeTruthy();
   // no saved key: the field is there at once
-  expect(screen.getByLabelText("API key")).toBeTruthy();
+  expect(screen.getByLabelText("API key", { selector: "input" })).toBeTruthy();
 });
 
 test("Sign-in & users: the login method is a choice of rows with their own fields", () => {
@@ -1369,4 +1369,20 @@ test("Sign-in & users: the login method is a choice of rows with their own field
   expect(saveCalls[0].auth.mode).toBe("password");
   expect(saveCalls[0].auth.password).toBe("s3cret");
   expect(saveCalls[0].auth.oidc.issuer).toBe("https://id.example");
+});
+
+test("AI key: after Save or Revert the key shows '•••• set' again", async () => {
+  saveCalls.length = 0;
+  render(<Settings section="ai" account="default"
+    cfg={{ ...cfg, ai: { ...cfg.ai, api_key_set: true } }} />);
+  const change = () => fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+  change();
+  fireEvent.change(screen.getByLabelText("API key", { selector: "input" }), { target: { value: "sk-1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revert" }));
+  expect(screen.getByText("•••• set")).toBeTruthy();
+  change();
+  fireEvent.change(screen.getByLabelText("API key", { selector: "input" }), { target: { value: "sk-2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("•••• set")).toBeTruthy();
+  expect(saveCalls.at(-1).ai.api_key).toBe("sk-2");
 });

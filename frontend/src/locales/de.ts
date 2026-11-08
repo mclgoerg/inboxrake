@@ -44,7 +44,7 @@ export const DE: Record<string, string> = {
   "ai.usage": "Nutzung",
   "ai.month_title": "Diesen Monat",
   "ai.budget_of": "{spent} von {cap}",
-  "ai.budget_resets": "Budget startet am {date} neu",
+  "ai.budget_resets": "Budget startet am 1. jedes Monats neu",
   "ai.budget_reached": "Budget erreicht – die KI-Prüfung pausiert.",
   "ai.key_set": "•••• gesetzt",
   "ai.key_change": "Ändern…",

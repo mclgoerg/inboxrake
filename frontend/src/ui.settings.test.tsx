@@ -139,7 +139,7 @@ test("radio rows choose one option: one tab stop, arrows move and choose, disabl
   const Demo = () => {
     const [v, setV] = useState("none");
     return (
-      <SettingsGroup header="Login method">
+      <SettingsGroup radioGroup header="Login method">
         <RadioRow label="None" sub="Trusted network" checked={v === "none"}
           onSelect={() => setV("none")} />
         <RadioRow label="Password" checked={v === "password"}
@@ -150,7 +150,8 @@ test("radio rows choose one option: one tab stop, arrows move and choose, disabl
     );
   };
   render(<Demo />);
-  const radios = screen.getAllByRole("radio");
+  const radios = within(screen.getByRole("radiogroup",
+    { name: "Login method" })).getAllByRole("radio");
   expect(radios.map((r) => r.tabIndex)).toEqual([0, -1, -1]);
   expect(screen.getByRole("radio", { name: "None" })
     .getAttribute("aria-describedby")).toBeTruthy();
@@ -168,6 +169,10 @@ test("radio rows choose one option: one tab stop, arrows move and choose, disabl
 test("a plain row shows its value as text before its control", () => {
   render(<SettingsGroup><SettingsRow label="API key" value="•••• set">
     <button type="button">Change…</button></SettingsRow></SettingsGroup>);
-  expect(screen.getByText("•••• set")).toBeTruthy();
+  // the value belongs to its label: the row is a group named by it
+  const row = screen.getByRole("group", { name: "API key" });
+  expect(row.getAttribute("aria-describedby")).toBeTruthy();
+  expect(document.getElementById(row.getAttribute("aria-describedby")!)!
+    .textContent).toBe("•••• set");
   expect(screen.getByRole("button", { name: "Change…" })).toBeTruthy();
 });

@@ -15,6 +15,10 @@ import { Avatar, Button, Input, SettingsGroup, SettingsRow, Switch, Tag }
 const refocus = (el: HTMLElement | null) =>
   requestAnimationFrame(() => el?.focus());
 
+/** What an add handler answers: null = took it all; a message = refused;
+ *  `rest` = took part of it, `rest` is what is still to fix. */
+type AddResult = string | null | { error: string; rest: string };
+
 /** A "+ Add …" row that turns into an inline input (Enter adds, Esc closes).
  *  `onSubmit` gets the typed text and returns an error message, or null when
  *  it took the value. `keepOpen` stays open for the next entry; `multi`
@@ -23,7 +27,7 @@ const refocus = (el: HTMLElement | null) =>
 function InlineAdd({ label, placeholder, onSubmit, keepOpen = false,
   multi = false }: {
   label: string; placeholder: string;
-  onSubmit: (raw: string) => string | null;
+  onSubmit: (raw: string) => AddResult;
   keepOpen?: boolean; multi?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,6 +40,7 @@ function InlineAdd({ label, placeholder, onSubmit, keepOpen = false,
   };
   const submit = (raw: string) => {
     const e = onSubmit(raw);
+    if (e && typeof e === "object") { setVal(e.rest); setErr(e.error); return; }
     if (e) { setErr(e); return; }
     setVal(""); setErr("");
     if (keepOpen) return;
@@ -90,16 +95,18 @@ function InlineAdd({ label, placeholder, onSubmit, keepOpen = false,
 
 /* ----------------------------- protected senders ---------------------------- */
 
-const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DOMAIN = /^@[^\s@]+\.[^\s@]+$/;
+// What the server stores (`normalize_protected`): any address or domain
+// without blanks; the shapes below only rule out the meaningless ones.
+const ADDRESS = /^[^\s@]+@[^\s@]+$/;
+const DOMAIN = /^@[^\s@]+$/;
 
 /** The entries of the stored text (one per line). */
 export const protectedEntries = (text: string): string[] =>
   text.split("\n").map((s) => s.trim()).filter(Boolean);
 
 /** One typed or pasted entry as it is stored: lower case, a bare domain
- *  gets its "@" (what the server does as well); null = neither an address
- *  nor a domain. */
+ *  gets its "@" (what the server does as well, so `user@localhost` and
+ *  `@intranet` are fine); null = neither an address nor a domain. */
 export function normalizeProtected(raw: string): string | null {
   const e = raw.trim().toLowerCase();
   const v = e.includes("@") ? e : `@${e}`;
@@ -113,19 +120,22 @@ export function ProtectedList({ text, onChange }: {
   text: string; onChange: (text: string) => void;
 }) {
   const entries = protectedEntries(text);
-  const add = (raw: string): string | null => {
+  const add = (raw: string): AddResult => {
     const typed = raw.split(/[\s,;]+/).filter(Boolean);
     const next: string[] = [];
+    const bad: string[] = [];
     for (const piece of typed) {
       const v = normalizeProtected(piece);
-      if (!v) return t("protected.err_invalid", { entry: piece });
-      if (!entries.includes(v) && !next.includes(v)) next.push(v);
+      if (!v) bad.push(piece);
+      else if (!entries.includes(v) && !next.includes(v)) next.push(v);
     }
-    if (!next.length) {
-      return t("protected.err_dup", { entry: typed.join(", ") });
+    if (next.length) onChange([...entries, ...next].join("\n"));
+    if (bad.length) {
+      const error = t("protected.err_invalid", { entry: bad.join(", ") });
+      return next.length ? { error, rest: bad.join("\n") } : error;
     }
-    onChange([...entries, ...next].join("\n"));
-    return null;
+    return next.length ? null
+      : t("protected.err_dup", { entry: typed.join(", ") });
   };
   return (
     <SettingsGroup footnote={t("protected.help")}>
@@ -192,12 +202,16 @@ const ICON_BTN = `inline-flex min-h-11 min-w-11 cursor-pointer items-center
 
 /** One category: name (renamable), keyword chips with × and "+ keyword", and
  *  for a built-in name the on / off switch ("off" = the stored empty list). */
-function CategoryRow({ cat, builtin, startAdding, nameError, onChange, onRename,
-  onDelete }: {
-  cat: Category; builtin: boolean; startAdding: boolean;
+function CategoryRow({ cat, builtin, stored, startAdding, nameError, onChange,
+  onRename, onToggle, onDelete }: {
+  cat: Category; builtin: boolean;
+  /** In the text (an override); false = a built-in added by name that
+   *  stores nothing until it has a keyword. */
+  stored: boolean; startAdding: boolean;
   nameError: (name: string) => string | null;
   onChange: (kws: string[]) => void;
   onRename: (name: string) => void;
+  onToggle: (on: boolean) => void;
   onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
@@ -206,7 +220,7 @@ function CategoryRow({ cat, builtin, startAdding, nameError, onChange, onRename,
   const [adding, setAdding] = useState(startAdding);
   const [kw, setKw] = useState("");
   const addBtn = useRef<HTMLButtonElement>(null);
-  const off = builtin && cat.kws.length === 0;
+  const off = builtin && stored && cat.kws.length === 0;
   const addKeywords = (raw: string) => {
     const more = raw.split(",").map((s) => s.trim().toLowerCase())
       .filter((s) => s && !cat.kws.includes(s));
@@ -244,11 +258,11 @@ function CategoryRow({ cat, builtin, startAdding, nameError, onChange, onRename,
         )}
         {builtin && !renaming && <Tag>{t("categories.builtin")}</Tag>}
         {builtin && !renaming && (
-          // off = the stored empty list; on again drops the override, so the
-          // built-in keywords are back
+          // off = the stored empty list (only this switch makes it); on
+          // again drops the override, so the built-in keywords are back
           <Switch checked={!off}
             label={t("categories.enabled", { name: cat.name })}
-            onChange={(on) => on ? onDelete() : onChange([])} />
+            onChange={onToggle} />
         )}
         {!renaming && (
           <button type="button" className={ICON_BTN}
@@ -259,7 +273,7 @@ function CategoryRow({ cat, builtin, startAdding, nameError, onChange, onRename,
             <Pencil size={16} aria-hidden />
           </button>
         )}
-        {!renaming && !off && (
+        {!renaming && !off && (builtin ? stored : true) && (
           <button type="button" className={ICON_BTN}
             aria-label={t(builtin ? "categories.restore"
               : "categories.delete", { name: cat.name })}
@@ -334,35 +348,75 @@ export function CategoryList({ text, onChange }: {
 }): ReactNode {
   const cats = parseCategories(text);
   const [fresh, setFresh] = useState<string | null>(null);
+  // Built-ins shown without an override (added by name, or just given back
+  // their keywords): they are not in the text.
+  const [bare, setBare] = useState<string[]>([]);
+  const shown = [...cats.map((c) => ({ ...c, stored: true })),
+    ...bare.filter((n) => !cats.some((c) => c.name === n))
+      .map((name) => ({ name, kws: [] as string[], stored: false }))];
   const set = (next: Category[]) => onChange(categoriesText(next));
+  const unbare = (name: string) => setBare((b) => b.filter((n) => n !== name));
   const nameError = (name: string): string | null =>
     !name ? t("categories.err_empty")
       : name.includes(":") ? t("categories.err_colon")
-      : cats.some((c) => c.name === name)
+      : shown.some((c) => c.name === name)
         ? t("categories.err_dup", { name }) : null;
   return (
     <SettingsGroup footnote={t("categories.help")}>
-      {cats.length === 0 && (
+      {shown.length === 0 && (
         <p className="px-4 py-3 type-body text-muted">{t("categories.none")}</p>
       )}
-      {cats.map((c, i) => (
-        <CategoryRow key={c.name} cat={c}
-          builtin={BUILTIN_CATEGORIES.includes(c.name)}
-          startAdding={fresh === c.name}
-          nameError={nameError}
-          onChange={(kws) => set(cats.map((x, j) =>
-            j === i ? { ...x, kws } : x))}
-          onRename={(name) => set(cats.map((x, j) =>
-            j === i ? { ...x, name } : x))}
-          onDelete={() => set(cats.filter((_, j) => j !== i))} />
-      ))}
+      {shown.map((c) => {
+        const builtin = BUILTIN_CATEGORIES.includes(c.name);
+        const i = cats.findIndex((x) => x.name === c.name);
+        return (
+          <CategoryRow key={c.name} cat={c} builtin={builtin}
+            stored={c.stored} startAdding={fresh === c.name}
+            nameError={nameError}
+            onChange={(kws) => {
+              if (builtin && kws.length === 0) {
+                // the last chip of an override goes: the override goes
+                // with it (the built-in keywords are back), it is not "off"
+                set(cats.filter((_, j) => j !== i));
+                setBare((b) => [...b, c.name]);
+              } else if (c.stored) {
+                set(cats.map((x, j) => j === i ? { ...x, kws } : x));
+              } else {
+                unbare(c.name);
+                set([...cats, { name: c.name, kws }]);
+              }
+            }}
+            onRename={(name) => {
+              if (c.stored) set(cats.map((x, j) => j === i ? { ...x, name } : x));
+              else { unbare(c.name); set([...cats, { name, kws: [] }]); }
+            }}
+            onDelete={() => {
+              unbare(c.name);
+              if (c.stored) set(cats.filter((_, j) => j !== i));
+            }}
+            // the switch: off = the empty-list override, on = no override
+            onToggle={(on) => {
+              if (on) {
+                set(cats.filter((_, j) => j !== i));
+                setBare((b) => [...b, c.name]);
+              } else {
+                unbare(c.name);
+                set(c.stored ? cats.map((x, j) =>
+                  j === i ? { ...x, kws: [] } : x)
+                  : [...cats, { name: c.name, kws: [] }]);
+              }
+            }} />
+        );
+      })}
       <InlineAdd label={t("categories.add")} placeholder={t("categories.add_ph")}
         onSubmit={(raw) => {
           const name = raw.trim().toLowerCase();
           const e = nameError(name);
           if (e) return e;
           setFresh(name);
-          set([...cats, { name, kws: [] }]);
+          // a built-in name starts ON and stores nothing until it has a keyword
+          if (BUILTIN_CATEGORIES.includes(name)) setBare((b) => [...b, name]);
+          else set([...cats, { name, kws: [] }]);
           return null;
         }} />
     </SettingsGroup>

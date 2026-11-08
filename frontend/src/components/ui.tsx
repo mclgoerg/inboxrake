@@ -2405,13 +2405,16 @@ const RowContext = createContext<{ labelId: string; descId?: string } | null>(
  *  hairlines; `padded` is for free-form content (a form, a table) that is not
  *  made of rows. */
 export function SettingsGroup({ header, footnote, padded = false,
-  className = "", children }: {
+  radioGroup = false, className = "", children }: {
   header?: ReactNode; footnote?: ReactNode; padded?: boolean;
+  /** The rows are `RadioRow`s of one choice: the group is a radio group. */
+  radioGroup?: boolean;
   className?: string; children: ReactNode;
 }) {
   const id = useId();
   return (
-    <div role="group" aria-labelledby={header ? `${id}-h` : undefined}
+    <div role={radioGroup ? "radiogroup" : "group"}
+      aria-labelledby={header ? `${id}-h` : undefined}
       className={`mb-6 ${className}`}>
       {header && (
         <h3 id={`${id}-h`} className="mb-1.5 px-3 type-meta font-medium
@@ -2459,6 +2462,7 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
 }) {
   const id = useId();
   const ctx = { labelId: `${id}-l`, descId: sub ? `${id}-d` : undefined };
+  const hasValue = value != null && value !== "";
   // The icon is decoration: an avatar's letter must not lead the row's name.
   const iconEl = icon && <span aria-hidden className="contents">{icon}</span>;
   const text = (
@@ -2494,15 +2498,18 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
   }
   return (
     <RowContext.Provider value={ctx}>
-      <div className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
+      <div role={hasValue ? "group" : undefined}
+        aria-labelledby={hasValue ? ctx.labelId : undefined}
+        aria-describedby={hasValue ? `${id}-v` : undefined}
+        className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
         : "min-h-12 items-center"}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {iconEl}
           {text}
         </div>
-        {value != null && value !== "" && (
-          <span className="min-w-0 max-w-1/2 truncate type-body
-            text-muted">{value}</span>
+        {hasValue && (
+          <span id={`${id}-v`} className="min-w-0 max-w-1/2 truncate
+            type-body text-muted">{value}</span>
         )}
         {children != null && (
           <div className={stack ? "min-w-0" : "min-w-0 shrink-0"}>
@@ -2613,7 +2620,7 @@ export function RadioRow({ label, sub, checked, onSelect, disabled = false }: {
     const dir = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1
       : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
     if (!dir) return;
-    const rows = [...(e.currentTarget.closest("[role=group]")
+    const rows = [...(e.currentTarget.closest("[role=radiogroup],[role=group]")
       ?.querySelectorAll<HTMLButtonElement>("[role=radio]:not(:disabled)")
       ?? [])];
     const next = rows[rows.indexOf(e.currentTarget) + dir];

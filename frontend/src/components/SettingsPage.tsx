@@ -239,6 +239,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const latest = useRef({ dirty, cfg, baseline });
   latest.current = { dirty, cfg, baseline };
   const [q, setQ] = useState("");
+  // The key is never prefilled: a saved one shows "•••• set · Change…".
+  const [changingKey, setChangingKey] = useState(false);
   const note = (msg: string, error = false) =>
     toast.show(msg, { variant: error ? "error" : "success" });
 
@@ -427,6 +429,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       const pt = (next.protected ?? []).join("\n");
       const ct = catText(next.categories);
       setF(nf);
+      setChangingKey(false);
       setProtectedText(pt);
       setCategoriesText(ct);
       setBaseline({ f: nf, protectedText: pt, categoriesText: ct,
@@ -450,6 +453,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const revert = () => {
     const b = latest.current.baseline;
     touched.current.clear();
+    setChangingKey(false);
     setF(b.f);
     setProtectedText(b.protectedText);
     setCategoriesText(b.categoriesText);
@@ -1282,8 +1286,6 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsGroup>
   );
 
-  // The key is never prefilled: a saved one shows "•••• set · Change…".
-  const [changingKey, setChangingKey] = useState(false);
   const providerOptions = [
     { value: "anthropic", label: "Anthropic API" },
     { value: "openai", label: "OpenAI" },
@@ -1292,9 +1294,6 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const aiCap = cfg.ai.source === "shared" ? cfg.ai.shared_budget_usd
     : cfg.ai.budget_usd;
   const aiSpent = cfg.ai.month_cost ?? 0;
-  // The month is the server's calendar month; the cap starts over on the 1st.
-  const resets = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
-    .toLocaleDateString(getLang(), { day: "numeric", month: "short" });
   const keyInput = (
     <Input className="w-full" type="password" value={f.apiKey}
       aria-label={t("API key")} autoFocus={changingKey}
@@ -1328,7 +1327,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             </div>
             <div className="type-meta text-muted">
               {aiSpent >= aiCap ? t("ai.budget_reached")
-                : t("ai.budget_resets", { date: resets })}
+                : t("ai.budget_resets")}
             </div>
           </>) : (
             <div className="type-body">
@@ -1429,7 +1428,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const signinBody = !admin ? null : (<>
-    <SettingsGroup header={t("login.mode")} footnote={t("login.help")}>
+    <SettingsGroup radioGroup header={t("login.mode")}
+      footnote={t("login.help")}>
       <RadioRow label={t("login.mode_none")} checked={f.authMode === "none"}
         onSelect={() => put("authMode", "none")} />
       <RadioRow label={t("login.mode_password")}

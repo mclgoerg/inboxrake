@@ -25,8 +25,12 @@ test("entries normalise like the server: lower case, bare domain gets its @", ()
   expect(normalizeProtected(" Boss@Work.Example ")).toBe("boss@work.example");
   expect(normalizeProtected("bank.example")).toBe("@bank.example");
   expect(normalizeProtected("@bank.example")).toBe("@bank.example");
+  // what the server takes: local names and intranet domains too
+  expect(normalizeProtected("user@localhost")).toBe("user@localhost");
+  expect(normalizeProtected("intranet")).toBe("@intranet");
   expect(normalizeProtected("nobody@")).toBeNull();
-  expect(normalizeProtected("two words")).toBeNull();
+  expect(normalizeProtected("a@b@c")).toBeNull();
+  expect(normalizeProtected("@")).toBeNull();
   expect(protectedEntries("a@x.example\n\n @y.example ")).toEqual(
     ["a@x.example", "@y.example"]);
 });
@@ -61,7 +65,7 @@ test("protected senders: adding stores the same line format and stays open for t
 
 test("protected senders: invalid and duplicate entries are refused with a message", () => {
   render(<Lists kind="protected" initial="boss@work.example" />);
-  addProtected("not an address@");
+  addProtected("nobody@");
   expect(screen.getByRole("alert").textContent).toContain("neither an address");
   expect(stored).toBe("boss@work.example");
   addProtected("BOSS@work.example");
@@ -79,6 +83,18 @@ test("protected senders: a pasted block of lines becomes several entries; Esc cl
   expect(stored).toBe("a@x.example\n@y.example\nb@z.example");
   fireEvent.keyDown(input, { key: "Escape" });
   expect(screen.queryByRole("textbox")).toBeNull();
+});
+
+test("protected senders: a paste with one bad line adds the good ones and keeps the bad one to fix", () => {
+  render(<Lists kind="protected" initial="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add address or domain…" }));
+  const input = screen.getByRole("textbox",
+    { name: "Add address or domain…" }) as HTMLInputElement;
+  fireEvent.paste(input, { clipboardData: {
+    getData: () => "a@x.example\nbroken@\nuser@localhost" } });
+  expect(stored).toBe("a@x.example\nuser@localhost");
+  expect(screen.getByRole("alert").textContent).toContain("broken@");
+  expect(input.value).toBe("broken@");
 });
 
 test("category text round-trips: names and keywords lower-cased, empty list kept", () => {
@@ -130,7 +146,7 @@ test("categories: add, rename and delete a category; names are validated", () =>
   expect(stored).toBe("cover: allianz");
 });
 
-test("categories: a built-in name shows its state; the switch stores the empty list that disables it", () => {
+test("categories: the switch alone makes 'off': empty list stored; on again drops the override", () => {
   render(<Lists kind="categories" initial="shipping: dhl, dpd" />);
   const row = within(screen.getByRole("group", { name: "shipping" }));
   expect(row.getByText("Built-in")).toBeTruthy();
@@ -138,16 +154,56 @@ test("categories: a built-in name shows its state; the switch stores the empty l
   const sw = row.getByRole("switch", { name: "shipping enabled" });
   expect(sw.getAttribute("aria-checked")).toBe("true");
   fireEvent.click(sw);
-  // "empty keyword list disables a built-in": stored, and said out loud
   expect(stored).toBe("shipping: ");
   const off = within(screen.getByRole("group", { name: "shipping" }));
   expect(off.getByText(/Turned off/)).toBeTruthy();
   expect(off.getByRole("switch", { name: "shipping enabled" })
     .getAttribute("aria-checked")).toBe("false");
-  // on again = no override: the built-in keywords are back
   fireEvent.click(off.getByRole("switch", { name: "shipping enabled" }));
   expect(stored).toBe("");
-  expect(screen.getByText("No custom categories yet.")).toBeTruthy();
+  const on = within(screen.getByRole("group", { name: "shipping" }));
+  expect(on.getByRole("switch", { name: "shipping enabled" })
+    .getAttribute("aria-checked")).toBe("true");
+  expect(screen.queryByText(/Turned off/)).toBeNull();
+});
+
+test("categories: a built-in added by name starts on and stores nothing until it has a keyword", () => {
+  render(<Lists kind="categories" initial="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
+  const name = screen.getByRole("textbox", { name: "Add category…" });
+  fireEvent.change(name, { target: { value: "Shipping" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  expect(stored).toBe("");
+  const row = within(screen.getByRole("group", { name: "shipping" }));
+  expect(row.getByRole("switch", { name: "shipping enabled" })
+    .getAttribute("aria-checked")).toBe("true");
+  expect(screen.queryByText(/Turned off/)).toBeNull();
+  // a keyword makes the override
+  const kw = screen.getByRole("textbox", { name: "Add a keyword to shipping" });
+  fireEvent.change(kw, { target: { value: "dhl, dpd" } });
+  fireEvent.keyDown(kw, { key: "Enter" });
+  expect(stored).toBe("shipping: dhl, dpd");
+  // the last chip removed: the override is gone (not "off")
+  fireEvent.click(screen.getByRole("button",
+    { name: "Remove keyword dhl from shipping" }));
+  expect(stored).toBe("shipping: dpd");
+  fireEvent.click(screen.getByRole("button",
+    { name: "Remove keyword dpd from shipping" }));
+  expect(stored).toBe("");
+  expect(screen.queryByText(/Turned off/)).toBeNull();
+  expect(within(screen.getByRole("group", { name: "shipping" }))
+    .getByRole("switch", { name: "shipping enabled" })
+    .getAttribute("aria-checked")).toBe("true");
+});
+
+test("categories: switching a bare built-in off stores the empty list", () => {
+  render(<Lists kind="categories" initial="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
+  const name = screen.getByRole("textbox", { name: "Add category…" });
+  fireEvent.change(name, { target: { value: "travel" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  fireEvent.click(screen.getByRole("switch", { name: "travel enabled" }));
+  expect(stored).toBe("travel: ");
 });
 
 test("categories: restoring a built-in drops its override", () => {
