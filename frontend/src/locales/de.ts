@@ -1477,6 +1477,7 @@ export const DE: Record<string, string> = {
   "activity.month": "Diesen Monat",
   "activity.cleaned": "Mails aufgeräumt",
   "activity.cleaned_one": "Mail aufgeräumt",
+  "activity.at_least": "mindestens {n}",
   "activity.month_empty": "Diesen Monat wurde noch nichts aufgeräumt.",
   "activity.week": "Woche {n}",
   "activity.undo_all": "Alle {n} zeigen",

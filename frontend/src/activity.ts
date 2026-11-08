@@ -1,7 +1,7 @@
 /* Pure helpers of the Activity timeline: the month summary and the month
  * grouping, computed from the audit entries the page already loaded. */
 
-import type { AuditEntry } from "./types";
+import type { AuditEntry, Rule } from "./types";
 
 /** Entry actions that move mails out of the inbox. A rule run is logged as
  *  `rule_execute` AND (by the move it performs) as one of these; the run is
@@ -22,17 +22,24 @@ export interface MonthSummary {
 
 const monthKey = (d: Date) => d.getFullYear() * 12 + d.getMonth();
 
-/** The cleaning done in `now`'s calendar month (local time). Entries that
- *  failed or were cancelled do not count. */
-export function monthSummary(entries: AuditEntry[], now: Date): MonthSummary {
+/** A move OUT of Junk / Trash ("Not junk", restore): the audit label is the
+ *  undo label "N mails from Junk|Trash". That is rescuing, not cleaning. */
+const FROM_ROLE = /^\d+ mails? from (Junk|Trash)$/;
+
+/** The cleaning done in `now`'s calendar month (local time). `count` of an
+ *  entry is what was really affected, so partial / cancelled runs count by
+ *  it. Rescues from Junk / Trash and mark-as-read rules are not cleaning. */
+export function monthSummary(entries: AuditEntry[], now: Date,
+    rules: Rule[] = []): MonthSummary {
   const key = monthKey(now);
-  const done = entries.filter((e) => e.outcome === "ok"
-    || e.outcome === "partial");
-  const moved = done.filter((e) => MOVERS.has(e.action));
-  const counted = done.filter((e) => {
-    if (monthKey(new Date(e.ts * 1000)) !== key) return false;
-    if (MOVERS.has(e.action)) return true;
+  const moved = entries.filter((e) => MOVERS.has(e.action)
+    && !FROM_ROLE.test(e.label));
+  const counted = entries.filter((e) => {
+    if (e.count <= 0 || monthKey(new Date(e.ts * 1000)) !== key) return false;
+    if (MOVERS.has(e.action)) return !FROM_ROLE.test(e.label);
     if (e.action !== "rule_execute") return false;
+    if (rules.find((r) => `rule:${r.id}` === e.actor)?.action === "mark_read")
+      return false;
     return !moved.some((m) => m.actor === e.actor
       && Math.abs(m.ts - e.ts) <= RULE_WINDOW);
   });

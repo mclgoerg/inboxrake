@@ -157,3 +157,14 @@ test("no Retry when the sender is gone", async () => {
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   audit.mockResolvedValue({ total: 3, entries });
 });
+
+test("shows the time of day and the error text of a partial entry inline",
+  async () => {
+  audit.mockResolvedValue({ total: 1, entries: [
+    { ts: 1700000000, action: "purge", actor: "user", account: "a", count: 2,
+      bytes: 0, label: "", outcome: "partial", error: "disk is full" }] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("disk is full"));
+  expect(document.querySelector("time")!.textContent).toMatch(/\d{2}:\d{2}/);
+  audit.mockResolvedValue({ total: 3, entries });
+});

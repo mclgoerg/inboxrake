@@ -506,6 +506,7 @@ export const EN: Record<string, string> = {
   "activity.month": "This month",
   "activity.cleaned": "mails cleaned",
   "activity.cleaned_one": "mail cleaned",
+  "activity.at_least": "at least {n}",
   "activity.month_empty": "Nothing cleaned this month yet.",
   "activity.week": "Week {n}",
   "activity.undo_all": "Show all {n}",

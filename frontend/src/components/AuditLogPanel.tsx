@@ -12,8 +12,10 @@ import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
   ShortDate, Tag, type TagTone } from "./ui";
 
 const PAGE_SIZE = 50;
-/** Newest entries fetched for the month summary (the API caps at 500). */
+/** The month summary pages through the log (newest first) until the month
+ *  starts: pages of 500 (the API cap), at most this many. */
 const SUMMARY_LIMIT = 500;
+const SUMMARY_PAGES = 4;
 
 /** Rules are referenced by id (stable across renames); resolve to the
  *  rule's current name for display, falling back to the id if it was
@@ -65,9 +67,11 @@ const monthName = (ts: number): string => {
 
 /** "This month" card: mails cleaned (+ size when the log has it) and the
  *  weekly bars, all from the audit log. */
-function MonthCard({ entries }: { entries: AuditEntry[] | null }) {
-  const sum = useMemo(() => entries && monthSummary(entries, nowDate()),
-    [entries]);
+function MonthCard({ recent, rules }: {
+  recent: { entries: AuditEntry[]; complete: boolean } | null; rules: Rule[];
+}) {
+  const sum = useMemo(() => recent
+    && monthSummary(recent.entries, nowDate(), rules), [recent, rules]);
   if (!sum) return null;
   const max = Math.max(1, ...sum.weeks);
   return (
@@ -75,7 +79,9 @@ function MonthCard({ entries }: { entries: AuditEntry[] | null }) {
       className="rounded-card border border-line bg-panel p-4">
       <div className="type-meta text-muted">{t("activity.month")}</div>
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="type-largetitle tabular-nums">{sum.mails}</span>
+        <span className="type-largetitle tabular-nums">
+          {recent!.complete ? sum.mails : t("activity.at_least", { n: sum.mails })}
+        </span>
         <span className="type-body text-muted">
           {t("activity.cleaned", { n: sum.mails })}
           {sum.bytes > 0 ? ` · ${fmtSize(sum.bytes)}` : ""}
@@ -122,6 +128,7 @@ function TimelineRow({ e, rules, retry }: {
       <span className="min-w-0 flex-1">
         <span className="block type-body-mobile font-medium md:type-body">
           {tOr("audit.act", e.action)}
+          {e.count > 0 && ` · ${t("n.mails", { n: e.count })}`}
         </span>
         {e.label && (
           <span className="block truncate type-meta text-muted"
@@ -129,19 +136,17 @@ function TimelineRow({ e, rules, retry }: {
         )}
         <span className="block type-meta text-muted">
           {actorLabel(e.actor, rules)}
-          {e.count > 0 && ` · ${t("n.mails", { n: e.count })}${
-            e.bytes > 0 ? ` · ${fmtSize(e.bytes)}` : ""}`}
+          {e.bytes > 0 && ` · ${fmtSize(e.bytes)}`}
         </span>
-        {failed && e.error && (
-          <span className="block type-meta text-danger-fg">
-            {errorText(e.error)}</span>
+        {e.error && (
+          <span className={`block type-meta ${failed ? "text-danger-fg"
+            : "text-muted"}`}>{errorText(e.error)}</span>
         )}
         {retry}
       </span>
       <span className="flex shrink-0 flex-col items-end gap-1">
-        <span title={new Date(e.ts * 1000).toLocaleString()}>
-          <ShortDate iso={localIso(e.ts)} className="type-meta text-muted" />
-        </span>
+        <ShortDate iso={localIso(e.ts)} time
+          className="type-meta text-muted" />
         <span title={e.error ? errorText(e.error) : undefined}>
           <Tag tone={OUTCOME_TONE[e.outcome] ?? "neutral"}
             className={failed ? "font-semibold" : ""}>
@@ -173,11 +178,12 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
-  const [recent, setRecent] = useState<AuditEntry[] | null>(null);
+  const [recent, setRecent] = useState<{ entries: AuditEntry[];
+    complete: boolean } | null>(null);
   const [error, setError] = useState("");
 
-  const load = (off: number) => {
-    setEntries(null);
+  const load = (off: number, keep = false) => {
+    if (!keep) setEntries(null);
     api.audit(off, PAGE_SIZE)
       .then((r) => { setEntries(r.entries); setTotal(r.total); })
       .catch((e) => setError(String(e.message ?? e)));
@@ -185,8 +191,21 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
   useEffect(() => load(offset), [offset, reloadKey]);
   // The month summary needs the whole month, not just this page.
   useEffect(() => {
-    api.audit(0, SUMMARY_LIMIT).then((r) => setRecent(r.entries))
-      .catch(() => setRecent([]));
+    let live = true;
+    const d = nowDate();
+    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime() / 1000;
+    (async () => {
+      const all: AuditEntry[] = [];
+      let complete = false;
+      for (let i = 0; i < SUMMARY_PAGES && !complete; i++) {
+        const r = await api.audit(all.length, SUMMARY_LIMIT);
+        all.push(...r.entries);
+        complete = all.length >= r.total || r.entries.length === 0
+          || all[all.length - 1].ts < monthStart;
+      }
+      if (live) setRecent({ entries: all, complete });
+    })().catch(() => live && setRecent({ entries: [], complete: true }));
+    return () => { live = false; };
   }, [reloadKey]);
 
   const retryButton = (e: AuditEntry): ReactNode => {
@@ -201,7 +220,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           setRetrying(true);
           await onRetryUnsub!(g);
           setRetrying(false);
-          load(offset);
+          load(offset, true);
         }}>
         {t("tab.retry")}
       </Button>
@@ -229,7 +248,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
         <div className="mx-auto flex max-w-180 flex-col gap-4">
-          {total !== 0 && <MonthCard entries={recent} />}
+          {total !== 0 && <MonthCard recent={recent} rules={rules} />}
           {above}
           {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
           {!entries && !error && <Loading />}

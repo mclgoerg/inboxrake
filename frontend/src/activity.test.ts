@@ -9,11 +9,11 @@ const e = (ts: number, over: Partial<AuditEntry> = {}): AuditEntry => ({
   label: "", outcome: "ok", error: "", ...over });
 const now = new Date(2026, 9, 20, 12);
 
-test("sums this month's cleaning per week, ignoring failures and other months", () => {
+test("sums this month's cleaning per week, ignoring empty runs and other months", () => {
   const s = monthSummary([
     e(at(2026, 10, 2)), e(at(2026, 10, 9), { action: "archive", count: 5 }),
     e(at(2026, 10, 30), { count: 1 }),
-    e(at(2026, 10, 3), { outcome: "failed" }),
+    e(at(2026, 10, 3), { outcome: "error", count: 0 }),
     e(at(2026, 10, 3), { action: "unsubscribe", count: 1 }),
     e(at(2026, 9, 28)),
   ], now);
@@ -42,4 +42,23 @@ test("groups consecutive entries by month", () => {
 test("localIso is the local date and time", () => {
   expect(localIso(new Date(2026, 9, 5, 7, 8).getTime() / 1000))
     .toBe("2026-10-05T07:08");
+});
+
+test("rescues from Junk / Trash and mark-as-read rules are not cleaning", () => {
+  const t0 = at(2026, 10, 5);
+  const s = monthSummary([
+    e(t0, { action: "move", label: "3 mails from Junk", count: 3 }),
+    e(t0, { action: "rule_execute", actor: "rule:r9", count: 8, bytes: 0 }),
+    e(t0, { count: 2 }),
+  ], now, [{ id: "r9", action: "mark_read" } as any]);
+  expect(s.mails).toBe(2);
+});
+
+test("a partial or cancelled run counts by what it really affected", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 5), { outcome: "partial", count: 4 }),
+    e(at(2026, 10, 6), { outcome: "cancelled", count: 6 }),
+    e(at(2026, 10, 7), { outcome: "error", count: 0 }),
+  ], now);
+  expect(s.mails).toBe(10);
 });

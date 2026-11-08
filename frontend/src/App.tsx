@@ -218,6 +218,9 @@ export default function App() {
   // Bumped after a restore: the Activity page reloads its audit log.
   const [undoRev, setUndoRev] = useState(0);
   const [undoAll, setUndoAll] = useState(false);
+  // "Show all" only means something while there is more than the first three
+  const undoCount = state?.undo.length ?? 0;
+  useEffect(() => { if (undoCount <= 3) setUndoAll(false); }, [undoCount]);
   // The open tool, in either presentation: its route (the truth from 1024
   // px, and a deep link below) or the modal flag the tab pages / menus set
   // below 1024. A panel stays mounted when a resize flips the presentation,
@@ -2143,6 +2146,7 @@ export default function App() {
             </span>
             <span className="block type-meta text-muted">
               {undoLabel(u)}
+              {fmtAgo(u.ts) && ` · ${fmtAgo(u.ts)}`}
             </span>
           </span>
           <Button variant="primary" size="sm" disabled={deleting}
