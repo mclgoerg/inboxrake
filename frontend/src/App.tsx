@@ -2801,6 +2801,8 @@ export default function App() {
           onClose={closeSettings}
           onSaved={setCfg}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
+          scanState={state ? { account: state.account, status: state.status,
+            scanned_ts: state.scanned_ts, error: state.error } : null}
           onAccountsChanged={(next, name) => {
             setCfg(next);
             if (name && next.accounts[name]) switchAccount(name);

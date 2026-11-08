@@ -1,10 +1,10 @@
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { FolderInfo, FoldersResp, SpecialRole } from "../types";
-import { Button, Checkbox, confirmDialog, Select, SectionLabel, Tag,
-  useToast } from "./ui";
+import { Button, Checkbox, confirmDialog, Select, SectionLabel,
+  SettingsGroup, SettingsRow, Switch, Tag, useToast } from "./ui";
 
 /* Settings > Folders: "Folders to scan" (ordinary folders, nested by the
  * server's hierarchy delimiter) and "Special folders" (one row per role:
@@ -49,7 +49,8 @@ function nest(items: FolderInfo[]):
 }
 
 export function FolderSettings({ account, data, included, setIncluded,
-  wildcards, setWildcards, reload, simple = false }: {
+  wildcards, setWildcards, reload, simple = false, grouped = false,
+  header, discover }: {
   /** The account being edited (not necessarily the active one): every
    *  call below is pinned to it. */
   account: string;
@@ -63,6 +64,13 @@ export function FolderSettings({ account, data, included, setIncluded,
   /** The wizard's view: just the folders to scan - no exclusion-rule chips,
    *  no special-folder block (the rules themselves are kept as they are). */
   simple?: boolean;
+  /** Settings' view: the folders as `SettingsGroup` rows with a switch each
+   *  (under `header`, with the `discover` row last) and the special folders
+   *  as a second group. Returns a fragment of groups, not a bordered card. */
+  grouped?: boolean;
+  header?: ReactNode;
+  /** The row after the folder rows (grouped view). */
+  discover?: ReactNode;
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -140,55 +148,28 @@ export function FolderSettings({ account, data, included, setIncluded,
     finally { setBusy(false); }
   };
 
-  return (
-    <div className="rounded-card border border-line bg-panel2 p-3">
-      <SectionLabel>{t("folders.scan")}</SectionLabel>
-      <div className="mt-1 grid gap-0.5">
-        {scanned.map(({ f: x, depth, label }) => (
-          <span key={x.raw} className="min-w-0"
-            style={{ paddingInlineStart: `${depth * 1.25}rem` }}>
-            <Checkbox className="max-w-full"
-              checked={included.has(x.raw)}
-              onChange={() => {
-                const next = new Set(included);
-                next.has(x.raw) ? next.delete(x.raw) : next.add(x.raw);
-                setIncluded(next);
-              }}
-              label={<span className="flex min-w-0 items-center gap-2"
-                title={x.name}>
-                <span className="truncate">{label}</span>
-                {x.role === "archive" && <Tag>{roleName("archive")}</Tag>}
-              </span>} />
-          </span>
-        ))}
-        {scanned.length === 0 && (
-          <span className="type-meta text-muted">{t("folders.none")}</span>
-        )}
-      </div>
-      {!simple && wildcards.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5
-          border-t border-line pt-2 type-meta text-muted">
-          {t("Excluded by rule:")}
-          {wildcards.map((w) => (
-            <Tag key={w}>
-              {w}{" "}
-              <button className="inline-flex align-text-bottom
-                  text-muted hover:text-body"
-                title={t("Remove")} aria-label={t("Remove")}
-                onClick={() => setWildcards(wildcards.filter((x) => x !== w))}>
-                <X size={14} />
-              </button>
-            </Tag>
-          ))}
-        </div>
-      )}
-
-      {!simple && (roles.length > 0 || views.length > 0) && (
-        <div className="mt-3 border-t border-line pt-3">
-          <SectionLabel>{t("folders.special")}</SectionLabel>
-          <p className="mt-0.5 type-meta text-muted">
-            {t("folders.special_hint")}
-          </p>
+  const wildChips = !simple && wildcards.length > 0 && (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5
+      border-t border-line pt-2 type-meta text-muted">
+      {t("Excluded by rule:")}
+      {wildcards.map((w) => (
+        <Tag key={w}>
+          {w}{" "}
+          <button className="inline-flex align-text-bottom
+              text-muted hover:text-body"
+            title={t("Remove")} aria-label={t("Remove")}
+            onClick={() => setWildcards(wildcards.filter((x) => x !== w))}>
+            <X size={14} />
+          </button>
+        </Tag>
+      ))}
+    </div>
+  );
+  const showSpecial = !simple && (roles.length > 0 || views.length > 0);
+  const specialBody = (<>
+    <p className="mt-0.5 type-meta text-muted">
+      {t("folders.special_hint")}
+    </p>
           <div className="mt-2 grid gap-2">
             {roles.map((r) => (
               <div key={r.role} data-role={r.role}
@@ -281,6 +262,69 @@ export function FolderSettings({ account, data, included, setIncluded,
               </div>
             )}
           </div>
+  </>);
+
+  if (grouped) return (<>
+    <SettingsGroup header={header}>
+      {scanned.map(({ f: x, depth, label }) => (
+        <SettingsRow key={x.raw} label={<span className="flex min-w-0
+          items-center gap-2" title={x.name}
+          style={{ paddingInlineStart: `${depth * 1.25}rem` }}>
+          <span className="truncate">{label}</span>
+          {x.role === "archive" && <Tag>{roleName("archive")}</Tag>}
+        </span>} sub={data.mail_counts?.[x.raw] != null
+          ? t("n.mails", { n: data.mail_counts[x.raw] }) : undefined}>
+          <Switch checked={included.has(x.raw)}
+            onChange={(on) => {
+              const next = new Set(included);
+              on ? next.add(x.raw) : next.delete(x.raw);
+              setIncluded(next);
+            }} />
+        </SettingsRow>
+      ))}
+      {scanned.length === 0 && (
+        <div className="px-4 py-3 type-meta text-muted">{t("folders.none")}</div>
+      )}
+      {wildChips && <div className="px-4 pb-3">{wildChips}</div>}
+      {discover}
+    </SettingsGroup>
+    {showSpecial && (
+      <SettingsGroup padded header={t("folders.special")}>
+        {specialBody}
+      </SettingsGroup>
+    )}
+  </>);
+
+  return (
+    <div className="rounded-card border border-line bg-panel2 p-3">
+      <SectionLabel>{t("folders.scan")}</SectionLabel>
+      <div className="mt-1 grid gap-0.5">
+        {scanned.map(({ f: x, depth, label }) => (
+          <span key={x.raw} className="min-w-0"
+            style={{ paddingInlineStart: `${depth * 1.25}rem` }}>
+            <Checkbox className="max-w-full"
+              checked={included.has(x.raw)}
+              onChange={() => {
+                const next = new Set(included);
+                next.has(x.raw) ? next.delete(x.raw) : next.add(x.raw);
+                setIncluded(next);
+              }}
+              label={<span className="flex min-w-0 items-center gap-2"
+                title={x.name}>
+                <span className="truncate">{label}</span>
+                {x.role === "archive" && <Tag>{roleName("archive")}</Tag>}
+              </span>} />
+          </span>
+        ))}
+        {scanned.length === 0 && (
+          <span className="type-meta text-muted">{t("folders.none")}</span>
+        )}
+      </div>
+      {wildChips}
+      {showSpecial && (
+        <div className="mt-3 border-t border-line pt-3">
+          <SectionLabel>{t("folders.special")}</SectionLabel>
+          {specialBody}
         </div>
       )}
     </div>

@@ -417,6 +417,9 @@ export interface FoldersResp {
   special?: SpecialRole[];
   folders: FolderInfo[];
   wildcards: string[];
+  /** Mails per raw folder name from the last scan (absent from older
+   *  backends; folders the scan did not see are missing). */
+  mail_counts?: Record<string, number>;
 }
 
 export interface LookalikeCount {

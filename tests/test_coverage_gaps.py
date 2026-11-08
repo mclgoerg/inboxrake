@@ -7,6 +7,7 @@ import types
 
 from fastapi.testclient import TestClient
 
+from backend import accounts as accountsmod
 from backend import aihelper
 from backend import config as cfgmod
 from backend import mailops
@@ -138,3 +139,17 @@ def test_cancel_endpoint():
     assert client.post("/api/cancel",
                        json={"target": "scan"}).json() == {"ok": True}
     assert mailops.cancel_requested("scan") is True
+
+
+def test_folders_endpoint_reports_scanned_mail_counts(bridge):
+    # nothing scanned yet: no counts (additive field, old shape kept)
+    assert client.get("/api/folders").json()["mail_counts"] == {}
+    mailops.run_scan()
+    r = client.get("/api/folders").json()
+    counts = r["mail_counts"]
+    indexed = accountsmod.get(None).index.values()
+    assert counts["INBOX"] > 0
+    assert counts["INBOX"] == sum(1 for m in indexed if m["folder"] == "INBOX")
+    assert sum(counts.values()) == len(accountsmod.get(None).index)
+    assert "Trash" not in counts and "Spam" not in counts
+    assert "folders" in r and "wildcards" in r

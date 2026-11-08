@@ -147,7 +147,7 @@ export const EN: Record<string, string> = {
   "settings.sec.ai": "AI review",
   "settings.sec.signin": "Sign-in & users",
   "settings.sec.backup": "Backup & restore",
-  "settings.status.ok": "Connected",
+  "settings.status.ok": "Signed in",
   "settings.status.check": "Check sign-in",
   "settings.status.nocreds": "Not signed in",
   "settings.no_match": "No settings match \u201c{q}\u201d.",
@@ -244,6 +244,16 @@ export const EN: Record<string, string> = {
     "No own key - AI runs on the server's shared key "
     + "(your monthly cap: {cap}).",
   "account.rename": "Rename…",
+  "account.scan_now": "Scan now",
+  "account.scan_save_first": "Save first - Scan now uses the saved settings.",
+  "account.scan_started": "Scan started.",
+  "account.scan_running": "Scanning…",
+  "account.scan_failed": "last scan failed",
+  "account.never_scanned": "not scanned yet",
+  "account.change": "Change…",
+  "account.smtp_row": "Sending server (unsubscribe mails)",
+  "account.same_as_imap": "Same as IMAP",
+  "folders.discover_row": "Discover folders",
   "account.rename_prompt": 'New name for account "{name}":',
   "account.renamed": 'Account renamed to "{name}".',
   "folders.title": "Folders to scan - account \u201c{name}\u201d",
@@ -1144,6 +1154,8 @@ export const EN: Record<string, string> = {
   "notify.atts_done": "Attachment analysis finished.",
   "notify.unsub_done": "Bulk unsubscribe finished.",
   "preset.label": "Provider preset (prefills the fields below)",
+  "preset.row": "Provider",
+  "preset.row_sub": "Prefills the fields below",
   "preset.hint.proton":
     "Proton needs the Mail Bridge (paid plans): switch its IMAP mode to "
     + "SSL, export its certificate and point the CA file at it - see "
@@ -1227,7 +1239,7 @@ export const EN: Record<string, string> = {
   "folder.src.name": "by name",
   "folder.src.override": "you chose",
   "folder.view_row": "Views of other folders - never scanned",
-  "folder.archive_scanned": "Archive is still scanned - tick it below.",
+  "folder.archive_scanned": "Archive is still scanned - switch it off in the list above.",
   "folder.ambiguous":
     "More than one folder could be your {role} folder. Until you choose, "
     + "Inboxrake uses \u201c{pick}\u201d for moves to {role} and refuses to "

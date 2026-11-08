@@ -9,7 +9,7 @@ import { accountAuth, fmtAgo, fmtSize } from "../lib";
 import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
   type SettingsSection } from "../nav";
 import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
-import type { AdminTenantStats, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
+import type { AdminTenantStats, AppState, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
   DigestSchedule, FoldersResp, ImapAccount, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
 import { FolderSettings } from "./FolderSettings";
@@ -19,8 +19,8 @@ import { demoHint, useDemo } from "../demoMode";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
   LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, Segmented, Select,
-  SettingsGroup, SettingsRow, Spinner, Stepper, Switch, type TagTone,
-  tabPanelProps, TextArea, useBulkBarHeight, useToast } from "./ui";
+  SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag, type TagTone,
+  TextArea, useBulkBarHeight, useToast } from "./ui";
 
 /* Settings as a page (`#/settings/<section>`). From 1024 px a section column
  * (with a search field) sits beside the form; below it an iOS-style root list
@@ -179,7 +179,7 @@ type SecDef = {
 
 export function SettingsPage({ cfg, account, section, routeAccount = null,
   onSection, onClose, onSaved, onAccountsChanged, aiAnswers = 0,
-  onKnowledgeChanged = () => {}, controlRef }: {
+  onKnowledgeChanged = () => {}, scanState = null, controlRef }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
   /** The open section (`#/settings/<section>`); null = the phone root list
@@ -201,6 +201,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   /** Accounts were added/removed. `switchTo` names a new account to
    *  activate (or null to let App re-validate the current one). */
   onAccountsChanged: (c: Config, switchTo: string | null) => void;
+  /** The active account's scan state (the pill and "Scan now"). */
+  scanState?: { account: string; status: AppState["status"];
+    scanned_ts: number | null; error: string } | null;
   controlRef?: MutableRefObject<SettingsControl | null>;
 }) {
   const wide = useSidebar();
@@ -501,6 +504,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const loadAccount = (src: Config, name: string) => {
     const fields = imapFields(src, name);
     setEditAcct(name);
+    setPwOpen(false);
+    setSmtpOpen(false);
     setF((o) => ({ ...o, ...fields }));
     setBaseline((b) => ({ ...b, f: { ...b.f, ...fields } }));
     setDigestTestMsg("");
@@ -586,6 +591,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     interval: number;
   } | null>(null);
   const [oauthMsg, setOauthMsg] = useState("");
+  // The password field replaces "•••• Change…"; the SMTP fields unfold.
+  const [pwOpen, setPwOpen] = useState(false);
+  const [smtpOpen, setSmtpOpen] = useState(false);
 
   const connectOauth = async () => {
     const next = await save();
@@ -727,7 +735,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       label: t(`settings.sec.${id}`) });
   const defs: Record<SettingsSection, SecDef> = {
     account: sec("account", null, "neutral", undefined,
-      [t("preset.label"), t("Host"), t("IMAP port"), t("imap.security"),
+      [t("preset.row"), t("Host"), t("IMAP port"), t("imap.security"),
         t("User"), t("Password"), t("smtp.host"), t("SMTP port"),
         t("smtp.security"), t("cafile.label"), t("folders.discover"),
         t("account.rename"), t("account.add")]),
@@ -852,17 +860,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 
   /* ------------------------------ section bodies ---------------------------- */
 
-  const passwordField = (
-    <Field label={f.preset === "gmail" ? t("signin.password")
-      : t("Password")}>
-      <Input className="w-full" type="password" value={f.password}
-        placeholder={imapOf(cfg, editAcct).password_set
-          ? t("(unchanged)") : t("required")}
-        onChange={set("password")} />
-    </Field>
-  );
   const oauthCard = !oauthProvider ? null : (
-    <div className="rounded-card border border-line bg-panel2 p-3">
+    <div>
       <div className="type-section text-muted">
         {t("oauth.title", { provider: oauthProvider === "google"
           ? "Gmail" : "Outlook" })}
@@ -951,130 +950,178 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsRow>
   );
 
+  /** The status pill: what the saved credentials say, plus the scan state
+   *  where the app has it (only the active account's is loaded). There is no
+   *  live connection check, so it says "Signed in", not "Connected". */
+  const acctStatus = statusOf(saved);
+  const scanning = scanState?.account === editAcct
+    && scanState.status === "scanning";
+  const scanFailed = scanState?.account === editAcct
+    && scanState.status === "error";
+  const scanAgo = scanState?.account === editAcct
+    ? fmtAgo(scanState.scanned_ts) : "";
+  const pillText = [t(`settings.status.${acctStatus}`),
+    ...(acctStatus === "nocreds" ? []
+      : scanning ? [t("account.scan_running")]
+      : scanFailed ? [t("account.scan_failed")]
+      : scanState?.account === editAcct
+        ? [scanAgo ? t("scan.age", { ago: scanAgo })
+          : t("account.never_scanned")] : [])].join(" · ");
+  const pillTone: TagTone = acctStatus === "ok" && !scanFailed ? "safe"
+    : acctStatus === "check" ? "review" : "keep";
+  const scanNow = async () => {
+    try { await api.scan(editAcct); note(t("account.scan_started")); }
+    catch (e: any) { note(t("err.generic", { msg: e.message ?? e }), true); }
+  };
+  const pwShown = !saved.password_set || pwOpen || !!f.password;
+  const pwLabel = f.preset === "gmail" ? t("signin.password") : t("Password");
+  const passwordRow = (
+    <SettingsRow label={pwLabel}>
+      {pwShown ? (
+        <Input className="w-44 sm:w-64" type="password" value={f.password}
+          aria-label={pwLabel} autoFocus={pwOpen}
+          placeholder={saved.password_set ? t("(unchanged)") : t("required")}
+          onChange={set("password")} />
+      ) : (<span className="flex items-center gap-2">
+        <span aria-hidden className="type-body text-muted tracking-widest">
+          ••••••••</span>
+        <Button variant="secondary" onClick={() => setPwOpen(true)}>
+          {t("account.change")}
+        </Button>
+      </span>)}
+    </SettingsRow>
+  );
+  const presetFoot = [presetHint ? t(presetHint) : "",
+    f.preset === "gmail" && auth === "password" ? t("signin.gmail_apppw_help")
+      : ""].filter(Boolean);
+  const smtpHost = f.smtpHost.trim();
+  const discoverRow = (
+    <SettingsRow icon={<RefreshCw size={16} className="text-accent" />}
+      label={<span className="text-accent">{t("folders.discover_row")}</span>}
+      sub={t("folders.discover_tip")}
+      onClick={() => discoverFolders(editAcct)} />
+  );
+
   const accountBody = (<>
-    <SettingsGroup footnote={t("account.hint")}>
-      <SettingsRow label={editAcct} sub={saved.user}
-        icon={<AccountAvatar name={editAcct} size="md" />}>
+    <div className="mb-6 flex flex-wrap items-center gap-4 rounded-card
+      border border-line bg-panel p-4">
+      <AccountAvatar name={editAcct} size="lg" />
+      <div className="min-w-0 flex-1 basis-56">
+        <div className="truncate type-title2">{editAcct}</div>
+        <div className="truncate type-meta text-muted">
+          {saved.user} · {presetLabel(saved.preset ?? "proton")}</div>
+        <Tag tone={pillTone} dot className="mt-1.5">{pillText}</Tag>
+        {scanFailed && scanState?.error && (
+          <div className="mt-1 type-meta text-muted">{scanState.error}</div>
+        )}
+        {dirty && (
+          <div className="mt-1 type-meta text-muted">
+            {t("account.scan_save_first")}</div>
+        )}
+      </div>
+      <div className="flex w-full shrink-0 gap-2 sm:w-auto">
         <Button variant="secondary" onClick={renameAccount}>
           {t("account.rename")}
         </Button>
+        <Button variant="secondary" onClick={scanNow}
+          disabled={demo || scanning || dirty || acctStatus === "nocreds"}>
+          <RefreshCw size={14} className="mr-1 inline align-text-bottom" />
+          {t("account.scan_now")}
+        </Button>
+      </div>
+    </div>
+    <p className="-mt-3 mb-6 px-3 type-meta text-muted">
+      {t("account.hint")}</p>
+    <SettingsGroup header={t("settings.connection")}
+      footnote={presetFoot.length ? presetFoot.map((x) =>
+        <span key={x} className="block">{x}</span>) : undefined}>
+      <SettingsRow label={t("preset.row")} sub={t("preset.row_sub")}>
+        <PopupSelect name={t("preset.row")} value={f.preset}
+          onChange={(p) => applyPreset(p)}
+          options={(Object.keys(PRESET_LABELS) as Preset[]).map((p) =>
+            ({ value: p, label: presetLabel(p) }))} />
       </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup padded header={t("settings.connection")}>
-      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        <div className="sm:col-span-2">
-          <Field label={t("preset.label")}>
-            <Select className="w-full" value={f.preset}
-              onChange={(e) => applyPreset(e.target.value as Preset)}>
-              {(Object.keys(PRESET_LABELS) as Preset[]).map((p) => (
-                <option key={p} value={p}>{presetLabel(p)}</option>
-              ))}
-            </Select>
-          </Field>
-          {presetHint && (
-            <p className="mt-1 type-meta text-muted">{t(presetHint)}</p>
-          )}
-        </div>
-        <Field label={t("Host")}>
-          <Input className="w-full" value={f.host} onChange={set("host")} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t("IMAP port")}>
-            <Input className="w-full" type="number" value={f.port}
-              onChange={set("port")} />
-          </Field>
-          <Field label={t("imap.security")}>
-            <Select className="w-full" value={f.security}
-              onChange={set("security")}>
-              <option value="ssl">SSL/TLS</option>
-              <option value="starttls">STARTTLS</option>
-            </Select>
-          </Field>
-        </div>
-        <Field label={t("User")}>
-          <Input className="w-full" value={f.user} onChange={set("user")} />
-        </Field>
-        {f.preset === "gmail" && (
-        <div className="sm:col-span-2">
-          <div className="mb-1 type-meta text-muted">{t("signin.label")}</div>
-          <Segmented fill idPrefix="signin" label={t("signin.label")}
-            value={auth}
-            onChange={(v) => put("auth", v)}
+      <SettingsRow label={t("Host")}>
+        <span className="flex items-center gap-1.5">
+          <Input className="w-36 sm:w-48" value={f.host} aria-label={t("Host")}
+            onChange={set("host")} />
+          <span aria-hidden className="text-muted">:</span>
+          <Input className="w-20" type="number" value={f.port}
+            aria-label={t("IMAP port")} onChange={set("port")} />
+        </span>
+      </SettingsRow>
+      <SettingsRow label={t("imap.security")}>
+        <Segmented role="radio" label={t("imap.security")}
+          value={f.security} onChange={(v) => put("security", v)}
+          options={[{ value: "ssl", label: "SSL/TLS" },
+            { value: "starttls", label: "STARTTLS" }]} />
+      </SettingsRow>
+      <SettingsRow label={t("User")}>
+        <Input className="w-44 sm:w-64" value={f.user} aria-label={t("User")}
+          onChange={set("user")} />
+      </SettingsRow>
+      {f.preset === "gmail" && (
+        <SettingsRow label={t("signin.label")}>
+          <Segmented role="radio" label={t("signin.label")}
+            value={auth} onChange={(v) => put("auth", v)}
             options={[
               { value: "password", label: t("signin.password") },
               { value: "oauth", label: t("signin.oauth") }]} />
-          <div {...tabPanelProps("signin", auth)} className="mt-3">
-            {auth === "password" ? (<>
-              {passwordField}
-              <p className="mt-1 type-meta text-muted">
-                {t("signin.gmail_apppw_help")}
-              </p>
-            </>) : oauthCard}
-          </div>
+        </SettingsRow>
+      )}
+      {auth === "password" && passwordRow}
+      {oauthCard && (
+        <div className="px-4 py-3">
+          {oauthCard}
         </div>
-        )}
-        {f.preset !== "gmail" && auth === "password" && passwordField}
-        {f.preset !== "gmail" && oauthCard && (
-          <div className="sm:col-span-2">{oauthCard}</div>
-        )}
-      </div>
+      )}
     </SettingsGroup>
-    <SettingsGroup padded header={t("settings.advanced")}
-      footnote={t("smtp.help")}>
-      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-        <Field label={t("smtp.host")}>
-          <Input className="w-full" value={f.smtpHost}
+    {!folders && (
+      <SettingsGroup header={t("folders.title", { name: editAcct })}>
+        {!foldersErr && <Loading className="!p-3" />}
+        {foldersErr && (
+          <div className="px-4 py-3 type-meta text-danger-fg">
+            {foldersErr}
+            <span className="ml-1 text-muted">{t("folders.err_hint")}</span>
+          </div>
+        )}
+        {discoverRow}
+      </SettingsGroup>
+    )}
+    {folders && (
+      <FolderSettings grouped account={editAcct} data={folders}
+        header={t("folders.title", { name: editAcct })} discover={discoverRow}
+        included={included} setIncluded={tick} wildcards={wildcards}
+        setWildcards={setWildcards}
+        reload={() => discoverFolders(editAcct, true)} />
+    )}
+    <SettingsGroup header={t("settings.advanced")} footnote={t("smtp.help")}>
+      <SettingsRow label={t("account.smtp_row")} expanded={smtpOpen}
+        value={`${smtpHost || t("account.same_as_imap")} · ${f.smtpPort}`}
+        onClick={() => setSmtpOpen((o) => !o)} />
+      {smtpOpen && (<>
+        <SettingsRow label={t("smtp.host")}>
+          <Input className="w-44 sm:w-64" value={f.smtpHost}
+            aria-label={t("smtp.host")}
             placeholder={t("smtp.host_placeholder")}
             onChange={set("smtpHost")} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t("SMTP port")}>
-            <Input className="w-full" type="number" value={f.smtpPort}
-              onChange={set("smtpPort")} />
-          </Field>
-          <Field label={t("smtp.security")}>
-            <Select className="w-full" value={f.smtpSecurity}
-              onChange={set("smtpSecurity")}>
-              <option value="auto">{t("sec.auto")}</option>
-              <option value="ssl">SSL/TLS</option>
-              <option value="starttls">STARTTLS</option>
-            </Select>
-          </Field>
-        </div>
-        <div className="sm:col-span-2">
-          <Field label={t("cafile.label")}>
-            <Input className="w-full" value={f.cafile}
-              placeholder="/certs/bridge-cert.pem"
-              onChange={set("cafile")} />
-          </Field>
-        </div>
-      </div>
-    </SettingsGroup>
-    <SettingsGroup padded>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="type-meta text-muted">
-          {t("folders.title", { name: editAcct })}
-        </span>
-        <Button variant="secondary" size="sm"
-          title={t("folders.discover_tip")}
-          onClick={() => discoverFolders(editAcct)}>
-          <RefreshCw size={14} className="mr-1 inline align-text-bottom" />
-          {t("folders.discover")}
-        </Button>
-      </div>
-      {!folders && !foldersErr && <Loading className="!p-3" />}
-      {foldersErr && (
-        <div className="type-meta text-danger-fg">
-          {foldersErr}
-          <span className="ml-1 text-muted">{t("folders.err_hint")}</span>
-        </div>
-      )}
-      {folders && (
-        <FolderSettings account={editAcct} data={folders}
-          included={included} setIncluded={tick} wildcards={wildcards}
-          setWildcards={setWildcards}
-          reload={() => discoverFolders(editAcct, true)} />
-      )}
+        </SettingsRow>
+        <SettingsRow label={t("SMTP port")}>
+          <Input className="w-24" type="number" value={f.smtpPort}
+            aria-label={t("SMTP port")} onChange={set("smtpPort")} />
+        </SettingsRow>
+        <SettingsRow label={t("smtp.security")}>
+          <PopupSelect name={t("smtp.security")} value={f.smtpSecurity}
+            onChange={(v) => put("smtpSecurity", v)}
+            options={[{ value: "auto", label: t("sec.auto") },
+              { value: "ssl", label: "SSL/TLS" },
+              { value: "starttls", label: "STARTTLS" }]} />
+        </SettingsRow>
+      </>)}
+      <SettingsRow stack label={t("cafile.label")}>
+        <Input className="w-full" value={f.cafile} aria-label={t("cafile.label")}
+          placeholder="/certs/bridge-cert.pem" onChange={set("cafile")} />
+      </SettingsRow>
     </SettingsGroup>
     {multi && (
       <SettingsGroup padded header={t("account.remove_title")}

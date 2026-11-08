@@ -952,6 +952,8 @@ export const DE: Record<string, string> = {
   "notify.atts_done": "Anhang-Analyse abgeschlossen.",
   "notify.unsub_done": "Massenabbestellen abgeschlossen.",
   "preset.label": "Anbieter-Preset (füllt die Felder unten vor)",
+  "preset.row": "Anbieter",
+  "preset.row_sub": "Füllt die Felder unten vor",
   "preset.hint.proton":
     "Proton braucht die Mail Bridge (Bezahltarife): IMAP-Modus auf SSL "
     + "stellen, Zertifikat exportieren und als CA-Datei eintragen - "
@@ -1042,7 +1044,7 @@ export const DE: Record<string, string> = {
   "folder.src.override": "von dir gew\u00e4hlt",
   "folder.view_row": "Ansichten anderer Ordner - werden nie gescannt",
   "folder.archive_scanned":
-    "Das Archiv wird weiterhin gescannt - unten ankreuzen.",
+    "Das Archiv wird weiterhin gescannt - oben in der Liste abschaltbar.",
   "folder.ambiguous":
     "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c in Frage. "
     + "Bis du w\u00e4hlst, verwendet Inboxrake \u201e{pick}\u201c f\u00fcr "
@@ -1193,7 +1195,7 @@ export const DE: Record<string, string> = {
   "settings.sec.ai": "KI-Prüfung",
   "settings.sec.signin": "Anmeldung & Nutzer",
   "settings.sec.backup": "Sicherung",
-  "settings.status.ok": "Verbunden",
+  "settings.status.ok": "Angemeldet",
   "settings.status.check": "Anmeldung prüfen",
   "settings.status.nocreds": "Nicht angemeldet",
   "settings.no_match": "Keine Einstellung passt zu \u201e{q}\u201c.",
@@ -1292,6 +1294,16 @@ export const DE: Record<string, string> = {
     "Kein eigener Schlüssel - KI läuft über den gemeinsamen "
     + "Server-Schlüssel (dein Monatslimit: {cap}).",
   "account.rename": "Umbenennen…",
+  "account.scan_now": "Jetzt scannen",
+  "account.scan_save_first": "Erst speichern - Jetzt scannen nutzt die gespeicherten Einstellungen.",
+  "account.scan_started": "Scan gestartet.",
+  "account.scan_running": "Scannt…",
+  "account.scan_failed": "letzter Scan fehlgeschlagen",
+  "account.never_scanned": "noch nicht gescannt",
+  "account.change": "Ändern…",
+  "account.smtp_row": "Sendeserver (Abmelde-Mails)",
+  "account.same_as_imap": "Wie IMAP",
+  "folders.discover_row": "Ordner erkennen",
   "account.rename_prompt": 'Neuer Name für Konto "{name}":',
   "account.renamed": 'Konto umbenannt in "{name}".',
   "folders.title": "Zu scannende Ordner - Konto \u201e{name}\u201c",
