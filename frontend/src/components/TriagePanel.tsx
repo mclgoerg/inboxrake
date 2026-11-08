@@ -121,8 +121,9 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
         border border-line bg-panel2 p-4 shadow-popover sm:p-5">
       {intent && allowed(intent) && (
         <div aria-hidden style={{ opacity: progress }}
-          className={`absolute right-3 top-3 rounded-badge border-2
-            border-current px-2 py-0.5 type-heading uppercase ${STAMP[intent]}`}>
+          className={`absolute -top-3 rounded-badge border-2 border-current bg-panel2 px-2
+            py-0.5 type-heading uppercase ${STAMP[intent]}
+            ${intent === "keep" ? "left-3" : "right-3"}`}>
           {t(`triage.${intent}`)}
         </div>
       )}
@@ -391,7 +392,7 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
             {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
               <div key={n} aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-card
-                  border border-line bg-chip shadow-popover"
+                  border border-line bg-chiph shadow-popover"
                 style={{ transform: `translateY(${n * 30}px) scale(${1 - n * 0.05})`,
                   opacity: 1 - n * 0.25 }} />
             ))}
