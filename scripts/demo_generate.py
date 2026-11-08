@@ -708,12 +708,13 @@ PROTON = _server({
             unread=0.9)
     + mails('"Anna Weber" <anna.weber@mailfox.example>',
             ["Fwd: Wanderkarte"], 1, newest_days=2, unread=1.0),
-    # a client-made second Junk folder: Settings > Folders asks which one
+    # an ordinary folder that merely looks like Junk: Spam carries \Junk, so
+    # the role is unambiguous (the demo's Junk / Trash actions all work)
     "Junk Email": mails('"Old Newsletter" <bye@gone.example>',
                         ["Special offer"], 3, unread=0.9),
     "Archive": PROTON_ARCHIVE,
     "Drafts": [],
-})
+}, flags={"Spam": "\\Junk", "Trash": "\\Trash"})
 
 ICLOUD = _server({
     "INBOX": ICLOUD_INBOX + ICLOUD_COPIES,

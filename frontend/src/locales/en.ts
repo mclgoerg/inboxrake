@@ -1225,6 +1225,11 @@ export const EN: Record<string, string> = {
   "fp.older_invalid": "Enter a whole number of days from 1 to 36500.",
   "fp.older_btn": "Count mails",
   "fp.empty_junk": "Empty Junk · {n}",
+  "fp.ambiguous":
+    "More than one folder could be your {role} folder: {folders} - choose "
+    + "one. Until then you can move mail, but not delete it permanently.",
+  "fp.ambiguous_choose": "Choose folder",
+  "fp.ambiguous_hint": "Choose the folder first - see the notice at the top",
   "fp.empty_trash": "Empty Trash · {n}",
   "fp.size_in_mails": "in {n} mails",
   "fp.size_in_mails_one": "in 1 mail",

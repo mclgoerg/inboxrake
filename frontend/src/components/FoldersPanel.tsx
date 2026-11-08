@@ -1,5 +1,5 @@
-import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, Undo2,
-  UserCheck } from "lucide-react";
+import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, TriangleAlert,
+  Undo2, UserCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
@@ -11,7 +11,7 @@ import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { TrashCard } from "./TrashCard";
 import { Avatar, Button, Checkbox, confirmDialog, EmptyState, IconTile, Input,
-  Loading, MailRow, Modal, PanelHeader, promptDialog, PopupSelect, Segmented,
+  Loading, MailRow, Modal, Notice, PanelHeader, promptDialog, PopupSelect, Segmented,
   Spinner, Tag, Toolbar, useMediaQuery, useToast } from "./ui";
 
 type Grouping = "sender" | "mails";
@@ -32,7 +32,8 @@ const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
  *  the server first, confirmed with the counts, and sent back as the counted
  *  UIDVALIDITY + exact UIDs. */
 export function FoldersPanel({ state, initialRole = "trash", onClose,
-  onChanged, onEmptyTrash, onUndo, onProtect, onBlock, blockedSenders }: {
+  onChanged, onEmptyTrash, onUndo, onProtect, onBlock, blockedSenders,
+  onChooseFolder }: {
   state: AppState;
   /** The folder this page shows; follows the route when it changes. */
   initialRole?: FolderRole;
@@ -50,6 +51,9 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   onBlock?: (addr: string) => Promise<boolean>;
   /** Addresses that already have a block rule (shown as "Blocked"). */
   blockedSenders?: ReadonlySet<string>;
+  /** Open the account's folder setting (where the ambiguous role is
+   *  chosen); without it the notice has no button. */
+  onChooseFolder?: () => void;
 }) {
   const toast = useToast();
   const wide = useMediaQuery("(min-width: 640px)");   // phones: own full row
@@ -345,6 +349,11 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   };
 
   const junk = role === "junk";
+  // Several folders could be this role (or, on Junk, the Trash a permanent
+  // delete goes through): saying so now beats failing after the click
+  const unclear = list?.ambiguous ?? [];
+  const blocked = unclear.length > 0;
+  const describedBy = blocked ? `fp-ambiguous-${unclear[0].role}` : undefined;
   // The reader's Trash on a Junk mail: the same move (and protected-sender
   // confirm) as the row's Trash. Trash has nothing to move a mail to.
   const readerActions: ReaderActions | undefined = junk ? {
@@ -384,6 +393,21 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         <>
           <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto
             px-4 pb-4 pt-3">
+            {unclear.map((a) => (
+              <Notice key={a.role} tone="warn" className="mb-3"
+                icon={<TriangleAlert size={16} />}>
+                <div id={`fp-ambiguous-${a.role}`}>
+                  {t("fp.ambiguous", { role: t(`role.${a.role}`),
+                    folders: a.choices.join(", ") })}
+                </div>
+                {onChooseFolder && (
+                  <Button size="sm" variant="secondary" className="mt-2"
+                    onClick={onChooseFolder}>
+                    {t("fp.ambiguous_choose")}
+                  </Button>
+                )}
+              </Notice>
+            ))}
             {!junk && (
               <TrashCard list={list} rules={state.rules ?? []}
                 onChanged={onChanged} />
@@ -442,7 +466,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       onChange={(dest) => restore(dest)}
                       options={(state.folders_raw ?? []).map((f, i) => ({
                         value: f, label: state.folders[i] ?? f }))} />
-                    <PopupSelect<string> disabled={busy} triggerClass={TALL}
+                    <PopupSelect<string> disabled={busy || blocked}
+                      triggerClass={TALL}
                       placeholder={t("fp.action")}
                       onChange={() => purgeSelection()}
                       options={[{ value: "delete",
@@ -463,7 +488,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       }}
                       options={[
                         { value: "trash", label: t("fp.to_trash") },
-                        { value: "delete", label: t("fp.delete_permanently") },
+                        { value: "delete", label: t("fp.delete_permanently"),
+                          disabled: blocked },
                       ]} />
                   </>
                 )}
@@ -545,17 +571,23 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             <div className="grid grid-cols-2 gap-2 border-t border-line px-4
               py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
               sm:flex sm:justify-end">
-              <Button variant="secondary" disabled={busy} className={rowBtn}
+              <Button variant="secondary" disabled={busy || blocked}
+                className={rowBtn} aria-describedby={describedBy}
+                title={blocked ? t("fp.ambiguous_hint") : undefined}
                 onClick={() => void purgeOlder()}>
                 {t("fp.older")}
               </Button>
               {junk ? (
-                <Button variant="danger-tint" disabled={busy} className={rowBtn}
+                <Button variant="danger-tint" disabled={busy || blocked}
+                  className={rowBtn} aria-describedby={describedBy}
+                  title={blocked ? t("fp.ambiguous_hint") : undefined}
                   onClick={() => void purge({ everything: true })}>
                   {t("fp.empty_junk", { n: list.total })}
                 </Button>
               ) : (
-                <Button variant="danger-tint" disabled={busy} className={rowBtn}
+                <Button variant="danger-tint" disabled={busy || blocked}
+                  className={rowBtn} aria-describedby={describedBy}
+                  title={blocked ? t("fp.ambiguous_hint") : undefined}
                   onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>

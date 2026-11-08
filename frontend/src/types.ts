@@ -273,6 +273,10 @@ export interface TrashResp {
   mails: Mail[];
   /** whole folder grouped by sender (folders panel listing) */
   senders?: SenderGroup[];
+  /** roles a permanent delete from this page would refuse because several
+   *  folders could be them (names as shown); the listing itself used the
+   *  deterministic pick */
+  ambiguous?: { role: FolderRole; choices: string[] }[];
 }
 
 export type FolderRole = "junk" | "trash";

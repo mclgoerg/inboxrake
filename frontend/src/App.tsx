@@ -2349,6 +2349,7 @@ export default function App() {
         onProtect={protectSenders}
         onBlock={blockAddress}
         blockedSenders={blockedAddrs}
+        onChooseFolder={() => void fixAccount(account)}
       />
     )}
     {toolShown("duplicates") && (
