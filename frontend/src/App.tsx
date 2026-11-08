@@ -1,8 +1,8 @@
+import { createPortal } from "react-dom";
 import { Archive, BellOff, ChevronDown, ChevronsUpDown,
-  Download, FolderInput, Info, ListChecks, Mail, Monitor, Moon, Paperclip, Pencil, Plus,
-  MoreHorizontal, Power,
-  RefreshCw, ScrollText, Search, Settings as SettingsIcon, Sparkles, Star, Sun,
-  Trash2, Undo2, User, Wand2, X }
+  Download, FolderInput, Info, ListChecks, Mail, Paperclip, Pencil,
+  MoreHorizontal, RefreshCw, Search, Sparkles, Star,
+  Undo2, User, Wand2, X }
   from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
@@ -34,6 +34,7 @@ import { StatsPanel } from "./components/StatsPanel";
 import { AiFilterPanel } from "./components/AiFilterPanel";
 import { TriagePanel } from "./components/TriagePanel";
 import { WrappedStory } from "./components/WrappedStory";
+import { AccountSwitcher } from "./components/AccountSwitcher";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterMenu";
 import { SelectMatches } from "./components/SelectMatches";
@@ -42,7 +43,7 @@ import type { QuickWinCard } from "./quickwins";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
-  Menu, MenuDivider, MenuGroup, MenuHeading, MenuItem, Notice, ProgressBar,
+  Menu, MenuItem, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
   PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
@@ -61,7 +62,7 @@ import { unsubscribeGroup } from "./unsub";
 import { DECK_MAX, protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
-import type { AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
+import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
   KnowledgeStored,
   StatusMsg, TrashResp, FolderRole } from "./types";
 
@@ -284,6 +285,11 @@ export default function App() {
     notify(t(key, { msg: e.message ?? e }), "error");
   const connToast = useRef<number | null>(null);   // one lost-connection toast
   const [appearance, setAppearance] = useAppearance();
+  // Account menu: the phone sheet, and each account's last scan for its card
+  // (refetched when the active account's scan or the account list changes).
+  const [accountSheet, setAccountSheet] = useState(false);
+  const [acctSummary, setAcctSummary] =
+    useState<Record<string, AccountSummary> | null>(null);
   const [smartHelp, setSmartHelp] = useState(() => localStorage.getItem("pmc_smart_help_seen") !== "1");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sse = useRef<EventSource | null>(null);
@@ -360,6 +366,13 @@ export default function App() {
       .catch(() => setAuth({ mode: "none", authed: true }));
   }, []);
   const authOk = !!auth && (auth.mode === "none" || auth.authed);
+  useEffect(() => {
+    if (!cfg || !authOk) return;
+    let live = true;
+    Promise.resolve().then(() => api.accountsSummary()).then((r) => { if (live) setAcctSummary(r); },
+      () => { /* the cards just show no numbers */ });
+    return () => { live = false; };
+  }, [cfg, account, authOk, state?.scanned_ts, state?.status]);
 
   useEffect(() => {
     if (!authOk) return;
@@ -859,7 +872,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.groups_rev]);
   useEffect(() => { prevGroups.current = groups; });
-  const anyModal = (!!detail && !splitPane) || searchOpen || rulesOpen
+  const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
     || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
@@ -1046,20 +1059,11 @@ export default function App() {
   // refreshed by scans/listings, so it can lag behind mails trashed since.
   // `known` = a listing the caller just read (the Trash panel's own). The
   // server deletes only the mails up to the highest UID that listing saw.
-  const emptyTrash = async (known?: TrashResp): Promise<boolean> => {
-    let listing: TrashResp;
-    if (known) listing = known;
-    else {
-      // On real IMAP the live count can take seconds: say so.
-      setPending(t("trash.counting"));
-      try { listing = await api.trash(); }
-      catch (e: any) { setPending(""); fail(e); return false; }
-      setPending("");
-    }
+  const emptyTrash = async (listing: TrashResp): Promise<boolean> => {
     const n = listing.total;
     if (n === 0) {
       toast.show(t("trash.already_empty"));
-      refresh();      // the cached count behind the menu entry was stale
+      refresh();      // the cached count was stale
       return false;
     }
     if (!await confirmDialog({ title: t("confirm.empty_trash_title"),
@@ -1984,6 +1988,17 @@ export default function App() {
     settingsPushed.current = push;
     gotoSettings(s, acct, push);
   };
+  /** A broken account's card: its settings (leaving edits asks first). */
+  const fixAccount = async (name: string) => {
+    if (navPage === "settings") {
+      const ctl = settingsCtl.current;
+      if (ctl?.dirty() && !(await ctl.confirmLeave())) return;
+      openSettingsSection("account", name, false);
+      return;
+    }
+    settingsFrom.current = navPage;
+    gotoSettings("account", name, true);
+  };
   // Closing a tool: back to the start page (Triage: to the list its changes
   // show up in), or drop its modal.
   const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
@@ -2005,16 +2020,32 @@ export default function App() {
       : to === "senders" ? "nav.senders" : "nav.overview";
   })());
 
-  // The profile menu: the header trigger below 1024, the sidebar's account
-  // switcher from there (same items).
-  const profileMenu = (
-    <Menu label={account ? t("menu.account_switch", { name: account })
-      : t("menu.profile")}
-      {...(wide ? { variant: "quiet" as const, align: "left" as const,
-        className: "w-full", triggerClass: "w-full justify-start" }
-        : { variant: "quiet" as const, icon: true as const,
-          triggerClass: "coarse:size-11" })}
-      trigger={wide ? (
+  // The account menu: the sidebar's switcher popover from 1024 px, an
+  // "Accounts" sheet opened by the header avatar below (same cards).
+  const identityLine = auth.mode === "oidc" && !!auth.sub ? auth.sub : undefined;
+  const switcher = (menu: boolean, close = () => {}) => cfg && (
+    <AccountSwitcher menu={menu} cfg={cfg} account={account}
+      summary={acctSummary} appearance={appearance}
+      onAppearance={setAppearance}
+      onSwitch={(n) => { close(); switchAccount(n); }}
+      onFix={(n) => { close(); void fixAccount(n); }}
+      onAdd={() => { close(); setWizard({ mode: "add", previous: account }); }}
+      onSettings={() => { close(); openTool("settings"); }}
+      onActivity={() => { close(); openTool("activity"); }}
+      onLogout={auth.mode !== "none" ? async () => {
+        try { await api.logout(); } catch { /* session gone */ }
+        window.location.reload();
+      } : undefined}
+      identity={identityLine} admin={auth.is_admin} demo={demo}
+      version={buildId ? t("menu.version",
+        { version: __APP_VERSION__, id: buildId }) : undefined} />
+  );
+  const accountLabel = account ? t("menu.account_switch", { name: account })
+    : t("menu.profile");
+  const profileMenu = wide ? (
+    <Menu label={accountLabel} variant="quiet" align="left" className="w-full"
+      triggerClass="w-full justify-start"
+      trigger={
         <span className="flex w-full min-w-0 items-center gap-2.5 text-left">
           <AccountAvatar name={account || "?"} className="shrink-0" />
           <span className="min-w-0 flex-1">
@@ -2031,96 +2062,41 @@ export default function App() {
             ? <Star size={14} className="shrink-0" /> : null}
           <ChevronsUpDown size={16} aria-hidden
             className="shrink-0 text-faint" />
-        </span>
-      ) : (
-        // The top bar's account button: just the avatar (a person icon
-        // before an account name exists), so it never widens the bar.
+        </span>}>
+      {switcher(true)}
+    </Menu>
+  ) : (
+    <>
+      <Button variant="quiet" size="icon" label={accountLabel}
+        className="coarse:size-11" aria-haspopup="dialog"
+        onClick={() => setAccountSheet(true)}>
+        {/* Just the avatar (a person icon before an account name exists), so
+            it never widens the bar. */}
         <span className="inline-flex items-center gap-0.5">
           {account ? <AccountAvatar name={account} size="md" />
             : <User size={18} />}
           {auth.is_admin && auth.mode === "oidc"
             && <Star size={14} aria-hidden />}
         </span>
-      )}>
-      {multiAccount && (
-        <>
-          <MenuGroup label={t("menu.accounts")}>
-          {Object.entries(cfg!.accounts).map(([n, a]) => (
-            <MenuItem key={n} active={n === account} sub={a.user}
-              onClick={() => n !== account && switchAccount(n)}>
-              <span className="flex items-center gap-2">
-                <AccountAvatar name={n} />
-                {n}
-              </span>
-            </MenuItem>
-          ))}
-          </MenuGroup>
-        </>
-      )}
-      <MenuItem disabled={demo} sub={demo ? demoHint() : undefined}
-        onClick={() => setWizard({ mode: "add", previous: account })}>
-        <Plus size={16} className="mr-1 inline align-text-bottom" />
-        {t("account.add")}…
-      </MenuItem>
-      <div className="my-1 border-t border-line" />
-      {auth.mode === "oidc" && !!auth.sub && (
-        <MenuHeading>
-          {auth.sub}
-          {auth.is_admin && (
-            <span className="inline-flex items-center gap-1">
-              {" "}<Star size={14} /> {t("login.admin_tip")}
-            </span>
-          )}
-        </MenuHeading>
-      )}
-      <MenuGroup label={t("Appearance")}>
-      {(["system", "light", "dark"] as const).map((a) => (
-        <MenuItem key={a} active={appearance === a}
-          onClick={() => setAppearance(a)}>
-          {a === "system"
-            ? <Monitor size={16} className="mr-1 inline align-text-bottom" />
-            : a === "light"
-              ? <Sun size={16} className="mr-1 inline align-text-bottom" />
-              : <Moon size={16} className="mr-1 inline align-text-bottom" />}
-          {t(`appearance.${a}`)}
-        </MenuItem>
-      ))}
-      </MenuGroup>
-      <MenuDivider />
-      <MenuItem onClick={() => openTool("settings")}>
-        <SettingsIcon size={16} className="mr-1 inline align-text-bottom" />
-        {t("Settings")}
-      </MenuItem>
-      {!wide && (
-        <MenuItem onClick={() => setAuditOpen(true)}>
-          <ScrollText size={16} className="mr-1 inline align-text-bottom" />
-          {t("nav.activity")}
-        </MenuItem>
-      )}
-      {auth.mode !== "none" && (
-        <MenuItem onClick={async () => {
-          try { await api.logout(); } catch { /* session gone */ }
-          window.location.reload();
-        }}>
-          <Power size={16} className="mr-1 inline align-text-bottom" />
-          {t("login.logout")}
-        </MenuItem>
-      )}
-      {state?.trash_count != null && state.trash_count > 0 && (
-        <>
-          <MenuDivider />
-          <MenuItem danger onClick={() => emptyTrash()}>
-            <Trash2 size={16} className="mr-1 inline align-text-bottom" />
-            {t("Empty Trash")}…
-          </MenuItem>
-        </>
-      )}
-      {buildId && (
-        <MenuHeading>
-          {t("menu.version", { version: __APP_VERSION__, id: buildId })}
-        </MenuHeading>
-      )}
-    </Menu>
+      </Button>
+      {/* Portaled to <body>: the header is a sticky stacking context that the
+          phone tab bar would otherwise paint over. */}
+      {accountSheet && createPortal(
+        <Modal size="sm" labelledBy="account-sheet-title"
+          onClose={() => setAccountSheet(false)}>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex items-center justify-between gap-3 px-4 pt-4">
+              <span aria-hidden className="w-12" />
+              <h2 id="account-sheet-title" className="type-heading">
+                {t("menu.accounts")}</h2>
+              <Button variant="plain" size="sm" className="-mr-2.5"
+                onClick={() => setAccountSheet(false)}>
+                {t("menu.done")}</Button>
+            </div>
+            {switcher(false, () => setAccountSheet(false))}
+          </div>
+        </Modal>, document.body)}
+    </>
   );
 
   // Toolbar helpers: counts over the FULL mailbox (allGroups), so another
@@ -2957,6 +2933,7 @@ export default function App() {
           onSection={openSettingsSection}
           controlRef={settingsCtl}
           onClose={closeSettings}
+          onAddAccount={() => setWizard({ mode: "add", previous: account })}
           onSaved={setCfg}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
           scanState={state ? { account: state.account, status: state.status,

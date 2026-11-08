@@ -1,6 +1,6 @@
 import { t } from "./i18n";
 import type {
-  AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
+  AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
@@ -351,6 +351,9 @@ export const api = {
     req<AiGroupResult>("/api/ai_group",
       { grouping, key, offset, limit, uids: uids ?? null }),
   getConfig: () => req<Config>("/api/config"),
+  /** Per account: what its last scan holds (the account switcher's cards). */
+  accountsSummary: () => req<Record<string, AccountSummary>>(
+    "/api/accounts/summary"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
   unsubscribe: (grouping: Grouping, key: string) =>
     req<UnsubResult>("/api/unsubscribe", { grouping, key }),

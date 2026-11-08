@@ -51,7 +51,7 @@ afterEach(() => { cleanup(); setDemo(false); setLang("en"); });
 const settingsWith = (c: Config, section: SettingsSection | null = "account") =>
   render(<ToastProvider><DialogProvider>
     <SettingsPage cfg={c} account="default" section={section}
-      onSection={() => {}} onClose={() => {}} onSaved={() => {}}
+      onSection={() => {}} onClose={() => {}} onAddAccount={() => {}} onSaved={() => {}}
       onAccountsChanged={() => {}} />
   </DialogProvider></ToastProvider>);
 const settings = (section: SettingsSection | null = "account") =>

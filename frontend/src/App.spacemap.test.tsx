@@ -198,7 +198,7 @@ test("switching account closes the map (it must not reopen on the other one)",
       await boot();
       await openMap();
       fireEvent.click(screen.getByRole("button", { name: /^Account:/ }));
-      fireEvent.click(await screen.findByRole("menuitemradio", { name: /second/ }));
+      fireEvent.click(await screen.findByRole("button", { name: /second/ }));
       await waitFor(() => expect(screen.queryByTestId("space-map")).toBeNull());
       openTab("Senders");   // the map was opened from the Insights tab
       await waitFor(() => expect(screen.getAllByText("a@big.example").length)

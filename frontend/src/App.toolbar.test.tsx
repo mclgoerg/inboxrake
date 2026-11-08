@@ -104,7 +104,7 @@ test("switching accounts discards an old response and starts the new fetch", asy
   state = { ...baseState, account: "other", groups: { ...baseState.groups,
     sender: { "b@x.example": { ...group, key: "b@x.example", label: "Beta" } } } };
   fireEvent.click(screen.getByRole("button", { name: /^Account:/ }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: /other/ }));
+  fireEvent.click(screen.getByRole("button", { name: /other/ }));
   await screen.findAllByText("Beta");
   resolveOld(old);
   await waitFor(() => expect(screen.queryByText("Acme")).toBeNull());

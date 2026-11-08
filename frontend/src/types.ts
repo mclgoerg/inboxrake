@@ -879,3 +879,11 @@ export interface WrappedResp {
     top_rule: { name: string; deleted: boolean; mails: number } | null;
   };
 }
+
+/** One account's last scan in short (`GET /api/accounts/summary`). */
+export interface AccountSummary {
+  status: string;
+  scanned_ts: number | null;
+  mails: number;
+  size: number;
+}

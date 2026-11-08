@@ -1,0 +1,80 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import { AccountSwitcher } from "./AccountSwitcher";
+import type { Config } from "../types";
+
+const im = (over: object) => ({
+  excluded_folders: [], host: "h", port: 993, security: "ssl", smtp_host: "",
+  smtp_port: 587, smtp_security: "auto", user: "", password: "",
+  password_set: true, verified: true, cafile: "", preset: "custom",
+  oauth: null, ...over });
+const cfg = { default_account: "alpha", accounts: {
+  alpha: im({ user: "a@one.example" }),
+  beta: im({ user: "b@two.example" }),
+  gamma: im({ user: "c@three.example", verified: false }),
+} } as unknown as Config;
+const summary = {
+  alpha: { status: "done", scanned_ts: 1, mails: 1623, size: 238000000 },
+  beta: { status: "idle", scanned_ts: null, mails: 0, size: 0 },
+  gamma: { status: "idle", scanned_ts: null, mails: 0, size: 0 },
+};
+
+afterEach(cleanup);
+
+const mount = (over: object = {}) => {
+  const h = { onSwitch: vi.fn(), onFix: vi.fn(), onAdd: vi.fn(),
+    onSettings: vi.fn(), onActivity: vi.fn(), onAppearance: vi.fn() };
+  render(<AccountSwitcher menu={false} cfg={cfg} account="alpha"
+    summary={summary} appearance="dark" {...h} {...over} />);
+  return h;
+};
+
+test("a card per account shows address, status, mails and size", () => {
+  mount();
+  const card = screen.getByRole("button", { name: /alpha/ });
+  expect(card.getAttribute("aria-current")).toBe("true");
+  expect(card.textContent).toContain("a@one.example");
+  expect(card.textContent).toContain("Signed in");
+  expect(card.textContent).toContain("1,623 mails");
+  expect(screen.getByRole("button", { name: /beta/ }).textContent)
+    .toContain("not scanned yet");
+});
+
+test("tapping another account switches; the active card does nothing", () => {
+  const h = mount();
+  fireEvent.click(screen.getByRole("button", { name: /alpha/ }));
+  expect(h.onSwitch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: /beta/ }));
+  expect(h.onSwitch).toHaveBeenCalledWith("beta");
+});
+
+test("a broken sign-in says so and leads to that account's settings", () => {
+  const h = mount();
+  const card = screen.getByRole("button", { name: /gamma/ });
+  expect(card.textContent).toContain("Sign-in failed - fix it");
+  fireEvent.click(card);
+  expect(h.onFix).toHaveBeenCalledWith("gamma");
+  expect(h.onSwitch).not.toHaveBeenCalled();
+});
+
+test("Add account, Appearance, Settings and Activity call their handlers", () => {
+  const h = mount();
+  fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+  expect(h.onAdd).toHaveBeenCalledOnce();
+  fireEvent.click(within(screen.getByRole("radiogroup", { name: "Appearance" }))
+    .getByRole("radio", { name: "Light" }));
+  expect(h.onAppearance).toHaveBeenCalledWith("light");
+  fireEvent.click(screen.getByRole("button", { name: /Settings/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Activity/ }));
+  expect(h.onSettings).toHaveBeenCalledOnce();
+  expect(h.onActivity).toHaveBeenCalledOnce();
+});
+
+test("in a menu the cards and rows are menu items; no Empty Trash", () => {
+  mount({ menu: true });
+  expect(screen.getByRole("menuitemradio", { name: /alpha/ })
+    .getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("menuitem", { name: /Settings/ })).toBeTruthy();
+  expect(screen.queryByText(/Empty Trash/)).toBeNull();
+});
