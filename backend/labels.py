@@ -96,8 +96,7 @@ def refresh(acc, addrs) -> None:
                 rec = (groups.get(grouping) or {}).get(key)
                 if rec is not None:
                     v = (cached.get(grouping) or {}).get(key)
-                    rec["ai"] = ({"verdict": v["verdict"],
-                                  "reason": v["reason"]} if v else None)
+                    rec["ai"] = verdictstore._ai_of(v) if v else None
         verdictstore.sync_borrowed(groups, cached)
         ls.apply_to_groups(groups, acc.name,
                            lambda a: cfgmod.is_protected(a, plist))

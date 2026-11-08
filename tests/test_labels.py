@@ -409,6 +409,19 @@ def test_rules_filters_and_selection_read_the_effective_verdict(ai):
     assert only == {OTHER}
 
 
+def test_a_label_edit_keeps_the_verdict_age_for_in_filters(ai):
+    """`ai:... in:7d` reads the verdict's `ts`: re-deriving the row after a
+    label edit must not drop it."""
+    review_all()
+    before = shown()[BIG]["ai"]
+    assert before["ts"]
+    f = rulesmod.parse_filter("ai:safe in:7d")
+    assert rulesmod.match_group(shown()[BIG], f)
+    put(key=BIG, tags=["promo"])                   # a refresh, verdict untouched
+    assert shown()[BIG]["ai"]["ts"] == before["ts"]
+    assert rulesmod.match_group(shown()[BIG], f)
+
+
 def test_the_rules_engine_does_not_act_on_what_the_user_put_on_hold(ai):
     review_all()
     rule = rulesmod.create_rule({"name": "safe ones", "query": "ai:safe",

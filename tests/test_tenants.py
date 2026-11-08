@@ -262,6 +262,34 @@ def test_verdicts_and_stats_isolated_per_tenant():
             == "keep"
 
 
+def test_clearing_ai_verdicts_stays_inside_the_callers_accounts():
+    """Alice clears her AI verdicts: her labels are applied to HER accounts
+    only. Bob's same-named account keeps its marks and never receives her
+    "safe to delete" as a user verdict."""
+    from backend import labelstore
+    _enable_oidc()
+    addr = "shop@news.example"
+    alice = tenants.for_subject("alice@x.example")
+    bob = tenants.for_subject("bob@y.example")
+    marks = {}
+    for t in (alice, bob):
+        with tenants.use(t):
+            acc = accountsmod.get()          # both call it "default"
+            acc.state["groups"]["sender"][addr] = {
+                "ai": {"verdict": "review", "reason": "ai"}}
+            marks[t.id] = acc
+    with tenants.use(alice):
+        labelstore.set_labels("default", addr, verdict="delete_safe")
+        rev = marks[alice.id].state["groups_rev"]
+        mailops.clear_ai_marks()
+    mine = marks[alice.id].state["groups"]["sender"][addr]["ai"]
+    assert mine["verdict"] == "delete_safe" and labelstore.is_user(mine)
+    assert marks[alice.id].state["groups_rev"] == rev + 1
+    theirs = marks[bob.id].state["groups"]["sender"][addr]["ai"]
+    assert theirs == {"verdict": "review", "reason": "ai"}
+    assert marks[bob.id].state["groups_rev"] == 1
+
+
 def test_wrong_tenant_gets_400_on_every_account_endpoint():
     """Authenticated-but-wrong-tenant hardening: every ?account= endpoint
     answers 400 for another tenant's account name - same as an unknown

@@ -233,11 +233,13 @@ def _forget_the_last_visitor() -> None:
     """What a "Reset demo" must not keep: files the seed does not have
     (pins, known senders, ...) and the stores' in-memory copies of them."""
     import shutil
-    from backend import dupstore, pinstore, unsubstore, verdictstore
+    from backend import (dupstore, labelstore, pinstore, unsubstore,
+                         verdictstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
             continue
         shutil.rmtree(p) if p.is_dir() else p.unlink()
+    labelstore._cache.clear()
     pinstore._cache.clear()
     dupstore._cache.clear()
     unsubstore._cache.clear()
