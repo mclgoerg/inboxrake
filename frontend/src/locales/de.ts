@@ -957,6 +957,12 @@ export const DE: Record<string, string> = {
   "fp.older_invalid": "Bitte eine ganze Zahl von Tagen von 1 bis 36500 eingeben.",
   "fp.older_btn": "Mails zählen",
   "fp.empty_junk": "Spam leeren · {n}",
+  "fp.ambiguous":
+    "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c in Frage: "
+    + "{folders} - w\u00e4hle einen aus. Bis dahin kannst du Mails "
+    + "verschieben, aber nicht endg\u00fcltig l\u00f6schen.",
+  "fp.ambiguous_choose": "Ordner w\u00e4hlen",
+  "fp.ambiguous_hint": "W\u00e4hle zuerst den Ordner - siehe Hinweis oben",
   "fp.empty_trash": "Papierkorb leeren · {n}",
   "fp.size_in_mails": "in {n} Mails",
   "fp.size_in_mails_one": "in 1 Mail",

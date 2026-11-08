@@ -4443,9 +4443,18 @@ def role_list(role: str, limit: int = 1000, acc=None) -> dict:
     acc = acc or accounts.get()
     conn = connect(cfgmod.account_imap(acc.name), acc.name)
     try:
-        folder = folder_roles(conn, acc).get(role)
+        found = resolve_roles(conn, acc)
+        acc.folder_roles.update(found["roles"])
+        folder = found["roles"].get(role)
         if not folder:
             raise RuntimeError(coded(ROLE_MISSING, role=role))
+        # the roles a permanent delete from this page would refuse (Junk also
+        # needs a clear Trash): the page names them up front
+        ambiguous = [
+            {"role": r, "choices": [decode_mutf7(n)
+                                    for n in found["ambiguous"][r]]}
+            for r in dict.fromkeys((role, "trash")) if r in found["ambiguous"]
+            and (r == role or role == "junk")]
         uv, messages = refresh_role_index(conn, role, folder, acc)
     finally:
         try:
@@ -4460,6 +4469,7 @@ def role_list(role: str, limit: int = 1000, acc=None) -> dict:
     return {"folder": folder, "uv": uv,
             "total": len(messages),
             "max_uid": max((m["uid"] for m in messages), default=0),
+            "ambiguous": ambiguous,
             "senders": role_senders(messages),
             "mails": [{"uid": m["uid"], "folder": folder, "date": m["date"],
                        "ts": m["ts"], "subject": m["subject"],

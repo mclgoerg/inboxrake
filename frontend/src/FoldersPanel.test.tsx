@@ -558,3 +558,43 @@ test("Junk: the reader's Trash is the row's move (protected confirm included) "
   await screen.findByText("body text");
   expect(screen.queryByRole("button", { name: "Trash this mail" })).toBeNull();
 });
+
+
+/* ------------- two folders could be the role: said before any click ------- */
+
+test("an ambiguous Junk role is named up front, deletes are disabled, moves stay",
+  async () => {
+    foldersPanel.mockResolvedValue({ ...junkListing(),
+      ambiguous: [{ role: "junk", choices: ["Spam", "Junk Email"] }] });
+    const choose = vi.fn();
+    panel({ initialRole: "junk", onChooseFolder: choose });
+    const notice = (await screen.findByText(/Spam, Junk Email/))
+      .closest("[role=status]") as HTMLElement;
+    expect(notice.textContent).toContain("choose one");
+    fireEvent.click(within(notice).getByRole("button",
+      { name: "Choose folder" }));
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: /Empty Junk/ }) as
+      HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Delete older than…" }) as
+      HTMLButtonElement).disabled).toBe(true);
+    // the reversible moves are untouched
+    expect((screen.getAllByRole("button", { name: /Not junk/ })[0] as
+      HTMLButtonElement).disabled).toBe(false);
+    await selectMode();
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /^Action/ }));
+    const del = within(screen.getByRole("menu")).getByRole("menuitemradio",
+      { name: "Delete permanently…" }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+  });
+
+test("a clear role shows no notice and keeps the delete buttons live",
+  async () => {
+    foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [] });
+    panel({ initialRole: "junk" });
+    await screen.findByRole("button", { name: /Empty Junk/ });
+    expect(screen.queryByText(/could be your/)).toBeNull();
+    expect((screen.getByRole("button", { name: /Empty Junk/ }) as
+      HTMLButtonElement).disabled).toBe(false);
+  });
