@@ -1977,6 +1977,19 @@ export default function App() {
   // The Senders toolbar (row 2 of the group pages): neither the Overview nor
   // All mails.
   const sendersToolbar = !overview && !flat;
+  // Phones: the short two-line form (groups / mails and size), no "(filtered)"
+  // or cached-verdicts suffix; anything else falls back to the status line.
+  const phoneSummary = () => {
+    if (!state || !groups.length || !state.scanned_ts) return statusLine();
+    const mails = groups.reduce((n, g) => n + g.count, 0);
+    const size = groups.reduce((n, g) => n + g.size, 0);
+    return (<>
+      <div>{filter
+        ? t("status.groups_of", { n: groups.length, total: allGroups.length })
+        : t("n.groups", { n: groups.length })}</div>
+      <div>{t("n.mails", { n: mails })} · {fmtSize(size)}</div>
+    </>);
+  };
   const allMatchesSelected = matchKeys.length > 0
     && matchKeys.every((k) => selected.has(k));
   const selectMatches = () => {
@@ -2026,7 +2039,7 @@ export default function App() {
   const selectLabel = selectMode ? t("select.done") : t("select.enter");
   const selectBtn = phone ? (
     <Button variant="plain" aria-pressed={selectMode}
-      className="coarse:min-h-11" onClick={toggleSelectMode}>
+      className="px-2 coarse:min-h-11" onClick={toggleSelectMode}>
       {selectLabel}
     </Button>
   ) : compactSelect ? (
@@ -2043,10 +2056,16 @@ export default function App() {
   );
   // Acts on the current grouping, so only the sender pages carry it.
   const moreMenu = (
-    <Menu variant={phone && !flat ? "tinted" : "secondary"} icon
-      triggerClass={phone && !flat ? "rounded-full coarse:size-11" : undefined}
+    <Menu variant={phone && !flat ? "plain" : "secondary"} icon
+      triggerClass={phone && !flat ? "coarse:size-11" : undefined}
       label={t("menu.more")}
-      trigger={<MoreHorizontal size={18} aria-hidden />}>
+      trigger={phone && !flat ? (
+        // The tint stays small (board 10); the button keeps its 44 px hit area.
+        <span className="flex size-7 items-center justify-center rounded-full
+          bg-accent-tint">
+          <MoreHorizontal size={16} aria-hidden />
+        </span>
+      ) : <MoreHorizontal size={18} aria-hidden />}>
       {(aiEnabled || demo) && (
         <MenuItem onClick={() => reviewWithAi()}
           sub={demo ? demoHint() : undefined}
@@ -2331,9 +2350,9 @@ export default function App() {
           </div>
           {phone ? (
             // Phones: the summary left, plain accent actions right.
-            <div className="flex basis-full items-center gap-1">
+            <div className="flex basis-full items-center">
               <div className="min-w-0 flex-1 type-meta text-muted">
-                {!running && statusLine()}
+                {!running && phoneSummary()}
               </div>
               {filterMenu}
               {sortControl}
@@ -2718,7 +2737,7 @@ export default function App() {
           onApply={(q) => {
             // Only the list is filtered: nothing is selected or acted on.
             setFilter(q);
-                    setAiFilterOpen(false);
+            setAiFilterOpen(false);
           }}
           onSavePreset={async (q) => {
             if (await saveFilterPreset(q)) notify(t("aif.preset_saved"));

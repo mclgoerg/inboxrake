@@ -199,7 +199,9 @@ test("phone: an applied filter tints the Filter icon and adds the dot", () => {
     onApply={() => {}} onEdit={() => {}} onDelete={() => {}} onSave={() => {}}
     onClear={() => {}} onBuild={() => {}} />);
   const b = screen.getByRole("button", { name: "Filter" });
-  expect(b.className).toContain("bg-accent-tint");
+  expect(screen.getByTestId("filter-circle").className)
+    .toContain("bg-accent-tint");
+  expect(b.className).toContain("coarse:size-11");   // 44 px hit area
   expect(screen.getByTestId("filter-dot")).toBeTruthy();
 });
 
@@ -260,4 +262,20 @@ test("SelectMatches: select, then 'All N matches selected' with Clear", () => {
   expect(screen.queryByText(/protected/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Clear" }));
   expect(onClear).toHaveBeenCalled();
+});
+
+test("phone: the last saved filter's ... menu is not clipped, so Delete is "
+  + "reachable and works", () => {
+  stubPhone();
+  const p = setup();
+  const sheet = screen.getByRole("dialog", { name: "Filter" });
+  const more = within(sheet).getByRole("button", { name: "More for “Old news”" });
+  fireEvent.click(more);
+  const del = screen.getByRole("menuitem", { name: "Delete" });
+  // no ancestor up to the sheet clips overflow (the menu opens upwards)
+  for (let el: HTMLElement | null = del; el && el !== sheet; el = el.parentElement)
+    expect(el.className).not.toContain("overflow-clip");
+  expect(del.closest("[role=menu]")!.className).toContain("bottom-full");
+  fireEvent.click(del);
+  expect(p.onDelete).toHaveBeenCalledWith(saved[0]);
 });

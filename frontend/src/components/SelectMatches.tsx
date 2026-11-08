@@ -31,7 +31,8 @@ export function SelectMatches({ n, skipped, allSelected, onSelect, onClear }: {
         <div className="flex items-center gap-3 px-3 py-2.5">
           <CircleCheck size={18} aria-hidden className="shrink-0 text-accent" />
           {text(t("select.matches_all", { n }))}
-          <Button variant="plain" size="sm" className="ml-auto md:ml-0"
+          <Button variant="plain" size="sm"
+            className="ml-auto md:ml-0 coarse:min-h-11"
             onClick={onClear}>
             {t("select.matches_clear")}
           </Button>

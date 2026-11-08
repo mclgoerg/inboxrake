@@ -295,12 +295,27 @@ test("phone: the summary sits left of plain Filter / Sort / Select / More "
   for (const name of ["Filter", /^Sort: /, "Select"])
     expect(screen.getByRole("button", { name }).className)
       .toContain("text-accent");
-  expect(screen.getByRole("button", { name: "More" }).className)
-    .toContain("rounded-full");
+  expect(screen.getByRole("button", { name: "More" })
+    .querySelector("span")!.className).toContain("rounded-full");
   // Select / Done toggles select mode
   fireEvent.click(screen.getByRole("button", { name: "Select" }));
   expect(screen.getByRole("button", { name: "Done" })
     .getAttribute("aria-pressed")).toBe("true");
+});
+
+test("phone: the summary is the short two-line form", async () => {
+  window.location.hash = "#/senders";
+  phoneMedia();
+  state = { ...baseState, scanned_ts: 1700000000, status: "done",
+    groups: { ...baseState.groups, sender: { [group.key]: group } } };
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  const summary = () => screen.getByRole("button", { name: "Filter" })
+    .parentElement!.firstElementChild!;
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 group3 mails · /));
+  expect(screen.queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
+    { target: { value: "acme" } });
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1 groups/));
 });
 
 test("phone: Filter opens the sheet; a row filters live, the field shows "

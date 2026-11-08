@@ -190,8 +190,10 @@ function FilterRows({ sheet, filter, quick, newCount, stillCount, presets,
     <div key={label} role="group" aria-label={label}
       className="mt-4 first:mt-0">
       <SectionLabel className="px-3 pb-1.5">{label}</SectionLabel>
-      <div className="divide-y divide-line overflow-clip rounded-card
-        bg-panel2">{children}</div>
+      {/* No overflow clipping: a row's "..." menu must be able to extend
+          past the card. */}
+      <div className="divide-y divide-line rounded-card bg-panel2">
+        {children}</div>
       {note && <p className="px-3 pt-1.5 type-meta text-muted">{note}</p>}
     </div>
   ) : (
@@ -219,7 +221,7 @@ function FilterRows({ sheet, filter, quick, newCount, stillCount, presets,
             count={counts[`saved:${p.id}`]} on={checked === `saved:${p.id}`}
             icon={BookmarkPlus} tone="accent" onClick={() => onApply(p)}
             trailing={sheet ? (
-              <Menu variant="quiet" icon label={t("filter.row_menu",
+              <Menu variant="quiet" icon up label={t("filter.row_menu",
                 { name: p.name })} triggerClass="coarse:size-11"
                 trigger={<MoreHorizontal size={16} aria-hidden />}>
                 <MenuItem onClick={() => onEdit(p)}>{t("Edit")}</MenuItem>
@@ -285,14 +287,16 @@ export function FilterMenu(props: RowsProps & { onClear: () => void }) {
     const leave = <A extends unknown[]>(f: (...a: A) => void) =>
       (...a: A) => { setOpen(false); f(...a); };
     return (<>
-      <Button variant={active ? "tinted" : "plain"} size="icon"
+      <Button variant="plain" size="icon"
         label={label} aria-haspopup="dialog" aria-expanded={open}
-        className={`coarse:size-11 ${active ? "rounded-full" : ""}`}
-        onClick={() => setOpen(true)}>
-        <span className="relative">
+        className="coarse:size-11" onClick={() => setOpen(true)}>
+        {/* The tint circle is smaller than the 44 px hit area (board 10). */}
+        <span data-testid="filter-circle" className={`relative flex size-9
+          items-center justify-center rounded-full
+          ${active ? "bg-accent-tint" : ""}`}>
           <ListFilter size={18} aria-hidden />
           {active && <span aria-hidden data-testid="filter-dot"
-            className="absolute -right-1 -top-1 size-2 rounded-full
+            className="absolute right-1 top-1 size-2 rounded-full
               bg-accent" />}
         </span>
       </Button>

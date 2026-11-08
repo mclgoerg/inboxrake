@@ -1122,9 +1122,9 @@ export const DE: Record<string, string> = {
   "sort.ascending": "Aufsteigend",
   "sort.descending": "Absteigend",
   "view.group_by": "Gruppieren nach",
-  "filter.inactive_6m": "6+ Monate",
+  "filter.inactive_6m": "6+ Monaten",
   "filter.inactive_1y": "1+ Jahr",
-  "filter.inactive_2y": "2+ Jahre",
+  "filter.inactive_2y": "2+ Jahren",
   "sort.desc_tip": "Absteigend sortiert - Klick für aufsteigend",
   "sort.asc_tip": "Aufsteigend sortiert - Klick für absteigend",
   "qb.tip": "Filter zusammenklicken statt Syntax merken",
@@ -1407,6 +1407,7 @@ export const DE: Record<string, string> = {
   "n.senders_one": "1 Absender",
   "n.groups": "{n} Gruppen",
   "n.groups_one": "1 Gruppe",
+  "status.groups_of": "{n} von {total} Gruppen",
   "filter.syntax_hint":
     "Kombinierbar: tag:shipping ai:safe age:>1y unread:>80 is:unsub Text",
   "tenant.row_tip":
