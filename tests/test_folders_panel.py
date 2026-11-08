@@ -60,6 +60,21 @@ def test_junk_listing_and_sender_grouping(junked):
     assert all(m["folder"] != "Spam" for m in mailops.INDEX.values())
 
 
+def test_a_listed_junk_mail_opens(junked):
+    # Junk is never scanned: before the page lists it, a Junk mail is not
+    # readable; once listed (role index), it opens like a Trash mail.
+    r = client.get("/api/message", params={"folder": "Spam", "uid": 42})
+    assert r.status_code == 500 and "unknown message" in r.text
+    _list()
+    r = client.get("/api/message", params={"folder": "Spam", "uid": 42})
+    assert r.status_code == 200
+    assert "bob@friends.example" in r.json()["from"]
+    assert r.json()["thread"] is None
+    # a UID the listing does not hold stays refused
+    r = client.get("/api/message", params={"folder": "Spam", "uid": 99})
+    assert r.status_code == 500 and "unknown message" in r.text
+
+
 def test_a_sender_row_knows_its_earliest_and_newest_mail(junked):
     s = {g["addr"]: g for g in _list()["senders"]}["win@lottery.example"]
     assert s["first_date"].startswith("2026-01-02")      # "first seen"

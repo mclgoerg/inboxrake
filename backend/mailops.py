@@ -5924,10 +5924,15 @@ def extract_text(msg) -> str:
 
 def _readable(acc, folder: str, uid: int) -> bool:
     """May this mail be opened? Scanned mails, plus Trash (never scanned, but
-    the Trash browser opens them) and Sent (the conversation reader shows
-    the user's own replies). Compared against the folder ROLES (trash_list /
-    scans populate acc.folder_roles); the literal "trash" stays a fallback."""
-    return (ikey(folder, uid) in acc.index
+    the Trash browser opens them), the mails the Junk / Trash pages list
+    (their role indexes - Junk is never scanned either) and Sent (the
+    conversation reader shows the user's own replies). Compared against the
+    folder ROLES (trash_list / scans populate acc.folder_roles); the literal
+    "trash" stays a fallback."""
+    key = ikey(folder, uid)
+    return (key in acc.index
+            or any(key in (acc.role_index.get(role) or {})
+                   for role in ("junk", "trash"))
             or folder == acc.folder_roles.get("trash")
             or folder == acc.folder_roles.get("sent")
             or folder.lower() == "trash")
