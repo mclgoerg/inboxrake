@@ -5949,6 +5949,59 @@ def _message_detail(msg) -> dict:
     }
 
 
+def _unsub_method(header: str, one_click: bool) -> str | None:
+    """How a List-Unsubscribe header unsubscribes, in the order
+    `unsub.unsubscribe_addr` tries it: "one_click" (an https URL plus the
+    one-click flag), "mailto", "http" (a page the user confirms), or None
+    when it carries no usable URI. Method only - never the URI."""
+    from . import unsub as unsubmod
+    parts = unsubmod.parse_unsub(header, one_click)
+    if (parts["http"] and parts["one_click"]
+            and parts["http"].lower().startswith("https://")):
+        return "one_click"
+    if parts["mailto"]:
+        return "mailto"
+    return "http" if parts["http"] else None
+
+
+def reader_extras(acc, items: list[tuple[str, int]]) -> dict:
+    """What the scan index / body index already know about each mail, for
+    the reader's header: {(folder, uid): {"pinnable", "pinned", "atts",
+    "trackers", "unsub"}}. Metadata only - no extra IMAP traffic.
+    `pinnable` = the mail is in the scan index with a Message-ID (what
+    `set_pin` needs); `atts` = [{name,
+    size}] when the attachment analysis has seen the mail with attachments
+    (else None), `trackers` = {pixel, click, hosts} when the body index
+    checked it (else None), `unsub` = {method, one_click} when its stored
+    List-Unsubscribe header offers a method (else None). Mails outside the
+    scan index (Sent, Junk, Trash) get the empty answer."""
+    pinned = pinstore.load_account(acc.name)
+    tmap = trackers.tracker_map(acc)
+    out: dict[tuple[str, int], dict] = {}
+    with acc.lock:
+        for folder, uid in items:
+            m = acc.index.get(ikey(folder, uid))
+            extra = {"pinnable": False, "pinned": False, "atts": None,
+                     "trackers": None, "unsub": None}
+            if m:
+                extra["pinnable"] = bool(m.get("msgid"))
+                extra["pinned"] = bool(m.get("msgid")) and m["msgid"] in pinned
+                if m.get("atts"):
+                    extra["atts"] = [{"name": a["name"], "size": a["size"]}
+                                     for a in m["atts"]]
+                row = tmap.get((folder, uid, acc.folder_uv.get(folder, 0)))
+                if row is not None:
+                    extra["trackers"] = {"pixel": row[0], "click": row[1],
+                                         "hosts": list(row[2])}
+                method = _unsub_method(m.get("unsub") or "",
+                                       bool(m.get("unsub_post")))
+                if method:
+                    extra["unsub"] = {"method": method,
+                                      "one_click": method == "one_click"}
+            out[(folder, uid)] = extra
+    return out
+
+
 MESSAGES_BATCH_MAX = 20
 
 
@@ -6012,8 +6065,10 @@ def fetch_messages(items: list, acc=None) -> list[dict]:
                 conn.logout()
             except Exception:
                 pass
-    return [{"folder": f, "uid": u, **out[(f, u)]}
-            for f, u in ((str(i[0]), int(i[1])) for i in items)]
+    keys = [(str(i[0]), int(i[1])) for i in items]
+    extras = reader_extras(acc, [k for k in keys if "error" not in out[k]])
+    return [{"folder": f, "uid": u, **out[(f, u)], **extras.get((f, u), {})}
+            for f, u in keys]
 
 
 def fetch_message(folder: str, uid: int, acc=None) -> dict:
@@ -6036,7 +6091,8 @@ def fetch_message(folder: str, uid: int, acc=None) -> dict:
             pass
     # "thread" is only set for scanned mails that belong to a conversation
     # worth reading as one (UI: "Read conversation").
-    return {**_message_detail(msg), "thread": _thread_hint(acc, folder, uid)}
+    return {**_message_detail(msg), "thread": _thread_hint(acc, folder, uid),
+            **reader_extras(acc, [(folder, uid)])[(folder, uid)]}
 
 
 # ----------------------------------------------------- conversation reading

@@ -8,6 +8,7 @@ import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp }
   from "../types";
 import { MessageView } from "./MailList";
+import type { ReaderActions } from "./MailReader";
 import { TrashCard } from "./TrashCard";
 import { Avatar, Button, Checkbox, confirmDialog, EmptyState, IconTile, Input,
   Loading, MailRow, Modal, PanelHeader, promptDialog, PopupSelect, Segmented,
@@ -190,8 +191,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // Junk -> Inbox ("Not junk", the primary action) or -> Trash. Both are
   // plain undoable moves; nothing is protected or blocked silently.
   const moveJunk = async (action: "not_junk" | "trash",
-                          uids: number[] = [...sel]) => {
-    if (!list || uids.length === 0) return;
+                          uids: number[] = [...sel]): Promise<boolean> => {
+    if (!list || uids.length === 0) return false;
     setBusy(true);
     setNote("");
     try {
@@ -207,7 +208,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
           body: String(e.message), tone: "danger",
           confirmLabel: t("fp.confirm_protected_btn") })) {
           setBusy(false);
-          return;
+          return false;
         }
         r = await api.folderMove("junk", action, uids, list.uv, true);
       }
@@ -227,10 +228,13 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
           { variant: "success", action: undo });
       }
       onChanged();
+      setBusy(false);
+      return true;
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
     }
     setBusy(false);
+    return false;
   };
 
   // Permanent delete: the live count (fresh server listing, protected /
@@ -341,6 +345,11 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   };
 
   const junk = role === "junk";
+  // The reader's Trash on a Junk mail: the same move (and protected-sender
+  // confirm) as the row's Trash. Trash has nothing to move a mail to.
+  const readerActions: ReaderActions | undefined = junk ? {
+    trash: async (m) => { if (await moveJunk("trash", [m.uid])) setView(null); },
+  } : undefined;
   const title = junk ? t("Junk") : t("Trash");
   const hasRows = !!list && list.total > 0;
   const rowBtn = "max-sm:min-h-11 max-sm:coarse:min-h-11";
@@ -368,7 +377,9 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       />
 
       {view ? (
-        <MessageView mail={view} onBack={() => setView(null)} />
+        <MessageView mail={view} onBack={() => setView(null)}
+          actions={readerActions} backLabel={junk ? t("Junk") : t("Trash")}
+          nav={shownMails ? { list: shownMails, onOpen: setView } : undefined} />
       ) : (
         <>
           <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto

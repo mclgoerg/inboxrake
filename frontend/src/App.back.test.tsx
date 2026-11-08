@@ -8,6 +8,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 let state: any;
+let messageExtra: Record<string, unknown> = {};
+const blockCall = vi.fn();
+const previewCall = vi.fn();
 const mails = [1, 2].map((uid) => ({
   uid, folder: "INBOX", date: "2025-01-01", ts: 0, subject: `Mail ${uid}`,
   addr: "alpha@x.example", size: 1000, seen: true, ai: null }));
@@ -21,9 +24,15 @@ vi.mock("./api", () => ({
     clearNotice: () => Promise.resolve(),
     group: () => Promise.resolve(mails),
     message: () => Promise.resolve({ from: "", to: "", date: "", subject: "",
-      text: "body" }),
+      text: "body", ...messageExtra }),
+    unsubscribePreview: (...a: unknown[]) => { previewCall(...a);
+      return Promise.resolve({ senders: [{ addr: "alpha@x.example", name: "Alpha",
+        via: "one_click", mails: 2, size: 1 }], skipped_protected: 0,
+        skipped_done: 0, capped: 0, skipped_no_header: 0,
+        trash: { groups: [], mails: 0, size: 0, pinned: 0 } }); },
     rules: () => Promise.resolve({ cap: 500, rules: [] }),
     scan: () => Promise.resolve({ ok: true }),
+    block: (...a: unknown[]) => { blockCall(...a); return Promise.resolve({}); },
     wrapped: () => Promise.reject(new Error("no wrapped")),
   },
   downloadFile: () => Promise.resolve(),
@@ -94,6 +103,7 @@ beforeEach(() => {
   }));
 });
 afterEach(async () => {
+  messageExtra = {};
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -167,15 +177,56 @@ test("a mail opened in the detail: Back closes the mail first, then the detail",
   await screen.findByText("Mail 1");
   await settle();
   fireEvent.click(screen.getByText("Mail 1"));
-  await screen.findByRole("button", { name: "back to list" });
+  await screen.findByRole("button", { name: "Trash this mail" });
   await settle();
   await back();
-  expect(screen.queryByRole("button", { name: "back to list" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Trash this mail" })).toBeNull();
   expect(screen.getByText("Mail 2")).toBeTruthy();      // the detail is still open
   expect(dialogs()).toHaveLength(1);
   await back();
   expect(dialogs()).toHaveLength(0);
   expect(window.location.hash).toBe("#/senders");
+});
+
+test("a mail's More menu reaches the app: Block runs the sender confirm, "
+  + "Open sender closes the mail on the sender's page", async () => {
+  await mount();
+  fireEvent.click(screen.getAllByText("Alpha")[0]);
+  await screen.findByText("Mail 1");
+  await settle();
+  fireEvent.click(screen.getByText("Mail 1"));
+  await screen.findByRole("button", { name: "Trash this mail" });
+  const more = () => within(screen.getByRole("dialog"))
+    .getAllByRole("button", { name: "More" }).at(-1)!;
+  fireEvent.click(more());
+  fireEvent.click(screen.getByRole("menuitem", { name: /Block sender/ }));
+  expect((await findDialog()).textContent).toContain("alpha@x.example");
+  await pressDialog("Block");
+  await waitFor(() => expect(blockCall).toHaveBeenCalledWith(
+    "sender", "alpha@x.example", "alpha@x.example", false));
+
+  fireEvent.click(more());
+  fireEvent.click(screen.getByRole("menuitem", { name: /Open sender/ }));
+  await settle();
+  expect(screen.queryByRole("button", { name: "Trash this mail" })).toBeNull();
+  expect(screen.getByText("Mail 2")).toBeTruthy();       // the sender's own list
+});
+
+test("the unsubscribe card of a mail opens the unsubscribe sheet for that "
+  + "sender, and the sheet is the card's own preview", async () => {
+  messageExtra = { unsub: { method: "http", one_click: false } };
+  await mount();
+  state.groups.sender["alpha@x.example"].unsub = true;
+  fireEvent.click(screen.getAllByText("Alpha")[0]);
+  await screen.findByText("Mail 1");
+  await settle();
+  fireEvent.click(screen.getByText("Mail 1"));
+  await screen.findByText("Unsubscribe link found");
+  await screen.findByText("one click - done right away after you confirm");   // the sheet's method
+  fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
+  await waitFor(() => expect(previewCall).toHaveBeenCalledWith(
+    "sender", ["alpha@x.example"], true));
+  expect(await screen.findByRole("dialog", { name: "Unsubscribe" })).toBeTruthy();
 });
 
 test("the detail's own close button pops its entry too", async () => {

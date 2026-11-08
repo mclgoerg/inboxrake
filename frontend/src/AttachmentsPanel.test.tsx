@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor }
 import { afterEach, expect, test, vi } from "vitest";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DialogProvider } from "./components/ui";
-import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
 
@@ -28,8 +28,12 @@ const file = (name: string, size: number, kind: string, copies = 1) =>
   ({ name, size, kind, ext: name.split(".").pop()!, copies });
 
 vi.mock("./components/MailList", () => ({
-  MessageView: ({ mail }: { mail: { subject: string } }) =>
-    <div data-testid="viewer">{mail.subject}</div>,
+  MessageView: ({ mail, actions, nav }: { mail: { subject: string };
+    actions?: { trash?: (m: unknown) => void }; nav?: { list: unknown[] } }) =>
+    <div><span data-testid="viewer">{mail.subject}</span>
+      <span data-testid="nav">{nav?.list.length ?? 0}</span>
+      {actions?.trash && <button onClick={() => actions.trash!(mail)}>reader trash</button>}
+    </div>,
 }));
 
 const mk = (uid: number, atts = [file("doc.pdf", 2e6, "pdf")], ts = 1e9) => ({
@@ -189,6 +193,27 @@ test("Open shows the selected mail in the viewer", async () => {
   fireEvent.click(screen.getByLabelText("Select doc.pdf"));
   fireEvent.click(screen.getByRole("button", { name: "Open" }));
   expect(screen.getByTestId("viewer").textContent).toBe("Scan 7");
+});
+
+test("the reader's Trash: the same confirm and call for the one mail; "
+  + "previous / next cover the listed mails", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select beach.jpg"));
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  expect(screen.getByTestId("nav").textContent).toBe("3");
+  fireEvent.click(screen.getByText("reader trash"));
+  expect((await findDialog()).textContent).toContain('"Scan 3"');   // the mail is named
+  await cancelDialog();
+  await expectNoDialog();
+  expect(deleteMessages).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("reader trash"));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 3]], "trash"));
+  await waitFor(() => expect(screen.queryByTestId("viewer")).toBeNull());
 });
 
 test("Open needs exactly one mail; the subject stays visible in the list",

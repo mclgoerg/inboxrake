@@ -430,7 +430,7 @@ describe("DetailPanel", () => {
       renderPanel(mails, { onBlock: vi.fn(), ...extra });
       await waitFor(() => screen.getByText("Mail 1"));
       fireEvent.click(screen.getByText("Mail 1"));
-      await screen.findByText("back to list");
+      await screen.findByRole("button", { name: "Trash this mail" });
     };
 
     it("is message-scoped: Pin + Trash this mail, no group actions",
@@ -438,8 +438,7 @@ describe("DetailPanel", () => {
       await open([mkMail(1), mkMail(2)]);
       expect(screen.getByRole("button", { name: "Trash this mail" }))
         .toBeTruthy();
-      expect(screen.getByRole("button", { name: /Protect this mail/ }))
-        .toBeTruthy();
+      expect(screen.getByRole("button", { name: "Pin" })).toBeTruthy();
       expect(screen.queryByRole("button", { name: /Move \d+ mails? to Trash/ })).toBeNull();
       expect(screen.queryByRole("button", { name: "Block sender" })).toBeNull();
     });
@@ -456,13 +455,18 @@ describe("DetailPanel", () => {
       expect(screen.queryByText("Mail 1")).toBeNull();
     });
 
-    it("the pin is labelled for the mail, distinct from the sender's Protect",
-      async () => {
+    it("the pin is the mail's own (Pin, titled as protecting this mail); the "
+      + "sender's Protect is on the list it returns to", async () => {
       await open([mkMail(1), mkMail(2)], { onProtect: vi.fn() });
-      const footerPin = screen.getByRole("button", { name: /Protect this mail/ });
-      expect(footerPin.textContent).toBe("Protect mail");
-      expect(screen.getByRole("button", { name: /Protect this sender/ })
-        .textContent).toBe("Protect");
+      const btn = screen.getByRole("button", { name: "Pin" });
+      expect(btn.getAttribute("title")).toMatch(/Protect this mail/);
+      expect(btn.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(btn);
+      await waitFor(() => expect(pin).toHaveBeenCalledWith("INBOX", 1, true));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Unpin" })
+        .getAttribute("aria-pressed")).toBe("true"));
+      expect(screen.queryByRole("button", { name: /Protect this sender/ }))
+        .toBeNull();
     });
 
     it("trashing the open mail leaves other selected mails selected",
@@ -473,7 +477,7 @@ describe("DetailPanel", () => {
       fireEvent.click(boxes[1]);
       fireEvent.click(boxes[2]);
       fireEvent.click(screen.getByText("Mail 1"));
-      await screen.findByText("back to list");
+      await screen.findByRole("button", { name: "Trash this mail" });
       fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
       await pressDialog("Move to Trash (1)");
       expect(await screen.findByText("2 selected")).toBeTruthy();
@@ -495,7 +499,8 @@ describe("DetailPanel", () => {
       await cancelDialog();
       await expectNoDialog();
       expect(deleteMessages).not.toHaveBeenCalled();
-      expect(screen.getByText("back to list")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Trash this mail" }))
+        .toBeTruthy();
     });
 
     it("a protected mail gets its own warning and is sent with force",
@@ -794,7 +799,7 @@ describe("DetailPanel", () => {
     fireEvent.click(screen.getByText("Read conversation"));
     await waitFor(() => expect(thread).toHaveBeenCalledWith("INBOX", 2));
     await screen.findByText("2 mails");
-    fireEvent.click(screen.getByText("back to list"));
+    fireEvent.click(screen.getByRole("button", { name: "Sender" }));
     await screen.findByText("Mail 1");          // back on the group's list
   });
 
@@ -1002,7 +1007,7 @@ describe("DetailPanel header and action row", () => {
     renderPanel([mkMail(1), mkMail(2)], { onProtect: vi.fn() });
     await waitFor(() => screen.getByText("Mail 1"));
     fireEvent.click(screen.getByText("Mail 1"));
-    await screen.findByText("back to list");
+    await screen.findByRole("button", { name: "Trash this mail" });
     expect(screen.queryByText("Opened")).toBeNull();
     expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
   });

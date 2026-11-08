@@ -17,6 +17,7 @@ import { EditLabels } from "./EditLabels";
 import { FolderPicker, type PickEnv } from "./FolderPicker";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { MailRows, MessageView } from "./MailList";
+import type { ReaderActions, ReaderNav } from "./MailReader";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
 import { ThreadView } from "./ThreadView";
 import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
@@ -284,21 +285,23 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     setBusy(false);
   };
 
-  const togglePin = async (m: Mail) => {
+  const togglePin = async (m: Mail, pinned = !m.pinned): Promise<boolean> => {
     try {
-      await api.pin(m.folder, m.uid, !m.pinned);
+      await api.pin(m.folder, m.uid, pinned);
       setMails((cur) => cur && cur.map((x) =>
-        mailKey(x) === mailKey(m) ? { ...x, pinned: !m.pinned } : x));
+        mailKey(x) === mailKey(m) ? { ...x, pinned } : x));
       // A freshly pinned mail drops out of the selection: it must not stay
       // ticked unnoticed.
-      if (!m.pinned && sel.has(mailKey(m))) {
+      if (pinned && sel.has(mailKey(m))) {
         const next = new Set(sel);
         next.delete(mailKey(m));
         setSel(next);
       }
       onDeleted();   // refresh App's state so the group row's pin count moves
+      return true;
     } catch (e: any) {
       setNote(`${t("pin.error")}: ${e.message ?? e}`);
+      return false;
     }
   };
 
@@ -381,17 +384,18 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     else if (v) act(v);
   };
 
-  // Message-scoped footer actions (reader / thread view): the pin state is
+  // Message-scoped reader actions (toolbar of the reader / thread view): the
+  // same confirm / pinned flow as the checked-mails bar. The pin state is
   // read live from `mails`, since `view` / `reading` are snapshots.
-  const mailActions = (m: Mail) => {
-    const live = mails?.find((x) => mailKey(x) === mailKey(m)) ?? m;
-    return <>
-      <PinButton showLabel on={!!live.pinned} onClick={() => togglePin(live)} />
-      <Button variant="danger-quiet" onClick={() => actOn([live], "trash", "", true)}>
-        {t("trash_this.btn")}
-      </Button>
-    </>;
+  const liveOf = (m: Mail) => mails?.find((x) => mailKey(x) === mailKey(m)) ?? m;
+  const readerActions: ReaderActions = {
+    trash: (m) => actOn([liveOf(m)], "trash", "", true),
+    move: (m, dest) => actOn([liveOf(m)], "move", dest, true),
+    pin: (m, pinned) => togglePin(liveOf(m), pinned),
   };
+  const readerNav: ReaderNav | undefined = shown
+    ? { list: shown, onOpen: (m) => reading ? setReading(m) : setView(m) }
+    : undefined;
   // Only mails "Trash all" will really move: protected ones stay untouched.
   const groupCount = mails
     ? mails.filter((m) => !m.pinned).length
@@ -866,47 +870,14 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     </>
   );
 
-  const readerHeader = (
-    <PanelHeader
-      title={group.label}
-      sub={<>
-        {t("n.mails", { n: mails ? mails.length : group.count })} ·{" "}
-        {fmtSize(group.size)}
-        {protectedNow && (
-          <span className="inline-flex items-center gap-1">
-            {" "}· <Shield size={14} /> {t("protected")}
-          </span>
-        )}
-        {blocked && (
-          <span className="inline-flex items-center gap-1">
-            {" "}· <Ban size={14} /> {t("Blocked")}
-          </span>
-        )}
-      </>}
-      actions={onProtect && (
-        <ProtectButton showLabel on={protectedNow}
-          onClick={() => onProtect({ ...group, protected: protectedNow })} />
-      )}
-      onClose={onClose}
-      closeLabel={backLabel}
-      closeIcon={backLabel ? <ChevronLeft size={18} /> : undefined}
-    />
-  );
-
   const list = (
     <>
       {reading ? (
-        <>
-          {readerHeader}
-          <ThreadView mail={reading} onBack={() => setReading(null)}
-            actions={mailActions(reading)} />
-        </>
+        <ThreadView mail={reading} onBack={() => setReading(null)}
+          actions={readerActions} nav={readerNav} backLabel={group.label} />
       ) : view ? (
-        <>
-          {readerHeader}
-          <MessageView mail={view} onBack={() => setView(null)}
-            actions={mailActions(view)} />
-        </>
+        <MessageView mail={view} onBack={() => setView(null)}
+          actions={readerActions} nav={readerNav} backLabel={group.label} />
       ) : (
         <>
           {tab === "senders" && hasSenders ? (

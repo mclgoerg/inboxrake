@@ -25,6 +25,8 @@ vi.mock("./api", () => ({
     folderMove: (...a: unknown[]) => folderMove(...a),
     trashRestore: (...a: unknown[]) => trashRestore(...a),
     purgePreview: vi.fn().mockResolvedValue({ count: 0, size: 0 }),
+    message: () => Promise.resolve({ from: "x", to: "", date: "d",
+      subject: "s", text: "body text" }),
   },
   errorText: (s: string) => s,
   fmtSize: (b: number) => fmtSize(b),
@@ -536,3 +538,23 @@ test("Block asks whether the sender's mails in Junk should go to Trash too",
     await waitFor(() => expect(folderMove).toHaveBeenCalledWith("junk",
       "trash", [40, 41], 4));
   });
+
+test("Junk: the reader's Trash is the row's move (protected confirm included) "
+  + "and closes the reader; Trash has no reader Trash", async () => {
+  folderMove.mockResolvedValue({ moved: 1, rescan: false, senders: [], undo: null });
+  panel({ initialRole: "junk" });
+  await screen.findByText("win@lottery.example");
+  fireEvent.click(screen.getByText("win@lottery.example"));   // drill in
+  fireEvent.click(await screen.findByText("You won"));
+  await screen.findByText("body text");
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await waitFor(() => expect(folderMove)
+    .toHaveBeenLastCalledWith("junk", "trash", [40], 4));
+  await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
+  cleanup();
+
+  panel({ initialRole: "trash" });
+  fireEvent.click(await screen.findByText("Deleted elsewhere"));
+  await screen.findByText("body text");
+  expect(screen.queryByRole("button", { name: "Trash this mail" })).toBeNull();
+});

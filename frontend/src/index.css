@@ -90,6 +90,10 @@
 @utility type-body-mobile {
   font-size: 0.9375rem; line-height: 1.375rem; font-weight: 500;
 }
+/* Mail body in the reader (plain text, read at length). */
+@utility type-reader {
+  font-size: 1rem; line-height: 1.625rem; font-weight: 400;
+}
 @utility type-meta {
   font-size: 0.75rem; line-height: 1rem; font-weight: 400;
 }

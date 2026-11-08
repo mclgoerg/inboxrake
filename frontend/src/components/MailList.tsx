@@ -1,23 +1,36 @@
-import { ArrowLeft, MailOpen, MessagesSquare, Pin, Trash2 } from "lucide-react";
+import { MailOpen, Pin, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
-import { AiTag, Button, MailRow, PinButton, Spinner, SwipeRow, useBackLayer,
+import { AiTag, Button, MailRow, PinButton, SwipeRow, useBackLayer,
   type SwipeAction } from "./ui";
+import { BodyState, MailChips, MailHeader, MailText, RawHeaders, ReaderFrame,
+  UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
+  from "./MailReader";
 import { ThreadView } from "./ThreadView";
 
 const RENDER_CAP = 500;
 
-export function MessageView({ mail, onBack, actions }: {
+/** The mail reader: header (who, when, subject, chips), readable plain text,
+ *  unsubscribe card and the toolbar - used wherever a mail opens (sender
+ *  detail, All mail, Search, Attachments, Duplicates, Junk / Trash).
+ *  `actions` are the opener's own handlers, `nav` its list (previous /
+ *  next); both optional, a missing one just hides its control. */
+export function MessageView({ mail, onBack, actions, nav, backLabel }: {
   mail: Mail; onBack: () => void;
-  /** Message-scoped actions (pin, trash this mail), right of the back button. */
-  actions?: ReactNode;
+  actions?: ReaderActions;
+  nav?: ReaderNav;
+  /** Names where Back goes ("All mail", the sender); default "Back". */
+  backLabel?: string;
 }) {
   const [detail, setDetail] = useState<MessageDetail | null>(null);
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
+  const [quoted, setQuoted] = useState(false);
+  const [headers, setHeaders] = useState(false);
+  const pin = useReaderPin(mail, detail, actions);
   // Below 1024 px Back leaves the mail (and the thread over it first).
   useBackLayer(true, onBack);
 
@@ -25,6 +38,9 @@ export function MessageView({ mail, onBack, actions }: {
     let alive = true;
     setReading(false);
     setDetail(null);
+    setError("");
+    setQuoted(false);
+    setHeaders(false);
     api.message(mail.folder, mail.uid)
       .then((d) => alive && setDetail(d))
       .catch((e) => alive && setError(String(e.message ?? e)));
@@ -32,42 +48,37 @@ export function MessageView({ mail, onBack, actions }: {
   }, [mail.folder, mail.uid]);
 
   if (reading) {
-    return <ThreadView mail={mail} initial={detail ?? undefined}
-      actions={actions} onBack={() => setReading(false)} />;
+    return <ThreadView mail={mail} initial={detail ?? undefined} pin={pin}
+      actions={actions} nav={nav} backLabel={t("reader.mail")}
+      onBack={() => setReading(false)} />;
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-line px-4 py-3 type-meta
-        whitespace-pre-wrap text-muted">
-        {error || (detail
-          ? `From: ${detail.from}\nDate: ${detail.date}\nSubject: ${detail.subject}`
-          : <Spinner />)}
-      </div>
-      <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap
-        p-4 font-sans type-body leading-relaxed">
-        {detail?.text}
-      </pre>
-      <div className="flex flex-wrap items-center gap-2 border-t border-line
-        px-4 py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-        <Button variant="secondary" onClick={onBack}>
-          <ArrowLeft size={16} className="mr-1 inline align-text-bottom" />
-          {t("back to list")}
-        </Button>
-        {detail?.thread && (
-          <Button variant="secondary" onClick={() => setReading(true)}>
-            <MessagesSquare size={16}
-              className="mr-1 inline align-text-bottom" />
-            {t("thread.read")}
-          </Button>
+    <ReaderFrame mail={mail} detail={detail} actions={actions} nav={nav}
+      pin={pin} backLabel={backLabel} onBack={onBack}
+      onConversation={detail?.thread ? () => setReading(true) : undefined}
+      conversationCount={detail?.thread?.count}
+      headersShown={headers}
+      onToggleHeaders={detail ? () => setHeaders(!headers) : undefined}>
+      <article className="mx-auto w-full max-w-3xl px-4 py-4">
+        <MailHeader mail={mail} detail={detail} />
+        <h2 className="mt-4 break-words type-title2 md:type-largetitle">
+          {detail?.subject || mail.subject || t("(no subject)")}
+        </h2>
+        <div className="mt-3"><MailChips mail={mail} detail={detail} /></div>
+        {headers && detail && <div className="mt-3"><RawHeaders detail={detail} /></div>}
+        <div className="mt-5">
+          {error ? <BodyState error={error} />
+            : detail ? <MailText text={detail.text} showQuoted={quoted}
+              subject={detail.subject || mail.subject}
+              onToggleQuoted={() => setQuoted(!quoted)} />
+            : <BodyState />}
+        </div>
+        {detail?.unsub && (
+          <div className="mt-5"><UnsubCard mail={mail} unsub={detail.unsub} /></div>
         )}
-        {actions && (
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {actions}
-          </div>
-        )}
-      </div>
-    </div>
+      </article>
+    </ReaderFrame>
   );
 }
 

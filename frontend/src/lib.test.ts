@@ -383,6 +383,12 @@ describe("fmtDate", () => {
     expect(fmtDate("2026-10-06", now, { lang: "de" })).toBe("6. Okt.");
     expect(fmtDate("2024-10-06", now, { lang: "de" })).toBe("6. Okt. 2024");
   });
+  it("prefixes the weekday on request", () => {
+    expect(fmtDate("2026-10-06 09:05", now, { time: true, weekday: true }))
+      .toBe("Tue 6 Oct, 09:05");
+    expect(fmtDate("2026-10-06", now, { lang: "de", weekday: true }))
+      .toBe("Di., 6. Okt.");
+  });
   it("appends the wall-clock time on request", () => {
     expect(fmtDate("2026-10-06T21:48:00+02:00", now, { time: true }))
       .toBe("6 Oct, 21:48");

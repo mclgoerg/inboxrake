@@ -8,6 +8,7 @@ import { matchGroup, olderThan, parseFilter } from "../lib";
 import { confirmTrashMails } from "../mailActions";
 import type { Group, Mail, SearchNote } from "../types";
 import { MailRows, MessageView } from "./MailList";
+import type { ReaderActions } from "./MailReader";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
   Segmented, Select, Spinner } from "./ui";
 
@@ -208,21 +209,32 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     return { ...p, s: hit.length, n };
   }).filter((p) => p.s > 0), [groups]);
 
-  const trashSelected = async () => {
-    const go = new Set(picked);
-    if (!res || go.size === 0) return;
-    if (!await confirmTrashMails(go.size)) return;
+  // Resolves true when the mails are on their way to Trash.
+  const trashKeys = async (go: Set<string>, subject?: string):
+      Promise<boolean> => {
+    if (!res || go.size === 0) return false;
+    if (!await confirmTrashMails(go.size, subject)) return false;
     try {
       const items = mails.filter((m) => go.has(mailKey(m)))
         .map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items);
       setRes({ ...res, mails: res.mails.filter((m) => !go.has(mailKey(m))) });
-      setSel(new Set());
+      // only the mails that went; other ticks stay (the reader trashes ONE)
+      setSel((cur) => new Set([...cur].filter((k) => !go.has(k))));
       setNote(t("note.background", { verb: t("Move to Trash") }));
       onDeleted();
+      return true;
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
+      return false;
     }
+  };
+  const trashSelected = () => trashKeys(new Set(picked));
+  // The reader's Trash: the same confirm and call for the one open mail.
+  const readerActions: ReaderActions = {
+    trash: async (m) => {
+      if (await trashKeys(new Set([mailKey(m)]), m.subject)) setView(null);
+    },
   };
 
   const allSelected = mails.length > 0
@@ -251,7 +263,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
         onClose={onClose}
       />
 
-      {view && <MessageView mail={view} onBack={() => setView(null)} />}
+      {view && (
+        <MessageView mail={view} onBack={() => setView(null)}
+          actions={readerActions} backLabel={t("Search")}
+          nav={{ list: mails, onOpen: setView }} />
+      )}
       {/* Stays mounted behind a mail so Back keeps the scroll position. */}
       {(
         <div data-scroll-id="panel"

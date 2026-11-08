@@ -1,28 +1,45 @@
-import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, mailKey } from "../api";
 import { t } from "../i18n";
-import { splitQuoted } from "../quoted";
 import type { ConversationResp, Mail, MessageDetail } from "../types";
-import { Button, LINK, ShortDate, Spinner, useBackLayer } from "./ui";
+import { Avatar, Button, Spinner, Tag, useBackLayer } from "./ui";
+import { AttachmentChips, BodyState, MailText, ReaderFrame, parseFrom,
+  previewOf, readerDate, toLine, useReaderHost, useReaderPin,
+  type PinState, type ReaderActions, type ReaderNav } from "./MailReader";
 
 type Body = MessageDetail | "loading" | { error: string };
 
-/** One conversation, oldest first, as a stack of collapsible mails: the
- *  thread's scanned mails plus the user's own replies from Sent. Bodies are
- *  fetched live when a mail is expanded (same as the single-mail view) and
- *  their quoted history is folded away. */
+/** One conversation, oldest first, as a stack of cards: the thread's scanned
+ *  mails plus the user's own replies from Sent. Collapsed cards show who,
+ *  when and a one-line preview; bodies are fetched live when a card is
+ *  expanded (same as the single-mail view) and their quoted history is
+ *  folded away. */
 const BATCH = 8;                    // mails per request / IMAP connection
 
-export function ThreadView({ mail, initial, onBack, actions }: {
+type ThreadViewProps = {
   mail: Mail;                       // the mail the reader was opened from
   initial?: MessageDetail;          // its text, if the caller already has it
   onBack: () => void;
-  /** Message-scoped actions for `mail`, right of the back button. */
-  actions?: ReactNode;
-}) {
-  // Below 1024 px Back closes the thread.
-  useBackLayer(true, onBack);
+  /** The opener's handlers for `mail` (Trash, Pin, Move) in the toolbar. */
+  actions?: ReaderActions;
+  nav?: ReaderNav;
+  backLabel?: string;
+  /** The pin state of `mail` when a single-mail view already owns it. */
+  pin?: PinState;
+};
+
+/** Keyed by the mail: moving to another mail (previous / next) starts the
+ *  conversation over, so the card that is open - and shown - is always the
+ *  mail the toolbar acts on. */
+export function ThreadView(props: ThreadViewProps) {
+  // Below 1024 px Back closes the thread (one entry across mails).
+  useBackLayer(true, props.onBack);
+  return <ThreadViewFor key={mailKey(props.mail)} {...props} />;
+}
+
+function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
+  backLabel }: ThreadViewProps) {
+  const host = useReaderHost();
   const [conv, setConv] = useState<ConversationResp | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set([mailKey(mail)]));
@@ -78,31 +95,67 @@ export function ThreadView({ mail, initial, onBack, actions }: {
     next.has(k) ? next.delete(k) : next.add(k);
     setOpen(next);
   };
+  // Display names learnt from the mails that were opened: a collapsed card
+  // of the same sender reads "Name", not just the address.
+  const names = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const b of Object.values(bodies)) {
+      if (b === "loading" || "error" in b) continue;
+      const p = parseFrom(b.from);
+      if (p.name && p.addr) out.set(p.addr.toLowerCase(), p.name);
+    }
+    return out;
+  }, [bodies]);
   const keys = useMemo(() => (conv?.mails ?? []).map(mailKey), [conv]);
   const allOpen = keys.length > 0 && keys.every((k) => open.has(k));
+  const replies = conv?.mails.filter((m) => m.sent).length ?? 0;
+
+  // Trash / Pin / Move act on the ONE open card (marked on screen); with none
+  // or several open there is no single mail, so they are off - and your own
+  // Sent mails are not changed from here.
+  const openMails = (conv?.mails ?? []).filter((m) => open.has(mailKey(m)));
+  const target: Mail | null = !conv ? mail
+    : openMails.length === 1
+      ? (mailKey(openMails[0]) === mailKey(mail) ? mail : openMails[0]) : null;
+  const targetKey = target ? mailKey(target) : "";
+  const targetBody = targetKey ? bodies[targetKey] : undefined;
+  const targetDetail = targetKey === mailKey(mail) && initial ? initial
+    : targetBody && targetBody !== "loading" && !("error" in targetBody)
+      ? targetBody : null;
+  const ownPin = useReaderPin(target ?? mail, targetDetail, actions);
+  const lockHint = target === null ? t("reader.pick_single")
+    : target.sent ? t("reader.sent_locked") : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b
-        border-line px-4 py-3 type-meta text-muted">
-        <span className="min-w-0 flex-1 truncate font-medium text-body">
+    <ReaderFrame mail={target ?? mail} navFrom={mail} detail={targetDetail}
+      actions={actions} nav={nav} locked={lockHint !== undefined}
+      lockHint={lockHint}
+      pin={pin && targetKey === mailKey(mail) ? pin : ownPin}
+      backLabel={backLabel} onBack={onBack}
+      trailing={conv && conv.mails.length > 1 ? (
+        <Button variant="plain" size="sm"
+          onClick={() => setOpen(allOpen ? new Set() : new Set(keys))}>
+          {allOpen ? t("thread.collapse_all") : t("thread.expand_all")}
+        </Button>
+      ) : undefined}>
+      <div className="mx-auto w-full max-w-3xl px-3 py-3">
+        <h2 className="break-words px-1 type-title2 md:type-largetitle">
           {conv?.label ?? t("thread.title")}
-        </span>
-        {conv && <span>{t("thread.n_mails", { n: conv.mails.length })}</span>}
-        {conv && conv.mails.length > 1 && (
-          <button className={LINK}
-            onClick={() => setOpen(allOpen ? new Set() : new Set(keys))}>
-            {allOpen ? t("thread.collapse_all") : t("thread.expand_all")}
-          </button>
+        </h2>
+        {conv && (
+          <p className="mb-3 px-1 type-meta text-muted">
+            <span>{t("thread.n_mails", { n: conv.mails.length })}</span>
+            {replies > 0 && (
+              <span> · {t("thread.replied_n", { n: replies })}</span>
+            )}
+          </p>
         )}
-      </div>
-      {conv?.notes.map((n) => (
-        <p key={n.key} className="px-4 pt-2 type-meta text-muted">
-          {t(`thread.note.${n.key}`, n.params)}
-        </p>
-      ))}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
+        {conv?.notes.map((n) => (
+          <p key={n.key} className="mb-2 px-1 type-meta text-muted">
+            {t(`thread.note.${n.key}`, n.params)}
+          </p>
+        ))}
+        {error && <div role="alert" className="p-4 type-body text-danger-fg">{error}</div>}
         {!conv && !error && (
           <div className="p-6 text-center"><Spinner /></div>
         )}
@@ -110,43 +163,68 @@ export function ThreadView({ mail, initial, onBack, actions }: {
           const k = mailKey(m);
           const isOpen = open.has(k);
           const body = bodies[k];
+          const loaded = body && body !== "loading" && !("error" in body)
+            ? body : null;
+          const from = parseFrom(loaded?.from ?? "");
+          const addr = from.addr || m.addr;
+          const name = m.sent ? t("thread.you")
+            : from.name || names.get(addr.toLowerCase()) || addr;
+          const sub = isOpen
+            ? [name !== addr ? addr : "",
+              loaded?.to ? toLine(loaded.to, host.selfAddrs) : ""]
+              .filter(Boolean).join(" · ")
+            : loaded ? previewOf(loaded.text) || m.subject
+              : m.subject || t("(no subject)");
           return (
             <div key={k} ref={k === mailKey(mail) ? focusRef : undefined}
-              className={`mb-2 overflow-hidden rounded-control border ${
-                m.sent ? "border-accent/40" : "border-line"} bg-panel`}>
+              className={`mb-2 overflow-hidden rounded-card border ${
+                k === targetKey ? "border-accent"
+                  : m.sent ? "border-accent/40" : "border-line"} bg-panel`}>
               <button
-                className="flex w-full min-w-0 cursor-pointer items-center
-                  gap-2 px-3 py-2 text-left hover:bg-chip"
+                className="flex w-full min-w-0 cursor-pointer items-start
+                  gap-3 px-3 py-3 text-left hover:bg-chip"
                 aria-expanded={isOpen}
                 onClick={() => toggle(k)}>
-                {isOpen ? <ChevronDown size={16} className="shrink-0" />
-                  : <ChevronRight size={16} className="shrink-0" />}
-                {!m.seen && !m.sent && (
-                  <span title={t("unread")} className="inline-block size-2
-                    shrink-0 rounded-full bg-accent" />
-                )}
-                <span className={`min-w-0 flex-1 truncate type-body ${
-                  !m.seen && !m.sent ? "font-semibold" : ""}`}>
-                  {m.sent ? t("thread.you") : m.addr}
-                  <span className="text-muted"> · {m.subject
-                    || t("(no subject)")}</span>
+                <Avatar name={name} size="md" className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    {!m.seen && !m.sent && (
+                      <span title={t("unread")} className="inline-block size-2
+                        shrink-0 self-center rounded-full bg-accent" />
+                    )}
+                    <span className={`min-w-0 truncate type-body-mobile
+                      md:type-body ${!m.seen && !m.sent ? "font-semibold"
+                        : "font-medium"}`}>{name}</span>
+                    {m.sent && <Tag tone="info">{t("thread.from_sent")}</Tag>}
+                    {k === targetKey && !target?.sent && (
+                      <Tag tone="accent">{t("reader.target")}</Tag>
+                    )}
+                    <span className="ml-auto shrink-0 type-meta text-muted">
+                      {readerDate(m, loaded)}
+                    </span>
+                  </span>
+                  <span className="block truncate type-meta text-muted">{sub}</span>
                 </span>
-                <ShortDate iso={m.date} time
-                  className="shrink-0 type-meta text-muted" />
               </button>
               {isOpen && (
-                <div className="border-t border-line px-3 py-2">
-                  {body === "loading" || !body ? <Spinner />
-                    : "error" in body ? (
-                      <div className="type-body text-danger-fg">{body.error}</div>
-                    ) : (
-                      <MailText text={body.text}
-                        showQuoted={quoted.has(k)}
-                        onToggleQuoted={() => {
-                          const next = new Set(quoted);
-                          next.has(k) ? next.delete(k) : next.add(k);
-                          setQuoted(next);
-                        }} />
+                <div className="px-3 pb-3 pt-1">
+                  {body === "loading" || !body ? <BodyState />
+                    : "error" in body ? <BodyState error={body.error} />
+                    : (
+                      <>
+                        <MailText text={body.text} subject={m.subject}
+                          showQuoted={quoted.has(k)}
+                          onToggleQuoted={() => {
+                            const next = new Set(quoted);
+                            next.has(k) ? next.delete(k) : next.add(k);
+                            setQuoted(next);
+                          }} />
+                        {!!body.atts?.length && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <AttachmentChips atts={body.atts} />
+                          </div>
+                        )}
+                      </>
                     )}
                 </div>
               )}
@@ -154,43 +232,6 @@ export function ThreadView({ mail, initial, onBack, actions }: {
           );
         })}
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-line
-        px-4 py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-        <Button variant="secondary" onClick={onBack}>
-          <ArrowLeft size={16} className="mr-1 inline align-text-bottom" />
-          {t("back to list")}
-        </Button>
-        {actions && (
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {actions}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MailText({ text, showQuoted, onToggleQuoted }: {
-  text: string; showQuoted: boolean; onToggleQuoted: () => void;
-}) {
-  const segs = useMemo(() => splitQuoted(text), [text]);
-  const hasQuoted = segs.some((s) => s.quoted);
-  return (
-    <div className="type-body leading-relaxed">
-      {segs.map((s, i) => (
-        s.quoted ? (showQuoted && (
-          <pre key={i} className="my-1 whitespace-pre-wrap border-l-2
-            border-line pl-2 font-sans text-muted">{s.text}</pre>
-        )) : (
-          <pre key={i} className="whitespace-pre-wrap font-sans">{s.text}</pre>
-        )
-      ))}
-      {hasQuoted && (
-        <button className={`mt-1 type-meta text-muted ${LINK}`}
-          onClick={onToggleQuoted}>
-          {showQuoted ? t("thread.hide_quoted") : t("thread.show_quoted")}
-        </button>
-      )}
-    </div>
+    </ReaderFrame>
   );
 }

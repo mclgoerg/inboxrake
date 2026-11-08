@@ -543,6 +543,14 @@ export interface MessageDetail {
   text: string;
   // Present when the mail belongs to a conversation worth reading as one.
   thread?: { count: number } | null;
+  // What the scan / attachment analysis / body index already know about the
+  // mail (metadata only; null / absent = not known, e.g. Sent or Junk).
+  pinnable?: boolean;     // in the scan index with a Message-ID: can be pinned
+  pinned?: boolean;
+  atts?: { name: string; size: number }[] | null;
+  trackers?: { pixel: boolean; click: boolean; hosts: string[] } | null;
+  unsub?: { method: "one_click" | "mailto" | "http"; one_click: boolean }
+    | null;
 }
 
 export interface ConversationResp {

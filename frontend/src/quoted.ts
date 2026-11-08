@@ -10,7 +10,10 @@ export interface TextSegment {
 }
 
 const WROTE = /^(on|am|le|el)\s.{3,250}?\b(wrote|schrieb|a écrit|escribió)\b.*:\s*$/i;
-const ORIGINAL = /^-{2,}\s*(original message|forwarded message|ursprüngliche nachricht|weitergeleitete nachricht)\s*-{2,}$/i;
+const ORIGINAL = /^-{2,}\s*(original message|ursprüngliche nachricht)\s*-{2,}$/i;
+// A forwarded mail IS the content the sender passed on: from its marker on,
+// nothing folds (only ">" quotes still do).
+const FORWARDED = /^(-{2,}\s*(forwarded message|weitergeleitete nachricht)\s*-{2,}|begin forwarded message:?)$/i;
 const FROM = /^(from|von):\s/i;
 const SENT = /^(sent|gesendet|date|datum):\s/i;
 const SUBJECT = /^(subject|betreff):\s/i;
@@ -47,7 +50,10 @@ function isHardMarker(lines: string[], i: number): boolean {
   return hasSent && (next.some((x) => SUBJECT.test(x)) || head > i);
 }
 
-export function splitQuoted(text: string): TextSegment[] {
+/** `forward`: the mail itself is a forward (its subject says Fwd: / WG:), so
+ *  header blocks in it are the forwarded content, not a reply's history. */
+export function splitQuoted(text: string,
+    opts: { forward?: boolean } = {}): TextSegment[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const segs: TextSegment[] = [];
   const push = (ls: string[], quoted: boolean) => {
@@ -58,8 +64,10 @@ export function splitQuoted(text: string): TextSegment[] {
     else segs.push({ text: joined, quoted });
   };
   let i = 0;
+  let forwarded = !!opts.forward;
   while (i < lines.length) {
-    if (isHardMarker(lines, i)) {
+    if (FORWARDED.test(lines[i].trim())) forwarded = true;
+    if (!forwarded && isHardMarker(lines, i)) {
       push(lines.slice(i), true);
       break;
     }
@@ -83,3 +91,7 @@ export function splitQuoted(text: string): TextSegment[] {
   return hasOwnText ? segs : [{ text: text.replace(/\r\n/g, "\n"),
                                 quoted: false }];
 }
+
+/** Is this subject a forward ("Fwd: ...", "Fw:", "WG:")? */
+export const isForward = (subject: string): boolean =>
+  /^\s*(fwd?|wg|tr|rv)\s*:/i.test(subject);
