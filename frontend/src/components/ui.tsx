@@ -1126,6 +1126,115 @@ function refocus(el: HTMLElement | null | undefined, scroll = true): void {
   el.focus?.(scroll ? undefined : { preventScroll: true });
 }
 
+/** Swipe-down-to-close for a phone bottom sheet (Pointer Events, touch and
+ *  pen). A drag starts on the grabber strip (`[data-sheet-grabber]`) or
+ *  anywhere else while nothing under the finger is scrolled down, and never in
+ *  a text field or on a mostly horizontal move. The sheet follows the finger,
+ *  the backdrop fades with it; release past 25 % of the height or a fast
+ *  flick calls `close` (the same path as a backdrop tap / Esc), else it snaps
+ *  back. Reduced motion: no following, the threshold alone decides. */
+const SHEET_PHONE = "(max-width: 639.98px)";
+const SHEET_REDUCED = "(prefers-reduced-motion: reduce)";
+const SHEET_SLOP = 8;          // px before a move counts as a drag
+const SHEET_FRACTION = 0.25;   // of the sheet height
+const SHEET_FLICK = 0.5;       // px/ms
+
+function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null>,
+  backdrop: RefObject<HTMLDivElement | null>, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const el = dialog.current;
+    if (!enabled || !el) return;
+    type Gesture = { id: number; x: number; y: number; dragging: boolean;
+      samples: { t: number; y: number }[] };
+    let g: Gesture | null = null;
+    const reduced = () => !!window.matchMedia?.(SHEET_REDUCED).matches;
+    const show = (dy: number, ms: number) => {
+      if (reduced()) return;
+      el.style.transition = ms ? `transform ${ms}ms ease-out` : "none";
+      el.style.transform = dy ? `translateY(${dy}px)` : "";
+      if (backdrop.current) {
+        backdrop.current.style.transition = ms ? `opacity ${ms}ms ease-out` : "none";
+        backdrop.current.style.opacity = String(
+          1 - Math.min(1, dy / (el.offsetHeight || 1)));
+      }
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      g = null;
+    };
+    // Something between the finger and the sheet is scrolled down: the
+    // gesture belongs to that scroller.
+    const scrolled = (from: HTMLElement) => {
+      for (let n: HTMLElement | null = from; n && n !== el; n = n.parentElement)
+        if (n.scrollTop > 0) return true;
+      return false;
+    };
+    const down = (e: PointerEvent) => {
+      if (g || e.pointerType === "mouse" || !e.isPrimary) return;
+      if (!window.matchMedia?.(SHEET_PHONE).matches) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      if (!t.closest("[data-sheet-grabber]") && scrolled(t)) return;
+      g = { id: e.pointerId, x: e.clientX, y: e.clientY, dragging: false,
+        samples: [{ t: e.timeStamp, y: e.clientY }] };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", cancel);
+    };
+    const move = (e: PointerEvent) => {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x, dy = e.clientY - g.y;
+      if (!g.dragging) {
+        if (Math.abs(dy) < SHEET_SLOP && Math.abs(dx) < SHEET_SLOP) return;
+        // Up or sideways: not ours (a scroll, a swipe row).
+        if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) { stop(); return; }
+        g.dragging = true;
+      }
+      g.samples.push({ t: e.timeStamp, y: e.clientY });
+      if (g.samples.length > 6) g.samples.shift();
+      show(Math.max(0, dy), 0);
+    };
+    const up = (e: PointerEvent) => {
+      if (!g || e.pointerId !== g.id) return;
+      const { dragging, samples, y } = g;
+      stop();
+      if (!dragging) return;
+      const dy = Math.max(0, e.clientY - y);
+      const first = samples.find((s) => e.timeStamp - s.t <= 100) ?? samples[0];
+      const dt = e.timeStamp - first.t;
+      const flick = dt > 0 && (e.clientY - first.y) / dt >= SHEET_FLICK;
+      if (dy > el.offsetHeight * SHEET_FRACTION || flick) closeRef.current();
+      else show(0, 200);
+    };
+    const cancel = (e: PointerEvent) => {
+      if (!g || e.pointerId !== g.id) return;
+      const was = g.dragging;
+      stop();
+      if (was) show(0, 200);
+    };
+    // The browser claims a vertical touch for scrolling (and pull-to-refresh)
+    // unless the first touchmove is cancelled; do that for our own gestures.
+    const touch = (e: TouchEvent) => {
+      if (!g || !e.cancelable) return;
+      const f = e.touches[0];
+      if (!f) return;
+      const dy = f.clientY - g.y, dx = f.clientX - g.x;
+      if (g.dragging || (dy > SHEET_SLOP && dy > Math.abs(dx))) e.preventDefault();
+    };
+    el.addEventListener("pointerdown", down);
+    el.addEventListener("touchmove", touch, { passive: false });
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      el.removeEventListener("touchmove", touch);
+      stop();
+    };
+  }, [enabled, dialog, backdrop]);
+}
+
 /** Dialog shell. `sm` (448) is a bottom sheet on phones, `md` (672) /
  *  `lg` (768) are full-screen there. `full` = `lg` at a fixed 88vh; other
  *  modals shrink to their content. `label` / `labelledBy` / `describedBy` name it for AT. */
@@ -1139,6 +1248,9 @@ export function Modal({ children, onClose, full = false, size, label,
   const slot = useContext(PresentationContext) === "slot";
   const id = useRef(Symbol("modal")).current;
   const dialog = useRef<HTMLDivElement>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
+  const sheet = sz === "sm" && !slot;
+  useSheetSwipe(sheet, dialog, backdrop, onClose);
   // Whatever had focus when the modal opened (read during the first render,
   // before an autoFocus child can take it): focus returns there on close.
   const opener = useRef<Element | null | undefined>(undefined);
@@ -1222,10 +1334,14 @@ export function Modal({ children, onClose, full = false, size, label,
   return (
     <div
       className={slot ? "contents" : `fixed inset-0 z-(--z-modal) flex
-        justify-center bg-overlay backdrop-blur-sm p-0 sm:p-6
+        justify-center p-0 sm:p-6
         ${sz === "sm" ? "items-end sm:items-center" : "items-center"}`}
       onClick={slot ? undefined
         : (e) => e.target === e.currentTarget && onClose()}>
+      {/* The scrim is its own layer so a swipe can fade it without the
+          sheet. Not in the page presentation (no overlay there). */}
+      {slot ? null : <div ref={backdrop} aria-hidden
+        className="pointer-events-none absolute inset-0 bg-overlay backdrop-blur-sm" />}
       <div ref={dialog} tabIndex={slot ? undefined : -1}
         role={slot ? "region" : "dialog"}
         aria-modal={slot ? undefined : true}
@@ -1236,8 +1352,14 @@ export function Modal({ children, onClose, full = false, size, label,
           // A page: fills the content column, scrolls inside like a `full`
           // panel.
           ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden"
-          : `flex w-full flex-col overflow-hidden border-line bg-panel outline-none
+          : `relative flex w-full flex-col overflow-hidden border-line bg-panel outline-none
         sm:rounded-dialog sm:border ${MODAL_WIDTH[sz]} ${shape}${inset}`}>
+        {/* Grabber: phones only (the sheet presentation); also the drag
+            handle, with a bigger touch area than it looks. */}
+        {sheet && <div aria-hidden data-sheet-grabber
+          className="flex h-6 shrink-0 touch-none justify-center pt-2 sm:hidden">
+          <span className="h-1.25 w-9 rounded-full bg-faint/40" />
+        </div>}
         {/* Always rendered (`contents` when not scrolling): `full` can flip
             while open, and a changing tree would remount the content. */}
         <div className={scrolls ? (slot ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
