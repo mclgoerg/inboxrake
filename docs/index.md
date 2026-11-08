@@ -37,7 +37,7 @@ Bridge) and any other IMAP server.
 - Permanent deletion exists only in Trash and Junk: the manual actions
   confirm with exact counts, and an opt-in purge rule only acts after you
   have reviewed a report run.
-- Rules and the Folders-panel purges always skip protected senders and
+- Rules and the Trash and Junk page purges always skip protected senders and
   pinned mails; moving a protected group or a single pinned mail to Trash
   asks first. Empty Trash empties everything in Trash.
 - Scans are read-only.

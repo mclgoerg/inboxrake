@@ -19,7 +19,7 @@ Everything set via env can also be configured later in the settings UI
 
 - **Login:** out of the box there is NO authentication. Either keep the
   port on localhost behind a reverse proxy with auth, or enable the
-  built-in password/SSO login (Settings -> Server -> Login, or `AUTH_MODE` env).
+  built-in password/SSO login (Settings -> Sign-in & users, or `AUTH_MODE` env).
   Never publish port 8765 straight to the internet without one of these.
   Without a login, Inboxrake only answers to `localhost` and IP
   addresses (DNS-rebinding protection); to open it under a host name,
@@ -225,7 +225,7 @@ registration in Microsoft Entra ID.
   The redirect URI must match exactly what Inboxrake sends: its address
   as your browser sees it (the `X-Forwarded-Proto` / `X-Forwarded-Host`
   headers behind a reverse proxy), or the "Redirect base URL" under
-  Settings -> Server -> Login if you set one. Inboxrake does not display
+  Settings -> Sign-in & users if you set one. Inboxrake does not display
   it, and a mismatch makes Microsoft refuse with AADSTS50011.
 - If an administrator runs the server with their own registration
   (`INBOXRAKE_MS_CLIENT_ID`), no registration or redirect URI is needed
@@ -236,11 +236,12 @@ registration in Microsoft Entra ID.
 
 1. Open the web UI. On a fresh install a welcome screen and the setup walk you
    through provider, sign-in (with a connection test; choosing folders is
-   optional), an optional login password and the first scan. (Settings -> Mail
-   account has the same presets: Gmail, iCloud, Fastmail, GMX, mailbox.org,
+   optional), an optional login password and the first scan. (Settings -> Account
+   has the same presets: Gmail, iCloud, Fastmail, GMX, mailbox.org,
    Yahoo, Outlook.)
-2. Hit **Scan** (the setup starts the first one; afterwards it is in the
-   toolbar of Overview and Senders).
-3. Optional: Settings -> AI for AI-assisted cleanup verdicts, Settings
-   -> Server -> Login to protect the UI, Settings -> General for protected
-   senders.
+2. Hit **Scan** (the setup starts the first one; afterwards it is the
+   Scan button in the page header; on a phone you can also pull down from the top
+   of Overview, Senders or All mail).
+3. Optional: Settings -> AI review for AI-assisted cleanup verdicts, Settings
+   -> Sign-in & users to protect the UI, Settings -> Protected senders for
+   protected senders.

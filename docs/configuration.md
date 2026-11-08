@@ -69,7 +69,7 @@ publish the port. Details in
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | empty | API key for the optional AI review. Can also be set in Settings -> AI. |
+| `ANTHROPIC_API_KEY` | empty | API key for the optional AI review. Can also be set in Settings -> AI review. |
 | `AI_MODEL` | `claude-sonnet-5` | Model name used for it. |
 
 ## Tuning and paths
@@ -92,7 +92,21 @@ State files default to names inside `/data` and normally need no change:
 (`presets.json`), `PINS_PATH` (`pinned_mails.json`), `REPLIED_PATH`
 (`replied.json`), `VERDICTS_PATH` (`ai_verdicts.json`), `AI_SORT_PATH`
 (`ai_sort.json`), `SENDER_KNOWLEDGE_PATH` (`sender_knowledge.json`),
+`LABELS_PATH` (`sender_labels.json`, the verdicts and categories you set with
+"Edit labels"), `DUPS_PATH` (`duplicates_kept.json`, the duplicate sets you
+chose to keep),
 `KNOWN_SENDERS_PATH` (`known_senders.json`), `UNSUB_STATE_PATH`
 (`unsub_state.json`), `AUDIT_LOG_PATH` (`audit_log.jsonl`),
 `SESSION_SECRET_PATH` (`session_secret`), `TENANTS_DIR` (`tenants`),
 `SNAPSHOT_DIR` (the scan caches, `/data`).
+
+## Settings with no environment variable
+
+Some options exist only in the UI and are stored with the account in `/data`
+(or, for the browser ones, in your browser):
+
+| Setting | Where | What it does |
+|---|---|---|
+| Digest **Link to Inboxrake** | Settings -> Activity digest, per account (`digest.url`) | The address the digest mail's buttons open: `http://` or `https://`, no `?` or `#`, at most 300 characters. Empty leaves the buttons out. |
+| Digest **Language of the mail** | Settings -> Activity digest, per account (`digest.lang`) | `en` or `de`. Not chosen yet means English until the section is saved. |
+| **Number format** | Settings -> General, this browser only | Automatic (follows the language) or a pinned style. Not part of the backup. |

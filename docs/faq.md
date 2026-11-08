@@ -15,7 +15,7 @@ UIDVALIDITY is checked before every move, and scans are read-only.
 Permanent deletion exists only as explicit actions in Trash and Junk: the
 manual ones confirm with exact counts, and an opt-in purge rule only acts
 after you have reviewed a report run (then it runs on its schedule within
-its age limit and per-run cap). Rules and the Folders-panel purges always
+its age limit and per-run cap). Rules and the Trash and Junk page purges always
 skip protected senders and pinned mails. Moving a protected group, or a
 single pinned mail, to Trash asks for an extra confirmation; individually
 selected mails from a protected sender are not checked. **Empty Trash
@@ -29,7 +29,7 @@ sender, and SSO contacts your identity provider. Optional AI review sends
 only metadata, never mail bodies or attachments (see
 [what exactly](security.md#what-the-optional-ai-review-sends)). A local model
 (Ollama, LM Studio, vLLM) keeps the AI traffic on your own network. The AI is optional and you can set a monthly
-budget in Settings -> AI. The UI loads no external assets.
+budget in Settings -> AI review. The UI loads no external assets.
 
 ## Why not just use filters or Sieve?
 
@@ -47,7 +47,7 @@ example Raspberry Pi 4/5.
 
 ## Backup and uninstall?
 
-Everything lives in the `/data` volume; Settings -> General has a backup
+Everything lives in the `/data` volume; Settings -> Backup & restore has a backup
 export, which leaves out all passwords, tokens and API keys (the mail
 password, OAuth tokens and client secrets, AI keys) - after a restore you
 re-enter them. Stop the container and delete the
