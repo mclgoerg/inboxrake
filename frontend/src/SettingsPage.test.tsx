@@ -950,7 +950,7 @@ test("the backup text says the file lists sender addresses", () => {
 // ---------------------------------------------------- Gmail sign-in method
 
 const signinTab = (name: string) =>
-  screen.getByRole("tab", { name }) as HTMLElement;
+  screen.getByRole("radio", { name }) as HTMLElement;
 // The tabpanel is labelled by its tab, so the label text matches both.
 /** A saved password sits behind "Change…": open it. */
 const revealPassword = () => {
@@ -979,7 +979,7 @@ test("new account + gmail preset starts on App password: Password " +
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     pickPreset("gmail");
-    expect(signinTab("App password").getAttribute("aria-selected"))
+    expect(signinTab("App password").getAttribute("aria-checked"))
       .toBe("true");
     expect(appPw()).toBeTruthy();
     expect(screen.queryByText(/Connect your Gmail account/)).toBeNull();
@@ -1010,13 +1010,13 @@ test("a saved gmail account opens on the stored method - even when OAuth " +
   const { unmount } = render(<Settings
     cfg={gmailCfg(oauthAcct({ auth: "oauth" }))} account="default"
     onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect(signinTab("OAuth").getAttribute("aria-selected")).toBe("true");
+  expect(signinTab("OAuth").getAttribute("aria-checked")).toBe("true");
   expect(screen.getByText("Connected")).toBeTruthy();
   unmount();
   render(<Settings cfg={gmailCfg(oauthAcct({ auth: "password" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
-  expect(signinTab("App password").getAttribute("aria-selected"))
+  expect(signinTab("App password").getAttribute("aria-checked"))
     .toBe("true");
   expect(screen.queryByText("Connected")).toBeNull();
 });
@@ -1025,7 +1025,7 @@ test("an older backend (no auth field) derives the method from the " +
   "connected token", () => {
   render(<Settings cfg={gmailCfg(oauthAcct())} account="default"
     onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect(signinTab("OAuth").getAttribute("aria-selected")).toBe("true");
+  expect(signinTab("OAuth").getAttribute("aria-checked")).toBe("true");
 });
 
 test("switching back and forth then Save never sends disconnect and keeps " +
@@ -1089,7 +1089,7 @@ test("connected gmail account -> iCloud preset: Save sends " +
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   pickPreset("icloud");
-  expect(screen.queryByRole("tab", { name: "OAuth" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "OAuth" })).toBeNull();
   expect(screen.getByText("Password")).toBeTruthy();
   await clickSave();
   expect(lastSave().auth).toBe("password");
@@ -1102,7 +1102,7 @@ test("outlook preset: OAuth card, no switch, no Password field, " +
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   pickPreset("outlook");
-  expect(screen.queryByRole("tab", { name: "OAuth" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "OAuth" })).toBeNull();
   expect(screen.queryByLabelText("Password")).toBeNull();
   expect(screen.getByText(/Connect your Outlook account/)).toBeTruthy();
   await clickSave();
@@ -1114,7 +1114,7 @@ test("German: the sign-in switch is translated", () => {
   render(<Settings cfg={gmailCfg(oauthAcct({ auth: "password" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
-  expect(screen.getByRole("tab", { name: "App-Passwort" })).toBeTruthy();
+  expect(screen.getByRole("radio", { name: "App-Passwort" })).toBeTruthy();
   expect(screen.getByText("Anmeldeart", { selector: "span" })).toBeTruthy();
 });
 
@@ -1127,7 +1127,7 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
   pickPreset("outlook");
   expect(secret()).toBe("optional");
   pickPreset("gmail");
-  fireEvent.click(screen.getByRole("tab", { name: "OAuth" }));
+  fireEvent.click(screen.getByRole("radio", { name: "OAuth" }));
   expect(secret()).toBe("required");
 });
 
@@ -1272,4 +1272,25 @@ test("scanned folders show their mail count; unseen ones show none",
     } finally {
       foldersResult = null;
     }
+  });
+
+test("Scan now scans the edited account even when it is not the active one; " +
+  "unsaved edits disable it with a hint", async () => {
+  render(<Settings cfg={cfg} account="default" />);
+  await selectAccount("icloud");
+  fireEvent.click(screen.getByRole("button", { name: /Scan now/ }));
+  await waitFor(() => expect(scanCalls).toEqual(["icloud"]));
+  fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
+  expect((screen.getByRole("button", { name: /Scan now/ }) as
+    HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Save first/)).toBeTruthy();
+});
+
+test("the sending server folds back when another account is opened",
+  async () => {
+    render(<Settings cfg={cfg} account="default" />);
+    fireEvent.click(screen.getByText("Sending server (unsubscribe mails)"));
+    expect(screen.getByLabelText(/SMTP host/)).toBeTruthy();
+    await selectAccount("icloud");
+    expect(screen.queryByLabelText(/SMTP host/)).toBeNull();
   });

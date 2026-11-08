@@ -1044,7 +1044,7 @@ export const DE: Record<string, string> = {
   "folder.src.override": "von dir gew\u00e4hlt",
   "folder.view_row": "Ansichten anderer Ordner - werden nie gescannt",
   "folder.archive_scanned":
-    "Das Archiv wird weiterhin gescannt - unten ankreuzen.",
+    "Das Archiv wird weiterhin gescannt - oben in der Liste abschaltbar.",
   "folder.ambiguous":
     "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c in Frage. "
     + "Bis du w\u00e4hlst, verwendet Inboxrake \u201e{pick}\u201c f\u00fcr "
@@ -1295,6 +1295,7 @@ export const DE: Record<string, string> = {
     + "Server-Schlüssel (dein Monatslimit: {cap}).",
   "account.rename": "Umbenennen…",
   "account.scan_now": "Jetzt scannen",
+  "account.scan_save_first": "Erst speichern - Jetzt scannen nutzt die gespeicherten Einstellungen.",
   "account.scan_started": "Scan gestartet.",
   "account.scan_running": "Scannt…",
   "account.scan_failed": "letzter Scan fehlgeschlagen",

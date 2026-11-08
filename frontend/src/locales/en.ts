@@ -245,6 +245,7 @@ export const EN: Record<string, string> = {
     + "(your monthly cap: {cap}).",
   "account.rename": "Rename…",
   "account.scan_now": "Scan now",
+  "account.scan_save_first": "Save first - Scan now uses the saved settings.",
   "account.scan_started": "Scan started.",
   "account.scan_running": "Scanning…",
   "account.scan_failed": "last scan failed",
@@ -1238,7 +1239,7 @@ export const EN: Record<string, string> = {
   "folder.src.name": "by name",
   "folder.src.override": "you chose",
   "folder.view_row": "Views of other folders - never scanned",
-  "folder.archive_scanned": "Archive is still scanned - tick it below.",
+  "folder.archive_scanned": "Archive is still scanned - switch it off in the list above.",
   "folder.ambiguous":
     "More than one folder could be your {role} folder. Until you choose, "
     + "Inboxrake uses \u201c{pick}\u201d for moves to {role} and refuses to "

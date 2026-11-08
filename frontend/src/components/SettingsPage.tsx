@@ -20,7 +20,7 @@ import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
   LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, Segmented, Select,
   SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag, type TagTone,
-  tabPanelProps, TextArea, useBulkBarHeight, useToast } from "./ui";
+  TextArea, useBulkBarHeight, useToast } from "./ui";
 
 /* Settings as a page (`#/settings/<section>`). From 1024 px a section column
  * (with a search field) sits beside the form; below it an iOS-style root list
@@ -505,6 +505,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     const fields = imapFields(src, name);
     setEditAcct(name);
     setPwOpen(false);
+    setSmtpOpen(false);
     setF((o) => ({ ...o, ...fields }));
     setBaseline((b) => ({ ...b, f: { ...b.f, ...fields } }));
     setDigestTestMsg("");
@@ -1005,7 +1006,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     <div className="mb-6 flex flex-wrap items-center gap-4 rounded-card
       border border-line bg-panel p-4">
       <AccountAvatar name={editAcct} size="lg" />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-56">
         <div className="truncate type-title2">{editAcct}</div>
         <div className="truncate type-meta text-muted">
           {saved.user} · {presetLabel(saved.preset ?? "proton")}</div>
@@ -1013,18 +1014,24 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         {scanFailed && scanState?.error && (
           <div className="mt-1 type-meta text-muted">{scanState.error}</div>
         )}
+        {dirty && (
+          <div className="mt-1 type-meta text-muted">
+            {t("account.scan_save_first")}</div>
+        )}
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex w-full shrink-0 gap-2 sm:w-auto">
         <Button variant="secondary" onClick={renameAccount}>
           {t("account.rename")}
         </Button>
         <Button variant="secondary" onClick={scanNow}
-          disabled={demo || scanning || acctStatus === "nocreds"}>
+          disabled={demo || scanning || dirty || acctStatus === "nocreds"}>
           <RefreshCw size={14} className="mr-1 inline align-text-bottom" />
           {t("account.scan_now")}
         </Button>
       </div>
     </div>
+    <p className="-mt-3 mb-6 px-3 type-meta text-muted">
+      {t("account.hint")}</p>
     <SettingsGroup header={t("settings.connection")}
       footnote={presetFoot.length ? presetFoot.map((x) =>
         <span key={x} className="block">{x}</span>) : undefined}>
@@ -1044,7 +1051,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         </span>
       </SettingsRow>
       <SettingsRow label={t("imap.security")}>
-        <Segmented idPrefix="imapsec" label={t("imap.security")}
+        <Segmented role="radio" label={t("imap.security")}
           value={f.security} onChange={(v) => put("security", v)}
           options={[{ value: "ssl", label: "SSL/TLS" },
             { value: "starttls", label: "STARTTLS" }]} />
@@ -1055,7 +1062,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsRow>
       {f.preset === "gmail" && (
         <SettingsRow label={t("signin.label")}>
-          <Segmented idPrefix="signin" label={t("signin.label")}
+          <Segmented role="radio" label={t("signin.label")}
             value={auth} onChange={(v) => put("auth", v)}
             options={[
               { value: "password", label: t("signin.password") },
@@ -1064,7 +1071,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       )}
       {auth === "password" && passwordRow}
       {oauthCard && (
-        <div {...tabPanelProps("signin", auth)} className="px-4 py-3">
+        <div className="px-4 py-3">
           {oauthCard}
         </div>
       )}
@@ -1092,29 +1099,25 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       <SettingsRow label={t("account.smtp_row")} expanded={smtpOpen}
         value={`${smtpHost || t("account.same_as_imap")} · ${f.smtpPort}`}
         onClick={() => setSmtpOpen((o) => !o)} />
-      {smtpOpen && (
-        <div className="grid gap-4 px-4 py-3 sm:grid-cols-2 sm:items-end">
-          <Field label={t("smtp.host")}>
-            <Input className="w-full" value={f.smtpHost}
-              placeholder={t("smtp.host_placeholder")}
-              onChange={set("smtpHost")} />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t("SMTP port")}>
-              <Input className="w-full" type="number" value={f.smtpPort}
-                onChange={set("smtpPort")} />
-            </Field>
-            <Field label={t("smtp.security")}>
-              <Select className="w-full" value={f.smtpSecurity}
-                onChange={set("smtpSecurity")}>
-                <option value="auto">{t("sec.auto")}</option>
-                <option value="ssl">SSL/TLS</option>
-                <option value="starttls">STARTTLS</option>
-              </Select>
-            </Field>
-          </div>
-        </div>
-      )}
+      {smtpOpen && (<>
+        <SettingsRow label={t("smtp.host")}>
+          <Input className="w-44 sm:w-64" value={f.smtpHost}
+            aria-label={t("smtp.host")}
+            placeholder={t("smtp.host_placeholder")}
+            onChange={set("smtpHost")} />
+        </SettingsRow>
+        <SettingsRow label={t("SMTP port")}>
+          <Input className="w-24" type="number" value={f.smtpPort}
+            aria-label={t("SMTP port")} onChange={set("smtpPort")} />
+        </SettingsRow>
+        <SettingsRow label={t("smtp.security")}>
+          <PopupSelect name={t("smtp.security")} value={f.smtpSecurity}
+            onChange={(v) => put("smtpSecurity", v)}
+            options={[{ value: "auto", label: t("sec.auto") },
+              { value: "ssl", label: "SSL/TLS" },
+              { value: "starttls", label: "STARTTLS" }]} />
+        </SettingsRow>
+      </>)}
       <SettingsRow stack label={t("cafile.label")}>
         <Input className="w-full" value={f.cafile} aria-label={t("cafile.label")}
           placeholder="/certs/bridge-cert.pem" onChange={set("cafile")} />
