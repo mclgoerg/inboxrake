@@ -1194,7 +1194,6 @@ export const DE: Record<string, string> = {
   "reader.copy_failed": "Adresse konnte nicht kopiert werden",
   "reader.mail": "Mail",
   "reader.unsub_in_mail": "In dieser Mail: {method}",
-  "reader.unsub_newest": "Der Button meldet dich bei diesem Absender ab - mit dem Link seiner neuesten Mail.",
   "reader.open_sender": "Absender öffnen",
   "reader.copy_address": "Adresse kopieren",
   "reader.show_headers": "Kopfzeilen zeigen",

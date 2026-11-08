@@ -15,7 +15,7 @@ import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import { nowDate } from "../clock";
 import { isForward, splitQuoted } from "../quoted";
-import type { Mail, MessageDetail } from "../types";
+import type { Mail, MessageDetail, UnsubVia } from "../types";
 import { FolderPicker } from "./FolderPicker";
 import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, Spinner, Tag,
   useMediaQuery, useOptionalToast } from "./ui";
@@ -42,8 +42,8 @@ export interface ReaderHost {
   /** Can the sender be unsubscribed from here (a single-sender group that
    *  offers a method)? */
   canUnsubscribe?: (addr: string) => boolean;
-  /** Run the sender unsubscribe flow (the seam W3's sheet replaces). */
-  unsubscribe?: (addr: string) => Promise<void>;
+  /** Open the unsubscribe sheet for the sender. */
+  unsubscribe?: (addr: string) => void;
   /** "done" once the sender is unsubscribed (null = not). */
   unsubscribed?: (addr: string) => "done" | "link" | "failed" | "pending" | null;
 }
@@ -493,14 +493,23 @@ export function UnsubCard({ mail, unsub }: {
   mail: Mail; unsub: NonNullable<MessageDetail["unsub"]>;
 }) {
   const host = useReaderHost();
-  const [busy, setBusy] = useState(false);
   const status = host.unsubscribed?.(mail.addr) ?? null;
   const canRun = !!host.unsubscribe && (host.canUnsubscribe?.(mail.addr) ?? true)
     && status !== "done";
-  const run = async () => {
-    setBusy(true);
-    try { await host.unsubscribe!(mail.addr); } finally { setBusy(false); }
-  };
+  // The button opens the unsubscribe sheet, which acts on the sender's
+  // NEWEST mail: ask what it will do and say exactly that (this mail's own
+  // header is the fallback while it loads / when it cannot say).
+  const [via, setVia] = useState<UnsubVia | undefined>(undefined);
+  useEffect(() => {
+    setVia(undefined);
+    if (!canRun) return;
+    let alive = true;
+    api.unsubscribePreview("sender", [mail.addr], true)
+      .then((r) => alive && setVia(r.senders[0]?.via ?? null))
+      .catch(() => alive && setVia(null));
+    return () => { alive = false; };
+  }, [mail.addr, canRun]);
+  const sheetVia = canRun ? via : null;
   return (
     <section aria-label={t("reader.unsub_title")}
       className="flex items-center gap-3 rounded-card bg-panel2 p-3">
@@ -508,16 +517,16 @@ export function UnsubCard({ mail, unsub }: {
       <div className="min-w-0 flex-1">
         <div className="type-body font-semibold">{t("reader.unsub_title")}</div>
         <div className="type-meta text-muted">
-          {t("reader.unsub_in_mail", { method: t(`reader.unsub_${unsub.method}`) })}
+          {sheetVia ? t(`reader.unsub_${sheetVia}`)
+            : via === undefined && canRun ? "\u00a0"
+            : t("reader.unsub_in_mail",
+              { method: t(`reader.unsub_${unsub.method}`) })}
         </div>
-        {canRun && (
-          <div className="type-meta text-muted">{t("reader.unsub_newest")}</div>
-        )}
       </div>
       {status === "done" ? <Tag tone="info">{t("Unsubscribed")}</Tag>
         : canRun && (
-          <Button variant="tinted" disabled={busy} onClick={() => void run()}>
-            {busy ? t("Unsubscribing…") : t("confirm.unsubscribe_btn")}
+          <Button variant="tinted" onClick={() => void host.unsubscribe!(mail.addr)}>
+            {t("Unsubscribe")}
           </Button>
         )}
     </section>

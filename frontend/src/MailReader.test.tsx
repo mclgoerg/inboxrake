@@ -19,6 +19,7 @@ const message = vi.fn();
 const thread = vi.fn();
 const messages = vi.fn();
 const pinApi = vi.fn();
+const preview = vi.fn();        // what the unsubscribe sheet would do per sender
 
 vi.mock("./api", () => ({
   api: {
@@ -26,6 +27,7 @@ vi.mock("./api", () => ({
     thread: (...a: unknown[]) => thread(...a),
     messages: (...a: unknown[]) => messages(...a),
     pin: (...a: unknown[]) => pinApi(...a),
+    unsubscribePreview: (...a: unknown[]) => preview(...a),
     folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
   },
   fmtSize: (n: number) => `${n} B`,
@@ -49,6 +51,7 @@ afterEach(() => {
   thread.mockReset();
   messages.mockReset();
   pinApi.mockReset();
+  preview.mockReset();
   setLang("en");
 });
 
@@ -168,45 +171,60 @@ test("tracker and attachment chips only when the index knows them", async () => 
 
 /* ------------------------------ unsubscribe card -------------------------- */
 
+const previewOf = (via: string | null) => Promise.resolve({
+  senders: via ? [{ addr: "news@shop.example", name: "", via, mails: 3, size: 1 }] : [],
+  skipped_protected: 0, skipped_done: 0, capped: 0, skipped_no_header: 0,
+  trash: { groups: [], mails: 0, size: 0, pinned: 0 } });
+
 test.each([
   ["one_click", "one click - done right away"],
   ["mailto", "sends a mail from your address"],
   ["http", "web page - you confirm on the sender's page"],
-] as const)("unsubscribe card (%s) runs the sender flow", async (method, line) => {
-  message.mockResolvedValue(detail({
-    unsub: { method, one_click: method === "one_click" } }));
-  const unsubscribe = vi.fn().mockResolvedValue(undefined);
-  show(mk(1), {}, host({ unsubscribe, canUnsubscribe: () => true }));
-  await screen.findByText("Unsubscribe link found");
-  expect(screen.getByText(`In this mail: ${line}`)).toBeTruthy();
-  // the button works on the sender's newest mail: say so
-  expect(screen.getByText(/using its newest mail/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
-  await waitFor(() => expect(unsubscribe).toHaveBeenCalledWith("news@shop.example"));
-});
+] as const)("unsubscribe card (%s) says what the sheet will do and opens it",
+  async (method, line) => {
+    // this mail's own header says something else: the SHEET's method wins
+    message.mockResolvedValue(detail({
+      unsub: { method: method === "http" ? "mailto" : "http", one_click: false } }));
+    preview.mockResolvedValue(await previewOf(method));
+    const unsubscribe = vi.fn();
+    show(mk(1), {}, host({ unsubscribe, canUnsubscribe: () => true }));
+    await screen.findByText("Unsubscribe link found");
+    await screen.findByText(line);
+    expect(preview).toHaveBeenCalledWith("sender", ["news@shop.example"], true);
+    fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
+    expect(unsubscribe).toHaveBeenCalledWith("news@shop.example");
+  });
 
-test("unsubscribe card: no button where the flow cannot run, done state, "
-  + "none without a header", async () => {
-  message.mockResolvedValue(detail({ unsub: { method: "http", one_click: false } }));
-  const { unmount } = show(mk(1), {}, host({
-    unsubscribe: vi.fn(), canUnsubscribe: () => false }));
-  await screen.findByText("Unsubscribe link found");
-  expect(screen.queryByRole("button", { name: "Unsubscribe" })).toBeNull();
-  expect(screen.queryByText(/using its newest mail/)).toBeNull();   // no button, no promise
-  unmount();
+test("unsubscribe card: this mail's method when the sheet cannot say, no "
+  + "button where the flow cannot run, done state, none without a header",
+  async () => {
+    message.mockResolvedValue(detail({ unsub: { method: "http", one_click: false } }));
+    preview.mockRejectedValue(new Error("down"));
+    const { unmount } = show(mk(1), {}, host({
+      unsubscribe: vi.fn(), canUnsubscribe: () => true }));
+    await screen.findByText("In this mail: web page - you confirm on the sender's page");
+    unmount();
 
-  const { unmount: u2 } = show(mk(1), {}, host({
-    unsubscribe: vi.fn(), canUnsubscribe: () => true, unsubscribed: () => "done" }));
-  await screen.findByText("Unsubscribe link found");
-  expect(screen.getByText("Unsubscribed")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Unsubscribe" })).toBeNull();
-  u2();
+    preview.mockClear();
+    const { unmount: u1 } = show(mk(1), {}, host({
+      unsubscribe: vi.fn(), canUnsubscribe: () => false }));
+    await screen.findByText("Unsubscribe link found");
+    expect(screen.queryByRole("button", { name: "Unsubscribe" })).toBeNull();
+    expect(preview).not.toHaveBeenCalled();           // nothing to ask without a flow
+    u1();
 
-  message.mockResolvedValue(detail());
-  show(mk(1));
-  await screen.findByText(/Hi there/);
-  expect(screen.queryByText("Unsubscribe link found")).toBeNull();
-});
+    const { unmount: u2 } = show(mk(1), {}, host({
+      unsubscribe: vi.fn(), canUnsubscribe: () => true, unsubscribed: () => "done" }));
+    await screen.findByText("Unsubscribe link found");
+    expect(screen.getByText("Unsubscribed")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Unsubscribe" })).toBeNull();
+    u2();
+
+    message.mockResolvedValue(detail());
+    show(mk(1));
+    await screen.findByText(/Hi there/);
+    expect(screen.queryByText("Unsubscribe link found")).toBeNull();
+  });
 
 /* -------------------------------- toolbar --------------------------------- */
 

@@ -1451,7 +1451,6 @@ export const EN: Record<string, string> = {
   "reader.copy_failed": "Could not copy the address",
   "reader.mail": "Mail",
   "reader.unsub_in_mail": "In this mail: {method}",
-  "reader.unsub_newest": "The button unsubscribes you from this sender, using its newest mail.",
   "reader.open_sender": "Open sender",
   "reader.copy_address": "Copy address",
   "reader.show_headers": "Show headers",

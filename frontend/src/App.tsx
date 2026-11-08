@@ -34,7 +34,8 @@ import { SpaceMapPanel } from "./components/SpaceMapPanel";
 import { StatsPanel } from "./components/StatsPanel";
 import { AiFilterPanel } from "./components/AiFilterPanel";
 import { TriagePanel } from "./components/TriagePanel";
-import { UnsubscribeSheet, useUnsubscribeOpener, type UnsubRequest }
+import { UnsubscribeSheet, openUnsubscribeSheet, useUnsubscribeOpener,
+  type UnsubRequest }
   from "./components/UnsubscribeSheet";
 import { WrappedStory } from "./components/WrappedStory";
 import { AccountSwitcher } from "./components/AccountSwitcher";
@@ -2419,12 +2420,9 @@ export default function App() {
       return !!g && g.unsub && !isPooled(g);
     },
     unsubscribed: (addr) => senderGroup(addr)?.unsubscribed?.status ?? null,
-    unsubscribe: async (addr) => {
-      const g = senderGroup(addr);
-      if (!g) return;
-      const r = await unsubscribeGroup("sender", g, demo);
-      notify(r.message, r.ok ? "info" : "error");
-      if (r.ok) refresh();
+    // the same sheet as every other unsubscribe entry
+    unsubscribe: (addr) => {
+      openUnsubscribeSheet({ kind: "single", grouping: "sender", key: addr });
     },
   };
 
