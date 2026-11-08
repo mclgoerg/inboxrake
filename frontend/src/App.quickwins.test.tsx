@@ -18,6 +18,8 @@ vi.mock("./api", () => ({
     version: () => Promise.resolve({ build: "v1" }),
     deleteGroups: (...a: unknown[]) => deleteGroups(...a),
     group: () => Promise.resolve([]),
+    overview: () => Promise.reject(new Error("offline")),
+    audit: () => Promise.resolve({ total: 0, entries: [] }),
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
@@ -135,14 +137,14 @@ test("the suggestions list the cards, the hero the union size", async () => {
   expect(cards[0].textContent).toContain("30 mails - 10.0 MB");
   expect(cards[1].textContent).toContain("20 mails - 6.0 MB");
   expect(cards[0].textContent).toContain("1 protected skipped");
-  expect(screen.getByText("Up to 16.0 MB can go")).toBeTruthy();
+  expect(screen.getByText(/Up to 16\.0 MB can go/)).toBeTruthy();
 });
 
 test("no suggestions section without cards; the Senders list has no strip",
   async () => {
   setup({}, [fresh]);
   await ready();
-  expect(screen.queryByRole("heading", { name: "Suggestions" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Next steps" })).toBeNull();
   expect(screen.queryByText(/can go/)).toBeNull();
   cleanup();
 
@@ -297,7 +299,7 @@ test("only the top 3 cards show; Show all reveals the rest; the hero counts " +
   big();
   await ready();
   expect(screen.getAllByTestId("qw-card")).toHaveLength(3);
-  expect(screen.getByText("Up to 200.0 MB can go")).toBeTruthy();
+  expect(screen.getByText(/Up to 200\.0 MB can go/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Show all 5" }));
   expect(screen.getAllByTestId("qw-card")).toHaveLength(5);
   fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
@@ -319,7 +321,7 @@ test("German strings", async () => {
   setLang("de");
   setup();
   await waitFor(() => expect(
-    screen.getByRole("heading", { name: "Vorschläge" })).toBeTruthy());
+    screen.getByRole("heading", { name: "Nächste Schritte" })).toBeTruthy());
   expect(screen.getAllByRole("button", { name: "Aufräumen…" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Nicht jetzt" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "Ansehen" })).toHaveLength(2);

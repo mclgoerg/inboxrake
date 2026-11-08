@@ -1174,6 +1174,55 @@ export function MiniBars({ values, className = "", label, dimLast = false,
   );
 }
 
+/** Balance chart: one focusable column per period, `up` bars rising from a
+ *  baseline and `down` bars hanging below it, both on ONE scale so the two
+ *  sides compare. Every column is a button whose accessible name is its
+ *  `tips[i]` text (colour is never the only signal; callers also show the
+ *  selected column's text and a legend). `estimated` marks `up` bars that are
+ *  estimates: drawn as a lighter, dashed-outline bar (`upEstimatedClass`),
+ *  never by colour alone - the tip text says "estimated" too. `active` marks the column the caller
+ *  spells out; hover / focus / tap report it through `onActive`. Zero values
+ *  draw no bar. `upClass` / `downClass` are fill classes. */
+export function DivergingBars({ up, down, tips, active, onActive,
+  estimated = [], upClass = "bg-accent",
+  upEstimatedClass = "bg-accent/30 border border-dashed border-accent",
+  downClass = "bg-safe-fg", className = "h-40" }: {
+  up: number[]; down: number[]; tips: string[];
+  active: number; onActive: (i: number) => void;
+  estimated?: boolean[];
+  upClass?: string; upEstimatedClass?: string; downClass?: string;
+  className?: string;
+}) {
+  const max = Math.max(1, ...up, ...down);
+  const bar = (v: number) => (v > 0
+    // at least a sliver, so a small non-zero value stays visible
+    ? { height: `${Math.max(3, (100 * v) / max)}%` } : { height: 0 });
+  return (
+    <div className={`grid grid-flow-col auto-cols-fr gap-1.5 ${className}`}>
+      {tips.map((tip, i) => (
+        <button key={i} type="button" aria-label={tip}
+          aria-pressed={i === active}
+          onMouseEnter={() => onActive(i)} onFocus={() => onActive(i)}
+          onClick={() => onActive(i)}
+          className={`group grid min-w-0 cursor-pointer grid-rows-2
+            rounded-control outline-offset-0 transition-colors
+            ${i === active ? "bg-panel2" : "hover:bg-panel2"}`}>
+          <span className="flex items-end border-b border-line px-0.5">
+            <span className={`w-full rounded-t-badge
+              ${estimated[i] ? upEstimatedClass : upClass}
+              ${i === active ? "" : "opacity-80"}`} style={bar(up[i] ?? 0)} />
+          </span>
+          <span className="flex items-start px-0.5">
+            <span className={`w-full rounded-b-badge ${downClass}
+              ${i === active ? "" : "opacity-80"}`}
+              style={bar(down[i] ?? 0)} />
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Donut chart: one `Hue` slice per entry (`hueFillAt` colours, never the
  *  only signal - callers render a legend with the values), `children` in the
  *  hole. Slices are masked discs, so no raw colours are needed; the hole is a

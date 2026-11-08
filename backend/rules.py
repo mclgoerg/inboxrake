@@ -74,11 +74,13 @@ _RUN_LOCK = threading.Lock()      # one rule run at a time
 # ------------------------------------------------- filter DSL (port of lib.ts)
 
 _QUAL_RE = re.compile(
-    r"^(tag|ai|age|unread|is|has|eng|att|from|domain):(.*)$")
+    r"^(tag|ai|age|unread|is|has|eng|att|from|domain|in):(.*)$")
 _AGE_RE = re.compile(r"^>?(\d+)(m|y)$")
 _UNREAD_RE = re.compile(r"^>?(\d+)$")
 _ATT_RE = re.compile(r"^>?(\d+)(k|m|g)?$")
 _SIZE_UNIT = {"k": 1024, "m": 1048576, "g": 1073741824}
+_IN_RE = re.compile(r"^(\d+)(min|h|d)$")
+_IN_UNIT = {"min": 60, "h": 3600, "d": 86400}
 
 
 def parse_filter(q: str) -> dict:
@@ -87,7 +89,8 @@ def parse_filter(q: str) -> dict:
            "replied": None, "att_min": None, "unsubscribed": None,
            "from_addr": None, "domain": None, "new_only": False,
            "pinned_only": False, "eng": None,
-           "still_mailing": False, "tracker_only": False}
+           "still_mailing": False, "tracker_only": False,
+           "in_seconds": None}
     for tok in (q or "").strip().lower().split():
         m = _QUAL_RE.match(tok)
         if not m:
@@ -138,6 +141,12 @@ def parse_filter(q: str) -> dict:
             out["from_addr"] = val
         elif kind == "domain" and val:
             out["domain"] = val
+        elif kind == "in":
+            w = _IN_RE.match(val)
+            if w:
+                out["in_seconds"] = int(w.group(1)) * _IN_UNIT[w.group(2)]
+            else:
+                out["text"].append(tok)
         else:
             out["text"].append(tok)
     return out
@@ -198,6 +207,15 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
                 "mega- or gigabytes. This is the total of attachments of "
                 "the group, NOT the size of single mails",
      "example": "att:>10m"},
+    {"qualifier": "in", "values": None, "check": "in",
+     "syntax": "in:<N>(min|h|d)",
+     "meaning": "a time window of N minutes, hours or days back from now. "
+                "It is only valid together with is:new (the sender was first "
+                "seen in the window; the window REPLACES the configured "
+                "new-sender window, so it can widen it), is:still-mailing "
+                "(a late mail arrived in it) or ai:... (the verdict was given "
+                "in it) - for the last two it narrows. Alone it is refused",
+     "example": "is:new in:7d"},
     {"qualifier": "from", "values": None, "check": "text",
      "syntax": "from:<address>",
      "meaning": "exactly this sender address",
@@ -224,6 +242,8 @@ def _token_ok(kind: str, val: str, tags: "set[str] | frozenset[str] | None"
         return bool(_UNREAD_RE.match(val)) and int(val.lstrip(">")) <= 100
     if check == "att":
         return bool(_ATT_RE.match(val))
+    if check == "in":
+        return bool(_IN_RE.match(val))
     if check == "tag" and tags is not None:
         return bool(val) and any(val in tag for tag in tags)
     return bool(val)
@@ -236,7 +256,8 @@ def _token_ok(kind: str, val: str, tags: "set[str] | frozenset[str] | None"
 # so they may repeat.
 _IS_SLOT = {"replied": "replied", "noreply-ever": "replied",
             "unsubscribed": "unsubscribed", "not-unsubscribed": "unsubscribed"}
-_SINGLE = frozenset({"ai", "age", "unread", "att", "eng", "from", "domain"})
+_SINGLE = frozenset({"ai", "age", "unread", "att", "eng", "from", "domain",
+                     "in"})
 
 
 def _slot(kind: str, val: str) -> str | None:
@@ -253,9 +274,14 @@ def validate_filter(q: str, tags=None) -> list[str]:
     wrote. With `tags` (the accepted tag names) a `tag:` value must also
     be part of (a substring of) one of them. Free words are always valid.
     A single-value qualifier given twice (`_slot`) reports the repeat: the
-    parsers keep the last one, which could widen the match unnoticed."""
+    parsers keep the last one, which could widen the match unnoticed.
+    `in:<N>…` is only valid next to is:new / is:still-mailing / ai:...: alone
+    it would act on ALL matches (a rule `in:7d tag:newsletter` would take
+    every newsletter), while in the All mail list it means "arrived in the
+    window" - so it is refused rather than silently ignored."""
     bad = []
     seen = set()
+    windowed = timed = False
     for tok in (q or "").strip().lower().split():
         if ":" not in tok:
             continue
@@ -268,7 +294,24 @@ def validate_filter(q: str, tags=None) -> list[str]:
             if slot in seen:
                 bad.append(tok)
             seen.add(slot)
+        windowed = windowed or kind == "in"
+        timed = timed or kind == "ai" or (
+            kind == "is" and val in ("new", "still-mailing"))
+    if windowed and not timed:
+        bad.extend(t for t in q.strip().lower().split()
+                   if t.startswith("in:") and t not in bad)
     return bad
+
+
+def _filter_error(bad: list[str], run: bool = False) -> str:
+    """The coded refusal for the bad parts of a filter: its own text when the
+    only problem is a window without the condition it narrows."""
+    names = ", ".join(bad)
+    if all(t.startswith("in:") and _IN_RE.match(t[3:]) for t in bad):
+        return mailops.coded(mailops.RULE_FILTER_WINDOW_RUN if run
+                             else mailops.RULE_FILTER_WINDOW, names=names)
+    return mailops.coded(mailops.RULE_FILTER_INVALID_RUN if run
+                         else mailops.RULE_FILTER_INVALID, names=names)
 
 
 def match_group(g: dict, f: dict, now: float | None = None) -> bool:
@@ -285,16 +328,24 @@ def match_group(g: dict, f: dict, now: float | None = None) -> bool:
     for t in f["tags"]:
         if not any(t in tag for tag in g["tags"]):
             return False
+    # `in:` narrows the three time-aware conditions below to a window
+    start = (now or time.time()) - f["in_seconds"] \
+        if f["in_seconds"] is not None else None
     if f["ai"] and (not g.get("ai") or f["ai"] not in g["ai"]["verdict"]):
+        return False
+    if f["ai"] and start is not None and (g["ai"].get("ts") or 0) < start:
         return False
     if f["unsub"] and not g.get("unsub"):
         return False
     if f["protected_only"] and not g.get("protected"):
         return False
-    if f["new_only"] and not g.get("new"):
+    if f["new_only"] and not (g.get("new") if start is None
+                              else (g.get("new_ts") or 0) >= start > 0):
         return False
-    if f["still_mailing"] and not g.get("still_mailing"):
-        return False
+    if f["still_mailing"]:
+        sm = g.get("still_mailing")
+        if not sm or (start is not None and (sm.get("last_ts") or 0) < start):
+            return False
     if f["pinned_only"] and not g.get("pinned"):
         return False
     if f["tracker_only"]:
@@ -398,7 +449,7 @@ _PURGE_UNSUPPORTED = (
     ("unsubscribed", "is:unsubscribed"), ("new_only", "is:new"),
     ("still_mailing", "is:still-mailing"),
     ("pinned_only", "has:pinned"), ("eng", "eng:"), ("att_min", "att:"),
-    ("domain", "domain:"))
+    ("domain", "domain:"), ("in_seconds", "in:"))
 
 
 def purge_unsupported(query: str) -> list[str]:
@@ -407,7 +458,8 @@ def purge_unsupported(query: str) -> list[str]:
     # `domain:` compares a DOMAIN group's key; sender groups never match it,
     # so it would report 0 mails forever.
     return [name for key, name in _PURGE_UNSUPPORTED
-            if (f[key] is not None if key in ("replied", "unsubscribed")
+            if (f[key] is not None
+                if key in ("replied", "unsubscribed", "in_seconds")
                 else bool(f[key]))]
 
 
@@ -547,8 +599,7 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
         # one: it comes in flagged, report mode, execute runs blocked)
         bad = validate_filter(rule["query"])
         if bad and not lenient_filter:
-            raise ValueError(mailops.coded(
-                mailops.RULE_FILTER_INVALID, names=", ".join(bad)))
+            raise ValueError(_filter_error(bad))
     if "action" in body:
         if body["action"] not in (*mailops.ACTIONS, PURGE_ACTION):
             raise ValueError("bad action")
@@ -883,8 +934,7 @@ def _filter_gate(rule: dict) -> None:
     still run (they show the numbers and change nothing)."""
     bad = validate_filter(rule.get("query", ""))
     if rule["mode"] == "execute" and bad:
-        raise RuntimeError(mailops.coded(
-            mailops.RULE_FILTER_INVALID_RUN, names=", ".join(bad)))
+        raise RuntimeError(_filter_error(bad, run=True))
 
 
 def _disarm(rule_id: str, reason: str) -> None:

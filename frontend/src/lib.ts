@@ -163,6 +163,12 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   att:>10m att:>500k  attachment size above N (needs attachment analysis)
  *   from:<addr>         exact sender address (sender grouping only)
  *   domain:<domain>     exact domain (domain grouping only)
+ *   in:7d|12h|90min     a window back from now, next to is:new (first seen in
+ *                       it - REPLACES the configured new-sender window, so it
+ *                       can widen it), is:still-mailing (a late mail arrived
+ *                       in it) or ai:... (verdict given in it), which it
+ *                       narrows. Alone it changes nothing here (rules refuse
+ *                       it; in the All mail list it means "arrived in it")
  *   anything else       substring match on name / address / key
  * A new qualifier also goes into FILTER_GRAMMAR (backend/rules.py): the AI
  * filter writer is taught from it, and a test fails when one is missing.
@@ -186,8 +192,12 @@ export interface ParsedFilter {
   stillMailing: boolean;
   trackerOnly: boolean;
   eng: EngagementTier | null;
+  /** `in:` window in seconds (see the grammar above). */
+  inSeconds: number | null;
 }
 
+/** Seconds per unit of an `in:` window. */
+const IN_UNIT: Record<string, number> = { min: 60, h: 3600, d: 86400 };
 const SIZE_UNIT: Record<string, number> = { k: 1024, m: 1048576, g: 1073741824 };
 
 export function parseFilter(q: string): ParsedFilter {
@@ -195,9 +205,10 @@ export function parseFilter(q: string): ParsedFilter {
     ageMonths: null, unreadMin: null, unsub: false, protectedOnly: false,
     replied: null, attMin: null, unsubscribed: null, fromAddr: null,
     domain: null, newOnly: false, pinnedOnly: false, stillMailing: false,
-    trackerOnly: false, eng: null };
+    trackerOnly: false, eng: null, inSeconds: null };
   for (const tok of q.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
-    const m = tok.match(/^(tag|ai|age|unread|is|has|eng|att|from|domain):(.*)$/);
+    const m = tok.match(
+      /^(tag|ai|age|unread|is|has|eng|att|from|domain|in):(.*)$/);
     if (!m) {
       out.text.push(tok);
       continue;
@@ -231,7 +242,11 @@ export function parseFilter(q: string): ParsedFilter {
       if (a) out.attMin = Number(a[1]) * (SIZE_UNIT[a[2]] ?? 1);
     } else if (kind === "from" && val) out.fromAddr = val;
     else if (kind === "domain" && val) out.domain = val;
-    else out.text.push(tok);
+    else if (kind === "in") {
+      const w = val.match(/^(\d+)(min|h|d)$/);
+      if (w) out.inSeconds = Number(w[1]) * IN_UNIT[w[2]];
+      else out.text.push(tok);
+    } else out.text.push(tok);
   }
   return out;
 }
@@ -298,11 +313,16 @@ export function matchGroup(g: Group, f: ParsedFilter, now = nowMs(),
   for (const t of f.tags) {
     if (!g.tags.some((tag) => tag.includes(t))) return false;
   }
+  // `in:` narrows the three time-aware conditions to a window (epoch s)
+  const start = f.inSeconds === null ? null : now / 1000 - f.inSeconds;
   if (f.ai && (!g.ai || !g.ai.verdict.includes(f.ai))) return false;
+  if (f.ai && start !== null && (g.ai?.ts ?? 0) < start) return false;
   if (f.unsub && !g.unsub) return false;
   if (f.protectedOnly && !g.protected) return false;
-  if (f.newOnly && !g.new) return false;
-  if (f.stillMailing && !g.still_mailing) return false;
+  if (f.newOnly && !(start === null ? g.new
+    : (g.new_ts ?? 0) >= start && start > 0)) return false;
+  if (f.stillMailing && (!g.still_mailing || (start !== null
+      && (g.still_mailing.last_ts ?? 0) < start))) return false;
   if (f.pinnedOnly && !g.pinned) return false;
   if (f.trackerOnly && !(g.trackers && (g.trackers.pixel > 0
       || g.trackers.click > 0))) return false;

@@ -27,16 +27,18 @@ const naturalDir = (k: MailSort): "asc" | "desc" =>
  *  traffic). Rows are the search panel's MailRows; selection drives the
  *  same delete_messages actions (with the same pinned-mail confirm flow) as
  *  the group detail view. */
-export function AllMailsView({ state, onChanged, toolbarSlot }: {
+export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" }: {
   state: AppState;
+  /** The filter the list opens with (e.g. `in:7d` from the Overview). */
+  initialQuery?: string;
   onChanged: () => void;
   /** Where the filter + sort row is rendered (App's row B, so the toolbar
    *  keeps its place when switching tabs). Inline when omitted; null =
    *  slot not mounted yet (render nothing). */
   toolbarSlot?: HTMLElement | null;
 }) {
-  const [q, setQ] = useState("");
-  const [dq, setDq] = useState("");                 // debounced q
+  const [q, setQ] = useState(initialQuery);
+  const [dq, setDq] = useState(initialQuery);       // debounced q
   const [sortK, setSortK] = useState<MailSort>(() => {
     const k = localStorage.getItem("pmc_mails_sort") as MailSort | null;
     return k && SORTS.some((o) => o.k === k) ? k : "date";

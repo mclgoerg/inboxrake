@@ -1,6 +1,7 @@
 """AI review paths with a mocked Anthropic client, and unsubscribe dispatch."""
 
 import json
+import time
 import types
 
 import pytest
@@ -114,6 +115,11 @@ def test_rerate_replaces_verdicts_of_the_selected_groups_only(ai_ready):
     # ...and the cache follows, so a rescan keeps the new verdict
     stored = verdictstore.load_account()["sender"]
     assert stored["noreply@dhl.example"]["verdict"] == "delete_safe"
+    # stamped when the verdict came about (Overview "new AI verdicts", the
+    # `in:` filter), on the group too
+    assert abs(stored["noreply@dhl.example"]["ts"] - time.time()) < 60
+    assert senders["noreply@dhl.example"]["ai"]["ts"] \
+        == stored["noreply@dhl.example"]["ts"]
     mailops.run_scan()
     assert mailops.STATE["groups"]["sender"]["noreply@dhl.example"][
         "ai"]["verdict"] == "delete_safe"
@@ -220,3 +226,50 @@ def test_ssrf_guard(monkeypatch):
                         lambda *a, **k: [(2, 1, 6, "", ("10.0.0.5", 0))])
     with pytest.raises(RuntimeError, match="unsub_blocked"):
         unsub._post_one_click("https://internal.example/u")
+
+
+def test_a_confirming_rerating_keeps_the_verdict_date(ai_ready):
+    verdict = {"v": "review"}
+    client = FakeClient(lambda sent: {"verdicts": [
+        {"key": g["key"], "verdict": verdict["v"], "reason": "t"}
+        for g in sent["groups"]]})
+    ai_ready.setattr(aihelper, "ai_client", lambda cfg: client)
+    key = "noreply@dhl.example"
+    aihelper._run_ai("sender", keys={key})
+    first = verdictstore.load_account()["sender"][key]["ts"]
+
+    ai_ready.setattr(aihelper.time, "time", lambda: first + 5000)
+    aihelper._run_ai("sender", keys={key}, rerate=True)      # same verdict
+    assert verdictstore.load_account()["sender"][key]["ts"] == first
+    assert mailops.STATE["groups"]["sender"][key]["ai"]["ts"] == first
+
+    verdict["v"] = "keep"                                   # a new verdict
+    aihelper._run_ai("sender", keys={key}, rerate=True)
+    assert verdictstore.load_account()["sender"][key]["ts"] == first + 5000
+    # a rescan brings the stored date back onto the group
+    mailops.run_scan()
+    assert mailops.STATE["groups"]["sender"][key]["ai"]["ts"] == first + 5000
+
+
+def test_a_user_verdict_is_not_dated_like_an_ai_verdict(ai_ready):
+    from backend import labelstore, overview
+    client = FakeClient(lambda sent: {"verdicts": [
+        {"key": g["key"], "verdict": "delete_safe", "reason": "t"}
+        for g in sent["groups"]]})
+    ai_ready.setattr(aihelper, "ai_client", lambda cfg: client)
+    key = "noreply@dhl.example"
+    aihelper._run_ai("sender", keys={key})
+    labelstore.set_labels("default", key, verdict="keep")
+    mailops.run_scan()
+    row = mailops.public_state()["groups"]["sender"][key]
+    assert row["ai"]["src"] == "user" and "ts" not in row["ai"]
+    # the AI's own answer stays stored, dated; the Overview does not count it
+    assert verdictstore.load_account()["sender"][key]["ts"] > 0
+    acc = mailops.accounts.get()
+    out = overview.build(acc)
+    assert out["week"]["verdicts"] == 0
+    labelstore.set_labels("default", key, verdict=None)       # Reset
+    mailops.run_scan()
+    row = mailops.public_state()["groups"]["sender"][key]
+    assert row["ai"]["verdict"] == "delete_safe" and row["ai"]["ts"] > 0
+    assert overview.build(acc)["week"]["verdicts"] == 1

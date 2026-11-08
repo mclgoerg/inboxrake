@@ -4,7 +4,7 @@ import type {
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   Config, ConversationResp, DupSet, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
-  LookalikeCount, MailsResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
+  LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubResult,
 } from "./types";
@@ -132,6 +132,8 @@ const ERROR_CODES: Record<string, string> = {
   rule_purge_filter_domain: "ferr.rule_purge_filter_domain",
   rule_filter_invalid: "ferr.rule_filter_invalid",
   rule_filter_invalid_run: "ferr.rule_filter_invalid_run",
+  rule_filter_window: "ferr.rule_filter_window",
+  rule_filter_window_run: "ferr.rule_filter_window_run",
   rule_filter_too_long: "ferr.rule_filter_too_long",
   request_too_large: "ferr.request_too_large",
   block_key_invalid: "ferr.block_key_invalid",
@@ -425,6 +427,10 @@ export const api = {
   wrapped: (year?: number) =>
     req<WrappedResp>(`/api/wrapped?tz=${-new Date().getTimezoneOffset()}`
       + (year === undefined ? "" : `&year=${year}`)),
+  /** `since` = epoch seconds of the previous Overview visit. */
+  overview: (since?: number | null) =>
+    req<OverviewResp>("/api/overview"
+      + (since == null ? "" : `?since=${Math.floor(since)}`)),
   audit: (offset = 0, limit = 50) =>
     req<AuditResp>(`/api/audit?offset=${offset}&limit=${limit}`),
   auditExportUrl: () => withAccount("/api/audit/export"),

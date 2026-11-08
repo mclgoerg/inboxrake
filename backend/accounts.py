@@ -69,6 +69,9 @@ class AccountState:
         # cached so a rescan does not refetch them and can promote one when
         # the kept copy leaves its folder.
         self.label_copies: dict[str, dict] = {}
+        # When the last finished scan ended: start_scan() clears the public
+        # `scanned_ts`, but the arrivals diff of the next scan needs it.
+        self.prev_scan_ts: int | None = None
         self.folder_uv: dict[str, int] = {}  # folder -> UIDVALIDITY at scan
         self.folder_roles: dict[str, str] = {}   # role -> raw folder name
         # Role folders (Trash, later Junk ...) never enter `index`; each

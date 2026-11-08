@@ -331,6 +331,18 @@ def _run_ai(grouping: str, acc=None, keys: set[str] | None = None,
                             # the row: the user's choice wins over the AI.
                             new_ai = {"verdict": verdict,
                                       "reason": v["reason"][:160]}
+                            if grouping == "sender":
+                                # `ts`: when this AI verdict came about (the
+                                # Overview's "new AI verdicts"; `in:` filter).
+                                # A re-rating that confirms the same verdict
+                                # keeps the old date. A user verdict is not
+                                # one of these and has no date.
+                                prev = (None if mine else rec["ai"]) or (
+                                    acct_cache.get(grouping) or {}).get(
+                                    rec["key"]) or {}
+                                new_ai["ts"] = prev.get("ts") \
+                                    if prev.get("verdict") == verdict \
+                                    and prev.get("ts") else int(time.time())
                             if not mine:
                                 rec["ai"] = new_ai
                             if grouping == "sender":

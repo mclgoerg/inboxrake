@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { groupByMonth, localIso, monthSummary, undoneCounts } from "./activity";
+import { cleanedWeeks, entriesSince, groupByMonth, localIso, monthSummary,
+  undoneCounts, weekBucket } from "./activity";
 import type { AuditEntry } from "./types";
 
 const at = (y: number, m: number, d: number) =>
@@ -111,4 +112,61 @@ test("an undone rule move does not let the rule run count instead", () => {
     e(t0 + 60, { action: "undo", id: "u1", undoes: { id: "m", count: 7 } }),
   ], now);
   expect(s.mails).toBe(0);
+});
+
+const DAY = 86400;
+const NOW = at(2026, 10, 20);
+
+test("cleaned mails per rolling 7-day bucket by the month card's rules", () => {
+  const t0 = NOW - 3 * DAY;
+  const w = cleanedWeeks([
+    e(NOW - 1 * DAY, { count: 4 }), e(NOW - 6.9 * DAY, { count: 1 }),
+    e(NOW - 8 * DAY, { action: "archive", count: 5 }),
+    e(NOW - 55 * DAY, { count: 2 }),
+    e(NOW - 57 * DAY, { count: 99 }),                       // too old
+    e(NOW - DAY, { action: "move", label: "3 mails from Junk", count: 3 }),
+    e(NOW - DAY, { action: "unsubscribe", count: 7 }),
+    e(NOW - DAY, { outcome: "error", count: 0 }),
+    // a rule run and its own move entry count once
+    e(t0, { action: "rule_execute", actor: "rule:r1", count: 6, bytes: 0 }),
+    e(t0 - 5, { actor: "rule:r1", count: 6 }),
+  ], NOW);
+  expect(w).toEqual([2, 0, 0, 0, 0, 0, 5, 4 + 1 + 6]);
+  expect(w.reduce((a, b) => a + b, 0)).toBe(2 + 5 + 4 + 1 + 6);
+});
+
+test("weekBucket: the last bucket is the 7 days up to now", () => {
+  expect(weekBucket(0)).toBe(7);
+  expect(weekBucket(-30)).toBe(7);
+  expect(weekBucket(7 * DAY - 1)).toBe(7);
+  expect(weekBucket(7 * DAY)).toBe(6);
+  expect(weekBucket(56 * DAY - 1)).toBe(0);
+  expect(weekBucket(56 * DAY)).toBe(-1);
+});
+
+test("entriesSince pages back until the window is covered", async () => {
+  const log = Array.from({ length: 7 }, (_, i) => e(1000 - i * 100));
+  const page = async (offset: number, limit: number) => ({
+    total: log.length, entries: log.slice(offset, offset + limit) });
+  const a = await entriesSince(page, 750, 6, 3);       // 3 + 3 pages of 3
+  expect(a.entries).toHaveLength(3 + 3);
+  expect(a.complete).toBe(true);                       // ts 500 < 750
+  const b = await entriesSince(page, 0, 2, 3);         // the cap cuts it
+  expect(b.entries).toHaveLength(6);
+  expect(b.complete).toBe(false);
+  const c = await entriesSince(page, 0, 6, 3);         // log ends first
+  expect(c.entries).toHaveLength(7);
+  expect(c.complete).toBe(true);
+});
+
+test("the weekly balance subtracts what an undo restored, like the month", () => {
+  const w = cleanedWeeks([
+    e(NOW - 2 * DAY, { id: "a", count: 10, bytes: 1000 }),
+    e(NOW - 1 * DAY, { action: "undo", id: "u", count: 4, bytes: 0,
+      undoes: { id: "a", count: 4 } }),
+    // a rescue marked by from_role, whatever its label says
+    e(NOW - 1 * DAY, { action: "move", from_role: "junk", label: "x",
+      count: 9 }),
+  ], NOW);
+  expect(w[7]).toBe(6);
 });

@@ -60,7 +60,8 @@ def test_one_second_past_grace_flagged(monkeypatch):
     g = _scan_state(monkeypatch, [
         _mail(1, T + mailops.STILL_MAILING_GRACE + 1)])
     sm = g[ADDR]["still_mailing"]
-    assert sm == {"n": 1, "senders": 1, "since_ts": T, "addrs": [ADDR]}
+    assert sm == {"n": 1, "senders": 1, "since_ts": T, "addrs": [ADDR],
+                  "last_ts": T + mailops.STILL_MAILING_GRACE + 1}
 
 
 def test_mail_before_unsubscribe_not_flagged(monkeypatch):
