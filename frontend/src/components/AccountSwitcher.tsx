@@ -3,7 +3,6 @@ import { Check, ChevronRight, Plus, ScrollText, Settings as SettingsIcon, Star,
 import type { ReactNode } from "react";
 import { t } from "../i18n";
 import { fmtAgo, fmtSize } from "../lib";
-import { fmtNum } from "../numfmt";
 import type { AccountSummary, Config } from "../types";
 import { demoHint } from "../demoMode";
 import { statusOf, StatusDot } from "./SettingsPage";
@@ -74,46 +73,55 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
           const sum = summary?.[name];
           const bits = [
             t(`settings.status.${status}`),
-            sum?.scanned_ts ? t("scan.age", { ago: fmtAgo(sum.scanned_ts) })
+            sum?.status === "scanning" ? t("account.scan_running")
+              : sum?.scanned_ts ? t("scan.age", { ago: fmtAgo(sum.scanned_ts) })
               : sum ? t("account.never_scanned") : "",
-            sum?.scanned_ts
-              ? t("menu.mails_size", { n: fmtNum(sum.mails),
+            sum?.scanned_ts && sum.status !== "scanning"
+              ? t("menu.mails_size", { n: sum.mails,
                 size: fmtSize(sum.size) }) : "",
           ].filter(Boolean);
           return (
-            <button key={name} type="button"
-              role={menu ? "menuitemradio" : undefined}
-              aria-checked={menu ? active : undefined}
-              aria-current={!menu && active ? "true" : undefined}
-              onClick={() => (broken ? onFix(name) : !active && onSwitch(name))}
-              className={`flex min-h-11 w-full items-center gap-3 rounded-card
-                border bg-panel p-3 text-left enabled:hover:bg-panel2
-                ${active ? "border-accent" : "border-line"}`}>
-              <AccountAvatar name={name} size="md" className="shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 type-body
-                  font-medium">
-                  <span className="truncate">{name}</span>
-                  <StatusDot status={status} />
-                </span>
-                <span className="block truncate type-meta text-muted">
-                  {im.user}
-                </span>
-                {broken ? (
-                  <span className="block type-meta text-danger-fg">
-                    {t(status === "check" ? "menu.signin_failed"
-                      : "menu.signin_missing")}
+            <div key={name} className={`rounded-card border bg-panel
+              ${active ? "border-accent" : "border-line"}`}>
+              <button type="button"
+                role={menu ? "menuitemradio" : undefined}
+                aria-checked={menu ? active : undefined}
+                aria-current={!menu && active ? "true" : undefined}
+                onClick={() => !active && onSwitch(name)}
+                className="flex min-h-11 w-full items-center gap-3
+                  rounded-card p-3 text-left enabled:hover:bg-panel2">
+                <AccountAvatar name={name} size="md" className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 type-body
+                    font-medium">
+                    <span className="truncate">{name}</span>
+                    <StatusDot status={status} />
                   </span>
-                ) : (
-                  <span className="block type-meta text-muted">
-                    {bits.join(" · ")}
+                  <span className="block truncate type-meta text-muted">
+                    {im.user}
                   </span>
-                )}
-              </span>
-              {active ? <Check size={16} aria-hidden className="text-accent" />
-                : <ChevronRight size={16} aria-hidden
-                  className="shrink-0 text-faint" />}
-            </button>
+                  {!broken && (
+                    <span className="block type-meta text-muted">
+                      {bits.join(" · ")}
+                    </span>
+                  )}
+                </span>
+                {active ? <Check size={16} aria-hidden className="text-accent" />
+                  : <ChevronRight size={16} aria-hidden
+                    className="shrink-0 text-faint" />}
+              </button>
+              {broken && (
+                // Its own control: the card still switches on tap.
+                <button type="button" role={menu ? "menuitem" : undefined}
+                  onClick={() => onFix(name)}
+                  className="mx-3 mb-2 min-h-9 text-left type-meta
+                    text-danger-fg underline-offset-2 hover:underline
+                    coarse:min-h-11">
+                  {t(status === "check" ? "menu.signin_failed"
+                    : "menu.signin_missing")}
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

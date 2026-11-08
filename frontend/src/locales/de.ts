@@ -1422,6 +1422,7 @@ export const DE: Record<string, string> = {
   "menu.signin_failed": "Anmeldung fehlgeschlagen - beheben",
   "menu.signin_missing": "Nicht angemeldet - einrichten",
   "menu.mails_size": "{n} Mails · {size}",
+  "menu.mails_size_one": "1 Mail · {size}",
   "update.available": "Eine neue Version von Inboxrake ist verfügbar.",
   "update.reload": "Neu laden",
   "menu.version": "v{version} (Build {id})",

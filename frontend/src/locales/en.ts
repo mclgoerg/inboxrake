@@ -91,6 +91,7 @@ export const EN: Record<string, string> = {
   "menu.signin_failed": "Sign-in failed - fix it",
   "menu.signin_missing": "Not signed in - set it up",
   "menu.mails_size": "{n} mails · {size}",
+  "menu.mails_size_one": "1 mail · {size}",
   "update.available": "A new version of Inboxrake is available.",
   "update.reload": "Reload",
   "menu.version": "v{version} (build {id})",

@@ -49,13 +49,29 @@ test("tapping another account switches; the active card does nothing", () => {
   expect(h.onSwitch).toHaveBeenCalledWith("beta");
 });
 
-test("a broken sign-in says so and leads to that account's settings", () => {
+test("a broken account still switches on tap; its fix link opens settings", () => {
   const h = mount();
   const card = screen.getByRole("button", { name: /gamma/ });
-  expect(card.textContent).toContain("Sign-in failed - fix it");
+  expect(card.textContent).not.toContain("Sign-in failed");
   fireEvent.click(card);
+  expect(h.onSwitch).toHaveBeenCalledWith("gamma");
+  expect(h.onFix).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Sign-in failed - fix it" }));
   expect(h.onFix).toHaveBeenCalledWith("gamma");
-  expect(h.onSwitch).not.toHaveBeenCalled();
+  expect(h.onSwitch).toHaveBeenCalledTimes(1);
+});
+
+test("a scanning account says Scanning…; one mail is singular", () => {
+  mount({ summary: {
+    ...summary,
+    beta: { status: "scanning", scanned_ts: null, mails: 0, size: 0 },
+    alpha: { status: "done", scanned_ts: 1, mails: 1, size: 2048 } } });
+  expect(screen.getByRole("button", { name: /beta/ }).textContent)
+    .toContain("Scanning…");
+  expect(screen.getByRole("button", { name: /beta/ }).textContent)
+    .not.toContain("not scanned yet");
+  expect(screen.getByRole("button", { name: /alpha/ }).textContent)
+    .toContain("1 mail · 2 KB");
 });
 
 test("Add account, Appearance, Settings and Activity call their handlers", () => {
