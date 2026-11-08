@@ -217,18 +217,66 @@ test("empty state: recent searches (device only, clearable) and Try presets "
   expect(localStorage.getItem("pmc_recent_searches")).toBe("[]");
 });
 
-test("a finished search is remembered, newest first, without duplicates",
-  async () => {
-    search.mockResolvedValue(resp());
-    render(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
-    type("alpha");
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
-    await screen.findByText("No matches");
-    type("beta");
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(JSON.parse(
-      localStorage.getItem("pmc_recent_searches")!)).toEqual(["beta", "alpha"]));
-  });
+test("only committed searches are remembered: Enter with hits, newest "
+  + "first, no duplicates; never prefixes, empty or failed searches",
+async () => {
+  search.mockResolvedValue({ mails: [mail(1)], notes: [] });
+  render(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  const stored = () => JSON.parse(
+    localStorage.getItem("pmc_recent_searches") ?? "[]");
+  // typed, results shown, but not committed yet (no Enter, no pause)
+  fireEvent.change(field(), { target: { value: "alp" } });
+  await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+  expect(stored()).toEqual([]);
+  type("alpha");
+  await waitFor(() => expect(stored()).toEqual(["alpha"]));
+  type("beta");
+  await waitFor(() => expect(stored()).toEqual(["beta", "alpha"]));
+  type("ALPHA");
+  await waitFor(() => expect(stored()).toEqual(["ALPHA", "beta"]));
+  search.mockResolvedValue(resp());
+  type("nothing here");
+  await screen.findByText("No matches");
+  search.mockRejectedValue(new Error("boom"));
+  type("failing");
+  await screen.findByText(/boom/);
+  expect(stored()).toEqual(["ALPHA", "beta"]);
+});
+
+test("a query left standing for ~2 s with hits is remembered", async () => {
+  vi.useFakeTimers();
+  search.mockResolvedValue({ mails: [mail(1)], notes: [] });
+  render(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  fireEvent.change(field(), { target: { value: "parcel" } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  expect(localStorage.getItem("pmc_recent_searches")).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+  expect(JSON.parse(localStorage.getItem("pmc_recent_searches")!))
+    .toEqual(["parcel"]);
+});
+
+test("selection and Trash selected only ever cover the visible mails",
+async () => {
+  search.mockResolvedValue({ notes: [], mails: [
+    mail(1), mail(2), mail(3, { folder: "Archive" })] });
+  withDialogs(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByRole("button", { name: "Select all 3" }));
+  expect(screen.getByRole("button", { name: "Trash selected (3)" }))
+    .toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Folder"),
+    { target: { value: "Archive" } });
+  expect(screen.getByRole("button", { name: "Trash selected (1)" }))
+    .toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["Archive", 3]]));
+  // widening the filter again does not bring the hidden picks back
+  fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "" } });
+  expect(screen.queryByRole("button", { name: /Trash selected/ })).toBeNull();
+});
 
 test("results are MailRows; Select all N feeds the selection, the danger "
   + "button needs a selection, and a cancelled confirm trashes nothing",

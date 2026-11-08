@@ -34,9 +34,10 @@ const saveRecent = (list: string[]) => {
  *  each with its live count from the loaded sender groups (same parser and
  *  matcher as the filter box). A preset whose count is 0 - or whose data is
  *  missing, e.g. attachments not analysed - is hidden. */
-const TRY: { id: string; query: string; unit: "mails" | "senders";
+const TRY: { id: string; query: string; unit: "mails" | "senders"; prefix?: string;
   icon: ReactNode }[] = [
-  { id: "att", query: "att:>1m", unit: "mails", icon: <Paperclip size={18} /> },
+  { id: "att", query: "att:>1m", unit: "mails",
+    prefix: "search.try_att_prefix", icon: <Paperclip size={18} /> },
   { id: "unread", query: "unread:>90 age:>1y", unit: "mails",
     icon: <MailIcon size={18} /> },
   { id: "replied", query: "is:replied", unit: "senders",
@@ -99,7 +100,19 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const last = useRef("");
   const input = useRef<HTMLInputElement>(null);
 
-  const run = async (query: string, body: boolean) => {
+  /** Remembers a search the user stood behind (never a half-typed prefix). */
+  const commit = (query: string) => {
+    const s = query.trim();
+    if (s.length < 2) return;
+    setRecent((cur) => {
+      const next = [s, ...cur.filter((x) => x.toLowerCase()
+        !== s.toLowerCase())].slice(0, RECENT_MAX);
+      saveRecent(next);
+      return next;
+    });
+  };
+
+  const run = async (query: string, body: boolean, remember = false) => {
     const s = query.trim();
     if (s.length < 2) return;
     const mine = ++seq.current;
@@ -113,10 +126,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
       setSel(new Set());
       setNote(r.mails.length === 500
         ? t("Showing the newest 500 matches.") : "");
-      const next = [s, ...recent.filter((x) => x.toLowerCase()
-        !== s.toLowerCase())].slice(0, RECENT_MAX);
-      setRecent(next);
-      saveRecent(next);
+      if (remember && r.mails.length > 0) commit(s);
     } catch (e: any) {
       if (mine !== seq.current) return;
       setRes(null);
@@ -144,9 +154,16 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     return () => clearTimeout(h);
   }, [q, scope]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A query that stays put for ~2 s with hits counts as committed.
+  useEffect(() => {
+    if (!res || res.mails.length === 0 || res.q !== q.trim()) return;
+    const h = setTimeout(() => commit(res.q), 2000);
+    return () => clearTimeout(h);
+  }, [res, q]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickScope = (v: Scope) => {
     setScope(v);
-    if (v === "body") run(q, true);
+    if (v === "body") run(q, true, true);
   };
   const bodyOn = bodySearch && scope === "body";
 
@@ -154,10 +171,18 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     const next = new Set(sel);
     next.has(k) ? next.delete(k) : next.add(k);
     setSel(next);
+    commit(res?.q ?? "");
   };
 
   const mails = useMemo(() => (res?.mails ?? []).filter((m) =>
     inWindow(m, when) && (!folder || m.folder === folder)), [res, when, folder]);
+  // Selection and actions only ever cover what the list shows.
+  const visible = useMemo(() => new Set(mails.map(mailKey)), [mails]);
+  const picked = useMemo(
+    () => [...sel].filter((k) => visible.has(k)), [sel, visible]);
+  useEffect(() => {
+    if (picked.length !== sel.size) setSel(new Set(picked));
+  }, [picked, sel]);
   const folders = useMemo(
     () => [...new Set((res?.mails ?? []).map((m) => m.folder))].sort(),
     [res]);
@@ -179,19 +204,19 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const tries = useMemo(() => TRY.map((p) => {
     const f = parseFilter(p.query);
     const hit = Object.values(groups ?? {}).filter((g) => matchGroup(g, f));
-    const n = p.unit === "senders" ? hit.length
-      : hit.reduce((a, g) => a + g.count, 0);
-    return { ...p, n };
-  }).filter((p) => p.n > 0), [groups]);
+    const n = hit.reduce((a, g) => a + g.count, 0);
+    return { ...p, s: hit.length, n };
+  }).filter((p) => p.s > 0), [groups]);
 
   const trashSelected = async () => {
-    if (!res || sel.size === 0) return;
-    if (!await confirmTrashMails(sel.size)) return;
+    const go = new Set(picked);
+    if (!res || go.size === 0) return;
+    if (!await confirmTrashMails(go.size)) return;
     try {
-      const items = res.mails.filter((m) => sel.has(mailKey(m)))
+      const items = mails.filter((m) => go.has(mailKey(m)))
         .map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items);
-      setRes({ ...res, mails: res.mails.filter((m) => !sel.has(mailKey(m))) });
+      setRes({ ...res, mails: res.mails.filter((m) => !go.has(mailKey(m))) });
       setSel(new Set());
       setNote(t("note.background", { verb: t("Move to Trash") }));
       onDeleted();
@@ -201,7 +226,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   };
 
   const allSelected = mails.length > 0
-    && mails.every((m) => sel.has(mailKey(m)));
+    && mails.every((m) => visible.has(mailKey(m)) && sel.has(mailKey(m)));
   const typed = q.trim().length >= 2;
   const reason = bodySearch ? undefined : "search.body_off";
   const moreText = bodySearch && scope === "meta" && !!res && (
@@ -226,11 +251,12 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
         onClose={onClose}
       />
 
-      {view ? (
-        <MessageView mail={view} onBack={() => setView(null)} />
-      ) : (
+      {view && <MessageView mail={view} onBack={() => setView(null)} />}
+      {/* Stays mounted behind a mail so Back keeps the scroll position. */}
+      {(
         <div data-scroll-id="panel"
-          className="min-h-0 flex-1 overflow-y-auto pb-4">
+          className={`min-h-0 flex-1 overflow-y-auto pb-4
+            ${view ? "hidden" : ""}`}>
           <div className="mx-auto w-full max-w-3xl">
             <div className="px-4 pt-4">
               <div className="relative">
@@ -240,12 +266,13 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 <input ref={input} autoFocus type="search" value={q}
                   aria-label={t("Search")}
                   className="min-h-12 w-full rounded-card border border-line
-                    bg-panel2 pl-11 pr-11 type-heading focus:border-accent"
+                    bg-panel2 pl-11 pr-11 type-heading focus:border-accent
+                    [&::-webkit-search-cancel-button]:appearance-none"
                   placeholder={bodyOn
                     ? t("search.placeholder_body") : t("search.placeholder")}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") run(q, bodyOn);
+                    if (e.key === "Enter") run(q, bodyOn, true);
                   }} />
                 {busy && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -355,7 +382,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                                 font-medium">{t(`search.try_${p.id}`)}</span>
                               <span className="block truncate type-meta
                                 text-muted">
-                                {t(`search.try_${p.id}_hint`, { n: p.n })}
+                                {[p.prefix && t(p.prefix),
+                                  t("search.try_senders", { n: p.s }),
+                                  p.unit === "mails"
+                                  && t("search.try_mails", { n: p.n })]
+                                  .filter(Boolean).join(" · ")}
                               </span>
                             </span>
                             <ChevronRight size={16} aria-hidden
@@ -389,7 +420,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                       <button type="button" disabled={!onOpenSender}
                         className="flex min-h-14 w-full items-center gap-3
                           px-3 py-2 text-left hover:bg-panel2"
-                        onClick={() => onOpenSender?.(g)}>
+                        onClick={() => { commit(res?.q ?? ""); onOpenSender?.(g); }}>
                         <Avatar name={g.label || g.key} size="md" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate type-body
@@ -418,10 +449,10 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                     {t("search.mails")} · {mails.length}
                   </SectionLabel>
                   <span className="ml-auto flex items-center gap-3">
-                    {sel.size > 0 && (
+                    {picked.length > 0 && (
                       <Button variant="danger" size="sm"
                         onClick={trashSelected}>
-                        {t("Trash selected")} ({sel.size})
+                        {t("Trash selected")} ({picked.length})
                       </Button>
                     )}
                     <button type="button"
@@ -436,8 +467,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 </div>
                 <div className="mx-4 overflow-hidden rounded-card border
                   border-line bg-panel">
-                  <MailRows mails={mails} sel={sel} onToggle={toggle}
-                    onOpen={setView} mark={mark} />
+                  <MailRows mails={mails} sel={new Set(picked)} onToggle={toggle}
+                    onOpen={(m) => { commit(res?.q ?? ""); setView(m); }} mark={mark} />
                 </div>
               </section>
             )}
