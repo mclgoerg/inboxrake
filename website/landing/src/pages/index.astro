@@ -137,12 +137,12 @@ const heroAlt = "The Inboxrake app on a computer";
               <Shot src={desktopLight} dark={desktopDark} alt={heroAlt} widths={[640, 960, 1280]} sizes="(min-width: 1100px) 600px, 90vw" />
             </div>
             <div class="phone-frame">
-              <Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[200, 400]} sizes="200px" />
+              <Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[200, 400, 600]} sizes="200px" />
             </div>
           </div>
           <div class="phones">
-            <div class="phone-frame flat"><Shot src={phoneOverviewLight} alt="The Overview page of the app on a phone" widths={[170, 340]} sizes="170px" /></div>
-            <div class="phone-frame flat lower"><Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[170, 340]} sizes="170px" /></div>
+            <div class="phone-frame flat"><Shot src={phoneOverviewLight} alt="The Overview page of the app on a phone" widths={[170, 340, 510]} sizes="170px" /></div>
+            <div class="phone-frame flat lower"><Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[170, 340, 510]} sizes="170px" /></div>
           </div>
         </div>
       </section>
@@ -159,7 +159,7 @@ const heroAlt = "The Inboxrake app on a computer";
           {features.map((f, i) => (
             <li class="card">
               <div class="fshot">
-                <Shot src={f.shot} alt={f.alt} widths={[240, 480]} sizes="240px" />
+                <Shot src={f.shot} alt={f.alt} widths={[240, 480, 720]} sizes="240px" />
               </div>
               <div class="fbody"><h3>{f.title}</h3><p>{f.text}</p></div>
             </li>
