@@ -9,14 +9,39 @@ import { afterEach, beforeEach } from "vitest";
 // error wins over a bare test timeout.
 configure({ asyncUtilTimeout: 5000 });
 
+// A fragment navigation fires popstate (jsdom: later, as a task of its own).
+// The back stack (`backStack.ts`) would take it for a Back and close the
+// overlays of whatever test is running by then: swallow exactly the ones this
+// file's own hash writes cause (its listener registers first, so it runs first).
+let strays = 0;
+if (typeof window !== "undefined")
+  window.addEventListener("popstate", (e) => {
+    if (strays > 0) { strays--; e.stopImmediatePropagation(); }
+  });
+// (imported only now: the module listens to popstate from its first load)
+const { backStackBusy, resetBackStack } = await import("./backStack");
+const hashTo = (hash: string) => {
+  const was = window.location.href;
+  window.location.hash = hash;
+  if (window.location.href !== was) strays++;
+};
 // The URL hash is the app's page (nav.ts) and outlives a test's cleanup():
 // reset it so one test's page never leaks into the next. Tests start on the
 // Senders page (the list most of them drive); the default start page
 // (Overview) is covered by App.overview.test.tsx, which clears the hash.
 beforeEach(() => {
-  if (typeof window !== "undefined") window.location.hash = "#/senders";
+  if (typeof window !== "undefined") hashTo("#/senders");
 });
-afterEach(() => {
-  if (typeof window !== "undefined" && window.location.hash)
-    window.location.hash = "";
+afterEach(async () => {
+  if (typeof window === "undefined") return;
+  // Overlays that unmounted with the test pop their history entries (a
+  // traversal jsdom runs as a task): let it land before the next test starts,
+  // so it cannot close that test's overlays (V8, `backStack.ts`).
+  for (let i = 0; backStackBusy() && i < 40; i++)
+    await new Promise((r) => setTimeout(r, 5));
+  resetBackStack();
+  if (window.location.hash) hashTo("");
+  // The popstates of this file's and the test's own hash writes land now, not
+  // in the next test.
+  await new Promise((r) => setTimeout(r, 0));
 });

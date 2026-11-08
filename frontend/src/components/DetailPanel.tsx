@@ -22,7 +22,8 @@ import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
   confirmDialog, DemoHint, EngagementMeter, ensureAiAck, Input, LINK,
   LINK_ACCENT, Loading, Menu, MenuItem, Modal, Notice, PanelHeader, PinButton,
   PopupSelect, ProtectButton, RatingChips, Segmented, Spinner, StatTile,
-  stillMailingText, Tag, tabPanelProps, TrackerBadge, useMediaQuery }
+  PageScope, stillMailingText, Tag, tabPanelProps, TrackerBadge,
+  useBackLayer, useMediaQuery }
   from "./ui";
 
 // Rating filter chips: same green/yellow/red/unrated buckets as the
@@ -112,6 +113,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // (a pool whose senders are all gone falls back to its mails view)
   const tab = hasSenders ? pick : "mails";
   const [inspect, setInspect] = useState<Group | null>(null);
+  // Back leaves the pooled sender's own detail (the reader inside it closes
+  // first: it registered later); the pane is a page, not an overlay.
+  useBackLayer(variant !== "pane" && !!inspect && !!renderSender,
+    () => setInspect(null));
   const [senderSel, setSenderSel] = useState(0);   // ticked in the sender list
   const [mails, setMails] = useState<Mail[] | null>(null);
   const [error, setError] = useState("");
@@ -1037,7 +1042,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       data-split-pane tabIndex={-1}
       className="flex h-full outline-none min-h-0 flex-col overflow-hidden border-l
         border-line bg-panel">
-      {content}
+      <PageScope>{content}</PageScope>
     </section>
   ) : (
     <Modal onClose={onClose} full edgeBack>{content}</Modal>

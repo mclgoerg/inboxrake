@@ -4,7 +4,7 @@ import { api, mailKey } from "../api";
 import { t } from "../i18n";
 import { splitQuoted } from "../quoted";
 import type { ConversationResp, Mail, MessageDetail } from "../types";
-import { Button, LINK, ShortDate, Spinner } from "./ui";
+import { Button, LINK, ShortDate, Spinner, useBackLayer } from "./ui";
 
 type Body = MessageDetail | "loading" | { error: string };
 
@@ -21,6 +21,8 @@ export function ThreadView({ mail, initial, onBack, actions }: {
   /** Message-scoped actions for `mail`, right of the back button. */
   actions?: ReactNode;
 }) {
+  // Below 1024 px Back closes the thread.
+  useBackLayer(true, onBack);
   const [conv, setConv] = useState<ConversationResp | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set([mailKey(mail)]));

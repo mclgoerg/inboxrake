@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useId,
   useLayoutEffect, useMemo, useRef, useState, type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject }
   from "react";
+import { useLayer } from "../backStack";
 import { nowDate } from "../clock";
 import { demoHint, useDemo } from "../demoMode";
 import { getLang, t } from "../i18n";
@@ -596,23 +597,33 @@ type Presentation = "modal" | "slot" | "page" | "tool" | "screen";
 const PresentationContext = createContext<Presentation>("modal");
 /** Name of the page a full-screen tool goes back to (set by `PageSlot`). */
 const ScreenParentContext = createContext<string | null>(null);
+/** Whether the next top-level `Modal` owns a history entry (`useLayer`):
+ *  false for a tool that IS a route below 1024 px (a deep link, a resize) -
+ *  its own route entry is what Back leaves. Reset to true inside every Modal,
+ *  so dialogs and readers opened from it stay layers. */
+const BackEntryContext = createContext(true);
 
 /** Presents the panels inside as pages filling the content column (`page`)
  *  or as dialogs. The element tree stays the same either way, so a panel
  *  keeps its state when the presentation changes (a window crossing 1024 px). */
-export function PageSlot({ page, parent, children }: {
+export function PageSlot({ page, parent, entry = true, children }: {
   page: boolean;
   /** Below the page width: the name of the page a tool goes back to. Its
    *  header then reads as a full-screen page ("tool"/"screen": back link
    *  + large title) while the panel stays a modal. */
-  parent?: string; children: ReactNode;
+  parent?: string;
+  /** Below the page width: the modal owns a history entry that Back pops
+   *  (false when the tool is a route - the route entry is its entry). */
+  entry?: boolean; children: ReactNode;
 }) {
   return (
     <ScreenParentContext.Provider value={parent ?? null}>
-      <PresentationContext.Provider
-        value={page ? "slot" : parent ? "tool" : "modal"}>
-        {children}
-      </PresentationContext.Provider>
+      <BackEntryContext.Provider value={entry}>
+        <PresentationContext.Provider
+          value={page ? "slot" : parent ? "tool" : "modal"}>
+          {children}
+        </PresentationContext.Provider>
+      </BackEntryContext.Provider>
     </ScreenParentContext.Provider>
   );
 }
@@ -1502,10 +1513,14 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
  *  `lg` (768) are full-screen there. `full` = `lg` at a fixed 88vh; other
  *  modals shrink to their content. `label` / `labelledBy` / `describedBy` name it for AT. */
 export function Modal({ children, onClose, full = false, size, label,
-  labelledBy, describedBy, edgeBack = false }: {
+  labelledBy, describedBy, edgeBack = false, backLayer = true }: {
   children: ReactNode; onClose: () => void; full?: boolean;
   size?: "sm" | "md" | "lg"; label?: string;
   labelledBy?: string; describedBy?: string;
+  /** The open modal owns a history entry, so Back closes it (`useLayer`;
+   *  not a tool page, which is a route). False for one that is not opened by
+   *  the user (the first-run wizard is the whole screen). */
+  backLayer?: boolean;
   /** A full-screen page with a back target (a tool page always is): in an
    *  installed app a drag from the left edge calls `onClose` (`useEdgeBack`). */
   edgeBack?: boolean;
@@ -1528,6 +1543,9 @@ export function Modal({ children, onClose, full = false, size, label,
   // the modal and reshuffles the stack.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // Back closes the modal on top (a page has no overlay to close).
+  const entry = useContext(BackEntryContext);
+  useLayer(!slot && backLayer && entry, () => closeRef.current());
   // Edge swipe back, only for the modal on top (a confirm over it wins).
   useEdgeBack(dialog, () => closeRef.current(),
     !slot && sz !== "sm" && (tool || edgeBack),
@@ -1643,7 +1661,11 @@ export function Modal({ children, onClose, full = false, size, label,
               is a real modal again. */}
           <PresentationContext.Provider
             value={slot ? "page" : tool ? "screen" : "modal"}>
-            {children}
+            <BackEntryContext.Provider value={true}>
+              <PageScopeContext.Provider value={slot}>
+                {children}
+              </PageScopeContext.Provider>
+            </BackEntryContext.Provider>
           </PresentationContext.Provider>
         </div>
       </div>
@@ -1811,6 +1833,28 @@ export function useMediaQuery(query: string): boolean {
     return () => mq.removeEventListener("change", on);
   }, [query]);
   return match;
+}
+
+/** True for content that sits on a page (a tool page, the split pane), false
+ *  inside an overlay (every `Modal`; its children reset it). */
+const PageScopeContext = createContext(false);
+
+/** Marks its content as part of a page: readers inside it are not overlays,
+ *  so they own no history entry (`useBackLayer`). */
+export function PageScope({ children }: { children: ReactNode }) {
+  return <PageScopeContext.Provider value={true}>
+    {children}</PageScopeContext.Provider>;
+}
+
+/** An in-panel reader (a mail, a thread) that Back closes (V8): while
+ *  `active` inside an overlay it owns one history entry, so browser Back,
+ *  Safari's back swipe, Android's system Back and the installed app's edge
+ *  swipe call `close` and land on what is underneath; closing it any other way
+ *  pops the entry again. On a page (`PageScope`) nothing changes. `Modal`
+ *  does this for itself, at every width. See `backStack.ts`. */
+export function useBackLayer(active: boolean, close: () => void): void {
+  const onPage = useContext(PageScopeContext);
+  useLayer(active && !onPage, close);
 }
 
 /** Dismissible inline notice (replaces the one-off banners). `tone="danger"`

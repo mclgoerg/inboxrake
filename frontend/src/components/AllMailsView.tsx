@@ -294,7 +294,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       )}
 
       {view && (
-        <Modal onClose={() => setView(null)} full>
+        // The reader owns the history entry (MessageView), not this shell.
+        <Modal onClose={() => setView(null)} full backLayer={false}>
           <MessageView mail={view} onBack={() => setView(null)} />
         </Modal>
       )}

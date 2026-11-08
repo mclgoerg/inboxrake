@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode }
 import { api, fmtSize, mailKey } from "../api";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
-import { AiTag, Button, MailRow, PinButton, Spinner, SwipeRow,
+import { AiTag, Button, MailRow, PinButton, Spinner, SwipeRow, useBackLayer,
   type SwipeAction } from "./ui";
 import { ThreadView } from "./ThreadView";
 
@@ -18,6 +18,8 @@ export function MessageView({ mail, onBack, actions }: {
   const [detail, setDetail] = useState<MessageDetail | null>(null);
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
+  // Below 1024 px Back leaves the mail (and the thread over it first).
+  useBackLayer(true, onBack);
 
   useEffect(() => {
     let alive = true;

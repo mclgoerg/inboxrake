@@ -346,7 +346,9 @@ test("a group protected since the deck was dealt is skipped and said so", async 
   state = baseState(FIXTURE.map((x) => x.key === "b@shop.example"
     ? { ...x, protected: true } : x));
   // the Scan icon lives on the Senders page, behind the Clean up one
-  window.location.hash = "#/senders";
+  // (replaceState: a real hash navigation would announce itself with a
+  // popstate, which closes the overlay like a Back does)
+  window.history.replaceState(null, "", "#/senders");
   window.dispatchEvent(new HashChangeEvent("hashchange"));
   fireEvent.click(await screen.findByRole("button", { name: "Scan" }));
   await new Promise((r) => setTimeout(r, 100));
