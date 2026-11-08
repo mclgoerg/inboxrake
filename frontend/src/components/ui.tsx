@@ -2447,12 +2447,14 @@ export function IconTile({ tone = "neutral", children }: {
  *  `danger` makes it a destructive text row. Switch / Stepper inside take
  *  their name from the label. */
 export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
-  stack = false, disabled, current, children }: {
+  stack = false, disabled, current, expanded, children }: {
   label: ReactNode; sub?: ReactNode; icon?: ReactNode; value?: ReactNode;
   onClick?: () => void; danger?: boolean; stack?: boolean;
   disabled?: boolean;
   /** The row of the page that is open (`aria-current`). */
-  current?: boolean; children?: ReactNode;
+  current?: boolean;
+  /** A disclosure row: reports `aria-expanded` and turns its chevron down. */
+  expanded?: boolean; children?: ReactNode;
 }) {
   const id = useId();
   const ctx = { labelId: `${id}-l`, descId: sub ? `${id}-d` : undefined };
@@ -2473,6 +2475,7 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
     return (
       <button type="button" onClick={onClick} disabled={disabled}
         aria-current={current ? "page" : undefined}
+        aria-expanded={expanded}
         className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5
           text-left transition-colors enabled:hover:bg-panel2
           disabled:cursor-not-allowed disabled:text-faint">
@@ -2483,7 +2486,8 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
             text-muted">{value}</span>
         )}
         {children}
-        <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
+        <ChevronRight size={16} aria-hidden className={`shrink-0 text-faint
+          ${expanded ? "rotate-90" : ""}`} />
       </button>
     );
   }

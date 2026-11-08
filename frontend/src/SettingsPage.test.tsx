@@ -10,6 +10,7 @@ import { afterEach, expect, test, vi } from "vitest";
 const foldersCalls: (string | undefined)[] = [];
 const saveCalls: any[] = [];
 const testDigestCalls: string[] = [];
+const scanCalls: (string | undefined)[] = [];
 const roleCalls: unknown[][] = [];
 const oauthDisconnectCalls: string[] = [];
 let foldersResult: unknown = null;   // null: picker stays loading
@@ -39,6 +40,8 @@ vi.mock("./api", () => ({
       testDigestCalls.push(account);
       return Promise.resolve(testDigestResult);
     },
+    scan: (account?: string) => { scanCalls.push(account);
+      return Promise.resolve({ ok: true }); },
     getConfig: () => Promise.resolve(cfg),
     knowledge: () => Promise.resolve({ entries: [{ key: "a:amy@solo.example",
       kind: "orders", src: "user", ts: 1, note: "", status: "active",
@@ -63,6 +66,7 @@ vi.mock("./api", () => ({
 import { SettingsPage } from "./components/SettingsPage";
 import type { SettingsSection } from "./nav";
 import { popupItem, popupPick } from "./toolTestUtils";
+import { presetLabel } from "./presets";
 import { DialogProvider, ToastProvider } from "./components/ui";
 // The folder picker toasts its outcomes, so every render has a provider.
 const render = (ui: ReactElement) =>
@@ -70,7 +74,7 @@ const render = (ui: ReactElement) =>
 import { cancelDialog, expectNoDialog, findDialog, pressDialog }
   from "./dialogTestUtils";
 import { setLang } from "./i18n";
-import type { Config } from "./types";
+import type { Config, Preset } from "./types";
 
 const acct = {
   excluded_folders: [] as string[],
@@ -133,21 +137,24 @@ afterEach(() => {
   cleanup();
   setLang("en");
   testDigestCalls.length = 0;
+  scanCalls.length = 0;
   testDigestResult = { sent: true, demo: false };
 });
 
-const presetSelect = () =>
-  screen.getByLabelText(/Provider preset/) as HTMLSelectElement;
+const presetButton = () =>
+  screen.getByRole("button", { name: /^Provider preset/ });
+const pickPreset = (p: Preset) => popupPick(presetButton(), presetLabel(p));
 const hostInput = () => screen.getByLabelText("Host") as HTMLInputElement;
 
 test("gmail preset prefills IMAP + SMTP fields", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(hostInput().value).toBe("127.0.0.1");
-  fireEvent.change(presetSelect(), { target: { value: "gmail" } });
+  pickPreset("gmail");
   expect(hostInput().value).toBe("imap.gmail.com");
   expect((screen.getByLabelText(/IMAP port/) as HTMLInputElement).value)
     .toBe("993");
+  fireEvent.click(screen.getByText("Sending server (unsubscribe mails)"));
   expect((screen.getByLabelText(/SMTP host/) as HTMLInputElement).value)
     .toBe("smtp.gmail.com");
   // Bridge cert must not leak into a non-Proton account
@@ -161,9 +168,9 @@ test("gmail preset prefills IMAP + SMTP fields", () => {
 test("custom preset keeps the current fields", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "custom" } });
+  pickPreset("custom");
   expect(hostInput().value).toBe("127.0.0.1");
-  expect(presetSelect().value).toBe("custom");
+  expect(presetButton().textContent).toMatch(/Custom/);
 });
 
 test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
@@ -172,17 +179,17 @@ test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     const ca = () => (screen.getByLabelText(/CA file/) as HTMLInputElement);
     expect(ca().value).toBe("/certs/bridge-cert.pem");
-    fireEvent.change(presetSelect(), { target: { value: "custom" } });
+    pickPreset("custom");
     expect(ca().value).toBe("");
     fireEvent.change(ca(), { target: { value: "/my/ca.pem" } });
-    fireEvent.change(presetSelect(), { target: { value: "custom" } });
+    pickPreset("custom");
     expect(ca().value).toBe("/my/ca.pem");
   });
 
 test("prefilled fields stay editable", () => {
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "fastmail" } });
+  pickPreset("fastmail");
   fireEvent.change(hostInput(), { target: { value: "imap.mine.example" } });
   expect(hostInput().value).toBe("imap.mine.example");
 });
@@ -214,7 +221,7 @@ test("a virtual view folder is listed under special folders, no checkbox",
       expect(screen.getByText(/Views of other folders - never scanned/))
         .toBeTruthy();
       expect(screen.queryByLabelText(/\[Gmail\]\/Starred/)).toBeNull();
-      expect((screen.getByLabelText("INBOX") as HTMLInputElement).disabled)
+      expect((screen.getByLabelText("INBOX") as HTMLButtonElement).disabled)
         .toBe(false);
     } finally {
       foldersResult = null;
@@ -278,20 +285,20 @@ test("unsaved ticks survive the reload after a role choice", async () => {
   try {
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
-    const box = await screen.findByLabelText("Projects") as HTMLInputElement;
-    expect(box.checked).toBe(true);
+    const box = await screen.findByLabelText("Projects");
+    expect(box.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(box);                       // untick, not saved yet
-    expect(box.checked).toBe(false);
+    expect(box.getAttribute("aria-checked")).toBe("false");
     const before = foldersCalls.length;
     fireEvent.change(screen.getByLabelText(
       "Which folder is your Trash folder?"), { target: { value: "Trash" } });
     await waitFor(() => expect(foldersCalls.length).toBeGreaterThan(before));
     // the reload answers "Projects is scanned" again - the user's untick stays
     await waitFor(() => expect(
-      (screen.getByLabelText("Projects") as HTMLInputElement).checked)
-      .toBe(false));
-    expect((screen.getByLabelText("INBOX") as HTMLInputElement).checked)
-      .toBe(true);
+      screen.getByLabelText("Projects").getAttribute("aria-checked"))
+      .toBe("false"));
+    expect(screen.getByLabelText("INBOX").getAttribute("aria-checked"))
+      .toBe("true");
   } finally {
     foldersResult = null;
   }
@@ -945,7 +952,12 @@ test("the backup text says the file lists sender addresses", () => {
 const signinTab = (name: string) =>
   screen.getByRole("tab", { name }) as HTMLElement;
 // The tabpanel is labelled by its tab, so the label text matches both.
-const appPw = () => screen.getAllByLabelText("App password")
+/** A saved password sits behind "Change…": open it. */
+const revealPassword = () => {
+  const b = screen.queryByRole("button", { name: "Change…" });
+  if (b) fireEvent.click(b);
+};
+const appPw = () => (revealPassword(), screen.getAllByLabelText("App password"))
   .find((el) => el.tagName === "INPUT") as HTMLInputElement;
 const lastSave = () => saveCalls[saveCalls.length - 1].imap;
 const clickSave = async () => {
@@ -966,7 +978,7 @@ test("new account + gmail preset starts on App password: Password " +
     saveCalls.length = 0;
     render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
-    fireEvent.change(presetSelect(), { target: { value: "gmail" } });
+    pickPreset("gmail");
     expect(signinTab("App password").getAttribute("aria-selected"))
       .toBe("true");
     expect(appPw()).toBeTruthy();
@@ -983,7 +995,7 @@ test("switching to OAuth shows the OAuth card instead of the Password " +
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "gmail" } });
+  pickPreset("gmail");
   fireEvent.click(signinTab("OAuth"));
   expect(screen.getByText(/Connect your Gmail account/)).toBeTruthy();
   expect(screen.queryByText(/Create an app password/)).toBeNull();
@@ -1052,7 +1064,7 @@ test("whitespace is stripped from a Gmail app password", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "gmail" } });
+  pickPreset("gmail");
   fireEvent.change(appPw(), { target: { value: "abcd efgh\u00a0ijkl  mnop" } });
   await clickSave();
   expect(lastSave().password).toBe("abcdefghijklmnop");
@@ -1062,7 +1074,8 @@ test("other presets keep the password exactly as typed", async () => {
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "icloud" } });
+  pickPreset("icloud");
+  revealPassword();
   fireEvent.change(screen.getByLabelText("Password"),
     { target: { value: "ab cd" } });
   await clickSave();
@@ -1075,9 +1088,9 @@ test("connected gmail account -> iCloud preset: Save sends " +
   render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "icloud" } });
+  pickPreset("icloud");
   expect(screen.queryByRole("tab", { name: "OAuth" })).toBeNull();
-  expect(screen.getByLabelText("Password")).toBeTruthy();
+  expect(screen.getByText("Password")).toBeTruthy();
   await clickSave();
   expect(lastSave().auth).toBe("password");
   expect(lastSave().oauth).toBeUndefined();
@@ -1088,7 +1101,7 @@ test("outlook preset: OAuth card, no switch, no Password field, " +
   saveCalls.length = 0;
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "outlook" } });
+  pickPreset("outlook");
   expect(screen.queryByRole("tab", { name: "OAuth" })).toBeNull();
   expect(screen.queryByLabelText("Password")).toBeNull();
   expect(screen.getByText(/Connect your Outlook account/)).toBeTruthy();
@@ -1102,7 +1115,7 @@ test("German: the sign-in switch is translated", () => {
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   expect(screen.getByRole("tab", { name: "App-Passwort" })).toBeTruthy();
-  expect(screen.getByText("Anmeldeart", { selector: "div" })).toBeTruthy();
+  expect(screen.getByText("Anmeldeart", { selector: "span" })).toBeTruthy();
 });
 
 test("the client-secret placeholder is 'optional' for Outlook and " +
@@ -1111,9 +1124,9 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
     .getAttribute("placeholder");
   render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(presetSelect(), { target: { value: "outlook" } });
+  pickPreset("outlook");
   expect(secret()).toBe("optional");
-  fireEvent.change(presetSelect(), { target: { value: "gmail" } });
+  pickPreset("gmail");
   fireEvent.click(screen.getByRole("tab", { name: "OAuth" }));
   expect(secret()).toBe("required");
 });
@@ -1186,3 +1199,63 @@ test("the language switch reloads without the 'Leave site?' prompt after Save or
       }
     }
   });
+
+test("account header: status pill from the saved sign-in and the scan state; " +
+  "Scan now scans the edited account", async () => {
+  const ago = Date.now() / 1000 - 600;
+  render(<Settings cfg={cfg} account="default"
+    scanState={{ account: "default", status: "done", scanned_ts: ago,
+      error: "" }} />);
+  expect(screen.getByText("Signed in · scanned 10m ago")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Scan now/ }));
+  await waitFor(() => expect(scanCalls).toEqual(["default"]));
+  cleanup();
+  render(<Settings cfg={{ ...cfg, accounts: { ...cfg.accounts,
+    default: { ...acct, password_set: false } } }} account="default" />);
+  expect(screen.getByText("Not signed in")).toBeTruthy();
+  expect((screen.getByRole("button", { name: /Scan now/ }) as
+    HTMLButtonElement).disabled).toBe(true);
+});
+
+test("account header: a failed scan shows its error; a running one disables " +
+  "Scan now", () => {
+  const { unmount } = render(<Settings cfg={cfg} account="default"
+    scanState={{ account: "default", status: "error", scanned_ts: null,
+      error: "login refused" }} />);
+  expect(screen.getByText("Signed in · last scan failed")).toBeTruthy();
+  expect(screen.getByText("login refused")).toBeTruthy();
+  unmount();
+  render(<Settings cfg={cfg} account="default"
+    scanState={{ account: "default", status: "scanning", scanned_ts: null,
+      error: "" }} />);
+  expect((screen.getByRole("button", { name: /Scan now/ }) as
+    HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a saved password is never prefilled: '••••' + Change… reveals an " +
+  "empty field that is only sent once typed", async () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={cfg} account="default" />);
+  expect(screen.queryByLabelText("Password")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+  const pw = screen.getByLabelText("Password") as HTMLInputElement;
+  expect(pw.value).toBe("");
+  expect(pw.placeholder).toBe("(unchanged)");
+  fireEvent.change(pw, { target: { value: "s3cret" } });
+  expect(screen.getByText("Password changed")).toBeTruthy();
+  await clickSave();
+  expect(lastSave().password).toBe("s3cret");
+});
+
+test("the sending server unfolds under Advanced and stays staged", () => {
+  render(<Settings cfg={cfg} account="default" />);
+  const row = screen.getByRole("button",
+    { name: /Sending server \(unsubscribe mails\)/ });
+  expect(row.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText(/SMTP host/)).toBeNull();
+  fireEvent.click(row);
+  expect(row.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.change(screen.getByLabelText(/SMTP host/),
+    { target: { value: "smtp.edited.example" } });
+  expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+});
