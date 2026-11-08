@@ -1116,6 +1116,11 @@ def get_attachments(account: str | None = Query(None)):
     return mailops.attachments_list(acc=_acc(account))
 
 
+@app.get("/api/attachments/summary")
+def get_attachments_summary(account: str | None = Query(None)):
+    return mailops.attachments_summary(acc=_acc(account))
+
+
 @app.get("/api/duplicates")
 def get_duplicates(account: str | None = Query(None)):
     return mailops.duplicates_list(acc=_acc(account))

@@ -2,7 +2,7 @@ import { t } from "./i18n";
 import type {
   AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
-  Config, ConversationResp, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
+  AttSummary, Config, ConversationResp, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
@@ -419,6 +419,7 @@ export const api = {
       { grouping, key, label, trash_existing: trashExisting }),
   startAttachments: () => req<{ ok: boolean }>("/api/attachments", {}),
   attachments: () => req<AttMail[]>("/api/attachments"),
+  attachmentsSummary: () => req<AttSummary>("/api/attachments/summary"),
   duplicates: () => req<DupSet[]>("/api/duplicates"),
   duplicatesSummary: () => req<DupSummary>("/api/duplicates/summary"),
   duplicateVersions: () => req<DupSet[]>("/api/duplicates/versions"),

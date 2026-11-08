@@ -201,7 +201,24 @@ export interface UnsubState {
 
 export interface AttMail extends Mail {
   att_size: number;
-  atts: { name: string; size: number }[];
+  atts: AttFile[];
+}
+
+/** One attachment of a mail; `copies` = mails carrying the same name + size. */
+export interface AttFile {
+  name: string; size: number; kind: AttKind; ext: string; copies: number;
+}
+
+export type AttKind = "pdf" | "images" | "video" | "audio" | "archives"
+  | "documents" | "other";
+
+/** Whole-index numbers behind the attachment page (GET
+ *  /api/attachments/summary); `repeats` = the same (name, size) in more
+ *  than one mail. */
+export interface AttSummary {
+  total: number; mails: number;
+  kinds: { kind: AttKind; bytes: number; count: number }[];
+  repeats: { files: number; mails: number; bytes: number };
 }
 
 /** Full counts behind the duplicate lists (GET /api/duplicates/summary). */
