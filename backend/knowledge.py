@@ -274,7 +274,6 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
         addrs = [rest] if prefix == "a" else sorted(by_company.get(rest, ()))
         matches = [(a, m) for a in addrs for m in by_addr.get(a, ())]
         row["senders"] = len({a for a, _ in matches})
-        row["mails"] = sum(m[2] for _, m in matches)
         row["rows"] = sorted({m[0] for _, m in matches})[:5]
         if not matches:
             row.update(status="unused" if complete else "unknown")
@@ -282,8 +281,10 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
         rank = "rule" if entry["src"] == ks.USER else "kept_ai"
         # `filed`: the senders this entry actually decides right now (a sender
         # that merely matches, e.g. one with its own row, is not counted)
-        row["filed"] = len({a for a, (_, why, _n) in matches
-                            if why.get("r") == rank and why.get("by") == prefix})
+        decided = [(a, n) for a, (_, why, n) in matches
+                   if why.get("r") == rank and why.get("by") == prefix]
+        row["filed"] = len({a for a, _ in decided})
+        row["mails"] = sum(n for _, n in decided)           # of those senders
         if row["filed"]:
             continue                                        # active
         reasons = [_reason(why, entry, sk.is_freemail(a.rpartition("@")[2]))

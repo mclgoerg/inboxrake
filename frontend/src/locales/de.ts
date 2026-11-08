@@ -2314,8 +2314,6 @@ export const DE: Record<string, string> = {
   "know.change_group": "Gruppe ändern…",
   "know.forget": "Vergessen",
   "know.select_mode": "Auswählen…",
-  "know.line_active": "Wirksam · {n} Mails",
-  "know.line_active_one": "Wirksam · 1 Mail",
   "know.sort.status": "Auffälliges zuerst",
   "know.sort.key": "Absender oder Firma",
   "know.sort.kind": "Eingeordnet unter",

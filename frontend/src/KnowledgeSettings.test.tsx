@@ -96,7 +96,7 @@ describe("the list", () => {
     expect(within(group).getByText("amy@solo.example")).toBeTruthy();
     const acme = within(rowOf("acme.example"));
     expect(screen.getByRole("group", { name: /Support & inquiries/ })).toBeTruthy();
-    expect(acme.getByText("No effect: its company has a row of its own."))
+    expect(acme.getByText(/No effect: its company has a row of its own\./))
       .toBeTruthy();
     expect(within(rowOf("bob@solo.example")).getByText("Kept AI answer"))
       .toBeTruthy();
@@ -105,6 +105,21 @@ describe("the list", () => {
     expect(within(rowOf("cat@solo.example")).getByText(
       "Inactive: its category no longer exists.")).toBeTruthy();
     expect(screen.getByRole("group", { name: /Category “hobby”/ })).toBeTruthy();
+  });
+
+  it("a company entry says how many senders and mails it decides", async () => {
+    list({ entries: [
+      entry({ key: "co:duo.example", senders: 3, filed: 2, mails: 9 }),
+      entry({ key: "a:one@x.example", mails: 1 }),
+      entry({ key: "co:idle.example", status: "no_effect",
+        reason: "company_row", senders: 2, filed: 0, mails: 0 })] });
+    mount();
+    await screen.findByText("duo.example");
+    expect(within(rowOf("duo.example")).getByText("In effect · 2 senders · 9 mails"))
+      .toBeTruthy();
+    expect(within(rowOf("one@x.example")).getByText("In effect · 1 mail"))
+      .toBeTruthy();
+    expect(within(rowOf("idle.example")).getByText(/· 2 senders/)).toBeTruthy();
   });
 
   it("is searchable by address, kind, note and source", async () => {
@@ -123,7 +138,8 @@ describe("the list", () => {
     expect(screen.getByText("No entries match.")).toBeTruthy();
   });
 
-  it("groups by Smart group in Smart's order, what needs a look first", async () => {
+  it("groups by Smart group in Smart's order, A-Z inside; needs a look first "
+    + "is a choice", async () => {
     mount();
     await screen.findByText("amy@solo.example");
     expect(names()).toEqual(["amy@solo.example", "bob@solo.example",
@@ -132,8 +148,8 @@ describe("the list", () => {
       ["orders", "jobs", "support", "other", "cat:hobby"]);
     const two = [entry({ key: "a:z@x.example" }),
       entry({ key: "a:a@x.example", status: "unused" })];
-    expect(groupEntries(two)[0].entries.map((e) => e.key))
-      .toEqual(["a:a@x.example", "z@x.example".replace(/^/, "a:")]);
+    expect(groupEntries(two, "status")[0].entries.map((e) => e.key))
+      .toEqual(["a:a@x.example", "a:z@x.example"]);
   });
 
   it("the segment narrows the list and counts every part", async () => {
@@ -390,6 +406,34 @@ describe("selection and undo", () => {
     expect(knowledgePut.mock.calls[1][0]).toEqual({ remove: undefined, entries: [
       { key: "a:amy@solo.example", ...a }, { key: "co:acme.example", ...b }] });
   });
+});
+
+describe("selection covers only what is visible", () => {
+  const many = () => list({ entries: Array.from({ length: 120 }, (_, i) => entry({
+    key: `a:s${String(i).padStart(3, "0")}@x.example`, ts: i })) });
+
+  it("after Show more and a sort change, a bulk delete reaches visible rows only",
+    async () => {
+      many();
+      knowledgePut.mockResolvedValue({ ok: true, saved: 0, removed: 1,
+        previous: {} });
+      mount();
+      await screen.findByText("s000@x.example");
+      pick(moreMenu, "Select…");
+      fireEvent.click(screen.getByRole("button", { name: "Show more (70 left)" }));
+      fireEvent.click(screen.getByLabelText("Select s099@x.example"));   // row 100
+      fireEvent.click(screen.getByLabelText("Select s000@x.example"));
+      expect(screen.getByText("2 selected")).toBeTruthy();
+      pick(moreMenu, "Newest");          // newest first: paging restarts at 50
+      expect(screen.getByText("1 selected")).toBeTruthy();   // s000 is now gone
+      expect(screen.queryByLabelText("Select s000@x.example")).toBeNull();
+      fireEvent.click(screen.getByLabelText("Select s119@x.example"));
+      fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+      await pressDialog("Delete 2 entries");
+      await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
+      expect(new Set((knowledgePut.mock.calls[0][0] as any).remove)).toEqual(
+        new Set(["a:s099@x.example", "a:s119@x.example"]));
+    });
 });
 
 describe("the confirmations say what they do", () => {
@@ -655,6 +699,6 @@ describe("phone and German", () => {
     expect(screen.getByText("Behaltene KI-Antwort")).toBeTruthy();
     expect(screen.getByText(/Ohne Wirkung: seine Firma hat eine eigene Zeile./))
       .toBeTruthy();
-    expect(screen.getAllByText(/Wirksam · 4 Mails/).length).toBe(2);
+    expect(screen.getAllByText(/Wirkt · 4 Mails/).length).toBe(2);
   });
 });

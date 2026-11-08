@@ -2101,8 +2101,6 @@ export const EN: Record<string, string> = {
   "know.change_group": "Change group…",
   "know.forget": "Forget",
   "know.select_mode": "Select…",
-  "know.line_active": "In effect · {n} mails",
-  "know.line_active_one": "In effect · 1 mail",
   "know.sort.status": "Needs a look first",
   "know.sort.key": "Sender or company",
   "know.sort.kind": "Filed under",

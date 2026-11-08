@@ -541,14 +541,19 @@ def test_the_listing_says_why_an_entry_has_no_effect(mailbox):
     assert body["max"] == ks.MAX_ENTRIES and body["ai_running"] is False
 
 
-def test_listing_counts_the_mails_of_the_matching_senders(mailbox):
+def test_listing_counts_the_mails_of_the_senders_an_entry_decides(mailbox):
     put(entries=[{"key": "co:duo.example", "kind": "support"},
                  {"key": "a:big@shop.example", "kind": "support"},
                  {"key": "a:ghost@nowhere.example", "kind": "other"}])
     got = listing()
     assert got["co:duo.example"]["mails"] == 2
-    assert got["a:big@shop.example"]["mails"] == 12
+    assert got["a:big@shop.example"]["mails"] == 0      # decides nothing
     assert got["a:ghost@nowhere.example"]["mails"] == 0
+    # a sender of the company with an entry of its own is not counted for it
+    put(key="a:a@duo.example", kind="jobs")
+    got = listing()
+    assert got["co:duo.example"]["mails"] == 1
+    assert got["a:a@duo.example"]["mails"] == 1
 
 
 def test_filed_counts_the_senders_an_entry_decides_not_every_match(mailbox):

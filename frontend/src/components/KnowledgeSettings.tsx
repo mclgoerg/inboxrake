@@ -18,10 +18,10 @@ import { Avatar, Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
  * Every change applies at once on the server, so there is nothing to Save. */
 
 type Seg = "all" | "user" | "ai" | "unused";
-/** What the list is sorted by (`status` = needs a look first - the default). */
+/** What the list is sorted by (`key` = A-Z by name, the default). */
 export type SortBy = "key" | "kind" | "src" | "senders" | "status" | "ts";
 type Dir = "asc" | "desc";
-const SORT_KEYS: SortBy[] = ["status", "key", "kind", "src", "senders", "ts"];
+const SORT_KEYS: SortBy[] = ["key", "status", "kind", "src", "senders", "ts"];
 // Picking a key: biggest / newest first; the rest A-Z.
 const FIRST_DIR: Record<SortBy, Dir> = { key: "asc", kind: "asc", src: "asc",
   senders: "desc", status: "asc", ts: "desc" };
@@ -47,8 +47,8 @@ const STATUS_TONE: Record<string, "safe" | "review" | "keep" | "neutral"> = {
 const STATUS_ORDER: Record<string, number> = { inert: 0, inactive: 1,
   unused: 2, no_effect: 3, unknown: 4, active: 5 };
 
-/** Sort within a group; ties fall back to A-Z. Default: needs a look first. */
-export function sortEntries(list: KnowledgeEntry[], by: SortBy = "status",
+/** Sort within a group; ties fall back to A-Z. */
+export function sortEntries(list: KnowledgeEntry[], by: SortBy = "key",
     dir: Dir = "asc"): KnowledgeEntry[] {
   const sign = dir === "asc" ? 1 : -1;
   const cmp = (a: KnowledgeEntry, b: KnowledgeEntry): number => {
@@ -78,7 +78,7 @@ const KIND_ICON: Record<string, typeof Package> = { orders: Package,
 
 /** Entries grouped by Smart group in Smart's own order (the fixed kinds,
  *  then the user's categories, then anything else), each group sorted. */
-export function groupEntries(list: KnowledgeEntry[], by_: SortBy = "status",
+export function groupEntries(list: KnowledgeEntry[], by_: SortBy = "key",
     dir: Dir = "asc"): { kind: string; entries: KnowledgeEntry[] }[] {
   const by = new Map<string, KnowledgeEntry[]>();
   for (const e of sortEntries(list, by_, dir)) {
@@ -123,7 +123,7 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   const [seg, setSeg] = useState<Seg>("all");
   const [sortBy, setSortBy] = useState<SortBy>(() => {
     const k = localStorage.getItem(SORT_STORE) as SortBy | null;
-    return k && SORT_KEYS.includes(k) ? k : "status";
+    return k && SORT_KEYS.includes(k) ? k : "key";
   });
   const [dir, setDir] = useState<Dir>(() => {
     const d = localStorage.getItem(DIR_STORE);
@@ -293,12 +293,20 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
     next.has(k) ? next.delete(k) : next.add(k);
     return next;
   });
-  const visible = list.slice(0, shown);
+  const visible = useMemo(() => list.slice(0, shown), [list, shown]);
   const allShown = visible.length > 0 && visible.every((e) => sel.has(e.key));
   // Only what the search currently shows counts as selected: a bulk action
   // never reaches an entry the user cannot see.
-  const listKeys = useMemo(() => new Set(list.map((e) => e.key)), [list]);
-  const selKeys = [...sel].filter((k) => listKeys.has(k));
+  const shownKeys = useMemo(() => new Set(visible.map((e) => e.key)),
+    [visible]);
+  const selKeys = [...sel].filter((k) => shownKeys.has(k));
+  // a search / segment / sort change drops what left the screen
+  useEffect(() => {
+    setSel((cur) => {
+      const kept = [...cur].filter((k) => shownKeys.has(k));
+      return kept.length === cur.size ? cur : new Set(kept);
+    });
+  }, [shownKeys]);
 
   // ---- one entry ---------------------------------------------------------
   const editor = (e: KnowledgeEntry) => (
@@ -335,8 +343,13 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
     <span className={`block type-meta ${e.status === "active" ? "text-muted"
       : "text-review-fg"}`}>
       {e.status === "active"
-        ? t("know.line_active", { n: e.mails })
+        ? [t("know.status.active"),
+          ...(isCompany(e) ? [t("n.senders", { n: e.filed })] : []),
+          t("n.mails", { n: e.mails })].join(" · ")
         : statusText(e)}
+      {isCompany(e) && e.status !== "active" && e.senders > 0 && (
+        <> · {t("n.senders", { n: e.senders })}</>
+      )}
       {e.note && <span className="text-muted"> · {e.note}</span>}
     </span>
   );
@@ -410,10 +423,15 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
                 ))}
               </MenuGroup>
               <MenuGroup label={t("know.menu_list")}>
-              <MenuItem disabled={!entries.length} sub={t("know.download_tip")}
-                onClick={download}>
-                <Download size={14} aria-hidden className="mr-2 inline" />
-                {t("know.download")}
+              <MenuItem disabled={!entries.length} onClick={download}>
+                <span>
+                  <Download size={14} aria-hidden className="mr-2 inline" />
+                  {t("know.download")}
+                </span>
+                {/* wraps: the privacy hint must be readable in full */}
+                <span className="block whitespace-normal type-meta text-muted">
+                  {t("know.download_tip")}
+                </span>
               </MenuItem>
               <MenuItem disabled={busy} onClick={() => upload.current?.click()}>
                 <Upload size={14} aria-hidden className="mr-2 inline" />
