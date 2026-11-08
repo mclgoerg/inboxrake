@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { matchGroup, parseFilter } from "./lib";
 import { computeQuickWins, dismissKey, isDismissed, loadDismissed,
-  QUICK_WINS, saveDismissed, unionTotals } from "./quickwins";
+  QUICK_WINS, saveDismissed, splitTotals, unionTotals } from "./quickwins";
 import type { Group } from "./types";
 
 const MB = 1048576;
@@ -65,6 +65,22 @@ test("the union total counts a group matching two cards once", () => {
   const sum = cards.reduce((n, c) => n + c.size, 0);
   expect(sum).toBe(8 * MB + 6 * MB + 8 * MB);
   expect(unionTotals(cards, gs)).toEqual({ mails: 65, size: 14 * MB });
+});
+
+test("splitTotals attributes each group to the first card, summing to the union",
+  () => {
+  const both = mk("a@x.example", { engagement: 10, count: 50,
+    size: 8 * MB, unsubscribed: { n: 1, of: 1, status: "done", link: "",
+      addr: "" } });
+  const only = mk("b@x.example", { engagement: 10, count: 15, size: 6 * MB });
+  const gs = [both, only];
+  const cards = computeQuickWins(gs, NOW);
+  const parts = splitTotals(cards, gs);
+  expect(parts.reduce((n, p) => n + p.mails, 0))
+    .toBe(unionTotals(cards, gs).mails);
+  expect(parts.reduce((n, p) => n + p.size, 0))
+    .toBe(unionTotals(cards, gs).size);
+  expect(new Set(parts.map((p) => p.id)).size).toBe(parts.length);
 });
 
 test("a card under 10 mails AND 5 MB is hidden; either one keeps it", () => {

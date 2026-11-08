@@ -24,6 +24,8 @@ vi.mock("./api", () => ({
       return state;
     },
     audit: () => { auditCalls++; return Promise.resolve({ entries: [], total: 0 }); },
+    stats: () => Promise.reject(new Error("no stats")),
+    wrapped: () => Promise.reject(new Error("no wrapped")),
     undo: (...a: unknown[]) => undoCall(...a),
     clearNotice: () => Promise.resolve(),
     version: () => Promise.resolve({ build: "v1" }),

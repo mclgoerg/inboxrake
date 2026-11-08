@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip, ChipGroup, ChipSegment,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
-  MenuGroup, MenuHeading, PopupSelect, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
+  MenuGroup, MenuHeading, MiniBars, PopupSelect, Ring, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
@@ -1571,4 +1571,16 @@ test("Donut draws one slice per entry and exposes its label", () => {
   expect(screen.getByRole("img", { name: "By category" })).toBeTruthy();
   expect(container.querySelectorAll("div.inset-0").length)
     .toBe(2);
+});
+
+test("MiniBars with a label is an image; dimLast fades the last bar", () => {
+  render(<MiniBars values={[1, 4, 0]} label="Jan 1, Feb 4, Mar 0" dimLast
+    sizeClass="h-16 w-full" />);
+  const chart = screen.getByRole("img", { name: "Jan 1, Feb 4, Mar 0" });
+  expect(chart.className).toContain("h-16");
+  const bars = [...chart.children] as HTMLElement[];
+  expect(bars).toHaveLength(3);
+  expect(bars[1].style.height).toBe("100%");
+  expect(bars[0].style.height).toBe("25%");
+  expect(bars[2].className).toContain("opacity-40");
 });

@@ -91,6 +91,30 @@ export function unionTotals(cards: QuickWinCard[],
   return { mails, size: Math.round(size) };
 }
 
+/** `unionTotals` split by card: every group counts for the FIRST card
+ *  (biggest first) that lists it, so the parts add up exactly to the union
+ *  and no sender is counted twice. Empty parts are left out. */
+export function splitTotals(cards: QuickWinCard[], groups: Group[]):
+    { id: string; mails: number; size: number }[] {
+  const byKey = new Map(groups.map((g) => [g.key, g]));
+  const seen = new Set<string>();
+  const parts: { id: string; mails: number; size: number }[] = [];
+  for (const c of cards) {
+    let mails = 0;
+    let size = 0;
+    for (const k of c.keys) {
+      const g = byKey.get(k);
+      if (!g || seen.has(k)) continue;
+      seen.add(k);
+      mails += movable(g).mails;
+      size += movable(g).size;
+    }
+    if (mails > 0 || size > 0)
+      parts.push({ id: c.def.id, mails, size: Math.round(size) });
+  }
+  return parts;
+}
+
 /** Per-account dismissals: card id -> its mail count when dismissed. */
 export type Dismissed = Record<string, number>;
 

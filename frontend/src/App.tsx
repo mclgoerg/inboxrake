@@ -1,7 +1,7 @@
-import { Archive, BarChart3, BellOff, ChevronDown, ChevronsUpDown, ClipboardList,
-  Copy, Download, Eye, FolderInput, Info, Layers, LayoutGrid, ListChecks, Mail, Monitor, Moon, Paperclip, Pencil, Plus,
+import { Archive, BellOff, ChevronDown, ChevronsUpDown,
+  Download, FolderInput, Info, ListChecks, Mail, Monitor, Moon, Paperclip, Pencil, Plus,
   MoreHorizontal, Power,
-  RefreshCw, ScrollText, Search, Settings as SettingsIcon, ShieldAlert, Sparkles, Star, Sun,
+  RefreshCw, ScrollText, Search, Settings as SettingsIcon, Sparkles, Star, Sun,
   Trash2, User, Wand2, X }
   from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +10,8 @@ import { api, downloadFile, errorText, noticeParams,
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { DEFAULT_PAGE, isTabPage, isToolPage, TOOL_TAB, useNav, useSidebar, type Page,
   type ToolPage } from "./nav";
-import { TabBar, ToolList, ToolRow } from "./components/TabBar";
+import { TabBar } from "./components/TabBar";
+import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { DetailPanel } from "./components/DetailPanel";
 import { Login } from "./components/Login";
@@ -52,7 +53,8 @@ import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
 import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
   unsubscribableKeys }
   from "./smart";
-import { protectEntry, type TriagePlan } from "./triage";
+import { unsubscribeGroup } from "./unsub";
+import { DECK_MAX, protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
@@ -2600,45 +2602,20 @@ export default function App() {
 
       {/* The Clean up / Insights tab pages (below 1024): today's panels. */}
       {toolPage && (page === "cleanup" ? (
-        <ToolList label={t("tools.group_cleanup")}>
-          <ToolRow icon={<Layers size={18} aria-hidden />}
-            label={t("triage.menu")} sub={t("triage.menu_sub")}
-            disabled={triageDisabled} onClick={() => openTool("triage")} />
-          <ToolRow icon={<Copy size={18} aria-hidden />}
-            label={t("Duplicates")} disabled={state?.status !== "done"}
-            onClick={() => openTool("duplicates")} />
-          <ToolRow icon={<Paperclip size={18} aria-hidden />}
-            label={t("Attachments")} onClick={() => openTool("attachments")} />
-          <ToolRow icon={<ClipboardList size={18} aria-hidden />}
-            label={t("Rules")} onClick={() => openTool("rules")} />
-          <ToolRow icon={<ShieldAlert size={18} aria-hidden />}
-            label={t("role.junk")} count={state?.junk_count}
-            onClick={() => openTool("junk")} />
-          <ToolRow icon={<Trash2 size={18} aria-hidden />}
-            label={t("role.trash")} count={state?.trash_count}
-            onClick={() => openTool("trash")} />
-          {(aiEnabled || demo) && (
-            <ToolRow icon={<Wand2 size={18} aria-hidden />}
-              label={t("AI review")} sub={demo ? demoHint() : undefined}
-              disabled={demo || scanning || aiRunning
-                || state?.status !== "done"}
-              onClick={() => reviewWithAi()} />
-          )}
-        </ToolList>
+        <CleanupPage account={account} groups={senderGroups} state={state}
+          deckSize={Math.min(DECK_MAX, groups.length)}
+          triageDisabled={triageDisabled} aiShown={aiEnabled || demo}
+          aiDisabled={demo || scanning || aiRunning
+            || state?.status !== "done"}
+          demoHint={demo ? demoHint() : undefined}
+          onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
-        <ToolList label={t("tools.group_insights")}>
-          <ToolRow icon={<BarChart3 size={18} aria-hidden />}
-            label={t("Statistics")} onClick={() => openTool("stats")} />
-          <ToolRow icon={<LayoutGrid size={18} aria-hidden />}
-            label={t("space.title")} disabled={state?.status !== "done"}
-            onClick={() => openTool("space")} />
-          <ToolRow icon={<Sparkles size={18} aria-hidden />}
-            label={t("wrapped.menu")} onClick={() => openTool("wrapped")} />
-          <ToolRow icon={<Eye size={18} aria-hidden />}
-            label={t("tracker.menu")} onClick={() => openTool("trackers")} />
-          <ToolRow icon={<ScrollText size={18} aria-hidden />}
-            label={t("nav.activity")} onClick={() => openTool("activity")} />
-        </ToolList>
+        <InsightsPage groups={senderGroups} state={state} onOpen={openTool}
+          onRetryUnsub={async (g) => {
+            const r = await unsubscribeGroup("sender", g, demo);
+            notify(r.message, r.ok ? "info" : "error");
+            if (r.ok) refresh();
+          }} />
       ))}
 
       {bare ? null : overview ? (

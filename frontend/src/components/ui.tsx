@@ -1078,18 +1078,23 @@ export function Ring({ frac, px = 56, label, children }: {
   );
 }
 
-/** Tiny decorative column chart (sparkline) of `values`, scaled to the
- *  largest. Always accompanied by the figure it illustrates, so it is hidden
- *  from assistive tech. */
-export function MiniBars({ values, className = "" }: {
-  values: number[]; className?: string;
+/** Tiny column chart (sparkline) of `values`, scaled to the largest. Hidden
+ *  from assistive tech unless `label` (a text alternative with the numbers)
+ *  is set; `dimLast` fades the last bar (a month still running); `sizeClass`
+ *  replaces the default 80 x 40 px box. */
+export function MiniBars({ values, className = "", label, dimLast = false,
+  sizeClass = "h-10 w-20" }: {
+  values: number[]; className?: string; label?: string; dimLast?: boolean;
+  sizeClass?: string;
 }) {
   const max = Math.max(1, ...values);
   return (
-    <div aria-hidden="true"
-      className={`flex h-10 w-20 items-end gap-px ${className}`}>
+    <div role={label ? "img" : undefined} aria-label={label}
+      aria-hidden={label ? undefined : true}
+      className={`flex ${sizeClass} items-end gap-px ${className}`}>
       {values.map((v, i) => (
-        <div key={i} className="min-w-px flex-1 rounded-full bg-accent/70"
+        <div key={i} className={`min-w-px flex-1 rounded-full bg-accent/70
+          ${dimLast && i === values.length - 1 ? "opacity-40" : ""}`}
           style={{ height: `${Math.max(8, (100 * v) / max)}%` }} />
       ))}
     </div>
