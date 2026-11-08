@@ -27,7 +27,8 @@ vi.mock("./api", () => ({
   saveBlob: (...a: unknown[]) => saveBlob(...a),
 }));
 
-import { filterEntries, KnowledgeSettings, sortEntries, statusText } from
+import { filterEntries, groupEntries, inSegment, KnowledgeSettings,
+  sortEntries, statusText } from
   "./components/KnowledgeSettings";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from
@@ -37,7 +38,8 @@ import type { KnowledgeEntry, KnowledgeList } from "./types";
 
 const entry = (over: Partial<KnowledgeEntry>): KnowledgeEntry => ({
   key: "a:amy@solo.example", kind: "orders", src: "user", ts: 100, note: "",
-  status: "active", reason: "", senders: 1, filed: 1, rows: ["k:orders"], ...over });
+  status: "active", reason: "", senders: 1, filed: 1, mails: 4,
+  rows: ["k:orders"], ...over });
 const ENTRIES: KnowledgeEntry[] = [
   entry({ key: "a:amy@solo.example", kind: "orders", ts: 300, note: "my plumber" }),
   entry({ key: "co:acme.example", kind: "support", ts: 200, senders: 3,
@@ -57,15 +59,26 @@ const mount = (aiAnswers = 2) => render(
   <ToastProvider><DialogProvider>
     <KnowledgeSettings aiAnswers={aiAnswers} onChanged={onChanged} />
   </DialogProvider></ToastProvider>);
-const rowOf = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
-const names = () => [...document.querySelectorAll("tbody tr")]
-  .map((r) => r.querySelector("td:nth-child(2) .truncate")?.textContent);
+const rowOf = (name: string) =>
+  screen.getByText(name).closest("[data-entry]") as HTMLElement;
+const names = () => [...document.querySelectorAll("[data-entry]")]
+  .map((r) => r.querySelector(".truncate")?.textContent);
+/** Open a menu by its trigger and press one of its items. */
+const pick = (menu: string | RegExp, item: string | RegExp,
+    scope: { getByRole: typeof screen.getByRole } = screen) => {
+  fireEvent.click(scope.getByRole("button", { name: menu }));
+  const hit = screen.queryByRole("menuitem", { name: item })
+    ?? screen.getByRole("menuitemradio", { name: item });   // sort choices
+  fireEvent.click(hit);
+};
+const moreMenu = "More actions";
 
 beforeEach(() => {
   setLang("en");
   for (const f of [knowledge, knowledgePut, knowledgeKeepAi, knowledgeForgetAi,
     knowledgeRemoveUnused, knowledgeImport, saveBlob, onChanged]) f.mockReset();
   list();
+  localStorage.clear();
   knowledgePut.mockResolvedValue({ ok: true, saved: 1, removed: 0, previous: {} });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); setLang("en"); });
@@ -74,16 +87,16 @@ describe("the list", () => {
   it("shows every entry: who, filed under, source, senders, status", async () => {
     mount();
     await screen.findByText("amy@solo.example");
-    expect(screen.getByText("What Inboxrake knows about your senders")).toBeTruthy();
     const amy = within(rowOf("amy@solo.example"));
-    expect(amy.getByText("Orders & deliveries")).toBeTruthy();
     expect(amy.getByText("Filed by you")).toBeTruthy();
-    expect(amy.getByText("In effect")).toBeTruthy();
-    expect(amy.getByText("my plumber")).toBeTruthy();
+    expect(amy.getByText(/In effect · 4 mails/)).toBeTruthy();
+    expect(amy.getByText(/my plumber/)).toBeTruthy();
+    // entries sit under their Smart group, with the group's size
+    const group = screen.getByRole("group", { name: /Orders & deliveries/ });
+    expect(within(group).getByText("amy@solo.example")).toBeTruthy();
     const acme = within(rowOf("acme.example"));
-    expect(acme.getByText("Support & inquiries")).toBeTruthy();
-    expect(acme.getByText("3")).toBeTruthy();
-    expect(acme.getByText("No effect: its company has a row of its own."))
+    expect(screen.getByRole("group", { name: /Support & inquiries/ })).toBeTruthy();
+    expect(acme.getByText(/No effect: its company has a row of its own\./))
       .toBeTruthy();
     expect(within(rowOf("bob@solo.example")).getByText("Kept AI answer"))
       .toBeTruthy();
@@ -91,8 +104,22 @@ describe("the list", () => {
       "No sender in your mailboxes matches")).toBeTruthy();
     expect(within(rowOf("cat@solo.example")).getByText(
       "Inactive: its category no longer exists.")).toBeTruthy();
-    expect(within(rowOf("cat@solo.example")).getByText("Category “hobby”"))
+    expect(screen.getByRole("group", { name: /Category “hobby”/ })).toBeTruthy();
+  });
+
+  it("a company entry says how many senders and mails it decides", async () => {
+    list({ entries: [
+      entry({ key: "co:duo.example", senders: 3, filed: 2, mails: 9 }),
+      entry({ key: "a:one@x.example", mails: 1 }),
+      entry({ key: "co:idle.example", status: "no_effect",
+        reason: "company_row", senders: 2, filed: 0, mails: 0 })] });
+    mount();
+    await screen.findByText("duo.example");
+    expect(within(rowOf("duo.example")).getByText("In effect · 2 senders · 9 mails"))
       .toBeTruthy();
+    expect(within(rowOf("one@x.example")).getByText("In effect · 1 mail"))
+      .toBeTruthy();
+    expect(within(rowOf("idle.example")).getByText(/· 2 senders/)).toBeTruthy();
   });
 
   it("is searchable by address, kind, note and source", async () => {
@@ -111,30 +138,80 @@ describe("the list", () => {
     expect(screen.getByText("No entries match.")).toBeTruthy();
   });
 
-  it("sorts by a column, and again for the other direction", async () => {
+  it("groups by Smart group in Smart's order, A-Z inside; needs a look first "
+    + "is a choice", async () => {
     mount();
     await screen.findByText("amy@solo.example");
-    expect(names()).toEqual(["acme.example", "amy@solo.example",
-      "bob@solo.example", "cat@solo.example", "ghost@nowhere.example"]);
-    const head = (name: string) => screen.getByRole("button", { name });
-    fireEvent.click(head("Senders"));                       // most first
-    expect(names()[0]).toBe("acme.example");
-    expect(names().at(-1)).toBe("ghost@nowhere.example");
-    fireEvent.click(head("Senders"));                       // fewest first
-    expect(names()[0]).toBe("ghost@nowhere.example");
-    fireEvent.click(head("Status"));            // what needs a look comes first
-    expect(names().slice(0, 3)).toEqual(["cat@solo.example",
-      "ghost@nowhere.example", "acme.example"]);
-    fireEvent.click(head("Filed under"));           // by the kind's name: A-Z
-    expect(names()).toEqual(["cat@solo.example", "bob@solo.example",
-      "amy@solo.example", "ghost@nowhere.example", "acme.example"]);
+    expect(names()).toEqual(["amy@solo.example", "bob@solo.example",
+      "acme.example", "ghost@nowhere.example", "cat@solo.example"]);
+    expect(groupEntries(ENTRIES).map((g) => g.kind)).toEqual(
+      ["orders", "jobs", "support", "other", "cat:hobby"]);
+    const two = [entry({ key: "a:z@x.example" }),
+      entry({ key: "a:a@x.example", status: "unused" })];
+    expect(groupEntries(two, "status")[0].entries.map((e) => e.key))
+      .toEqual(["a:a@x.example", "a:z@x.example"]);
+  });
+
+  it("the segment narrows the list and counts every part", async () => {
+    mount();
+    await screen.findByText("amy@solo.example");
+    const seg = (n: string) => screen.getByRole("radio", { name: n });
+    expect(seg("All 5")).toBeTruthy();
+    expect(seg("By you 4")).toBeTruthy();
+    expect(seg("AI 1")).toBeTruthy();
+    fireEvent.click(seg("AI 1"));
+    expect(names()).toEqual(["bob@solo.example"]);
+    fireEvent.click(seg("Unused 1"));
+    expect(names()).toEqual(["ghost@nowhere.example"]);
+    fireEvent.click(seg("By you 4"));
+    expect(names()).toHaveLength(4);
+    // the search works inside the segment
+    fireEvent.change(screen.getByPlaceholderText("Search filed senders…"),
+      { target: { value: "plumber" } });
+    expect(names()).toEqual(["amy@solo.example"]);
+    fireEvent.click(seg("AI 1"));
+    expect(screen.getByText("No entries match.")).toBeTruthy();
+  });
+
+  it("sorts from the header menu, within the groups, and remembers it", async () => {
+    localStorage.removeItem("pmc_know_sort");
+    localStorage.removeItem("pmc_know_dir");
+    list({ entries: [
+      entry({ key: "a:b@x.example", senders: 1, ts: 10 }),
+      entry({ key: "a:a@x.example", senders: 5, ts: 20 }),
+      entry({ key: "a:c@x.example", senders: 3, ts: 30 }),
+      entry({ key: "a:z@y.example", kind: "jobs", src: "ai", ts: 5 })] });
+    mount();
+    await screen.findByText("a@x.example");
+    expect(names()).toEqual(["a@x.example", "b@x.example", "c@x.example",
+      "z@y.example"]);                                   // today's default
+    pick(moreMenu, "Senders");                           // most first
+    expect(names().slice(0, 3)).toEqual(["a@x.example", "c@x.example", "b@x.example"]);
+    pick(moreMenu, "Ascending");
+    expect(names().slice(0, 3)).toEqual(["b@x.example", "c@x.example", "a@x.example"]);
+    pick(moreMenu, "Newest");                            // newest first again
+    expect(names().slice(0, 3)).toEqual(["c@x.example", "a@x.example", "b@x.example"]);
+    expect(localStorage.getItem("pmc_know_sort")).toBe("ts");
+    expect(localStorage.getItem("pmc_know_dir")).toBe("desc");
+    pick(moreMenu, "Filed under");                       // orders the groups
+    expect(names()[0]).toBe("z@y.example");
+    cleanup();
+    mount();                                             // remembered
+    await screen.findByText("a@x.example");
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    expect(screen.getByRole("menuitemradio", { name: "Filed under" })
+      .getAttribute("aria-checked")).toBe("true");
+    localStorage.removeItem("pmc_know_sort");
+    localStorage.removeItem("pmc_know_dir");
   });
 
   it("the sort helpers are pure and stable on ties", () => {
     const a = entry({ key: "a:b@x.example", senders: 1 });
     const b = entry({ key: "a:a@x.example", senders: 1 });
-    expect(sortEntries([a, b], "senders", 1).map((e) => e.key))
+    expect(sortEntries([a, b]).map((e) => e.key))
       .toEqual(["a:a@x.example", "a:b@x.example"]);
+    expect(inSegment(a, "user")).toBe(true);
+    expect(inSegment(a, "ai")).toBe(false);
     expect(filterEntries([a, b], "").length).toBe(2);
     expect(statusText(entry({ status: "unknown" })))
       .toBe("Not every mailbox is scanned yet");
@@ -145,7 +222,8 @@ describe("the list", () => {
     mount();
     expect(await screen.findByText("Nothing filed yet")).toBeTruthy();
     expect(screen.getByText(/It stays on this server\./)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Download" })).toHaveProperty(
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    expect(screen.getByRole("menuitem", { name: /^Download/ })).toHaveProperty(
       "disabled", true);
   });
 
@@ -172,8 +250,7 @@ describe("changing entries", () => {
     async () => {
       mount();
       await screen.findByText("amy@solo.example");
-      fireEvent.click(within(rowOf("amy@solo.example")).getByRole("button",
-        { name: "Edit" }));
+      pick(/^Actions for amy@solo.example/, "Change group…", within(rowOf("amy@solo.example")));
       const kind = screen.getByLabelText("Filed under") as HTMLSelectElement;
       expect([...kind.options].map((o) => o.textContent)).toContain("Category “hobby”");
       fireEvent.change(kind, { target: { value: "cat:hobby" } });
@@ -189,8 +266,7 @@ describe("changing entries", () => {
   it("editing only the note keeps a kept AI answer a kept AI answer", async () => {
     mount();
     await screen.findByText("bob@solo.example");
-    fireEvent.click(within(rowOf("bob@solo.example")).getByRole("button",
-      { name: "Edit" }));
+    pick(/^Actions for bob@solo.example/, "Change group…", within(rowOf("bob@solo.example")));
     fireEvent.change(screen.getByLabelText("Note"), { target: { value: "n" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(knowledgePut).toHaveBeenCalledWith({ entries: [
@@ -200,8 +276,7 @@ describe("changing entries", () => {
   it("cancels an edit without saving", async () => {
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(within(rowOf("amy@solo.example")).getByRole("button",
-      { name: "Edit" }));
+    pick(/^Actions for amy@solo.example/, "Change group…", within(rowOf("amy@solo.example")));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(knowledgePut).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Note")).toBeNull();
@@ -213,8 +288,7 @@ describe("changing entries", () => {
       previous: { "a:amy@solo.example": before } });
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(within(rowOf("amy@solo.example")).getByRole("button",
-      { name: "Delete" }));
+    pick(/^Actions for amy@solo.example/, "Forget", within(rowOf("amy@solo.example")));
     await waitFor(() => expect(knowledgePut).toHaveBeenCalledWith(
       { remove: ["a:amy@solo.example"] }));
     expect(await screen.findByText("Entry removed.")).toBeTruthy();
@@ -231,6 +305,7 @@ describe("changing entries", () => {
       previous: { "a:amy@solo.example": null, "co:acme.example": null } });
     mount();
     await screen.findByText("amy@solo.example");
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     fireEvent.click(screen.getByLabelText("Select acme.example"));
     expect(screen.getByText("2 selected")).toBeTruthy();
@@ -247,6 +322,7 @@ describe("changing entries", () => {
   it("a declined bulk delete deletes nothing", async () => {
     mount();
     await screen.findByText("amy@solo.example");
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected (1)" }));
     await findDialog();
@@ -258,10 +334,11 @@ describe("changing entries", () => {
   it("select all shown ticks every visible row", async () => {
     mount();
     await screen.findByText("amy@solo.example");
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select all shown"));
     expect(screen.getByText("5 selected")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Select all shown"));
-    expect(screen.queryByText(/selected$/)).toBeNull();
+    expect(screen.getByText("0 selected")).toBeTruthy();
   });
 
   it("a refused change shows the reason in words and reloads", async () => {
@@ -269,8 +346,7 @@ describe("changing entries", () => {
       + "category may be gone)."));
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(within(rowOf("amy@solo.example")).getByRole("button",
-      { name: "Delete" }));
+    pick(/^Actions for amy@solo.example/, "Forget", within(rowOf("amy@solo.example")));
     expect(await screen.findByText(/That kind is not available/)).toBeTruthy();
     expect(knowledge).toHaveBeenCalledTimes(2);
   });
@@ -282,6 +358,7 @@ describe("selection and undo", () => {
       previous: { "a:amy@solo.example": null } });
     mount();
     await screen.findByText("amy@solo.example");
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     fireEvent.click(screen.getByLabelText("Select acme.example"));
     fireEvent.change(screen.getByPlaceholderText("Search filed senders…"),
@@ -299,8 +376,7 @@ describe("selection and undo", () => {
       previous: { "a:amy@solo.example": before } });
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(within(rowOf("amy@solo.example")).getByRole("button",
-      { name: "Edit" }));
+    pick(/^Actions for amy@solo.example/, "Change group…", within(rowOf("amy@solo.example")));
     fireEvent.change(screen.getByLabelText("Filed under"),
       { target: { value: "jobs" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -318,6 +394,7 @@ describe("selection and undo", () => {
       previous: { "a:amy@solo.example": a, "co:acme.example": b } });
     mount();
     await screen.findByText("amy@solo.example");
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     fireEvent.click(screen.getByLabelText("Select acme.example"));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
@@ -329,23 +406,34 @@ describe("selection and undo", () => {
     expect(knowledgePut.mock.calls[1][0]).toEqual({ remove: undefined, entries: [
       { key: "a:amy@solo.example", ...a }, { key: "co:acme.example", ...b }] });
   });
+});
 
-  it("sorts newest first by the time, and the phone's select starts there", async () => {
-    vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: /max-width/.test(q), media: q,
-      addEventListener: () => {}, removeEventListener: () => {} }));
-    mount();
-    await screen.findByText("amy@solo.example");
-    const order = () => [...document.querySelectorAll("[aria-label^='Select ']")]
-      .map((el) => (el as HTMLElement).getAttribute("aria-label")!.slice(7));
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort entries" }),
-      { target: { value: "ts" } });
-    expect(order()).toEqual(["amy@solo.example", "acme.example",
-      "bob@solo.example", "ghost@nowhere.example", "cat@solo.example"]);
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort entries" }),
-      { target: { value: "senders" } });
-    expect(order()[0]).toBe("acme.example");               // most senders first
-  });
+describe("selection covers only what is visible", () => {
+  const many = () => list({ entries: Array.from({ length: 120 }, (_, i) => entry({
+    key: `a:s${String(i).padStart(3, "0")}@x.example`, ts: i })) });
+
+  it("after Show more and a sort change, a bulk delete reaches visible rows only",
+    async () => {
+      many();
+      knowledgePut.mockResolvedValue({ ok: true, saved: 0, removed: 1,
+        previous: {} });
+      mount();
+      await screen.findByText("s000@x.example");
+      pick(moreMenu, "Select…");
+      fireEvent.click(screen.getByRole("button", { name: "Show more (70 left)" }));
+      fireEvent.click(screen.getByLabelText("Select s099@x.example"));   // row 100
+      fireEvent.click(screen.getByLabelText("Select s000@x.example"));
+      expect(screen.getByText("2 selected")).toBeTruthy();
+      pick(moreMenu, "Newest");          // newest first: paging restarts at 50
+      expect(screen.getByText("1 selected")).toBeTruthy();   // s000 is now gone
+      expect(screen.queryByLabelText("Select s000@x.example")).toBeNull();
+      fireEvent.click(screen.getByLabelText("Select s119@x.example"));
+      fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+      await pressDialog("Delete 2 entries");
+      await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
+      expect(new Set((knowledgePut.mock.calls[0][0] as any).remove)).toEqual(
+        new Set(["a:s099@x.example", "a:s119@x.example"]));
+    });
 });
 
 describe("the confirmations say what they do", () => {
@@ -353,15 +441,15 @@ describe("the confirmations say what they do", () => {
     + "answers", async () => {
     mount(2);
     await screen.findByText("amy@solo.example");
-    fireEvent.click(screen.getByRole("button", { name: "Remove unused (1)" }));
+    pick(moreMenu, "Remove unused (1)");
     let dlg = await findDialog();
     expect(within(dlg).getByText(/This cannot be undone\./)).toBeTruthy();
     await cancelDialog();
-    fireEvent.click(screen.getByRole("button", { name: "Forget kept AI answers (1 sender)" }));
+    pick(moreMenu, "Forget kept AI answers (1 sender)");
     dlg = await findDialog();
     expect(within(dlg).getByText(/gone for good/)).toBeTruthy();
     await cancelDialog();
-    fireEvent.click(screen.getByRole("button", { name: "Keep all AI answers" }));
+    pick(moreMenu, "Keep all AI answers");
     dlg = await findDialog();
     expect(within(dlg).getByText(/the account you are looking at/)).toBeTruthy();
     await cancelDialog();
@@ -389,9 +477,10 @@ describe("the confirmations say what they do", () => {
   it("the download button says the file lists addresses", async () => {
     mount();
     await screen.findByText("amy@solo.example");
-    expect(screen.getByRole("button", { name: "Download" }).getAttribute("title"))
-      .toBe("Download this list as a file. It lists sender addresses and notes "
-        + "- keep it private.");
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    expect(screen.getByRole("menuitem", { name: /^Download/ }).textContent)
+      .toContain("Download this list as a file. It lists sender addresses and "
+        + "notes - keep it private.");
   });
 });
 
@@ -400,7 +489,8 @@ describe("Remove unused", () => {
     list({ complete: false, unscanned: ["second", "third"] });
     mount();
     await screen.findByText("amy@solo.example");
-    const btn = screen.getByRole("button", { name: /Remove unused/ });
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    const btn = screen.getByRole("menuitem", { name: /Remove unused/ });
     expect(btn).toHaveProperty("disabled", true);
     expect(screen.getByText("Scan every account first (2 not scanned yet): "
       + "until then an entry cannot be called unused.")).toBeTruthy();
@@ -411,7 +501,7 @@ describe("Remove unused", () => {
     knowledgeRemoveUnused.mockResolvedValue({ ok: true, removed: 1 });
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(screen.getByRole("button", { name: "Remove unused (1)" }));
+    pick(moreMenu, "Remove unused (1)");
     const dlg = await findDialog();
     expect(within(dlg).getByText("Remove 1 unused entry?")).toBeTruthy();
     await pressDialog("Remove 1 entry");
@@ -423,7 +513,8 @@ describe("Remove unused", () => {
     list({ entries: ENTRIES.filter((e) => e.status !== "unused") });
     mount();
     await screen.findByText("amy@solo.example");
-    expect(screen.getByRole("button", { name: "Remove unused (0)" }))
+    fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+    expect(screen.getByRole("menuitem", { name: "Remove unused (0)" }))
       .toHaveProperty("disabled", true);
   });
 });
@@ -433,7 +524,7 @@ describe("AI answers", () => {
     knowledgeKeepAi.mockResolvedValue({ ok: true, kept: 2, senders: 3, skipped: 0 });
     mount(3);
     await screen.findByText("amy@solo.example");
-    fireEvent.click(screen.getByRole("button", { name: "Keep all AI answers" }));
+    pick(moreMenu, "Keep all AI answers");
     const dlg = await findDialog();
     expect(within(dlg).getByText("Keep the AI’s answers for 3 senders?")).toBeTruthy();
     await pressDialog("Keep for 3 senders");
@@ -445,12 +536,13 @@ describe("AI answers", () => {
     async () => {
       mount(0);
       await screen.findByText("amy@solo.example");
-      expect(screen.getByRole("button", { name: "Keep all AI answers" }))
+      fireEvent.click(screen.getByRole("button", { name: moreMenu }));
+      expect(screen.getByRole("menuitem", { name: "Keep all AI answers" }))
         .toHaveProperty("disabled", true);
       cleanup();
       mount(2);
       await screen.findByText("amy@solo.example");
-      fireEvent.click(screen.getByRole("button", { name: "Keep all AI answers" }));
+      pick(moreMenu, "Keep all AI answers");
       await findDialog();
       await cancelDialog();
       await expectNoDialog();
@@ -462,8 +554,7 @@ describe("AI answers", () => {
       knowledgeForgetAi.mockResolvedValue({ ok: true, forgotten: 1 });
       mount();
       await screen.findByText("amy@solo.example");
-      fireEvent.click(screen.getByRole("button",
-        { name: "Forget kept AI answers (1 sender)" }));
+      pick(moreMenu, "Forget kept AI answers (1 sender)");
       const dlg = await findDialog();
       expect(within(dlg).getByText("Forget the kept AI answer for 1 sender?")).toBeTruthy();
       expect(within(dlg).getByText("What you filed yourself stays.")).toBeTruthy();
@@ -483,8 +574,8 @@ describe("AI answers", () => {
         senders: 0, filed: 0, status: "unused" })] });
     knowledgeForgetAi.mockResolvedValue({ ok: true, forgotten: 3 });
     mount();
-    fireEvent.click(await screen.findByRole("button",
-      { name: "Forget kept AI answers (4 senders)" }));   // 3 + 1 + 0 filed
+    await screen.findByText("acme.example");
+    pick(moreMenu, "Forget kept AI answers (4 senders)");   // 3 + 1 + 0 filed
     const dlg = await findDialog();
     expect(within(dlg).getByText("Forget the kept AI answers for 4 senders?"))
       .toBeTruthy();
@@ -493,8 +584,8 @@ describe("AI answers", () => {
     list({ entries: [entry({ key: "a:ghost@nowhere.example", kind: "jobs",
       src: "ai", senders: 0, filed: 0, status: "unused" })] });
     mount();
-    fireEvent.click(await screen.findByRole("button",
-      { name: "Forget kept AI answers (1 answer)" }));
+    await screen.findByText("ghost@nowhere.example");
+    pick(moreMenu, "Forget kept AI answers (1 answer)");
     expect(within(await findDialog()).getByText(
       "Forget 1 kept AI answer that currently files no sender?")).toBeTruthy();
     await cancelDialog();
@@ -505,7 +596,7 @@ describe("AI answers", () => {
       "An AI run is going - try again when it is done."));
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(screen.getByRole("button", { name: "Keep all AI answers" }));
+    pick(moreMenu, "Keep all AI answers");
     await findDialog();
     await pressDialog("Keep for 2 senders");
     expect(await screen.findByText(/An AI run is going/)).toBeTruthy();
@@ -516,7 +607,7 @@ describe("download and upload of just this knowledge", () => {
   it("downloads the entries in the shape the import reads", async () => {
     mount();
     await screen.findByText("amy@solo.example");
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    pick(moreMenu, /^Download/);
     expect(saveBlob).toHaveBeenCalledTimes(1);
     const [name, blob] = saveBlob.mock.calls[0] as [string, Blob];
     expect(name).toBe("inboxrake-sender-knowledge.json");
@@ -579,19 +670,19 @@ describe("download and upload of just this knowledge", () => {
 });
 
 describe("phone and German", () => {
-  it("renders cards on a phone, with the same actions", async () => {
+  it("is one list on a phone too, with the same actions", async () => {
     vi.stubGlobal("matchMedia", (q: string) => ({
       matches: /max-width/.test(q), media: q,
       addEventListener: () => {}, removeEventListener: () => {} }));
     mount();
     await screen.findByText("amy@solo.example");
     expect(document.querySelector("table")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Sort entries" })).toBeTruthy();
-    expect(screen.getAllByText(/1 sender · In effect/).length).toBe(2);
-    expect(screen.getByText("my plumber")).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    expect(screen.getAllByText(/In effect · 4 mails/).length).toBe(2);
+    expect(screen.getByText(/my plumber/)).toBeTruthy();
+    pick(/^Actions for amy@solo.example/, "Change group…");
     expect(screen.getByLabelText("Note")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    pick(moreMenu, "Select…");
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     expect(screen.getByRole("button", { name: "Delete selected (1)" })).toBeTruthy();
   });
@@ -599,13 +690,15 @@ describe("phone and German", () => {
   it("is German in the German UI", async () => {
     setLang("de");
     mount();
-    expect(await screen.findByText("Was Inboxrake über deine Absender weiß"))
-      .toBeTruthy();
-    expect(screen.getByRole("button", { name: "Unbenutzte entfernen (1)" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Alle KI-Antworten behalten" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Herunterladen" })).toBeTruthy();
+    expect(await screen.findByRole("radio", { name: "Alle 5" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Von dir 4" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Weitere Aktionen" }));
+    expect(screen.getByRole("menuitem", { name: "Unbenutzte entfernen (1)" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Alle KI-Antworten behalten" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /^Herunterladen/ })).toBeTruthy();
     expect(screen.getByText("Behaltene KI-Antwort")).toBeTruthy();
-    expect(screen.getByText("Ohne Wirkung: seine Firma hat eine eigene Zeile."))
+    expect(screen.getByText(/Ohne Wirkung: seine Firma hat eine eigene Zeile./))
       .toBeTruthy();
+    expect(screen.getAllByText(/Wirkt · 4 Mails/).length).toBe(2);
   });
 });

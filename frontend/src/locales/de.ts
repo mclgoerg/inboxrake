@@ -2294,7 +2294,6 @@ export const DE: Record<string, string> = {
   "know.err.ai_running": "Ein KI-Lauf ist aktiv – versuche es nach dem Ende noch einmal.",
   "know.err.unscanned": "Scanne zuerst jedes Konto.",
   // Einstellungen > Absender: was Inboxrake über deine Absender weiß.
-  "know.table_title": "Was Inboxrake über deine Absender weiß",
   "know.table_help":
     "Wo du Absender und Firmen in Smart eingeordnet hast, und die "
     + "KI-Antworten, die du behalten hast. Das bleibt auf diesem Server und "
@@ -2305,21 +2304,29 @@ export const DE: Record<string, string> = {
     "Ordne einen Absender in Smart ein (markieren, dann „In Smart einordnen "
     + "als…“) oder behalte eine KI-Antwort, dann steht er hier. Das bleibt "
     + "auf diesem Server.",
+  "know.seg_label": "Anzeigen",
+  "know.seg_all": "Alle {n}",
+  "know.seg_user": "Von dir {n}",
+  "know.seg_ai": "KI {n}",
+  "know.seg_unused": "Ungenutzt {n}",
+  "know.more_menu": "Weitere Aktionen",
+  "know.row_menu": "Aktionen für {name}",
+  "know.change_group": "Gruppe ändern…",
+  "know.forget": "Vergessen",
+  "know.select_mode": "Auswählen…",
+  "know.sort.status": "Auffälliges zuerst",
+  "know.sort.key": "Absender oder Firma",
+  "know.sort.kind": "Eingeordnet unter",
+  "know.sort.src": "Quelle",
+  "know.sort.senders": "Absender",
+  "know.sort.ts": "Neueste",
+  "know.menu_list": "Liste",
   "know.search": "Eingeordnete Absender suchen…",
   "know.none": "Keine Einträge gefunden.",
-  "know.sort_label": "Einträge sortieren",
-  "know.col_key": "Absender oder Firma",
-  "know.col_kind": "Eingeordnet unter",
-  "know.col_src": "Quelle",
-  "know.col_senders": "Absender",
-  "know.col_status": "Status",
-  "know.col_ts": "Neueste",
   "know.company": "Firma",
   "know.kind_label": "Eingeordnet unter",
   "know.note_label": "Notiz",
   "know.note_placeholder": "Optionale Notiz (höchstens 200 Zeichen)",
-  "know.edit": "Bearbeiten",
-  "know.delete": "Löschen",
   "know.saved": "Gespeichert.",
   "know.select": "{name} auswählen",
   "know.select_all": "Alle angezeigten auswählen",
@@ -2340,12 +2347,6 @@ export const DE: Record<string, string> = {
   "know.status.inert": "Unbrauchbar: {why}",
   "know.status.unused": "Kein Absender in deinen Postfächern passt",
   "know.status.unknown": "Noch nicht jedes Postfach ist gescannt",
-  "know.status_short.active": "Wirkt",
-  "know.status_short.no_effect": "Ohne Wirkung",
-  "know.status_short.inactive": "Inaktiv",
-  "know.status_short.inert": "Unbrauchbar",
-  "know.status_short.unused": "Unbenutzt",
-  "know.status_short.unknown": "Unbekannt",
   "know.unused_btn": "Unbenutzte entfernen ({n})",
   "know.unused_blocked":
     "Scanne zuerst jedes Konto ({n} noch nicht gescannt): bis dahin kann "
@@ -2401,7 +2402,6 @@ export const DE: Record<string, string> = {
     "Alles andere in einem vollständigen Backup wird hier ignoriert (der Import unter Allgemein stellt das wieder her).",
   "know.download_tip":
     "Diese Liste als Datei herunterladen. Sie listet Absenderadressen und Notizen – halte sie privat.",
-  "know.col_actions": "Aktionen",
   // -- Fehler der Ordner-Funktionen (Backend-Codes, siehe api.ts ERROR_CODES)
   "ferr.role_archive": "Archiv",
   "ferr.busy_action":

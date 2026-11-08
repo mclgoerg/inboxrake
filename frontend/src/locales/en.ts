@@ -2083,7 +2083,6 @@ export const EN: Record<string, string> = {
   "know.err.ai_running": "An AI run is going - try again when it is done.",
   "know.err.unscanned": "Scan every account first.",
   // Settings > Senders: what Inboxrake knows about your senders.
-  "know.table_title": "What Inboxrake knows about your senders",
   "know.table_help":
     "Where you filed senders and companies in Smart, and the AI answers you "
     + "kept. It stays on this server and is never sent to an AI. Changes "
@@ -2092,21 +2091,29 @@ export const EN: Record<string, string> = {
   "know.empty_hint":
     "File a sender in Smart (tick it, then “File in Smart as…”) or keep an "
     + "AI sorting answer, and it is listed here. It stays on this server.",
+  "know.seg_label": "Show",
+  "know.seg_all": "All {n}",
+  "know.seg_user": "By you {n}",
+  "know.seg_ai": "AI {n}",
+  "know.seg_unused": "Unused {n}",
+  "know.more_menu": "More actions",
+  "know.row_menu": "Actions for {name}",
+  "know.change_group": "Change group…",
+  "know.forget": "Forget",
+  "know.select_mode": "Select…",
+  "know.sort.status": "Needs a look first",
+  "know.sort.key": "Sender or company",
+  "know.sort.kind": "Filed under",
+  "know.sort.src": "Source",
+  "know.sort.senders": "Senders",
+  "know.sort.ts": "Newest",
+  "know.menu_list": "List",
   "know.search": "Search filed senders…",
   "know.none": "No entries match.",
-  "know.sort_label": "Sort entries",
-  "know.col_key": "Sender or company",
-  "know.col_kind": "Filed under",
-  "know.col_src": "Source",
-  "know.col_senders": "Senders",
-  "know.col_status": "Status",
-  "know.col_ts": "Newest",
   "know.company": "Company",
   "know.kind_label": "Filed under",
   "know.note_label": "Note",
   "know.note_placeholder": "Optional note (200 characters at most)",
-  "know.edit": "Edit",
-  "know.delete": "Delete",
   "know.saved": "Saved.",
   "know.select": "Select {name}",
   "know.select_all": "Select all shown",
@@ -2127,12 +2134,6 @@ export const EN: Record<string, string> = {
   "know.status.inert": "Unusable: {why}",
   "know.status.unused": "No sender in your mailboxes matches",
   "know.status.unknown": "Not every mailbox is scanned yet",
-  "know.status_short.active": "In effect",
-  "know.status_short.no_effect": "No effect",
-  "know.status_short.inactive": "Inactive",
-  "know.status_short.inert": "Unusable",
-  "know.status_short.unused": "Unused",
-  "know.status_short.unknown": "Unknown",
   "know.unused_btn": "Remove unused ({n})",
   "know.unused_blocked":
     "Scan every account first ({n} not scanned yet): until then an entry "
@@ -2188,7 +2189,6 @@ export const EN: Record<string, string> = {
     "Anything else in a full backup is ignored here (Import in General restores that).",
   "know.download_tip":
     "Download this list as a file. It lists sender addresses and notes - keep it private.",
-  "know.col_actions": "Actions",
   // -- errors of the folder features (backend codes, see api.ts ERROR_CODES)
   "ferr.role_archive": "Archive",
   "ferr.busy_action":

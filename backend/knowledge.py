@@ -207,7 +207,7 @@ def remove_unused() -> dict:
 # -------------------------------------------------------------- live info
 
 class _Live(NamedTuple):
-    rows: dict[str, dict]       # entry key -> {status, reason, senders, filed, rows}
+    rows: dict[str, dict]       # entry key -> {status, reason, senders, filed, mails, rows}
     complete: bool              # every configured account has a finished scan
     unscanned: list[str]
 
@@ -236,7 +236,7 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
     """What each entry does right now, from the loaded scans of the tenant's
     accounts (their senders' `smart_key` / `smart_why` stamps)."""
     cats = mailops.user_categories(cfg)
-    by_addr: dict[str, list[tuple[str, dict]]] = {}
+    by_addr: dict[str, list[tuple[str, dict, int]]] = {}
     by_company: dict[str, set[str]] = {}
     unscanned: list[str] = []
     need_company = any(k.startswith("co:") for k in entries)
@@ -247,7 +247,8 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
                 continue
             for addr, rec in acc.state["groups"]["sender"].items():
                 by_addr.setdefault(addr, []).append(
-                    (rec.get("smart_key") or "", rec.get("smart_why") or {}))
+                    (rec.get("smart_key") or "", rec.get("smart_why") or {},
+                     rec.get("count") or 0))
                 if need_company and (cid := sk.sender_company(addr)):
                     by_company.setdefault(cid, set()).add(addr)
     complete = not unscanned and bool(cfg["accounts"])
@@ -256,7 +257,7 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
         prefix, _, rest = key.partition(":")
         kind = entry["kind"]
         row = {"status": "active", "reason": "", "senders": 0, "filed": 0,
-               "rows": []}
+               "mails": 0, "rows": []}
         rows[key] = row
         valid = sk.valid_address_key(rest) if prefix == "a" \
             else sk.valid_company_key(rest)
@@ -280,12 +281,14 @@ def _live(cfg: dict, entries: dict[str, dict]) -> _Live:
         rank = "rule" if entry["src"] == ks.USER else "kept_ai"
         # `filed`: the senders this entry actually decides right now (a sender
         # that merely matches, e.g. one with its own row, is not counted)
-        row["filed"] = len({a for a, (_, why) in matches
-                            if why.get("r") == rank and why.get("by") == prefix})
+        decided = [(a, n) for a, (_, why, n) in matches
+                   if why.get("r") == rank and why.get("by") == prefix]
+        row["filed"] = len({a for a, _ in decided})
+        row["mails"] = sum(n for _, n in decided)           # of those senders
         if row["filed"]:
             continue                                        # active
         reasons = [_reason(why, entry, sk.is_freemail(a.rpartition("@")[2]))
-                   for a, (_, why) in matches]
+                   for a, (_, why, _n) in matches]
         row.update(status="no_effect",
                    reason=min(reasons, key=REASONS.index))
     return _Live(rows, complete, unscanned)
