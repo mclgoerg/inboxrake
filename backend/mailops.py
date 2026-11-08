@@ -1770,12 +1770,18 @@ def build_groups(messages: list, replied_to: set[str] | None = None,
             rec["tags"] = categorize(rec.pop("_hay"), localpart, rec["bulk"],
                                      categories)
             if tag_over:
+                # `auto_tags` keeps what the keyword rules said wherever the
+                # user's tags changed the list: only THAT may reach the AI
+                # review payload (the user's own words never leave the server)
+                auto = rec["tags"]
                 if grouping == "sender" and rec["key"] in tag_over:
                     rec["tags"] = list(tag_over[rec["key"]])
                 elif grouping != "sender":
                     rec["tags"] = list(dict.fromkeys(
-                        rec["tags"] + [t for a in sorted(senders)
-                                       for t in tag_over.get(a, ())]))
+                        auto + [t for a in sorted(senders)
+                                for t in tag_over.get(a, ())]))
+                if rec["tags"] != auto:
+                    rec["auto_tags"] = auto
             names = rec.pop("_names")
             rec["first"] = day(rec.pop("_min"))
             rec["last"] = day(rec.pop("_max"))
@@ -1841,6 +1847,9 @@ def _smart_rec(key: str, label: str, kind: str, members: list[dict],
     """One pooled row (company or bucket) aggregated from sender records."""
     members = sorted(members, key=lambda r: (-r["count"], r["key"]))
     addrs = [r["key"] for r in members]
+    tags = list(dict.fromkeys(t for r in members for t in r["tags"]))
+    auto = list(dict.fromkeys(t for r in members
+                              for t in r.get("auto_tags", r["tags"])))
     rec = {
         "key": key, "label": label, "sub": "", "kind": kind,
         "count": sum(r["count"] for r in members),
@@ -1848,7 +1857,7 @@ def _smart_rec(key: str, label: str, kind: str, members: list[dict],
         "unread": sum(r["unread"] for r in members),
         "first": min((r["first"] for r in members if r["first"]), default=""),
         "last": max((r["last"] for r in members if r["last"]), default=""),
-        "tags": list(dict.fromkeys(t for r in members for t in r["tags"])),
+        "tags": tags,
         "samples": addrs[:MAX_SAMPLES],
         "bulk": any(r["bulk"] for r in members),
         "unsub": any(r["unsub"] for r in members),
@@ -1857,6 +1866,7 @@ def _smart_rec(key: str, label: str, kind: str, members: list[dict],
         "folders": {}, "ai": None,
         "n_senders": len(members), "members": addrs[:SMART_MEMBERS_CAP],
         "fp": _member_fp(addrs),
+        **({"auto_tags": auto} if auto != tags else {}),
     }
     for r in members:
         for folder, uids in r["folders"].items():
@@ -2127,8 +2137,13 @@ def retag_senders(acc, categories: list[tuple[str, list[str]]],
             hay[a] = hay.get(a, "") + f" {a} {m['name']} {m['subject']}"
     over = tag_overrides or {}
     for addr, rec in acc.state["groups"]["sender"].items():
-        rec["tags"] = list(over[addr]) if addr in over else categorize(
-            hay.get(addr, ""), addr.split("@", 1)[0], rec["bulk"], categories)
+        auto = categorize(hay.get(addr, ""), addr.split("@", 1)[0],
+                          rec["bulk"], categories)
+        rec["tags"] = list(over[addr]) if addr in over else auto
+        if rec["tags"] != auto:
+            rec["auto_tags"] = auto              # see build_groups
+        else:
+            rec.pop("auto_tags", None)
 
 
 def rebuild_smart(acc, cfg: dict | None = None, force: bool = False) -> bool:

@@ -609,6 +609,44 @@ def test_the_ai_payload_still_carries_no_verdict_of_the_user(ai):
     assert "src" not in blob and '"user"' not in blob
 
 
+def test_the_users_tags_never_reach_the_ai_review_payload(ai):
+    """Nothing new leaves the server: the payload carries the automatic tags
+    exactly as before - on a Sender row, a Smart row and a domain row."""
+    def payload_tags() -> dict[tuple[str, str], list[str]]:
+        out = {}
+        ai.calls.clear()
+        for grouping in ("sender", "smart", "domain"):
+            mailops.clear_ai_marks()
+            verdictstore.clear()
+            aihelper._run_ai(grouping)
+            assert mailops.STATE["ai"]["status"] == "done"
+            for call in ai.calls:
+                for g in json.loads(call["messages"][0]["content"])["groups"]:
+                    out[(grouping, g["key"])] = g["tags"]
+            ai.calls.clear()
+        return out
+
+    before = payload_tags()
+    assert before[("sender", BIG)] != ["secret-tag"]
+    put(key=BIG, tags=["secret-tag", "another words"])
+    put(key=DUO1, tags=["secret-tag"])
+    assert "secret-tag" in shown()[BIG]["tags"]                # shown to you
+    after = payload_tags()
+    assert "secret-tag" not in str(after)
+    assert "another words" not in str(after)
+    # the pooled row of DUO1 and the sender rows: identical to before
+    assert after == before
+
+
+def test_the_automatic_tags_come_back_when_the_override_is_removed(ai):
+    auto = list(shown()[OTHER]["tags"])
+    put(key=OTHER, tags=["mine"])
+    assert mailops.STATE["groups"]["sender"][OTHER]["auto_tags"] == auto
+    put(key=OTHER, reset=True)
+    assert "auto_tags" not in mailops.STATE["groups"]["sender"][OTHER]
+    assert shown()[OTHER]["tags"] == auto
+
+
 def test_labels_module_exposes_the_documented_ops():
     assert callable(labels.put) and callable(labels.detail)
     assert labels.LabelError is ls.LabelError

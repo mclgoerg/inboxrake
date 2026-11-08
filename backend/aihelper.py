@@ -250,7 +250,10 @@ def _run_ai(grouping: str, acc=None, keys: set[str] | None = None,
                 {"key": r["key"], "label": r["label"], "count": r["count"],
                  "total_size_kb": r["size"] // 1024,
                  "unread": r["unread"], "first": r["first"],
-                 "last": r["last"], "tags": r["tags"],
+                 "last": r["last"],
+                 # only what the keyword rules said: the user's own tags
+                 # (Edit labels) never leave the server
+                 "tags": r.get("auto_tags", r["tags"]),
                  "samples": r["samples"],
                  **({"replied": True} if r.get("replied") else {}),
                  **({"protected": True} if r["key"] in prot_keys else {})}
