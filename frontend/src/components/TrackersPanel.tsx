@@ -1,17 +1,17 @@
-import { Eye } from "lucide-react";
+import { ChevronRight, Eye, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import type { TrackerReport } from "../types";
-import { Button, confirmDialog, EmptyState, Loading, Modal, PanelHeader,
-  ProgressBar, SectionLabel, Spinner, Tag } from "./ui";
+import { Avatar, Button, confirmDialog, EmptyState, Loading, Modal, PanelHeader,
+  ProgressBar, Ring, SectionLabel, Spinner, Tag } from "./ui";
 
 const pct = (n: number, of: number) => (of ? Math.round((100 * n) / of) : 0);
 
-function Card({ value, label }: { value: ReactNode; label: string }) {
+function Figure({ value, label }: { value: ReactNode; label: string }) {
   return (
-    <div className="rounded-card bg-panel2 p-3">
+    <div>
       <div className="type-heading tabular-nums">{value}</div>
       <div className="type-meta text-muted">{label}</div>
     </div>
@@ -23,11 +23,13 @@ function Card({ value, label }: { value: ReactNode; label: string }) {
  *  detection runs while it is built), so without an index the panel says
  *  so and offers the build; mails indexed before this feature get a
  *  "Check older mails" rebuild. */
-export function TrackersPanel({ account, onClose, onPickSender }: {
+export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
   account: string;
   onClose: () => void;
   /** A sender row was tapped: the caller filters the list to it. */
   onPickSender: (key: string) => void;
+  /** "Show all in Senders": the caller applies the `has:tracker` filter. */
+  onShowAll: () => void;
 }) {
   const [rep, setRep] = useState<TrackerReport | null>(null);
   const [error, setError] = useState("");
@@ -116,23 +118,33 @@ export function TrackersPanel({ account, onClose, onPickSender }: {
           hint={t("tracker.unchecked_hint")} action={checkOlder || undefined} />
       );
     }
+    const share = pct(rep.pixel, rep.checked);
+    const maxHost = Math.max(1, ...rep.top_hosts.map((h) => h.mails));
     return (
-      <div className="space-y-6 p-4 type-body sm:p-5">
-        <div>
-          <div className="type-heading">
-            {rep.pixel > 0
-              ? t("tracker.headline", { pct: pct(rep.pixel, rep.checked) })
-              : t("tracker.headline_none")}
+      <div className="space-y-4 p-4 type-body sm:p-5">
+        <div className="flex flex-wrap items-center gap-4 rounded-card
+          bg-panel2 p-4">
+          <Ring frac={share / 100} px={96} label={rep.pixel > 0
+            ? t("tracker.headline", { pct: share })
+            : t("tracker.headline_none")}>
+            <span className="type-title2 tabular-nums">{share} %</span>
+          </Ring>
+          <div className="min-w-0 flex-1 basis-48">
+            <div className="type-heading">
+              {rep.pixel > 0 ? t("tracker.ring_title")
+                : t("tracker.headline_none")}
+            </div>
+            <div className="mt-2 flex gap-5">
+              <Figure value={fmtNum(rep.pixel)} label={t("tracker.pixel_short")} />
+              <Figure value={fmtNum(rep.click)} label={t("tracker.click_short")} />
+              <Figure value={fmtNum(rep.senders)} label={t("tracker.senders")} />
+            </div>
           </div>
-          <p className="mt-1 type-meta text-muted">{t("tracker.explainer")}</p>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Card value={fmtNum(rep.pixel)}
-            label={t("tracker.with_pixel")} />
-          <Card value={fmtNum(rep.click)}
-            label={t("tracker.with_click")} />
-          <Card value={fmtNum(rep.senders)}
-            label={t("tracker.senders")} />
+        <div className="flex items-start gap-2 rounded-card bg-safe-bg p-3
+          type-meta text-safe-fg">
+          <ShieldCheck size={16} aria-hidden className="mt-0.5 shrink-0" />
+          <span>{t("tracker.safe_line")}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 type-meta text-muted">
           <span>{t("tracker.checked",
@@ -141,56 +153,71 @@ export function TrackersPanel({ account, onClose, onPickSender }: {
           {checkOlder}
         </div>
 
-        {rep.top_senders.length > 0 && (
-          <div>
-            <SectionLabel className="mb-2">
-              {t("tracker.top_senders")}
-            </SectionLabel>
-            <ul className="-mx-4 border-y border-line sm:-mx-5">
-              {rep.top_senders.map((s) => (
-                <li key={s.key} className="border-b border-line last:border-0">
-                  <button type="button" onClick={() => onPickSender(s.key)}
-                    aria-label={t("tracker.pick", { name: s.label })}
-                    className="flex w-full cursor-pointer items-center gap-3
-                      px-4 py-2 text-left hover:bg-chip sm:px-5
-                      coarse:min-h-11">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{s.label}</span>
-                      <span className="block truncate type-meta text-muted">
-                        {s.key}
-                      </span>
-                      <span className="block type-meta text-muted">
-                        {t("tracker.sender_meta",
-                          { n: s.tracked, of: s.checked })}
-                        {s.hosts.length > 0 && ` · ${s.hosts.join(", ")}`}
-                      </span>
+        {rep.top_hosts.length > 0 && (
+          <div className="rounded-card bg-panel2 p-3">
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <SectionLabel>{t("tracker.top_hosts")}</SectionLabel>
+              <span className="type-meta text-muted">
+                {t("tracker.hosts_hint")}</span>
+            </div>
+            <ul className="space-y-3">
+              {rep.top_hosts.map((h) => (
+                <li key={h.host}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate">{h.host}</span>
+                    <span className="shrink-0 type-meta text-muted">
+                      {t("n.mails", { n: h.mails })} ·{" "}
+                      {t("tracker.n_senders", { n: h.senders })}
                     </span>
-                    <span className="flex shrink-0 flex-col items-end gap-0.5">
-                      {s.pixel > 0 && (
-                        <Tag tone="info">{t("tracker.tag_pixel")}</Tag>
-                      )}
-                      {s.click > 0 && (
-                        <Tag tone="info">{t("tracker.tag_click")}</Tag>
-                      )}
-                    </span>
-                  </button>
+                  </div>
+                  <div aria-hidden className="mt-1 h-1.5 rounded-full bg-chip">
+                    {/* bar width = this host's share of the busiest host */}
+                    <div className="h-full rounded-full bg-accent"
+                      style={{ width: `${(100 * h.mails) / maxHost}%` }} />
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        {rep.top_hosts.length > 0 && (
-          <div>
-            <SectionLabel className="mb-2">{t("tracker.top_hosts")}</SectionLabel>
-            <ul className="space-y-1">
-              {rep.top_hosts.map((h) => (
-                <li key={h.host} className="flex items-baseline gap-2">
-                  <span className="min-w-0 flex-1 truncate">{h.host}</span>
-                  <span className="shrink-0 type-meta text-muted">
-                    {t("n.mails", { n: h.mails })} ·{" "}
-                    {t("tracker.n_senders", { n: h.senders })}
-                  </span>
+        {rep.top_senders.length > 0 && (
+          <div className="rounded-card bg-panel2 py-3">
+            <div className="mb-1 flex items-baseline justify-between gap-2 px-3">
+              <SectionLabel>{t("tracker.top_senders")}</SectionLabel>
+              <button type="button" onClick={onShowAll}
+                className="cursor-pointer type-meta text-accent
+                  hover:underline coarse:min-h-11">
+                {t("tracker.show_all")}
+              </button>
+            </div>
+            <ul>
+              {rep.top_senders.map((s) => (
+                <li key={s.key} className="border-b border-line last:border-0">
+                  <button type="button" onClick={() => onPickSender(s.key)}
+                    aria-label={t("tracker.pick", { name: s.label })}
+                    className="flex w-full cursor-pointer items-center gap-3
+                      px-3 py-2 text-left hover:bg-chip coarse:min-h-11">
+                    <Avatar name={s.label} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{s.label}</span>
+                      <span className="block type-meta text-muted">
+                        {t("tracker.sender_meta",
+                          { n: s.tracked, of: s.checked })}
+                        {s.hosts.length > 0 && ` · ${s.hosts.join(", ")}`}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {s.pixel > 0 && (
+                        <Tag tone="review">{t("tracker.tag_pixel")}</Tag>
+                      )}
+                      {s.click > 0 && (
+                        <Tag tone="info">{t("tracker.tag_click")}</Tag>
+                      )}
+                    </span>
+                    <ChevronRight size={16} aria-hidden
+                      className="shrink-0 text-faint" />
+                  </button>
                 </li>
               ))}
             </ul>

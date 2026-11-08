@@ -42,8 +42,9 @@ const rep = (over: Partial<TrackerReport> = {}): TrackerReport => ({
 });
 
 const onPick = vi.fn();
+const onShowAll = vi.fn();
 const show = () => render(<DialogProvider>
-  <TrackersPanel account="main" onClose={() => {}} onPickSender={onPick} />
+  <TrackersPanel account="main" onClose={() => {}} onPickSender={onPick} onShowAll={onShowAll} />
 </DialogProvider>);
 
 beforeEach(() => setLang("en"));
@@ -52,6 +53,7 @@ afterEach(() => {
   trackers.mockReset();
   indexBuild.mockReset();
   onPick.mockReset();
+  onShowAll.mockReset();
   setLang("en");
 });
 
@@ -59,11 +61,13 @@ test("data: headline share, numbers, senders, hosts and the explainer",
   async () => {
     trackers.mockResolvedValue(rep());
     show();
-    await screen.findByText("63% of the mails we checked carry a tracking "
-      + "pixel");
-    expect(screen.getByText(/Inboxrake never loads remote images/)).toBeTruthy();
+    await screen.findByText("of the mails we checked carry a tracker");
+    expect(screen.getByRole("img", { name: "63% of the mails we checked "
+      + "carry a tracking pixel" })).toBeTruthy();
+    expect(screen.getByText("63 %")).toBeTruthy();
+    expect(screen.getByText(/remote images never load/)).toBeTruthy();
     expect(screen.getByText("Checked 40 of 40 mails")).toBeTruthy();
-    expect(screen.getByText("with tracking pixel")).toBeTruthy();
+    expect(screen.getByText("pixel")).toBeTruthy();
     expect(screen.getByText("Shop News")).toBeTruthy();
     expect(screen.getByText(/18 of 20 mails tracked · pix\.example/))
       .toBeTruthy();
@@ -80,6 +84,14 @@ test("tapping a sender hands its address to the caller", async () => {
   fireEvent.click(await screen.findByRole("button",
     { name: "Show mails from Shop News" }));
   expect(onPick).toHaveBeenCalledWith("news@shop.example");
+});
+
+test("Show all in Senders hands over to the caller", async () => {
+  trackers.mockResolvedValue(rep());
+  show();
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Show all in Senders" }));
+  expect(onShowAll).toHaveBeenCalled();
 });
 
 test("no index: explains, offers the build behind the confirm", async () => {
@@ -162,8 +174,7 @@ test("German", async () => {
   setLang("de");
   trackers.mockResolvedValue(rep());
   show();
-  await screen.findByText("63 % der geprüften Mails enthalten ein "
-    + "Tracking-Pixel");
+  await screen.findByText("der geprüften Mails tragen einen Tracker");
   expect(screen.getByText("40 von 40 Mails geprüft")).toBeTruthy();
   expect(screen.getByText("Absender mit dem meisten Tracking")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Mails von Shop News anzeigen" }))

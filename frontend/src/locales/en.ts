@@ -596,6 +596,13 @@ export const EN: Record<string, string> = {
   "col.status_tags": "Status & tags",
   "tracker.title": "Trackers",
   "tracker.sub": "Who tracks your opens and clicks",
+  "tracker.ring_title": "of the mails we checked carry a tracker",
+  "tracker.pixel_short": "pixel",
+  "tracker.click_short": "click tracking",
+  "tracker.safe_line":
+    "Reading mail in Inboxrake is safe - remote images never load, so pixels never fire.",
+  "tracker.hosts_hint": "tracker hosts",
+  "tracker.show_all": "Show all in Senders",
   "tracker.explainer":
     "A tracking pixel tells the sender when and where you opened the mail. "
     + "Inboxrake never loads remote images.",
@@ -608,7 +615,7 @@ export const EN: Record<string, string> = {
   "tracker.with_click": "with click tracking",
   "tracker.senders": "senders tracking",
   "tracker.top_senders": "Senders that track most",
-  "tracker.top_hosts": "Tracking hosts",
+  "tracker.top_hosts": "Who is watching",
   "tracker.sender_meta": "{n} of {of} mails tracked",
   "tracker.sender_meta_one": "1 of {of} mails tracked",
   "tracker.n_senders": "{n} senders",

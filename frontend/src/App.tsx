@@ -2374,6 +2374,13 @@ export default function App() {
           setDetail(null);
           setFilter(`from:${key}`);
         }}
+        onShowAll={() => {
+          setTrackersOpen(false);
+          setFlat(false); setMode("sender");
+          setSelected(new Set()); setFocusIdx(-1); cancelFollow();
+          setDetail(null);
+          setFilter("has:tracker");
+        }}
       />
     )}
     {toolShown("attachments") && state && (
