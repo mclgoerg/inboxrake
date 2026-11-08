@@ -26,7 +26,8 @@ export function usePaneHeight(el: HTMLElement | null) {
     const num = (v: string) => parseFloat(v) || 0;
     const sync = () => {
       const cs = getComputedStyle(body);
-      const stick = num(cs.paddingTop);
+      // Viewport y where the pane sticks: body's top (0; below the demo bar) + padding.
+      const stick = num(cs.paddingTop) + body.getBoundingClientRect().top;
       // Bulk bar (fixed, publishes --bulkbar-h) or the home-indicator inset.
       const reserve = Math.max(num(getComputedStyle(document.documentElement)
         .getPropertyValue("--bulkbar-h")), num(cs.paddingBottom));

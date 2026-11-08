@@ -13,25 +13,42 @@ import { DialogProvider, ToastProvider } from "../components/ui";
 import { DemoRoot } from "./DemoRoot";
 import { fakeRuntime } from "./fakeWorker";
 
-afterEach(() => { cleanup(); setLang("en"); });
+afterEach(() => { cleanup(); setLang("en"); localStorage.clear(); });
 
 type Booting = Extract<BootState, { phase: "booting" }>;
 const booting = (over: Partial<Booting> = {}): Booting => ({
   phase: "booting", step: "download", done: [], mb: 0, totalMb: 0, ...over });
 
-test("shows the title, the privacy line and the phone hint", () => {
+test("shows the title, the privacy line, things to try and the phone note", () => {
   render(<DemoBoot state={booting()} onRetry={() => {}} />);
-  expect(screen.getByText("Getting your demo ready to rake it")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Starting the demo" })).toBeTruthy();
   expect(screen.getByText(/Everything runs in your browser/)).toBeTruthy();
-  expect(screen.getByText(/Best on a computer/)).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "While it loads - things to try" }))
+    .toBeTruthy();
+  expect(screen.getByText("Move them to Trash - then Undo")).toBeTruthy();
+  expect(screen.getByText("On a phone the first start can take up to a minute."))
+    .toBeTruthy();
+  expect(document.querySelector("img[src$='icon.svg']")).toBeTruthy();
 });
 
-test("download progress shows megabytes and a bar", () => {
+test("download progress shows megabytes and a bar over the four steps", () => {
   render(<DemoBoot state={booting({ mb: 3.04, totalMb: 8.1 })}
     onRetry={() => {}} />);
   expect(screen.getByText("3.0 of 8.1 MB")).toBeTruthy();
-  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow"))
-    .toBe("3.04");
+  const bar = screen.getByRole("progressbar");
+  expect(bar.getAttribute("aria-valuemax")).toBe("4");
+  expect(Number(bar.getAttribute("aria-valuenow"))).toBeCloseTo(3.04 / 8.1, 3);
+});
+
+test("the bar counts finished steps; the running step is marked", () => {
+  render(<DemoBoot state={booting({ step: "libraries",
+    done: ["download", "python"] })} onRetry={() => {}} />);
+  expect(Number(screen.getByRole("progressbar").getAttribute("aria-valuenow")))
+    .toBe(2);
+  expect(screen.getByText("Loading libraries").closest("li")
+    ?.getAttribute("aria-current")).toBe("step");
+  expect(screen.getByText("Filling the demo mailboxes").closest("li")
+    ?.getAttribute("aria-current")).toBeNull();
 });
 
 test("finished steps carry a checkmark, the running one a spinner", () => {
@@ -45,8 +62,7 @@ test("finished steps carry a checkmark, the running one a spinner", () => {
 test("German wording", () => {
   setLang("de");
   render(<DemoBoot state={booting()} onRetry={() => {}} />);
-  expect(screen.getByText("Deine Demo wird gerade zusammengeharkt …"))
-    .toBeTruthy();
+  expect(screen.getByText("Die Demo startet")).toBeTruthy();
   expect(screen.getByText(/Alles läuft in deinem Browser/)).toBeTruthy();
 });
 
@@ -56,6 +72,7 @@ test.each(["unsupported", "stalled", "error"] as const)(
     render(<DemoBoot state={{ phase: "failed", reason }} onRetry={retry} />);
     expect(screen.getByText(EN[`demo.fail.${reason}`])).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByText(/first start can take up to a minute/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
@@ -80,13 +97,13 @@ const root = () => {
   return f;
 };
 
-test("boot screen until ready, then banner + app", async () => {
+test("boot screen until ready, then the demo bar + app", async () => {
   const f = root();
   expect(screen.queryByText("the app")).toBeNull();
   const { act } = await import("@testing-library/react");
   act(() => f.last().emit({ type: "ready", clockShiftMs: 0 }));
   expect(screen.getByText("the app")).toBeTruthy();
-  expect(screen.getByText("Demo - your changes live only in this tab"))
+  expect(screen.getByText("Made-up mailboxes - your changes stay in this tab."))
     .toBeTruthy();
 });
 
@@ -107,7 +124,8 @@ test("Reset demo asks, then boots a fresh worker and shows the boot screen",
     await waitFor(() => expect(f.made).toHaveLength(2));
     expect(f.made[0].terminated).toBe(true);
     expect(screen.queryByText("the app")).toBeNull();
-    expect(screen.getByText("Getting your demo ready to rake it")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Starting the demo" }))
+      .toBeTruthy();
   });
 
 test("Reset demo, declined: nothing changes", async () => {

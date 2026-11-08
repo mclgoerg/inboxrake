@@ -78,7 +78,7 @@ export function PullToScan({ enabled, onPull }: {
       className="pointer-events-none fixed inset-x-0 z-(--z-bulkbar) flex
         flex-col items-center gap-1"
       // below the phone top bar, which publishes its height (0 elsewhere)
-      style={{ top: "calc(env(safe-area-inset-top) + 8px + var(--topbar-h, 0px))",
+      style={{ top: "calc(var(--demo-bar-h) + var(--safe-top) + 8px + var(--topbar-h, 0px))",
         opacity: frac,
         transform: prefersReducedMotion() ? undefined
           : `translateY(${pull - 24}px)` }}>
