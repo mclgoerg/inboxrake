@@ -351,7 +351,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
                 {t("tab.per_month", { n: perMonth.toLocaleString() })}
               </span>
             </span>
-            <MiniBars className="mt-3 gap-1" sizeClass="h-16 w-full"
+            <MiniBars className="mt-3 gap-1" sizeClass="h-16 w-full" barClass="rounded-t-badge"
               values={series.counts}
               dimLast={series.running}
               label={series.keys.map((k, i) =>
@@ -416,7 +416,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
               <span className="flex items-center gap-2">
                 <Ring frac={trackerPct / 100} px={64}
                   label={t("tab.trackers_ring", { pct: trackerPct })}>
-                  {trackerPct}%
+                  <b className="type-meta font-semibold">{trackerPct}%</b>
                 </Ring>
                 <span className="min-w-0 type-meta text-muted">
                   {t("tab.trackers_of")}

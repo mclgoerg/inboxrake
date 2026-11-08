@@ -1081,11 +1081,11 @@ export function Ring({ frac, px = 56, label, children }: {
 /** Tiny column chart (sparkline) of `values`, scaled to the largest. Hidden
  *  from assistive tech unless `label` (a text alternative with the numbers)
  *  is set; `dimLast` fades the last bar (a month still running); `sizeClass`
- *  replaces the default 80 x 40 px box. */
+ *  replaces the default 80 x 40 px box, `barClass` the bar rounding. */
 export function MiniBars({ values, className = "", label, dimLast = false,
-  sizeClass = "h-10 w-20" }: {
+  sizeClass = "h-10 w-20", barClass = "rounded-full" }: {
   values: number[]; className?: string; label?: string; dimLast?: boolean;
-  sizeClass?: string;
+  sizeClass?: string; barClass?: string;
 }) {
   const max = Math.max(1, ...values);
   return (
@@ -1093,7 +1093,7 @@ export function MiniBars({ values, className = "", label, dimLast = false,
       aria-hidden={label ? undefined : true}
       className={`flex ${sizeClass} items-end gap-px ${className}`}>
       {values.map((v, i) => (
-        <div key={i} className={`min-w-px flex-1 rounded-full bg-accent/70
+        <div key={i} className={`min-w-px flex-1 ${barClass} bg-accent/70
           ${dimLast && i === values.length - 1 ? "opacity-40" : ""}`}
           style={{ height: `${Math.max(8, (100 * v) / max)}%` }} />
       ))}
