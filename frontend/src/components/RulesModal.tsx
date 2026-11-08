@@ -1,12 +1,14 @@
-import { ClipboardList, Pin, Shield, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Archive, CalendarClock, ClipboardList, FolderInput, MailOpen, MoreHorizontal, Pin, Plus, Shield,
+  Trash2, TriangleAlert, X } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { t } from "../i18n";
 import { matchGroup, parseFilter } from "../lib";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
 import { QueryBuilder } from "./QueryBuilder";
-import { Button, confirmDialog, EmptyState, Field, Input, Modal, Notice, PanelHeader,
-  SectionLabel, Select, Spinner, Tag } from "./ui";
+import { Avatar, Button, confirmDialog, EmptyState, Field, Input, Menu, MenuItem,
+  Modal, Notice, PanelHeader, PopupSelect, Segmented, Spinner, Tag, useIsPage }
+  from "./ui";
 
 const EMPTY = {
   name: "", scope: "mail" as RuleScope, grouping: "sender" as Grouping,
@@ -27,7 +29,9 @@ const PURGE_DEFAULTS = {
 const isPurge = (scope: RuleScope | undefined) =>
   scope === "junk" || scope === "trash";
 
-function RunSummary({ rule }: { rule: Rule }) {
+function RunSummary({ rule, preview = true }: {
+  rule: Rule; preview?: boolean;
+}) {
   const r = rule.last_run;
   if (!r) return <span className="text-muted">{t("rule.never_ran")}</span>;
   if (r.error) return <span className="text-danger-fg">{errorText(r.error)}</span>;
@@ -56,12 +60,191 @@ function RunSummary({ rule }: { rule: Rule }) {
           {" "}· <Pin size={14} />
           {t("rule.pinned_skipped", { n: r.skipped_pinned })}
         </span>}
-      {r.preview.length > 0 && (
+      {preview && r.preview.length > 0 && (
         <span className="block text-muted">
           {r.preview.map((p) => `${p.label} (${p.count})`).join(" · ")}
         </span>
       )}
     </>
+  );
+}
+
+/** A word-sized building block of a rule sentence. */
+function Part({ children, tone = "neutral" }: {
+  children: ReactNode; tone?: "neutral" | "danger";
+}) {
+  return (
+    <span className={`inline-block rounded-control px-2 py-0.5 type-body
+      font-medium ${tone === "danger" ? "bg-review-bg text-review-fg"
+      : "bg-chip text-body"}`}>{children}</span>
+  );
+}
+
+/** Fills a translated sentence template: each `{name}` becomes the matching
+ *  node (a chip, a pop-up), a missing / null one drops out with its spaces.
+ *  Every language owns its word order and case in the template itself. */
+function Sentence({ template, parts, className = "" }: {
+  template: string; parts: Record<string, ReactNode>; className?: string;
+}) {
+  const out: ReactNode[] = [];
+  let text = "";
+  const flush = () => {
+    if (text) out.push(text.replace(/ +(?=\u00a0)/g, "").replace(/ {2,}/g, " "));
+    text = "";
+  };
+  template.split(/(\{\w+\})/).forEach((seg, i) => {
+    const name = /^\{(\w+)\}$/.exec(seg)?.[1];
+    if (name === undefined) { text += seg; return; }
+    if (parts[name] == null) return;
+    flush();
+    out.push(<Fragment key={i}>{parts[name]}</Fragment>);
+  });
+  flush();
+  return <span className={className}>{out}</span>;
+}
+
+const GROUPING_KEY: Record<string, string> = {
+  sender: "Sender", domain: "Domain", subject: "Subject", thread: "Thread" };
+
+const ACTION_ICON: Record<string, ReactNode> = {
+  trash: <Trash2 size={18} />, purge: <Trash2 size={18} />,
+  archive: <Archive size={18} />, move: <FolderInput size={18} />,
+  mark_read: <MailOpen size={18} />,
+};
+
+/** The last run of a rule in full: when, report vs execute, the totals, what
+ *  was skipped, any error, and the top senders as rows. */
+function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
+  const r = rule.last_run!;
+  return (
+    <Modal onClose={onClose} label={t("rule.report_title")}>
+      <PanelHeader title={t("rule.report_title")} sub={rule.name}
+        onClose={onClose} />
+      <div className="space-y-3 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-2 type-meta text-muted">
+          <Tag tone={r.mode === "execute" ? "keep" : "safe"}>
+            {t(`mode.${r.mode}`)}</Tag>
+        </div>
+        <div className="type-body"><RunSummary rule={rule} preview={false} />
+        </div>
+        {r.preview.length > 0 && (
+          <div>
+            <div className="mb-1 type-meta text-muted">
+              {t("rule.report_senders")}</div>
+            <ul className="divide-y divide-line rounded-card bg-panel2">
+              {r.preview.map((p) => (
+                <li key={p.key} className="flex items-center gap-2 px-3 py-2">
+                  <Avatar name={p.label} />
+                  <span className="min-w-0 flex-1 truncate type-body">
+                    {p.label}</span>
+                  <span className="type-body text-muted">{p.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** One rule as a card: icon, name + last run, the report / active switch,
+ *  the rule read as a sentence, and its actions. */
+function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete }: {
+  rule: Rule; busy: boolean; error?: string;
+  onRun: () => void; onEdit: () => void; onReport: () => void;
+  onMode: (mode: "report" | "execute") => void; onDelete: () => void;
+}) {
+  const purge = isPurge(rule.scope);
+  const needReport = rule.mode === "report" && rule.report_runs < 1;
+  const danger = purge || rule.action === "trash";
+  return (
+    <div className="rounded-card border border-line bg-panel2 p-3 sm:p-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <span aria-hidden className={`flex size-10 shrink-0 items-center
+          justify-center rounded-control ${danger
+          ? "bg-review-bg text-review-fg" : "bg-chip text-chiptext"}`}>
+          {ACTION_ICON[rule.action] ?? <ClipboardList size={18} />}
+        </span>
+        <div className="min-w-0 flex-1 basis-40">
+          <div className="type-body font-medium">{rule.name}</div>
+          <div className="type-meta text-muted"><RunSummary rule={rule} /></div>
+        </div>
+        {/* On phones the switch gets its own full-width line. */}
+        <Segmented value={rule.mode} label={t("rule.f_mode")} equal role="radio"
+          className="max-sm:w-full"
+          onChange={(m) => m !== rule.mode && onMode(m)}
+          options={[
+            { value: "report", label: t("rule.seg_report") },
+            { value: "execute", label: t("rule.seg_active"),
+              disabled: needReport, describedBy: `rule-need-${rule.id}` },
+          ]} />
+      </div>
+      {needReport && (
+        <div id={`rule-need-${rule.id}`}
+          className="mt-1 text-right type-meta text-muted">
+          {t("rule.need_report")}
+        </div>
+      )}
+      <p className="mt-3 type-body leading-9 text-muted">
+        <Sentence template={t(purge ? "rule.sent_purge" : "rule.sent_mail")}
+          parts={{
+            grouping: <Part>{t(GROUPING_KEY[rule.grouping])}</Part>,
+            scope: purge ? <Part tone="danger">
+              {t(`rule.scope_${rule.scope}`)}</Part> : null,
+            filter: rule.query
+              ? <code className="rounded-control bg-chip px-2 py-0.5 type-meta
+                  text-chiptext">{rule.query}</code>
+              : <Part>{t(purge ? "rule.s_all_senders" : "rule.s_everything")}</Part>,
+            action: <Part tone={danger ? "danger" : "neutral"}>
+              {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
+            retention: rule.keep_latest != null
+              ? <>{t("rule.ret_pre")}<Part>
+                  {t("rule.ret_keep", { n: rule.keep_latest })}</Part></>
+              : rule.older_than_days != null
+                ? <>{t("rule.ret_pre")}<Part>
+                    {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
+                : null,
+            schedule: <Part><CalendarClock size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+              {t(`sched.${rule.schedule}`)}</Part>,
+          }} />
+      </p>
+      {!!rule.filter_invalid?.length && (
+        <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
+          <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+          {t("rule.filter_invalid", { names: rule.filter_invalid.join(", ") })}
+        </div>
+      )}
+      {rule.mode === "report" && rule.reset_reason && (
+        <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
+          <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+          {t(`rule.reset_${rule.reset_reason}`)}
+        </div>
+      )}
+      {error && (
+        <div role="alert" className="mt-2 type-meta text-danger-fg">{error}</div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm"
+          variant={purge && rule.mode === "report" ? "primary" : "secondary"}
+          onClick={onRun} disabled={busy}>
+          {busy ? <Spinner />
+            : t(purge && rule.mode === "report"
+              ? "rule.run_report_btn" : "rule.run_now")}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onEdit}>{t("Edit")}</Button>
+        {rule.last_run && !rule.last_run.pending && (
+          <Button variant="secondary" size="sm" onClick={onReport}>
+            {t("rule.see_report")}
+          </Button>
+        )}
+        <Menu variant="quiet" icon label={t("rule.more", { name: rule.name })}
+          className="ml-auto" trigger={<MoreHorizontal size={18} aria-hidden />}>
+          <MenuItem danger onClick={onDelete}>{t("Delete")}</MenuItem>
+        </Menu>
+      </div>
+    </div>
   );
 }
 
@@ -74,8 +257,17 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 }) {
   const [form, setForm] = useState({ ...EMPTY, query: initialQuery });
   const [editId, setEditId] = useState<string | null>(null);
+  // The side panel / sheet with the sentence builder. A filter handed in
+  // (e.g. one the AI wrote) opens it straight away.
+  const [reportId, setReportId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(!!initialQuery);
+  const onPage = useIsPage();
   const [busyId, setBusyId] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState("");      // a refused save, in the editor
+  // a refused run / mode switch / delete, on that rule's card
+  const [cardErr, setCardErr] = useState<{ id: string; text: string } | null>(null);
+  // where focus returns when the side panel closes
+  const opener = useRef<Element | null>(null);
   const [filterErr, setFilterErr] = useState("");
   // the refusal belongs to the filter text it was given for
   useEffect(() => setFilterErr(""), [form.query, editId]);
@@ -97,20 +289,36 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     const groups = Object.values(state.groups?.[form.grouping] ?? {});
     if (!groups.length) return null;
     const f = parseFilter(form.query);
-    const hits = groups.filter((g) => matchGroup(g, f) && !g.protected);
+    const matched = groups.filter((g) => matchGroup(g, f));
+    const hits = matched.filter((g) => !g.protected);
     // Pinned mails never move (mark_read is non-destructive: exempt).
     const pinned = (g: { pinned: number }) =>
       form.action === "mark_read" ? 0 : g.pinned ?? 0;
     return { groups: hits.length,
-             mails: hits.reduce((n, g) => n + g.count - pinned(g), 0) };
+             mails: hits.reduce((n, g) => n + g.count - pinned(g), 0),
+             skipped: matched.length - hits.length,
+             examples: [...hits].sort((a, b) => b.count - a.count).slice(0, 3)
+               .map((g) => g.label) };
   }, [state, purge, form.grouping, form.query, form.action]);
 
   const set = (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm({ ...form, [k]: e.target.value });
+  const pick = <K extends keyof typeof form>(k: K) =>
+    (v: (typeof form)[K]) => setForm({ ...form, [k]: v });
 
-  const setScope = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const scope = e.target.value as RuleScope;
+  const closeEditor = () => {
+    setEditing(false); setEditId(null); setForm({ ...EMPTY });
+    // the side panel unmounts with its focus: give it back to the opener
+    const back = opener.current as HTMLElement | null;
+    if (onPage && back?.isConnected) back.focus();
+  };
+  const openNew = () => {
+    opener.current = document.activeElement;
+    setEditId(null); setForm({ ...EMPTY }); setEditing(true);
+  };
+
+  const setScope = (scope: RuleScope) => {
     if (isPurge(scope) === purge) { setForm({ ...form, scope }); return; }
     // Crossing between the two kinds of rule: everything that differs
     // (action, grouping, age, schedule) switches together.
@@ -137,8 +345,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     try {
       if (editId) await api.updateRule(editId, body);
       else await api.createRule(body);
-      setForm({ ...EMPTY });
-      setEditId(null);
+      closeEditor();
       onChanged();
     } catch (e: any) {
       // a refused filter is shown next to the filter field
@@ -165,7 +372,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   };
 
   const run = async (rule: Rule) => {
-    setMsg("");
+    setCardErr(null);
     try {
       if (rule.mode === "execute" && !(isPurge(rule.scope)
         ? await purgeConfirm(rule,
@@ -174,7 +381,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           title: t("rule.confirm_execute", { name: rule.name }),
           tone: "danger", confirmLabel: t("rule.run_now") }))) return;
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
       return;
     }
     setBusyId(rule.id);
@@ -182,14 +389,13 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       await api.runRule(rule.id);
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
     setBusyId("");
   };
 
-  const toggleMode = async (rule: Rule) => {
-    const mode = rule.mode === "report" ? "execute" : "report";
-    setMsg("");
+  const toggleMode = async (rule: Rule, mode: "report" | "execute") => {
+    setCardErr(null);
     try {
       if (mode === "execute" && !(isPurge(rule.scope)
         ? await purgeConfirm(rule,
@@ -201,7 +407,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       await api.updateRule(rule.id, { mode });
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
   };
 
@@ -211,14 +417,15 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       confirmLabel: t("Delete") })) return;
     try {
       await api.deleteRule(rule.id);
-      if (editId === rule.id) { setEditId(null); setForm({ ...EMPTY }); }
+      if (editId === rule.id) closeEditor();
       onChanged();
     } catch (e: any) {
-      setMsg(t("err.generic", { msg: e.message ?? e }));
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
     }
   };
 
   const edit = (rule: Rule) => {
+    opener.current = document.activeElement;
     setEditId(rule.id);
     setForm({ name: rule.name, scope: rule.scope ?? "mail",
       grouping: rule.grouping, query: rule.query,
@@ -226,240 +433,241 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       retention: rule.keep_latest != null ? "keep_latest"
         : rule.older_than_days != null ? "older_than_days" : "none",
       retentionN: String(rule.keep_latest ?? rule.older_than_days ?? "") });
+    setEditing(true);
   };
+
+  const panelBox = useRef<HTMLDivElement>(null);
+  const editor = (
+    <div ref={panelBox} onKeyDown={(e) => {
+      // A pop-up menu or a dialog opened from this panel (the filter
+      // builder sheet) takes this Esc; only the panel itself closes on it.
+      const inner = (e.target as Element).closest('[role="dialog"]');
+      if (e.key === "Escape" && !e.defaultPrevented
+          && !document.querySelector('[role="menu"]')
+          && !(inner && panelBox.current?.contains(inner))) {
+        e.preventDefault(); closeEditor();
+      }
+    }}>
+      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+        <h2 className="min-w-0 flex-1 truncate type-heading">
+          {editId ? t("rule.edit_title") : t("rule.new_title")}
+        </h2>
+        <Button variant="secondary" size="icon" label={t("Close")}
+          onClick={closeEditor}><X size={18} /></Button>
+      </div>
+      <div className="space-y-4 p-4 sm:p-5">
+        <Field label={t("rule.f_name")}>
+          <Input className="w-full" placeholder={t("rule.name")}
+            autoFocus={onPage}
+            value={form.name} onChange={set("name")} />
+        </Field>
+        {/* The sentence builder: every field of the rule as a pop-up. */}
+        <div className="space-y-3">
+          <Sentence template={t("rule.ed_when")}
+            className="flex flex-wrap items-center gap-2 type-body text-muted"
+            parts={{
+              grouping: purge
+                ? <Part>{t("Sender")}</Part>
+                : <PopupSelect value={form.grouping} onChange={pick("grouping")}
+                    name={t("rule.f_grouping")} options={(
+                      ["sender", "domain", "subject", "thread"] as Grouping[])
+                      .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />,
+              scope: <PopupSelect value={form.scope} onChange={setScope}
+                name={t("rule.f_scope")} options={[
+                  { value: "mail", label: t("rule.scope_mail") },
+                  { value: "junk", label: t("rule.scope_junk") },
+                  { value: "trash", label: t("rule.scope_trash") }]} />,
+            }} />
+          {purge && (
+            <Notice tone="danger" icon={<TriangleAlert size={16} />}>
+              {t("rule.purge_warning")}
+            </Notice>
+          )}
+          <div>
+            {/* The builder stays outside the <label>: its popover holds
+                controls of its own. */}
+            <div className="relative flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <Field label={t("rule.f_filter")}>
+                  <Input className="w-full"
+                    placeholder="tag:shipping age:>1y is:noreply-ever …"
+                    value={form.query} onChange={set("query")}
+                    aria-invalid={filterErr ? true : undefined} />
+                </Field>
+              </div>
+              <QueryBuilder value={form.query} senderOnly={purge}
+                onChange={(q) => setForm({ ...form, query: q })} />
+            </div>
+            {filterErr && (
+              <div role="alert" className="mt-1 type-meta text-danger-fg">
+                {filterErr}
+              </div>
+            )}
+            {purge && (
+              <div className="mt-1 type-meta text-muted">
+                {t("rule.purge_filter_help")}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="type-body text-muted">{t("rule.s_then")}</span>
+            {purge
+              ? <PopupSelect value="purge" onChange={() => {}} disabled
+                  name={t("rule.f_action")}
+                  options={[{ value: "purge",
+                    label: t("rule.act_purge") }]} />
+              : <PopupSelect value={form.action} onChange={pick("action")}
+                  name={t("rule.f_action")} options={[
+                    { value: "trash", label: t("rule.act_trash") },
+                    { value: "archive", label: t("rule.act_archive") },
+                    { value: "move", label: t("rule.act_move_pick") },
+                    { value: "mark_read", label: t("rule.act_mark_read") }]} />}
+            {!purge && form.action === "move" && (
+              <PopupSelect value={form.dest || null} onChange={pick("dest")}
+                name={t("rule.f_dest")} placeholder={t("Move to folder…")}
+                options={(state.folders_raw ?? []).map((f, i) =>
+                  ({ value: f, label: state.folders[i] ?? f }))} />
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!purge && <span className="type-body text-muted">
+              {t("rule.s_apply")}</span>}
+            {purge ? (
+              <Sentence template={t("rule.ed_older")}
+                className="flex flex-wrap items-center gap-2 type-body text-muted"
+                parts={{ n: <Input className="w-24" type="number" min={1}
+                  max={36500} aria-label={t("rule.purge_age_label")}
+                  placeholder={t("retention.n_placeholder")}
+                  value={form.retentionN} onChange={set("retentionN")} /> }} />
+            ) : <>
+              <PopupSelect value={form.retention} onChange={pick("retention")}
+                name={t("rule.f_apply")} options={[
+                  { value: "none", label: t("rule.apply_none") },
+                  { value: "keep_latest", label: t("rule.apply_keep") },
+                  { value: "older_than_days", label: t("rule.apply_older") }]} />
+              {form.retention !== "none" && (
+                <Input className="w-24" type="number" min={1}
+                  aria-label={t("rule.f_retention_n")}
+                  placeholder={t("retention.n_placeholder")}
+                  value={form.retentionN} onChange={set("retentionN")} />
+              )}
+            </>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="type-body text-muted">{t("rule.s_run")}</span>
+            <PopupSelect value={form.schedule} onChange={pick("schedule")}
+              name={t("rule.f_schedule")} options={[
+                { value: "manual", label: t("sched.manual") },
+                { value: "daily", label: t("sched.daily") },
+                { value: "weekly", label: t("sched.weekly") }]} />
+          </div>
+        </div>
+
+        {!purge && <div className="rounded-card bg-panel2 p-3" aria-live="polite">
+          <div className="type-body font-medium">{t("rule.preview")}</div>
+          {matchCount ? <>
+            <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1">
+              <PreviewStat n={matchCount.groups} k="rule.pv_groups" />
+              <PreviewStat n={matchCount.mails} k="rule.pv_mails" />
+              <PreviewStat n={matchCount.skipped} k="rule.pv_skipped" />
+            </div>
+            {matchCount.examples.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {matchCount.examples.map((ex) => (
+                  <span key={ex} className="inline-flex max-w-full items-center
+                    gap-1.5 rounded-control bg-chip px-2 py-1 type-meta">
+                    <Avatar name={ex} />
+                    <span className="truncate">{ex}</span>
+                  </span>
+                ))}
+                {matchCount.groups > matchCount.examples.length && (
+                  <span className="rounded-control bg-chip px-2 py-1 type-meta
+                    text-muted">
+                    {t("rule.pv_more",
+                      { n: matchCount.groups - matchCount.examples.length })}
+                  </span>
+                )}
+              </div>
+            )}
+          </> : (
+            <div className="mt-1 type-meta text-muted">
+              {t("rule.match_unknown")}
+            </div>
+          )}
+        </div>}
+
+        {!editId && (
+          <div>
+            <div className="type-body font-medium">{t("rule.start_report")}</div>
+            <div className="type-meta text-muted">
+              {t("rule.start_report_sub")}
+            </div>
+          </div>
+        )}
+        {rules.find((r) => r.id === editId)?.mode === "execute" && (
+          <div className="type-meta text-muted">
+            {t(purge ? "rule.purge_edit_reset" : "rule.edit_reset")}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={save}>
+            {editId ? t("Save") : t("rule.create")}
+          </Button>
+          <Button variant="secondary" onClick={closeEditor}>{t("Cancel")}</Button>
+          {msg && <span role="alert" className="type-meta text-muted">{msg}</span>}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <Modal onClose={onClose}>
       <PanelHeader title={<span className="inline-flex items-center gap-2">
         <ClipboardList size={18} /> {t("Rules")}
-      </span>} onClose={onClose} />
-      <div className="space-y-4 p-4 sm:p-5">
-        <p className="type-meta text-muted">{t("rules.help")}</p>
-
-        {rules.map((rule) => (
-          <div key={rule.id}
-            className="rounded-card border border-line bg-panel2 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="type-body font-medium">{rule.name}</span>
-              {isPurge(rule.scope) &&
-                <Tag tone="review">{t(rule.scope === "junk" ? "Junk" : "Trash")}</Tag>}
-              <Tag>{t(rule.grouping === "sender" ? "Sender"
-                : rule.grouping === "domain" ? "Domain"
-                : rule.grouping === "thread" ? "Thread" : "Subject")}</Tag>
-              <Tag tone={isPurge(rule.scope) ? "review" : "neutral"}>
-                {t(`action.${rule.action}`)}
-                {rule.dest ? ` → ${rule.dest}` : ""}</Tag>
-              <Tag>{t(`sched.${rule.schedule}`)}</Tag>
-              {rule.keep_latest != null && (
-                <Tag>{t("retention.tag_keep_latest", { n: rule.keep_latest })}</Tag>
-              )}
-              {rule.older_than_days != null && (
-                <Tag>{t(isPurge(rule.scope) ? "rule.purge_age_tag"
-                  : "retention.tag_older_than_days",
-                  { n: rule.older_than_days })}</Tag>
-              )}
-              <Tag tone={rule.mode === "execute" ? "keep" : "safe"}>
-                {t(`mode.${rule.mode}`)}
-              </Tag>
-            </div>
-            {rule.query ? (
-              <code className="mt-1 block type-meta text-chiptext">
-                {rule.query}
-              </code>
-            ) : isPurge(rule.scope) && (
-              <span className="mt-1 block type-meta text-chiptext">
-                {t("rule.purge_all_short")}
-              </span>
-            )}
-            {!!rule.filter_invalid?.length && (
-              <div className="mt-1 flex items-start gap-1 type-meta text-review-fg">
-                <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-                {t("rule.filter_invalid",
-                  { names: rule.filter_invalid.join(", ") })}
-              </div>
-            )}
-            {rule.mode === "report" && rule.reset_reason && (
-              <div className="mt-1 flex items-start gap-1 type-meta text-review-fg">
-                <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-                {t(`rule.reset_${rule.reset_reason}`)}
-              </div>
-            )}
-            <div className="mt-1 type-meta text-muted">
-              <RunSummary rule={rule} />
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Button size="sm"
-                variant={isPurge(rule.scope) && rule.mode === "report"
-                  ? "primary" : "secondary"}
-                onClick={() => run(rule)} disabled={busyId === rule.id}>
-                {busyId === rule.id ? <Spinner />
-                  : t(isPurge(rule.scope) && rule.mode === "report"
-                    ? "rule.run_report_btn" : "rule.run_now")}
-              </Button>
-              <Button variant="quiet" size="sm"
-                onClick={() => edit(rule)}>{t("Edit")}</Button>
-              <Button variant="secondary" size="sm"
-                disabled={rule.mode === "report" && rule.report_runs < 1}
-                title={rule.mode === "report" && rule.report_runs < 1
-                  ? t("rule.need_report") : ""}
-                onClick={() => toggleMode(rule)}>
-                {rule.mode === "report" && (
-                  <TriangleAlert size={14}
-                    className="mr-1 inline align-text-bottom" />
-                )}
-                {rule.mode === "report"
-                  ? t("rule.enable_execute") : t("rule.back_to_report")}
-              </Button>
-              <Button variant="danger-quiet" size="sm" className="ml-auto"
-                onClick={() => del(rule)}>{t("Delete")}</Button>
-            </div>
-          </div>
-        ))}
-        {!rules.length && <EmptyState>{t("rules.empty")}</EmptyState>}
-
-        <div className="rounded-card border border-line p-3">
-          <SectionLabel className="mb-2">
-            {editId ? t("rule.edit_title") : t("rule.new_title")}
-          </SectionLabel>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t("rule.f_name")}>
-              <Input className="w-full" placeholder={t("rule.name")}
-                value={form.name} onChange={set("name")} />
-            </Field>
-            <Field label={t("rule.f_scope")}>
-              <Select className="w-full" value={form.scope}
-                onChange={setScope}>
-                <option value="mail">{t("rule.scope_mail")}</option>
-                <option value="junk">{t("Junk")}</option>
-                <option value="trash">{t("Trash")}</option>
-              </Select>
-            </Field>
-            {purge && (
-              <div className="sm:col-span-2">
-                <Notice tone="danger" icon={<TriangleAlert size={16} />}>
-                  {t("rule.purge_warning")}
-                </Notice>
-              </div>
-            )}
-            {!purge && (
-              <Field label={t("rule.f_grouping")}>
-                <Select className="w-full" value={form.grouping}
-                  onChange={set("grouping")}>
-                  <option value="sender">{t("Sender")}</option>
-                  <option value="domain">{t("Domain")}</option>
-                  <option value="subject">{t("Subject")}</option>
-                  <option value="thread">{t("Thread")}</option>
-                </Select>
-              </Field>
-            )}
-            <div className="sm:col-span-2">
-              {/* The builder stays outside the <label>: its popover holds
-                  controls of its own. */}
-              <div className="relative flex flex-wrap items-end gap-2">
-                <div className="min-w-0 flex-1">
-                  <Field label={t("rule.f_filter")}>
-                    <Input className="w-full"
-                      placeholder="tag:shipping age:>1y is:noreply-ever …"
-                      value={form.query} onChange={set("query")}
-                      aria-invalid={filterErr ? true : undefined} />
-                  </Field>
-                </div>
-                <QueryBuilder value={form.query} senderOnly={purge}
-                  onChange={(q) => setForm({ ...form, query: q })} />
-              </div>
-              {filterErr && (
-                <div role="alert" className="mt-1 type-meta text-danger-fg">
-                  {filterErr}
-                </div>
-              )}
-              <div className="mt-1 type-meta text-muted">
-                {purge
-                  ? t("rule.purge_filter_help")
-                  : matchCount
-                    ? t("rule.match_count", matchCount)
-                    : t("rule.match_unknown")}
-              </div>
-            </div>
-            <Field label={t("rule.f_action")}>
-              {purge ? (
-                <Select className="w-full" value="purge" disabled>
-                  <option value="purge">{t("action.purge")}</option>
-                </Select>
-              ) : (
-                <Select className="w-full" value={form.action}
-                  onChange={set("action")}>
-                  <option value="trash">{t("action.trash")}</option>
-                  <option value="archive">{t("action.archive")}</option>
-                  <option value="move">{t("action.move")}</option>
-                  <option value="mark_read">{t("action.mark_read")}</option>
-                </Select>
-              )}
-            </Field>
-            <Field label={t("rule.f_schedule")}>
-              <Select className="w-full" value={form.schedule}
-                onChange={set("schedule")}>
-                <option value="manual">{t("sched.manual")}</option>
-                <option value="daily">{t("sched.daily")}</option>
-                <option value="weekly">{t("sched.weekly")}</option>
-              </Select>
-            </Field>
-            {purge ? (
-              <Field label={t("rule.purge_age_label")}>
-                <Input className="w-full" type="number" min={1}
-                  max={36500} placeholder={t("retention.n_placeholder")}
-                  value={form.retentionN} onChange={set("retentionN")} />
-              </Field>
-            ) : (
-              <Field label={t("rule.f_apply")}>
-                <Select className="w-full" value={form.retention}
-                  onChange={set("retention")}>
-                  <option value="none">{t("retention.none")}</option>
-                  <option value="keep_latest">{t("retention.keep_latest")}</option>
-                  <option value="older_than_days">
-                    {t("retention.older_than_days")}
-                  </option>
-                </Select>
-              </Field>
-            )}
-            {!purge && form.retention !== "none" && (
-              <Field label={t("rule.f_retention_n")}>
-                <Input className="w-full" type="number" min={1}
-                  placeholder={t("retention.n_placeholder")}
-                  value={form.retentionN} onChange={set("retentionN")} />
-              </Field>
-            )}
-            {!purge && form.action === "move" && (
-              <div className="sm:col-span-2">
-                <Field label={t("rule.f_dest")}>
-                  <Select className="w-full" value={form.dest}
-                    onChange={set("dest")}>
-                    <option value="">{t("Move to folder…")}</option>
-                    {(state.folders_raw ?? []).map((f, i) => (
-                      <option key={f} value={f}>{state.folders[i] ?? f}</option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            )}
-          </div>
-          {rules.find((r) => r.id === editId)?.mode === "execute" && (
-            <div className="mt-2 type-meta text-muted">
-              {t(purge ? "rule.purge_edit_reset" : "rule.edit_reset")}
-            </div>
-          )}
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={save}>
-              {editId ? t("Save") : t("rule.create")}
-            </Button>
-            {editId && (
-              <Button variant="secondary" onClick={() => {
-                setEditId(null); setForm({ ...EMPTY });
-              }}>{t("cancel")}</Button>
-            )}
-            <span className="type-meta text-muted">{msg}</span>
-          </div>
+      </span>} onClose={onClose}
+        actions={<Button size="sm" onClick={openNew}>
+          <Plus size={16} aria-hidden className="mr-1 inline align-text-bottom" />
+          {t("rule.new_btn")}
+        </Button>} />
+      <div className="lg:flex lg:items-start">
+        <div className="min-w-0 flex-1 space-y-4 p-4 sm:p-5">
+          <p className="type-meta text-muted">{t("rules.help")}</p>
+          {rules.map((rule) => (
+            <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
+              error={cardErr?.id === rule.id ? cardErr.text : undefined}
+              onRun={() => run(rule)} onEdit={() => edit(rule)}
+              onReport={() => setReportId(rule.id)}
+              onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
+          ))}
+          {!rules.length && <EmptyState>{t("rules.empty")}</EmptyState>}
         </div>
+        {/* >= 1024 (the page): the builder is a side panel next to the
+            list; otherwise a full-screen sheet over it. */}
+        {editing && onPage && (
+          <aside aria-label={editId ? t("rule.edit_title") : t("rule.new_title")}
+            className="w-104 shrink-0 border-l border-line">{editor}</aside>
+        )}
       </div>
+      {rules.some((r) => r.id === reportId && r.last_run) && (
+        <ReportSheet rule={rules.find((r) => r.id === reportId)!}
+          onClose={() => setReportId(null)} />
+      )}
+      {editing && !onPage && (
+        <Modal full onClose={closeEditor}
+          label={editId ? t("rule.edit_title") : t("rule.new_title")}>
+          {editor}
+        </Modal>
+      )}
     </Modal>
+  );
+}
+
+/** A big number with its (singular / plural) caption. */
+function PreviewStat({ n, k }: { n: number; k: string }) {
+  return (
+    <div>
+      <div className="type-title2">{n.toLocaleString()}</div>
+      <div className="type-meta text-muted">{t(k, { n })}</div>
+    </div>
   );
 }

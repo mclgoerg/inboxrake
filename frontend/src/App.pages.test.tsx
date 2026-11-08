@@ -225,9 +225,10 @@ test("a modal opened below 1024 becomes its page when the window widens, "
   mount(false);
   fireEvent.click(await screen.findByRole("link", { name: "Clean up" }));
   fireEvent.click(await screen.findByRole("button", { name: /^Rules/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
   const name = await screen.findByPlaceholderText("Rule name") as HTMLInputElement;
   fireEvent.change(name, { target: { value: "Draft rule" } });
-  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);
   resize(true);
   await waitFor(() => expect(window.location.hash).toBe("#/rules"));
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -235,7 +236,8 @@ test("a modal opened below 1024 becomes its page when the window widens, "
     .toBe("Draft rule");
   // and back: a deep-linked / resized tool shows as the full-screen modal
   resize(false);
-  expect(await screen.findByRole("dialog")).toBeTruthy();
+  // the tool as a dialog again, the builder as a sheet over it
+  expect((await screen.findAllByRole("dialog")).length).toBe(2);
   expect((screen.getByPlaceholderText("Rule name") as HTMLInputElement).value)
     .toBe("Draft rule");
 });
