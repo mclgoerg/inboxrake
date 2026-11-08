@@ -931,11 +931,10 @@ test("the Filed senders section lists what the user filed; nothing to save there
       account="default" onClose={() => {}} onSaved={() => {}}
       onAccountsChanged={() => {}} aiAnswers={2} /></DialogProvider></ToastProvider>);
     openSection("filed");
-    expect(await screen.findByText("What Inboxrake knows about your senders"))
-      .toBeTruthy();
     expect(await screen.findByText("amy@solo.example")).toBeTruthy();
     expect(screen.getByText(/Changes here apply at once/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Keep all AI answers" }))
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("menuitem", { name: "Keep all AI answers" }))
       .toHaveProperty("disabled", false);
     expect(screen.queryByLabelText("Host")).toBeNull();
   });

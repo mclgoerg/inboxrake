@@ -1,25 +1,24 @@
-import { ArrowDown, ArrowUp, Building2, Pencil, Trash2, User } from "lucide-react";
+import { Briefcase, Building2, CalendarDays, Download, Eraser, LifeBuoy,
+  MoreHorizontal, Newspaper, Package, Pencil, Upload, ShieldCheck, Sparkles,
+  SquareCheck, Tag as TagIcon, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, saveBlob } from "../api";
 import { t } from "../i18n";
-import { fmtNum } from "../numfmt";
 import { FILE_KINDS, filedKindName, keptMessage } from "../smart";
 import type { KnowledgeEntry, KnowledgeList, KnowledgeStored } from "../types";
-import { Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
-  Select, SettingsGroup, Tag, useMediaQuery, useToast } from "./ui";
+import { Avatar, Button, Checkbox, confirmDialog, EmptyState, Input, Loading,
+  Menu, MenuItem, Segmented, Select, SettingsGroup, Tag, useToast } from "./ui";
 
 /* "What Inboxrake knows about your senders" (Settings > Senders): everything
  * the user filed in Smart - by sender address or company - and the AI answers
- * they kept. A searchable, sortable list (a table, cards on a phone) with
- * inline edit, delete (also several at once), "Remove unused", keep / forget
- * of AI answers and download / upload of just this knowledge. Every change
- * applies at once on the server, so there is nothing to Save. */
+ * they kept. A searchable list grouped by Smart group (like iOS settings) with
+ * an All / By you / AI / Unused segment, inline edit of the group, forget (also
+ * several at once), and a "..." menu for the rare actions: download / upload
+ * of just this knowledge, "Remove unused" and keep / forget of AI answers.
+ * Every change applies at once on the server, so there is nothing to Save. */
 
-type SortBy = "key" | "kind" | "src" | "senders" | "status" | "ts";
+type Seg = "all" | "user" | "ai" | "unused";
 const PAGE = 50;
-// First click: biggest / newest first; the rest A-Z.
-const FIRST_DIR: Record<SortBy, 1 | -1> = { key: 1, kind: 1, src: 1,
-  senders: -1, status: 1, ts: -1 };
 const NOTE_MAX = 200;
 
 const isCompany = (e: KnowledgeEntry) => e.key.startsWith("co:");
@@ -39,19 +38,39 @@ const STATUS_TONE: Record<string, "safe" | "review" | "keep" | "neutral"> = {
 const STATUS_ORDER: Record<string, number> = { inert: 0, inactive: 1,
   unused: 2, no_effect: 3, unknown: 4, active: 5 };
 
-export function sortEntries(list: KnowledgeEntry[], by: SortBy,
-    dir: 1 | -1): KnowledgeEntry[] {
-  const cmp = (a: KnowledgeEntry, b: KnowledgeEntry): number => {
-    switch (by) {
-      case "kind": return filedKindName(a.kind).localeCompare(filedKindName(b.kind));
-      case "src": return a.src.localeCompare(b.src);
-      case "senders": return a.senders - b.senders;
-      case "status": return (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
-      case "ts": return a.ts - b.ts;
-      default: return nameOf(a).localeCompare(nameOf(b));
-    }
+/** Needs-a-look first, then A-Z. */
+export function sortEntries(list: KnowledgeEntry[]): KnowledgeEntry[] {
+  return [...list].sort((a, b) =>
+    (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+    || nameOf(a).localeCompare(nameOf(b)) || a.key.localeCompare(b.key));
+}
+
+/** The entries of one segment of the segment control. */
+export function inSegment(e: KnowledgeEntry, seg: Seg): boolean {
+  return seg === "all" || (seg === "unused" ? e.status === "unused"
+    : e.src === seg);
+}
+
+const KIND_ICON: Record<string, typeof Package> = { orders: Package,
+  appointments: CalendarDays, jobs: Briefcase, support: LifeBuoy,
+  accounts: ShieldCheck, newsletter: Newspaper, individuals: Users,
+  other: Users };
+
+/** Entries grouped by Smart group in Smart's own order (the fixed kinds,
+ *  then the user's categories, then anything else), each group sorted. */
+export function groupEntries(list: KnowledgeEntry[]):
+    { kind: string; entries: KnowledgeEntry[] }[] {
+  const by = new Map<string, KnowledgeEntry[]>();
+  for (const e of sortEntries(list)) {
+    by.set(e.kind, [...(by.get(e.kind) ?? []), e]);
+  }
+  const rank = (k: string) => {
+    const i = (FILE_KINDS as readonly string[]).indexOf(k);
+    return i >= 0 ? i : k.startsWith("cat:") ? FILE_KINDS.length : FILE_KINDS.length + 1;
   };
-  return [...list].sort((a, b) => dir * cmp(a, b) || a.key.localeCompare(b.key));
+  return [...by.entries()].map(([kind, entries]) => ({ kind, entries }))
+    .sort((a, b) => rank(a.kind) - rank(b.kind)
+      || filedKindName(a.kind).localeCompare(filedKindName(b.kind)));
 }
 
 /** Free-text search over the address / company, the kind, the note and the
@@ -73,12 +92,11 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   onChanged: () => void;           // Smart rows may have moved: refresh the app
 }) {
   const toast = useToast();
-  const phone = useMediaQuery("(max-width: 639px)");
   const [data, setData] = useState<KnowledgeList | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("key");
-  const [dir, setDir] = useState<1 | -1>(1);
+  const [seg, setSeg] = useState<Seg>("all");
+  const [selecting, setSelecting] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -105,9 +123,10 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
 
   const entries = data?.entries ?? [];
   const list = useMemo(
-    () => sortEntries(filterEntries(entries, query), sortBy, dir),
-    [entries, query, sortBy, dir]);
-  useEffect(() => { setShown(PAGE); }, [query, sortBy, dir]);
+    () => sortEntries(filterEntries(entries, query)
+      .filter((e) => inSegment(e, seg))),
+    [entries, query, seg]);
+  useEffect(() => { setShown(PAGE); }, [query, seg]);
   const unused = entries.filter((e) => e.status === "unused");
   const kept = entries.filter((e) => e.src === "ai");
   // the kept AI answers, counted in the senders they decide right now (the
@@ -237,10 +256,6 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
     next.has(k) ? next.delete(k) : next.add(k);
     return next;
   });
-  const sortBy_ = (by: SortBy) => {
-    if (by === sortBy) setDir(dir === 1 ? -1 : 1);
-    else { setSortBy(by); setDir(FIRST_DIR[by]); }
-  };
   const visible = list.slice(0, shown);
   const allShown = visible.length > 0 && visible.every((e) => sel.has(e.key));
   // Only what the search currently shows counts as selected: a bulk action
@@ -248,9 +263,9 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
   const listKeys = useMemo(() => new Set(list.map((e) => e.key)), [list]);
   const selKeys = [...sel].filter((k) => listKeys.has(k));
 
-  // ---- cells shared by the table and the cards ----------------------------
+  // ---- one entry ---------------------------------------------------------
   const editor = (e: KnowledgeEntry) => (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="mt-1 flex flex-wrap items-center gap-2">
       <Select value={draft.kind}
         className="min-w-0 basis-full sm:basis-auto sm:flex-none"
         aria-label={t("know.kind_label")}
@@ -278,50 +293,56 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
       </Button>
     </div>
   );
-  const keyCell = (e: KnowledgeEntry) => (
-    <span className="flex min-w-0 items-center gap-1.5">
-      {isCompany(e)
-        ? <Building2 size={14} aria-label={t("know.company")}
-            className="shrink-0 text-muted" />
-        : <User size={14} aria-hidden className="shrink-0 text-muted" />}
-      <span className="truncate" title={nameOf(e)}>{nameOf(e)}</span>
+  /** "In effect · 12 mails" / what is wrong, in the status's tone. */
+  const statusLine = (e: KnowledgeEntry) => (
+    <span className={`block type-meta ${e.status === "active" ? "text-muted"
+      : "text-review-fg"}`}>
+      {e.status === "active"
+        ? t("know.line_active", { n: e.mails })
+        : statusText(e)}
+      {e.note && <span className="text-muted"> · {e.note}</span>}
     </span>
   );
-  const srcTag = (e: KnowledgeEntry) => (
-    <Tag tone={e.src === "user" ? "info" : "neutral"}>
-      {e.src === "user" ? t("know.src_user") : t("know.src_ai")}
-    </Tag>
-  );
-  const rowActions = (e: KnowledgeEntry) => (
-    <span className="inline-flex items-center gap-1">
-      <Button variant="quiet" size="icon" label={t("know.edit")}
-        disabled={busy} onClick={() => startEdit(e)}><Pencil size={16} /></Button>
-      <Button variant="quiet" size="icon" label={t("know.delete")}
-        disabled={busy} onClick={() => remove([e.key])}>
-        <Trash2 size={16} /></Button>
-    </span>
-  );
-  const sortHead = (by: SortBy, label: string, right = false, width = "") => (
-    <th scope="col" aria-sort={sortBy === by
-      ? (dir === 1 ? "ascending" : "descending") : "none"}
-    className={`px-2 py-2 type-meta font-normal text-muted ${width}
-      ${right ? "text-right" : "text-left"}`}>
-      <button type="button" className="inline-flex cursor-pointer items-center
-        gap-1 hover:text-body" onClick={() => sortBy_(by)}>
-        {label}
-        {sortBy === by && (dir === 1 ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-      </button>
-    </th>
+  const entryRow = (e: KnowledgeEntry) => (
+    <div key={e.key} data-entry={e.key}
+      className="flex items-center gap-3 px-3 py-2.5">
+      {selecting && (
+        <Checkbox round checked={sel.has(e.key)} className="shrink-0"
+          aria-label={t("know.select", { name: nameOf(e) })}
+          onChange={() => toggle(e.key)} />
+      )}
+      <Avatar name={nameOf(e)} size="md" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 type-body">
+          <span className="truncate" title={nameOf(e)}>{nameOf(e)}</span>
+          {isCompany(e) && <Building2 size={14} aria-label={t("know.company")}
+            className="shrink-0 text-muted" />}
+        </div>
+        {editing === e.key ? editor(e) : statusLine(e)}
+      </div>
+      <Tag tone={e.src === "user" ? "info" : "safe"} className="shrink-0">
+        {e.src === "user" ? t("know.src_user") : t("know.src_ai")}
+      </Tag>
+      <Menu variant="quiet" icon label={t("know.row_menu", { name: nameOf(e) })}
+        trigger={<MoreHorizontal size={16} />}>
+        <MenuItem onClick={() => startEdit(e)} disabled={busy}>
+          {t("know.change_group")}
+        </MenuItem>
+        <MenuItem danger disabled={busy} onClick={() => remove([e.key])}>
+          {t("know.forget")}
+        </MenuItem>
+      </Menu>
+    </div>
   );
 
   const unscanned = data?.unscanned.length ?? 0;
   const canRemoveUnused = !!data?.complete && unused.length > 0;
+  const segCount = (s: Seg) => entries.filter((e) => inSegment(e, s)).length;
 
   return (
     <>
-      <SettingsGroup padded className="min-w-0" header={t("know.table_title")}
-        footnote={t("know.table_help")}>
-      <div className="space-y-3">
+      <div className="mb-6 space-y-3">
+      <p className="px-1 type-meta text-muted">{t("know.table_help")}</p>
       {!data && !error && <Loading />}
       {error && (
         <p role="alert" className="type-meta text-danger-fg">
@@ -331,193 +352,111 @@ export function KnowledgeSettings({ aiAnswers, onChanged }: {
 
       {data && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input type="search" className="w-full min-w-0 sm:w-64"
+          <div className="flex items-center gap-2">
+            <Input type="search" className="min-w-0 flex-1"
               value={query} placeholder={t("know.search")}
               aria-label={t("know.search")}
               onChange={(ev) => setQuery(ev.target.value)} />
-            {phone && (
-              <Select value={sortBy} className="w-full min-w-0 max-w-full"
-                aria-label={t("know.sort_label")}
-                onChange={(ev) => {
-                  const by = ev.target.value as SortBy;
-                  setSortBy(by);
-                  setDir(FIRST_DIR[by]);
-                }}>
-                <option value="key">{t("know.col_key")}</option>
-                <option value="kind">{t("know.col_kind")}</option>
-                <option value="src">{t("know.col_src")}</option>
-                <option value="senders">{t("know.col_senders")}</option>
-                <option value="status">{t("know.col_status")}</option>
-                <option value="ts">{t("know.col_ts")}</option>
-              </Select>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm"
-              disabled={busy || !canRemoveUnused} onClick={removeUnused}>
-              {t("know.unused_btn", { n: unused.length })}
-            </Button>
-            <Button variant="secondary" size="sm"
-              disabled={busy || aiAnswers === 0} onClick={keepAll}>
-              {t("know.keep_all")}
-            </Button>
-            <Button variant="secondary" size="sm"
-              disabled={busy || kept.length === 0} onClick={forgetKept}>
-              {keptSenders
-                ? t("know.forget_btn", { n: keptSenders })
-                : t("know.forget_btn_unused", { n: kept.length })}
-            </Button>
-            <span className="ml-auto flex items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={!entries.length}
-                title={t("know.download_tip")}
-                onClick={download}>{t("know.download")}</Button>
-              <Button variant="secondary" size="sm" disabled={busy}
-                onClick={() => upload.current?.click()}>
+            <Menu variant="secondary" icon label={t("know.more_menu")}
+              trigger={<MoreHorizontal size={16} />}>
+              <MenuItem disabled={!entries.length} sub={t("know.download_tip")}
+                onClick={download}>
+                <Download size={14} aria-hidden className="mr-2 inline" />
+                {t("know.download")}
+              </MenuItem>
+              <MenuItem disabled={busy} onClick={() => upload.current?.click()}>
+                <Upload size={14} aria-hidden className="mr-2 inline" />
                 {t("know.upload")}
-              </Button>
-              <input ref={upload} type="file" accept="application/json"
-                className="hidden" aria-label={t("know.upload")}
-                onChange={onUpload} />
-            </span>
+              </MenuItem>
+              <MenuItem disabled={!entries.length}
+                onClick={() => setSelecting(true)}>
+                <SquareCheck size={14} aria-hidden className="mr-2 inline" />
+                {t("know.select_mode")}
+              </MenuItem>
+              <MenuItem disabled={busy || !canRemoveUnused}
+                onClick={removeUnused}>
+                <Eraser size={14} aria-hidden className="mr-2 inline" />
+                {t("know.unused_btn", { n: unused.length })}
+              </MenuItem>
+              <MenuItem disabled={busy || aiAnswers === 0} onClick={keepAll}>
+                <Sparkles size={14} aria-hidden className="mr-2 inline" />
+                {t("know.keep_all")}
+              </MenuItem>
+              <MenuItem disabled={busy || kept.length === 0}
+                onClick={forgetKept}>
+                <Sparkles size={14} aria-hidden className="mr-2 inline" />
+                {keptSenders
+                  ? t("know.forget_btn", { n: keptSenders })
+                  : t("know.forget_btn_unused", { n: kept.length })}
+              </MenuItem>
+            </Menu>
+            <input ref={upload} type="file" accept="application/json"
+              className="hidden" aria-label={t("know.upload")}
+              onChange={onUpload} />
           </div>
+          <Segmented<Seg> value={seg} onChange={setSeg} role="radio" fill equal
+            label={t("know.seg_label")}
+            options={[
+              { value: "all", label: t("know.seg_all", { n: segCount("all") }) },
+              { value: "user", label: t("know.seg_user", { n: segCount("user") }) },
+              { value: "ai", label: t("know.seg_ai", { n: segCount("ai") }) },
+              { value: "unused", label: t("know.seg_unused",
+                { n: segCount("unused") }) }]} />
           {!data.complete && (
             <p className="type-meta text-muted">
               {t("know.unused_blocked", { n: unscanned })}
             </p>
           )}
 
-          {selKeys.length > 0 && (
+          {(selecting || selKeys.length > 0) && (
             <div className="flex flex-wrap items-center gap-2 rounded-card
               bg-panel2 px-3 py-2 type-meta">
+              <Checkbox checked={allShown} label={t("know.select_all")}
+                onChange={(ev) => setSel(new Set(ev.target.checked
+                  ? [...sel, ...visible.map((e) => e.key)]
+                  : [...sel].filter((k) => !visible.some((e) => e.key === k))))} />
               <span>{t("know.selected", { n: selKeys.length })}</span>
-              <Button variant="danger" size="sm" disabled={busy}
+              <Button variant="danger" size="sm" disabled={busy || !selKeys.length}
                 onClick={removeSelected}>
                 {t("know.delete_sel", { n: selKeys.length })}
               </Button>
               <button type="button" className="cursor-pointer underline"
-                onClick={() => setSel(new Set())}>{t("Clear selection")}</button>
+                onClick={() => { setSel(new Set()); setSelecting(false); }}>
+                {t("Clear selection")}</button>
             </div>
           )}
         </>
       )}
       </div>
-      </SettingsGroup>
 
-      {data && (
-        <SettingsGroup padded className="min-w-0">
-          {entries.length === 0 ? (
-            <EmptyState title={t("know.empty_title")}
-              hint={t("know.empty_hint")} />
-          ) : list.length === 0 ? (
-            <p className="p-2 type-body text-muted">{t("know.none")}</p>
-          ) : phone ? (
-            <div>
-              {visible.map((e) => (
-                <div key={e.key} className="flex items-stretch border-b
-                  border-line">
-                  <Checkbox checked={sel.has(e.key)}
-                    className="w-11 shrink-0 self-stretch coarse:min-h-0"
-                    aria-label={t("know.select", { name: nameOf(e) })}
-                    onChange={() => toggle(e.key)} />
-                  <div className="min-w-0 flex-1 space-y-1 py-2.5 pr-1">
-                    <div className="flex items-center gap-2 type-body-mobile">
-                      {keyCell(e)}
-                      <span className="ml-auto shrink-0">{rowActions(e)}</span>
-                    </div>
-                    {editing === e.key ? editor(e) : (
-                      <>
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span>{filedKindName(e.kind)}</span>
-                          {srcTag(e)}
-                        </div>
-                        <div className="type-meta text-muted">
-                          {t("n.senders", { n: e.senders })} · {statusText(e)}
-                        </div>
-                        {e.note && (
-                          <div className="type-meta text-muted">{e.note}</div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <table className="w-full table-fixed border-collapse type-body">
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="w-9 px-1 py-2">
-                    <Checkbox checked={allShown}
-                      aria-label={t("know.select_all")}
-                      onChange={(ev) => setSel(new Set(ev.target.checked
-                        ? [...sel, ...visible.map((e) => e.key)]
-                        : [...sel].filter((k) => !visible.some((e) => e.key === k))))} />
-                  </th>
-                  {sortHead("key", t("know.col_key"), false, "w-4/12")}
-                  {sortHead("kind", t("know.col_kind"), false, "w-3/12")}
-                  {sortHead("senders", t("know.col_senders"), true, "w-20")}
-                  {sortHead("status", t("know.col_status"), false, "w-28")}
-                  <th scope="col" className="w-20 px-2 py-2">
-                    <span className="sr-only">{t("know.col_actions")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((e) => (
-                  <tr key={e.key} className="border-b border-line align-top">
-                    <td className="px-1 py-2">
-                      <Checkbox checked={sel.has(e.key)}
-                        aria-label={t("know.select", { name: nameOf(e) })}
-                        onChange={() => toggle(e.key)} />
-                    </td>
-                    <td className="min-w-0 overflow-hidden px-2 py-2.5">
-                      {keyCell(e)}
-                      {e.status !== "active" && (
-                        <div className="mt-0.5 type-meta text-muted">
-                          {statusText(e)}
-                        </div>
-                      )}
-                    </td>
-                    {editing === e.key ? (
-                      <td colSpan={3} className="px-2 py-2">{editor(e)}</td>
-                    ) : (
-                      <>
-                        <td className="px-2 py-2.5">
-                          {filedKindName(e.kind)}
-                          <div className="mt-0.5">{srcTag(e)}</div>
-                          {e.note && (
-                            <div className="mt-0.5 truncate type-meta text-muted"
-                              title={e.note}>{e.note}</div>
-                          )}
-                        </td>
-                        <td className="px-2 py-2.5 text-right tabular-nums">
-                          {fmtNum(e.senders)}
-                        </td>
-                        <td className="px-2 py-2.5">
-                          <Tag tone={STATUS_TONE[e.status] ?? "neutral"}>
-                            {t(`know.status_short.${e.status}`)}
-                          </Tag>
-                        </td>
-                      </>
-                    )}
-                    <td className="px-1 py-1.5 text-right">{rowActions(e)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {list.length > visible.length && (
-            <div className="mt-3 text-center">
-              <Button variant="secondary" size="sm"
-                onClick={() => setShown(shown + PAGE)}>
-                {t("know.more", { n: list.length - visible.length })}
-              </Button>
-            </div>
-          )}
-        </SettingsGroup>
+      {data && (entries.length === 0 ? (
+        <EmptyState title={t("know.empty_title")} hint={t("know.empty_hint")} />
+      ) : list.length === 0 ? (
+        <p className="p-2 type-body text-muted">{t("know.none")}</p>
+      ) : (
+        groupEntries(visible).map((g) => (
+          <SettingsGroup key={g.kind} header={
+            <span className="flex items-center gap-2 type-body font-semibold
+              text-body">
+              <span aria-hidden className="flex size-7 items-center
+                justify-center rounded-control bg-chip text-muted">
+                {(() => { const I = g.kind.startsWith("cat:") ? TagIcon
+                  : KIND_ICON[g.kind] ?? Users; return <I size={14} />; })()}
+              </span>
+              {filedKindName(g.kind)}
+              <span className="font-normal text-muted">{g.entries.length}</span>
+            </span>}>
+            {g.entries.map(entryRow)}
+          </SettingsGroup>
+        ))
+      ))}
+      {data && list.length > visible.length && (
+        <div className="mb-6 text-center">
+          <Button variant="secondary" size="sm"
+            onClick={() => setShown(shown + PAGE)}>
+            {t("know.more", { n: list.length - visible.length })}
+          </Button>
+        </div>
       )}
     </>
   );

@@ -243,7 +243,7 @@ describe("the Smart group row (the existing sender filing)", () => {
   it("Automatic removes the sender's own entry", async () => {
     knowledge.mockResolvedValue({ entries: [{ key: "a:a@solo.example",
       kind: "orders", src: "user", ts: 1, note: "", status: "active",
-      reason: "", senders: 1, filed: 1, rows: ["k:orders"] }], complete: true,
+      reason: "", senders: 1, filed: 1, mails: 1, rows: ["k:orders"] }], complete: true,
     unscanned: [], categories: [], max: 5000, ai_running: false });
     mount({ withSender: true });
     await screen.findByText("Smart group");
