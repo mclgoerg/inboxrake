@@ -319,7 +319,7 @@ test("a second finger voids the gesture: no decision on either pointer up", asyn
 test("keys do nothing while the discard prompt is on top", async () => {
   const dlg = await open();
   fireEvent.click(btn(dlg, /Trash/));
-  fireEvent.click(btn(dlg, "Close"));
+  fireEvent.click(btn(dlg, "Clean up"));
   await findDialog();
   key("ArrowLeft"); key("ArrowRight");
   await cancelDialog();
@@ -400,13 +400,13 @@ test("a failing step stops the rest and keeps the deck open", async () => {
 test("closing with decisions asks to discard; keeping them stays open", async () => {
   const dlg = await open();
   fireEvent.click(btn(dlg, /Trash/));
-  fireEvent.click(btn(dlg, "Close"));
+  fireEvent.click(btn(dlg, "Clean up"));
   const c = await findDialog();
   expect(c.textContent).toContain("Discard 1 decision?");
   expect(c.textContent).toContain("Nothing has been changed in your mailbox.");
   await cancelDialog();
   expect(screen.getByRole("dialog", { name: "Triage" })).toBeTruthy();
-  fireEvent.click(btn(dlg, "Close"));
+  fireEvent.click(btn(dlg, "Clean up"));
   await pressDialog("Discard");
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
   expect(calls).toEqual([]);
@@ -415,7 +415,7 @@ test("closing with decisions asks to discard; keeping them stays open", async ()
 test("closing without decisions needs no prompt", async () => {
   const dlg = await open();
   fireEvent.click(btn(dlg, /Keep/));                          // keep changes nothing
-  fireEvent.click(btn(dlg, "Close"));
+  fireEvent.click(btn(dlg, "Clean up"));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
 });
 

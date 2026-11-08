@@ -247,7 +247,7 @@ test("below 1024 a tool route opens the full-screen modal; closing leaves it",
   window.location.hash = "#/rules";
   mount(false);
   const dlg = await screen.findByRole("dialog");
-  fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+  fireEvent.click(within(dlg).getByRole("button", { name: "Clean up" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   // back on the tab page that lists the tool
   expect(window.location.hash).toBe("#/cleanup");
@@ -262,7 +262,7 @@ test("a tool reached by resize returns to its tab page on close (Insights)",
   goto("#/trackers");
   resize(false);
   const dlg = await screen.findByRole("dialog");
-  fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+  fireEvent.click(within(dlg).getByRole("button", { name: "Insights" }));
   await waitFor(() => expect(window.location.hash).toBe("#/insights"));
 });
 
@@ -271,7 +271,7 @@ test("a tool modal opened from the Clean up tab returns there", async () => {
   fireEvent.click(await screen.findByRole("link", { name: "Clean up" }));
   fireEvent.click(await screen.findByRole("button", { name: /^Rules/ }));
   const dlg = await screen.findByRole("dialog");
-  fireEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+  fireEvent.click(within(dlg).getByRole("button", { name: "Clean up" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(window.location.hash).toBe("#/cleanup");
 });

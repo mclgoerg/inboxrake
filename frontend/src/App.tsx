@@ -2821,7 +2821,10 @@ export default function App() {
       )}
 
       {detail && !splitPane && renderDetail("modal")}
-      <PageSlot page={wide}>{toolPanels}</PageSlot>
+      <PageSlot page={wide} parent={shownTool
+        ? t(TOOL_TAB[shownTool] === "cleanup" ? "tools.group_cleanup"
+          : TOOL_TAB[shownTool] === "insights" ? "tools.group_insights"
+          : "nav.overview") : undefined}>{toolPanels}</PageSlot>
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
       {aiFilterOpen && (
         <AiFilterPanel
