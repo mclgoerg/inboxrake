@@ -10,7 +10,7 @@ import { fmtAgo } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
 import { squarify } from "../treemap";
-import type { AppState, AuditEntry, Group, StatsResp, TrackerReport,
+import type { AppState, AuditEntry, DupSummary, Group, StatsResp, TrackerReport,
   WrappedResp }
   from "../types";
 import { actorLabel, tOr } from "./AuditLogPanel";
@@ -102,20 +102,18 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
   // Duplicates are derived from the scanned index, so the server always has
   // the current result: fetched on mount, account change and scan done only
   // (AI batches bump groups_rev every few seconds; the call is not free).
-  type Dups = { sets: number; wasted: number; capped: boolean };
-  const [dups, setDups] = useState<Dups | "failed" | null>(null);
+  const [dups, setDups] = useState<DupSummary | "failed" | null>(null);
   useEffect(() => {
     if (!done) { setDups(null); return; }
     let alive = true;
-    Promise.resolve().then(() => api.duplicates()).then((sets) => alive
-      && setDups({ sets: sets.length,
-        wasted: sets.reduce((n, s) => n + s.wasted, 0),
-        // the server returns at most 200 sets: a lower bound then
-        capped: sets.length >= 200 }))
+    Promise.resolve().then(() => api.duplicatesSummary())
+      .then((sum) => alive && setDups(sum))
       .catch(() => alive && setDups("failed"));
     return () => { alive = false; };
   }, [account, done]);
   const dupReady = dups != null && dups !== "failed";
+  const dupCompare = dupReady ? dups.versions + dups.possible : 0;
+  const compareText = t("tab.dup_compare", { n: dupCompare.toLocaleString() });
   const dupLoading = done && dups == null;
   const atts = state?.atts;
   const attRunning = atts?.status === "running";
@@ -200,13 +198,14 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
           <Tile icon={<Copy size={18} aria-hidden />}
             tone="bg-info-bg text-info-fg" label={t("Duplicates")}
             value={dupLoading ? <Skeleton className="h-6 w-14" />
-              : dupReady ? (dups.sets > 0
-                ? `${dups.capped ? "≥ " : ""}${fmtSize(dups.wasted)}`
+              : dupReady ? (dups.sets > 0 ? fmtSize(dups.wasted)
+                : dupCompare > 0 ? fmtNum(dupCompare)
                 : t("tab.dup_none_value")) : null}
             sub={dupReady ? (dups.sets > 0
-              ? t(dups.capped ? "tab.dup_sets_more" : "tab.dup_sets",
-                { n: dups.sets.toLocaleString() })
-              : t("tab.dup_none")) : t("tab.dup_sub")} disabled={!done}
+              ? [t("tab.dup_sets", { n: dups.sets.toLocaleString() }),
+                ...(dupCompare > 0 ? [compareText] : [])].join(" · ")
+              : dupCompare > 0 ? compareText : t("tab.dup_none"))
+              : t("tab.dup_sub")} disabled={!done}
             onClick={() => onOpen("duplicates")} />
         </li>
         <li className="contents">
@@ -216,7 +215,9 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
               : attSize > 0 ? fmtSize(attSize) : null}
             sub={!attRunning && atts && atts.mails > 0 && atts.size > 0
               ? t("tab.in_mails", { n: atts.mails.toLocaleString() })
-              : t("tab.att_sub")} onClick={() => onOpen("attachments")} />
+              : attSize > 0 || attRunning ? t("tab.att_sub")
+                : t("tab.att_find")}
+            onClick={() => onOpen("attachments")} />
         </li>
         {aiShown && (
           <li className="contents">

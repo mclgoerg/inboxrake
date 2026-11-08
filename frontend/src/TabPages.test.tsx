@@ -9,9 +9,11 @@ const trackers = vi.fn();
 const audit = vi.fn();
 const wrapped = vi.fn();
 const duplicates = vi.fn();
+const sum = (o: object) => ({ sets: 0, wasted: 0, versions: 0, possible: 0,
+  ...o });
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
-  api: { duplicates: () => duplicates(), stats: () => stats(), trackers: () => trackers(),
+  api: { duplicatesSummary: () => duplicates(), stats: () => stats(), trackers: () => trackers(),
     wrapped: () => wrapped(),
     audit: (...a: unknown[]) => audit(...a) },
 }));
@@ -211,8 +213,7 @@ test("Insights: the Space map asks for a scan on a never-scanned mailbox",
 
 test("Clean up: Duplicates shows the server's result, Attachments its last run",
   async () => {
-  duplicates.mockResolvedValue([
-    { wasted: 2 * MB, mails: [{}, {}, {}] }, { wasted: MB, mails: [{}, {}] }]);
+  duplicates.mockResolvedValue(sum({ sets: 2, wasted: 3 * MB }));
   const st = state({ atts: { status: "done", mails: 12, size: 5 * MB,
     progress: "", error: "" }, groups_rev: 1 } as never);
   render(<CleanupPage {...cleanupProps({ state: st })} />);
@@ -233,12 +234,35 @@ test("Clean up: a running attachment analysis shows Running…", () => {
     .toContain("Running…");
 });
 
-test("Clean up: a capped duplicates answer is shown as a lower bound", async () => {
-  duplicates.mockResolvedValue(Array.from({ length: 200 }, () =>
-    ({ wasted: 1, mails: [{}, {}] })));
+test("Clean up: Duplicates adds the sets to compare to the sub line", async () => {
+  duplicates.mockResolvedValue(sum({ sets: 2, wasted: 3 * MB, versions: 1,
+    possible: 2 }));
   render(<CleanupPage {...cleanupProps()} />);
   await waitFor(() => expect(screen.getByRole("button",
-    { name: /^Duplicates/ }).textContent).toContain("200+ duplicate sets"));
+    { name: /^Duplicates/ }).textContent)
+    .toContain("2 duplicate sets · 3 to compare"));
+});
+
+test("Clean up: only sets to compare show their count as the value", async () => {
+  duplicates.mockResolvedValue(sum({ versions: 1, possible: 3 }));
+  render(<CleanupPage {...cleanupProps()} />);
+  const dup = screen.getByRole("button", { name: /^Duplicates/ });
+  await waitFor(() => expect(dup.textContent).toContain("4 to compare"));
+  expect(dup.textContent).not.toContain("No copies found");
+  expect(dup.textContent).not.toContain("duplicate set");
+});
+
+test("Clean up: no copies of any kind reads 0 / No copies found", async () => {
+  duplicates.mockResolvedValue(sum({}));
+  render(<CleanupPage {...cleanupProps()} />);
+  await waitFor(() => expect(screen.getByRole("button",
+    { name: /^Duplicates/ }).textContent).toContain("No copies found"));
+});
+
+test("Clean up: the Attachments tile asks for a check until a size is known", () => {
+  render(<CleanupPage {...cleanupProps()} />);
+  expect(screen.getByRole("button", { name: /^Attachments/ }).textContent)
+    .toContain("Find big attachments");
 });
 
 test("Clean up: no Check flash while loading; no refetch on groups_rev",
@@ -249,21 +273,14 @@ test("Clean up: no Check flash while loading; no refetch on groups_rev",
   const { rerender } = render(<CleanupPage {...props} />);
   const dup = () => screen.getByRole("button", { name: /^Duplicates/ });
   expect(dup().textContent).not.toContain("Check");
-  res([{ wasted: MB, mails: [{}, {}] }]);
+  res(sum({ sets: 1, wasted: MB }));
   await waitFor(() => expect(dup().textContent).toContain("1 duplicate set"));
   rerender(<CleanupPage {...props}
     state={state({ groups_rev: 2 } as never)} />);
   expect(duplicates).toHaveBeenCalledTimes(1);
 });
 
-test("Clean up: a capped size is a lower bound, a failed fetch shows Check",
-  async () => {
-  duplicates.mockResolvedValue(Array.from({ length: 200 }, () =>
-    ({ wasted: MB, mails: [{}, {}] })));
-  const { unmount } = render(<CleanupPage {...cleanupProps()} />);
-  await waitFor(() => expect(screen.getByRole("button",
-    { name: /^Duplicates/ }).textContent).toContain("≥ 200.0 MB"));
-  unmount();
+test("Clean up: a failed duplicates fetch shows Check", async () => {
   duplicates.mockRejectedValue(new Error("x"));
   render(<CleanupPage {...cleanupProps()} />);
   await waitFor(() => expect(screen.getByRole("button",

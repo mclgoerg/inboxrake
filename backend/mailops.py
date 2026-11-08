@@ -589,6 +589,12 @@ def load_snapshot(acc) -> bool:
             acc.state["scanned_ts"] = data.get("ts")
             acc.state["status"] = "done"
             acc.state["groups_rev"] += 1
+            analysed = [m.get("att_size", 0) for m in acc.index.values()
+                        if m.get("att_size")]
+            acc.state["atts"] = {
+                "status": "done" if analysed else "idle",
+                "progress": "", "error": "",
+                "mails": len(analysed), "size": sum(analysed)}
             # Snapshots from before smart grouping have no `smart` groups
             # (and the state's own empty ones must not leak through).
             acc.state["groups"].setdefault("smart", {})
@@ -3748,17 +3754,12 @@ def versions_list(limit: int = 200, acc=None) -> list[dict]:
 POSSIBLE_DUP_WINDOW = 600       # seconds: "sent twice within minutes"
 
 
-def possible_duplicates_list(limit: int = 200, acc=None) -> list[dict]:
-    """Likely double-sends that are NOT identical copies or versions
-    (different Message-IDs): the same sender address and the same subject
-    (whitespace collapsed, case-insensitive, non-empty), each mail within 10
-    minutes of another in its group (chained by time). Mails already in an
-    identical or versions set are left out. Same shape as duplicates_list;
-    the UI never auto-selects these - the user compares and decides."""
-    acc = acc or accounts.get()
-    with acc.lock:
-        mails = list(acc.index.values())
-    listed = {id(m) for g in _dup_groups(mails) for s in g for m in s}
+def _possible_sets(mails: list[dict], groups: tuple[list[list[dict]],
+                                                    list[list[dict]]]
+                   ) -> list[list[dict]]:
+    """The possible-duplicate sets (see possible_duplicates_list) for
+    `mails`, given their already computed _dup_groups."""
+    listed = {id(m) for g in groups for s in g for m in s}
     by_key: dict[tuple, list] = {}
     for m in mails:
         subject = " ".join((m["subject"] or "").split()).casefold()
@@ -3776,7 +3777,36 @@ def possible_duplicates_list(limit: int = 200, acc=None) -> list[dict]:
             if len(run) > 1:
                 sets.append(run)
             run = [m] if m is not None else []
-    return _dup_payload(sets, limit)
+    return sets
+
+
+def possible_duplicates_list(limit: int = 200, acc=None) -> list[dict]:
+    """Likely double-sends that are NOT identical copies or versions
+    (different Message-IDs): the same sender address and the same subject
+    (whitespace collapsed, case-insensitive, non-empty), each mail within 10
+    minutes of another in its group (chained by time). Mails already in an
+    identical or versions set are left out. Same shape as duplicates_list;
+    the UI never auto-selects these - the user compares and decides."""
+    acc = acc or accounts.get()
+    with acc.lock:
+        mails = list(acc.index.values())
+    return _dup_payload(_possible_sets(mails, _dup_groups(mails)), limit)
+
+
+def duplicates_summary(acc=None) -> dict:
+    """Full counts behind the three duplicate lists (no 200 cap), from ONE
+    pass over the index: identical `sets` and what they would free
+    (`wasted`), plus the `versions` and `possible` sets to compare."""
+    acc = acc or accounts.get()
+    with acc.lock:
+        mails = list(acc.index.values())
+    groups = _dup_groups(mails)
+    identical, versions = groups
+    return {"sets": len(identical),
+            "wasted": sum(m["size"] for s in identical
+                          for m in sorted(s, key=lambda m: -m["ts"])[1:]),
+            "versions": len(versions),
+            "possible": len(_possible_sets(mails, groups))}
 
 
 # ----------------------------------------------------------- undo & trash

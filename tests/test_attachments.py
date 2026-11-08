@@ -185,3 +185,26 @@ def test_a_rescan_without_any_analysed_mail_is_idle_again(bridge):
     mailops.run_scan()
     assert mailops.STATE["atts"]["status"] == "idle"
     assert mailops.STATE["atts"]["mails"] == 0
+
+
+def test_a_snapshot_restores_the_analysis_state(bridge):
+    _analysed(bridge)
+    before = dict(mailops.STATE["atts"])
+    mailops.save_snapshot(mailops.accounts.get())
+    from backend import accounts as accountsmod
+    accountsmod.reset()
+    fresh = accountsmod.get()
+    assert mailops.load_snapshot(fresh)
+    assert fresh.state["atts"] == before
+    assert before["status"] == "done" and before["size"] > 0
+
+
+def test_a_snapshot_without_analysis_leaves_it_idle(bridge):
+    mailops.run_scan()
+    mailops.save_snapshot(mailops.accounts.get())
+    from backend import accounts as accountsmod
+    accountsmod.reset()
+    fresh = accountsmod.get()
+    assert mailops.load_snapshot(fresh)
+    assert fresh.state["atts"]["status"] == "idle"
+    assert fresh.state["atts"]["mails"] == 0

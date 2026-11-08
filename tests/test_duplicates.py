@@ -351,3 +351,55 @@ def test_possible_leaves_out_versions_members(monkeypatch):
         "Trash": [], "Spam": []})
     assert _ids(mailops.versions_list()) == [[1, 2]]
     assert mailops.possible_duplicates_list() == []
+
+
+# ------------------------------------------------------------------ summary
+
+def test_summary_counts_every_kind_without_a_cap(monkeypatch):
+    inbox = [
+        # identical pair (500 reclaimable)
+        make_msg(1, frm="a@x.example", subject="One", msgid="<i@x.example>",
+                 size=500, date=_stamp(8, 0)),
+        make_msg(2, frm="a@x.example", subject="One", msgid="<i@x.example>",
+                 size=500, date=_stamp(8, 1)),
+        # versions pair (same id, different size)
+        make_msg(3, frm="b@x.example", subject="Two", msgid="<v@x.example>",
+                 size=700, date=_stamp(8, 2)),
+        make_msg(4, frm="b@x.example", subject="Two", msgid="<v@x.example>",
+                 size=900, date=_stamp(8, 3)),
+        # possible pair (different ids, same sender + subject, 4 min apart)
+        make_msg(5, frm="c@x.example", subject="Three",
+                 msgid="<p1@x.example>", date=_stamp(9, 0)),
+        make_msg(6, frm="c@x.example", subject="three",
+                 msgid="<p2@x.example>", date=_stamp(9, 4)),
+    ]
+    _scan(monkeypatch, {"INBOX": inbox, "Trash": [], "Spam": []})
+    assert client.get("/api/duplicates/summary").json() == {
+        "sets": 1, "wasted": 500, "versions": 1, "possible": 1}
+    # identical copies and versions are not counted as possible again
+    assert len(mailops.possible_duplicates_list()) == 1
+
+
+def test_summary_is_not_capped_at_the_list_limit(monkeypatch):
+    inbox = []
+    for i in range(210):
+        for j in (0, 1):
+            inbox.append(make_msg(i * 2 + j + 1, frm="a@x.example",
+                                  subject=f"S{i}", size=100,
+                                  msgid=f"<m{i}@x.example>",
+                                  date=_stamp(8, 0)))
+    _scan(monkeypatch, {"INBOX": inbox, "Trash": [], "Spam": []})
+    assert len(mailops.duplicates_list()) == 200
+    assert mailops.duplicates_summary() == {
+        "sets": 210, "wasted": 210 * 100, "versions": 0, "possible": 0}
+
+
+def test_summary_of_an_empty_index(monkeypatch):
+    _scan(monkeypatch, {"INBOX": [], "Trash": [], "Spam": []})
+    assert client.get("/api/duplicates/summary").json() == {
+        "sets": 0, "wasted": 0, "versions": 0, "possible": 0}
+
+
+def test_summary_account_param(monkeypatch):
+    r = client.get("/api/duplicates/summary", params={"account": "nope"})
+    assert r.status_code == 400
