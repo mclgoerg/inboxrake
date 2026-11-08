@@ -162,3 +162,15 @@ test("a swiped-away confirm resolves as Cancel", async () => {
   swipe(grabber(), [0, 150, 300], { step: 400 });
   expect(onResult).toHaveBeenCalledWith(false);
 });
+
+test("a close that does not unmount snaps the sheet back", () => {
+  vi.useFakeTimers();
+  const onClose = vi.fn();   // stays mounted
+  sheet(onClose);
+  swipe(grabber(), [0, 150, 300], { step: 400 });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(dlg().style.transform).toBe("translateY(300px)");
+  act(() => { vi.advanceTimersByTime(300); });
+  expect(dlg().style.transform).toBe("");
+  vi.useRealTimers();
+});

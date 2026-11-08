@@ -1149,6 +1149,7 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
     type Gesture = { id: number; x: number; y: number; dragging: boolean;
       samples: { t: number; y: number }[] };
     let g: Gesture | null = null;
+    let settle: ReturnType<typeof setTimeout> | undefined;
     const reduced = () => !!window.matchMedia?.(SHEET_REDUCED).matches;
     const show = (dy: number, ms: number) => {
       if (reduced()) return;
@@ -1207,8 +1208,12 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
       const first = samples.find((s) => e.timeStamp - s.t <= 100) ?? samples[0];
       const dt = e.timeStamp - first.t;
       const flick = dt > 0 && (e.clientY - first.y) / dt >= SHEET_FLICK;
-      if (dy > el.offsetHeight * SHEET_FRACTION || flick) closeRef.current();
-      else show(0, 200);
+      if (dy > el.offsetHeight * SHEET_FRACTION || flick) {
+        closeRef.current();
+        // An onClose that does not unmount (a refused close) must not leave
+        // the sheet stuck half off-screen: snap back unless it is gone.
+        settle = setTimeout(() => show(0, 200), 250);
+      } else show(0, 200);
     };
     const cancel = (e: PointerEvent) => {
       if (!g || e.pointerId !== g.id) return;
@@ -1230,6 +1235,7 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
     return () => {
       el.removeEventListener("pointerdown", down);
       el.removeEventListener("touchmove", touch);
+      clearTimeout(settle);
       stop();
     };
   }, [enabled, dialog, backdrop]);
@@ -1358,7 +1364,7 @@ export function Modal({ children, onClose, full = false, size, label,
             handle, with a bigger touch area than it looks. */}
         {sheet && <div aria-hidden data-sheet-grabber
           className="flex h-6 shrink-0 touch-none justify-center pt-2 sm:hidden">
-          <span className="h-1.25 w-9 rounded-full bg-faint/40" />
+          <span className="h-1.25 w-9 rounded-full bg-faint/70" />
         </div>}
         {/* Always rendered (`contents` when not scrolling): `full` can flip
             while open, and a changing tree would remount the content. */}
