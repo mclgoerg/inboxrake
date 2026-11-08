@@ -459,3 +459,34 @@ test("German strings", async () => {
   const c = await findDialog();
   expect(c.textContent).toContain("50 Mails aus 1 Gruppe in den Papierkorb verschieben");
 });
+
+test("a still-mailing group shows the same pill as its row", async () => {
+  await open([grp("a@news.example", "News A", { count: 50,
+    still_mailing: { n: 3, senders: 1, since_ts: 1735689600,
+      addrs: ["a@news.example"] } })]);
+  expect(within(card()).getByText("Still mailing")).toBeTruthy();
+});
+
+test("header button, tally chips, round-button labels and hints follow the card", async () => {
+  const dlg = await open();
+  // Nothing to apply yet: plain Done.
+  expect(btn(dlg, "Done")).toBeTruthy();
+  // Round buttons carry their visible labels; Undo too.
+  for (const l of ["Trash", "Unsubscribe", "Protect", "Keep"])
+    expect(btn(dlg, l).textContent).toBe(l);
+  expect(btn(dlg, "Undo last decision").textContent).toBe("Undo");
+  // Direction hints (decorative): Unsubscribe only where it is allowed.
+  const hints = () => [...dlg.querySelectorAll("span[aria-hidden].absolute")]
+    .map((e) => e.textContent);
+  expect(hints()).toEqual(["Trash", "Keep", "Unsubscribe"]);   // News A
+  fireEvent.click(btn(dlg, /Trash/));                          // -> Shop B
+  await waitFor(() => expect(within(card()).getByText("Shop B")).toBeTruthy());
+  expect(hints()).toEqual(["Trash", "Keep"]);
+  // Tally chips and the apply label count what would change.
+  const chips = () => [...dlg.querySelectorAll("span[aria-hidden] > span")]
+    .map((e) => e.textContent).filter((x) => x && /^\d+$/.test(x));
+  expect(chips().slice(0, 4)).toEqual(["1", "0", "0", "0"]);
+  expect(btn(dlg, "Apply 1 decision")).toBeTruthy();
+  fireEvent.click(btn(dlg, /Protect/));
+  await waitFor(() => expect(btn(dlg, "Apply 2 decisions")).toBeTruthy());
+});

@@ -2199,6 +2199,7 @@ export const DE: Record<string, string> = {
   "triage.unsub": "Abbestellen",
   "triage.protect": "Schützen",
   "triage.undo": "Letzte Entscheidung rückgängig",
+  "triage.undo_short": "Zurück",
   "triage.done": "Fertig",
   "triage.mails": "Mails",
   "triage.size": "Größe",

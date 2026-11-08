@@ -1948,6 +1948,7 @@ export const EN: Record<string, string> = {
   "triage.unsub": "Unsubscribe",
   "triage.protect": "Protect",
   "triage.undo": "Undo last decision",
+  "triage.undo_short": "Undo",
   "triage.done": "Done",
   "triage.mails": "mails",
   "triage.size": "size",

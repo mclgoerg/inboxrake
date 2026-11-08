@@ -13,7 +13,8 @@ import type { Group, Grouping } from "../types";
 import { localizedSub } from "./GroupTable";
 import {
   AiTag, Avatar, Button, confirmDialog, EngagementMeter, modalCount, Modal,
-  PanelHeader, ProgressBar, SectionLabel, ShortDate, Tag, useIsPage,
+  PanelHeader, ProgressBar, SectionLabel, ShortDate, StillMailingBadge, Tag,
+  useIsPage,
   useMediaQuery,
 } from "./ui";
 
@@ -156,6 +157,7 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <EngagementMeter g={g} />
+        {g.still_mailing && <StillMailingBadge sm={g.still_mailing} />}
         {g.ai && <AiTag ai={g.ai} />}
         {g.unsubscribed?.status === "done" && (
           <Tag tone="safe" className="whitespace-nowrap">
@@ -306,25 +308,8 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
   ].filter(Boolean);
   const line = parts.length ? parts.join(" · ") : t("triage.nothing_yet");
 
-  return (
-    <Modal full label={t("triage.title")} onClose={close}>
-      <PanelHeader title={<><Layers size={18} aria-hidden
-        className="mr-1.5 inline align-text-bottom" />{t("triage.title")}</>}
-        sub={summaryOpen ? t("triage.summary_title")
-          : t("triage.progress", { n: idx + 1, total: deck.length })}
-        actions={!summaryOpen && (
-          <Button variant={sum.actions > 0 ? "primary" : "secondary"} size="sm"
-            onClick={() => setReview(true)}>
-            {sum.actions > 0 ? t("triage.apply_decisions", { n: sum.actions })
-              : t("triage.done")}
-          </Button>
-        )}
-        onClose={close} />
-      <ProgressBar thin value={idx} max={deck.length} />
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-line
-        px-4 py-2">
-        <span role="status" className="sr-only">{line}</span>
-        <span aria-hidden className="contents">
+  /** Decision counts as chips (decorative: the status line says it in words). */
+  const tally = (<>
           <Tag tone={sum.trash.groups ? "keep" : "neutral"}>
             <Trash2 size={14} className="mr-1 inline align-text-bottom" />
             {sum.trash.groups}
@@ -341,7 +326,30 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
             <ShieldCheck size={14} className="mr-1 inline align-text-bottom" />
             {sum.protect}
           </Tag>
-        </span>
+  </>);
+
+  return (
+    <Modal full label={t("triage.title")} onClose={close}>
+      <PanelHeader title={<><Layers size={18} aria-hidden
+        className="mr-1.5 inline align-text-bottom" />{t("triage.title")}</>}
+        sub={summaryOpen ? t("triage.summary_title")
+          : t("triage.progress", { n: idx + 1, total: deck.length })}
+        actions={!summaryOpen && (<>
+          <span aria-hidden className="mr-2 hidden items-center gap-1.5 lg:flex">
+            {tally}
+          </span>
+          <Button variant={sum.actions > 0 ? "primary" : "secondary"} size="sm"
+            onClick={() => setReview(true)}>
+            {sum.actions > 0 ? t("triage.apply_decisions", { n: sum.actions })
+              : t("triage.done")}
+          </Button>
+        </>)}
+        onClose={close} />
+      <ProgressBar thin value={idx} max={deck.length} />
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line
+        px-4 py-2 max-lg:border-b lg:sr-only">
+        <span role="status" className="sr-only">{line}</span>
+        <span aria-hidden className="contents lg:hidden">{tally}</span>
       </div>
       {summaryOpen ? (
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
@@ -378,14 +386,14 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col items-center
           justify-center gap-3 overflow-hidden p-4">
-          <div className="relative mb-6 w-full max-w-md">
+          <div className="relative mb-10 w-full max-w-md">
             {/* The deck: the next two cards peek out from under this one. */}
             {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
               <div key={n} aria-hidden
-                className="absolute inset-0 rounded-card border border-line
-                  bg-panel2"
-                style={{ transform: `translateY(${n * 14}px) scale(${1 - n * 0.06})`,
-                  opacity: 1 - n * 0.2 }} />
+                className="pointer-events-none absolute inset-0 rounded-card
+                  border border-line bg-panel shadow-popover"
+                style={{ transform: `translateY(${n * 18}px) scale(${1 - n * 0.07})`,
+                  opacity: 1 - n * 0.25 }} />
             ))}
             <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
               onCommit={decide} onIntent={setIntent} />
@@ -393,13 +401,13 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
           <p className="mt-4 max-w-sm text-center type-meta text-muted">
             {t("triage.hint")}
           </p>
-          {/* Direction hints; on phones only while dragging. */}
+          {/* Direction hints (not on phones: the stamp on the card is enough). */}
           {HINTS.filter(({ d }) => can(d, g, grouping)).map(
             ({ d, icon: Icon, tone, pos }) => (
               <span key={d} aria-hidden
-                className={`pointer-events-none absolute rounded-full px-3 py-1.5
-                  type-meta font-medium transition-opacity ${tone} ${pos}
-                  ${intent === d ? "opacity-100" : "opacity-0 sm:opacity-60"}`}>
+                className={`pointer-events-none absolute hidden rounded-full px-3
+                  py-1.5 type-meta font-medium sm:block ${tone} ${pos}
+                  ${intent === d ? "ring-2 ring-current" : ""}`}>
                 <Icon size={14} className="mr-1 inline align-text-bottom" />
                 {t(`triage.${d}`)}
               </span>
@@ -424,11 +432,19 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
           </div>
         ) : (
           <div className="flex items-start justify-center gap-3 sm:gap-5">
-            <Button variant="secondary" size="icon" label={t("triage.undo")}
-              className="mt-2 rounded-full" disabled={!history.length}
-              onClick={undo}>
-              <Undo2 size={18} />
-            </Button>
+            <button type="button" aria-label={t("triage.undo")}
+              disabled={!history.length} onClick={undo}
+              className="group mt-1.5 flex min-w-0 cursor-pointer flex-col
+                items-center gap-1 disabled:cursor-not-allowed">
+              <span className="flex size-11 items-center justify-center
+                rounded-full bg-chip text-body transition-transform
+                group-enabled:group-active:scale-95 group-disabled:text-faint">
+                <Undo2 size={18} aria-hidden />
+              </span>
+              <span aria-hidden className="type-caption text-muted">
+                {t("triage.undo_short")}
+              </span>
+            </button>
             {DECISION_BTN.map(({ d, icon: Icon, key, tone }) => (
               <button key={d} type="button" disabled={!can(d, g, grouping)}
                 title={d === "trash" && g.protected
