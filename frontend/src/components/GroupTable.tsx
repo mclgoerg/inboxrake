@@ -1,19 +1,40 @@
-import { ArrowDown, Briefcase, Building2, CalendarCheck, ChevronLeft,
-  ChevronRight, ChevronsLeft, ChevronsRight, KeyRound, LifeBuoy,
-  MessagesSquare, Newspaper, Package, Reply, Shapes, Shield, Tag as TagIcon,
-  Users, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, KeyRound, LifeBuoy,
+  ListChecks, MailOpen, MessagesSquare, MoreHorizontal, Newspaper, Package,
+  PanelRight, Reply, Shapes, Shield, ShieldOff, Tag as TagIcon, Trash2, Users,
+  type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
 import { fmtNum } from "../numfmt";
-import { Avatar, Button, cap, Checkbox, ShortDate, StillMailingBadge, Tag, PopupSelect, isModalOpen, type TagTone } from "./ui";
+import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
+  SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
+  isModalOpen, type SwipeAction, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
   | "engagement";
 
 const PAGE_SIZES = [25, 50, 100, 200];
 const ALL = 1_000_000;
+
+/** What swiping a phone row does. Every entry is the handler of the button
+ *  the same action has elsewhere (the detail's action row, the selection
+ *  bar), so a swipe takes the same confirms, protected / pinned guards and
+ *  undo. */
+export interface GroupSwipe {
+  trash: (g: Group) => void;
+  read: (g: Group) => void;
+  archive: (g: Group) => void;
+  /** Starts Select mode with this row ticked. */
+  select: (g: Group) => void;
+  /** Protect / block act on what the row stands for (an address or a
+   *  domain): subject, thread and Smart bucket rows have no such target. */
+  canTarget: (g: Group) => boolean;
+  protect: (g: Group) => void;
+  block: (g: Group) => void;
+  unblock: (g: Group) => void;
+}
 
 interface Props {
   groups: Group[];
@@ -48,6 +69,8 @@ interface Props {
   // First row of the list (the filter's "Select all N matches" banner): in
   // the table card / the phone card, above the rows. Not a row for j/k.
   banner?: ReactNode;
+  // Row swipe on touch screens (card layout only); absent = no swipe.
+  swipe?: GroupSwipe;
 }
 
 /** Thread / subject groups carry an English summary from the backend
@@ -321,16 +344,57 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
 /* Mobile: a card list - no table semantics, no horizontal squeeze. The
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
-  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner
+  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
+  const [moreFor, setMoreFor] = useState<Group | null>(null);
+  // Swipe left: Trash (a full swipe) · Block · More; right: Protect · Read.
+  const swipeActions = (g: Group) => {
+    if (!swipe) return { leading: [], trailing: [] };
+    const target = swipe.canTarget(g);
+    const blocked = !!blockedKeys?.has(g.key);
+    const trailing: SwipeAction[] = [
+      { key: "trash", label: t("Trash"), tone: "danger",
+        icon: <Trash2 size={18} aria-hidden />,
+        onAction: () => swipe.trash(g) },
+      ...(target ? [blocked
+        ? { key: "unblock", label: t("Unblock"), tone: "info" as const,
+          icon: <Ban size={18} aria-hidden />,
+          onAction: () => swipe.unblock(g) }
+        : { key: "block", label: t("detail.block"), tone: "info" as const,
+          icon: <Ban size={18} aria-hidden />,
+          onAction: () => swipe.block(g) }] : []),
+      { key: "more", label: t("menu.more"), tone: "neutral",
+        icon: <MoreHorizontal size={18} aria-hidden />,
+        onAction: () => setMoreFor(g) },
+    ];
+    const leading: SwipeAction[] = [
+      ...(target ? [{ key: "protect", tone: "new" as const,
+        label: t(g.protected ? "swipe.unprotect" : "btn.protect"),
+        ariaLabel: t(g.protected ? "unprotect.tip" : "protect.tip"),
+        icon: g.protected ? <ShieldOff size={18} aria-hidden />
+          : <Shield size={18} aria-hidden />,
+        onAction: () => swipe.protect(g) }] : []),
+      ...(g.unread > 0 ? [{ key: "read", tone: "attach" as const,
+        label: t("swipe.read"), ariaLabel: t("Mark read"),
+        icon: <MailOpen size={18} aria-hidden />,
+        onAction: () => swipe.read(g) }] : []),
+    ];
+    return { leading, trailing };
+  };
+  const sheetItem = (run: (g: Group) => void) => () => {
+    const g = moreFor;
+    setMoreFor(null);
+    if (g) run(g);
+  };
   return (
     <div className="overflow-clip rounded-card bg-panel">
       {banner}
       {slice.map((g, i) => {
         const pill = rowPill(g, !!blockedKeys?.has(g.key));
         return (
-        <div key={g.key} data-gidx={baseIdx + i}
+        <SwipeRow key={g.key} {...swipeActions(g)} enabled={!showChecks}>
+        <div data-gidx={baseIdx + i}
           className={`flex items-stretch
             ${selected.has(g.key) ? ROW_ON
               : g.key === focusedKey ? "bg-panel2/60" : ""}`}>
@@ -386,8 +450,37 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
             </div>
           </div>
         </div>
+        </SwipeRow>
         );
       })}
+      {moreFor && swipe && (
+        <Modal size="sm" label={moreFor.label || moreFor.key}
+          onClose={() => setMoreFor(null)}>
+          <div className="flex shrink-0 items-center justify-between px-4
+            py-2">
+            <span className="min-w-0 truncate type-heading">
+              {moreFor.label || moreFor.key}
+            </span>
+            <Button variant="plain" className="font-semibold"
+              onClick={() => setMoreFor(null)}>
+              {t("filter.done")}
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <SettingsGroup>
+              <SettingsRow label={t("swipe.open")}
+                icon={<IconTile><PanelRight size={16} /></IconTile>}
+                onClick={sheetItem(onOpen)} />
+              <SettingsRow label={t("select.enter")}
+                icon={<IconTile><ListChecks size={16} /></IconTile>}
+                onClick={sheetItem(swipe.select)} />
+              <SettingsRow label={t("Archive")}
+                icon={<IconTile><Archive size={16} /></IconTile>}
+                onClick={sheetItem(swipe.archive)} />
+            </SettingsGroup>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

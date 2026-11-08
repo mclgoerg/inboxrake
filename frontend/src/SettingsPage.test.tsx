@@ -1424,3 +1424,40 @@ test("the digest language row says so while none is stored yet", () => {
   expect(screen.getByText(/Not saved yet - mails go out in English/))
     .toBeTruthy();
 });
+
+/* V5: in an installed app a drag from the left edge goes up from a section,
+   exactly like the "Settings" back link. */
+test("edge swipe back leaves a section for the root list (installed app only)", () => {
+  const fire = (target: Element | Window, name: string, x: number, t: number) => {
+    const ev = new Event(name, { bubbles: true, cancelable: true });
+    Object.defineProperties(ev, { clientX: { value: x }, clientY: { value: 0 },
+      pointerId: { value: 1 }, isPrimary: { value: true },
+      pointerType: { value: "touch" }, timeStamp: { value: t } });
+    act(() => { target.dispatchEvent(ev); });
+  };
+  const edge = () => {
+    fire(document.body, "pointerdown", 8, 0);
+    fire(window, "pointermove", 120, 100);
+    fire(window, "pointermove", 260, 200);
+    fire(window, "pointerup", 260, 300);
+  };
+  let standalone = false;
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: standalone && q.includes("display-mode: standalone"), media: q,
+    addEventListener() {}, removeEventListener() {},
+  }));
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(390);
+  try {
+    renderWithDialogs({ section: "ai" });
+    edge();                                     // in a browser tab: nothing
+    expect(screen.getByRole("heading", { name: "AI review", level: 1 })).toBeTruthy();
+    standalone = true;
+    edge();
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeTruthy();
+    expect(screen.queryByText("Usage")).toBeNull();
+    edge();                                     // the root list has no back target
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeTruthy();
+  } finally {
+    vi.unstubAllGlobals(); vi.restoreAllMocks();
+  }
+});

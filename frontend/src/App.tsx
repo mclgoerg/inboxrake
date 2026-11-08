@@ -18,7 +18,8 @@ import { Login } from "./components/Login";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
-import { GroupTable, type SortKey } from "./components/GroupTable";
+import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
+import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
 import { RulesModal } from "./components/RulesModal";
 import { AllMailsView } from "./components/AllMailsView";
@@ -1458,9 +1459,9 @@ export default function App() {
   // Protect / block act on what the row stands for (shortcutTarget): the
   // exact address, or the whole domain for a domain row. Subject / thread
   // rows and Smart bucket rows have no target, so they get no shortcuts.
-  const toggleProtect = async (g: Group, grouping: Grouping = mode) => {
+  const toggleProtect = async (g: Group, grouping: Grouping = mode): Promise<boolean> => {
     const tg = shortcutTarget(grouping, g);
-    if (!tg) return;
+    if (!tg) return false;
     const entry = tg.kind === "domain" ? `@${tg.value}` : tg.value;
     try {
       const r = await api.protect(entry, !g.protected);
@@ -1472,8 +1473,10 @@ export default function App() {
         notify(t("smart.protected_moved", { label: g.label }));
       }
       refresh();
+      return true;
     } catch (e: any) {
       fail(e);
+      return false;
     }
   };
 
@@ -1543,6 +1546,31 @@ export default function App() {
     } catch (e: any) {
       fail(e);
     }
+  };
+
+  // Row swipe on phones: every entry is the handler the same action already
+  // has - `act` (the confirm, protected / pinned guards, and the Undo toast
+  // when the job ends), `toggleProtect`, `blockGroup` / `unblockGroup` (their
+  // own confirms) - so a swipe never skips a step the button shows.
+  const groupSwipe: GroupSwipe = {
+    trash: (g) => { void act([g.key], "trash"); },
+    read: (g) => { void act([g.key], "mark_read"); },
+    archive: (g) => { void act([g.key], "archive"); },
+    select: (g) => { setSelectMode(true); setSelected(new Set([g.key])); },
+    canTarget: (g) => !!shortcutTarget(mode, g),
+    // Protecting changes nothing on the row, so say so (with an Undo). The
+    // toast is worded by the direction of THIS toggle, so the Undo (which
+    // toggles back through the same path) says "no longer protected" /
+    // "is protected" correctly and can itself be undone.
+    protect: async (g) => {
+      const was = !!g.protected;
+      if (!await toggleProtect(g)) return;
+      toast.show(t(was ? "swipe.unprotected" : "swipe.protected",
+        { label: g.label }), { action: { label: t("Undo"),
+          onClick: () => { void groupSwipe.protect({ ...g, protected: !was }); } } });
+    },
+    block: (g) => { void blockGroup(g); },
+    unblock: (g) => { void unblockGroup(g); },
   };
 
   // AI review of `keys` (undefined = the whole grouping). Plain review
@@ -2095,6 +2123,16 @@ export default function App() {
   const tokenLabel = activeFilterLabel(filter, state?.presets ?? [],
     presetFilterQuery, { new: newCount, still: stillCount });
   const scannedAgo = fmtAgo(state?.scanned_ts);
+  // The Scan button's own busy rule - the top bar button and a pull to scan
+  // (phones) both start `startScan` only when it holds.
+  const scanBusy = scanning || aiRunning || deleting || attsRunning
+    || unsubRunning;
+  // The phone top bar's subline while a scan runs: "Scanning… 640 of 1,623
+  // mails" from the backend's "Folder: done/total" progress, else just the
+  // label.
+  const scanProgress = scanning ? parseProgress(state?.progress ?? "") : null;
+  const scanLine = scanProgress ? t("scan.progress",
+    { done: scanProgress.done, total: scanProgress.total }) : t("Scanning…");
   // The Senders toolbar (row 2 of the group pages): neither the Overview nor
   // All mails.
   const sendersToolbar = !overview && !flat;
@@ -2381,9 +2419,9 @@ export default function App() {
               : overview ? "nav.overview"
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
-          {!toolPage && !!scannedAgo && !scrolled && (
+          {!toolPage && !scrolled && (scanning || !!scannedAgo) && (
             <div className="type-meta text-muted">
-              {t("scan.age", { ago: scannedAgo })}
+              {scanning ? scanLine : t("scan.age", { ago: scannedAgo })}
             </div>
           )}
         </div>
@@ -2393,13 +2431,16 @@ export default function App() {
         {!toolPage && !cfg?.setup_needed && (
           <Button variant="quiet" size="icon" label={t("Scan")}
             className="coarse:size-11" onClick={startScan}
-            disabled={scanning || aiRunning || deleting || attsRunning
-              || unsubRunning}>
+            disabled={scanBusy}>
             {scanning ? <Spinner /> : <RefreshCw size={18} />}
           </Button>
         )}
         {profileMenu}
       </header>}
+      {/* Pull down from the top of Overview / Senders / All mail: the Scan
+          button's own handler and busy rule. */}
+      <PullToScan enabled={!wide && !bare && !anyModal && !scanBusy && !pending
+        && !cfg?.setup_needed} onPull={startScan} />
 
       {updateAvailable && (
         <div className={`${routed ? "mx-3 mt-3" : ""} mb-3 flex items-center justify-between gap-2
@@ -2469,8 +2510,7 @@ export default function App() {
           ) : (
             // Below 1024 the Scan icon lives in the top bar.
             wide && <Button variant="secondary" onClick={startScan}
-              disabled={scanning || aiRunning || deleting || attsRunning
-                || unsubRunning}>
+              disabled={scanBusy}>
               {scanning ? <Spinner /> : t("Scan")}
             </Button>
           )}
@@ -2801,6 +2841,7 @@ export default function App() {
           )}
           compact={paneOpen}
           selectMode={selectMode}
+          swipe={groupSwipe}
           openKey={paneOpen ? detail.key : null}
           focusedKey={focusIdx >= 0 ? groups[focusIdx]?.key ?? null : null}
           onToggle={(k) => {

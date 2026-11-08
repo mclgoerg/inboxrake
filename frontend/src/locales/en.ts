@@ -93,6 +93,9 @@ export const EN: Record<string, string> = {
   "update.reload": "Reload",
   "menu.version": "v{version} (build {id})",
   "scan.age": "scanned {ago} ago",
+  "scan.progress": "Scanning… {done} of {total} mails",
+  "pull.hint": "Pull to scan",
+  "pull.release": "Release to scan",
   "login.section": "Login (optional)",
   "login.help":
     "Protects the API with a login. \"None\" trusts your network or a "
@@ -1640,6 +1643,11 @@ export const EN: Record<string, string> = {
   "audit.outcome.link": "link",
   "audit.outcome.failed": "failed",
   "menu.more": "More",
+  "swipe.read": "Read",
+  "swipe.unprotect": "Unprotect",
+  "swipe.protected": "{label} is protected",
+  "swipe.unprotected": "{label} is no longer protected",
+  "swipe.open": "Open details",
   "export.csv": "Export CSV",
   "export.csv_tip": "Export the current grouping as CSV",
   "bar.selected": "{n} groups · {mails} mails",

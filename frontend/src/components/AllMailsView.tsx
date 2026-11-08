@@ -141,8 +141,12 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     }
   };
 
-  const act = async (action: string, dest = "") => {
-    const chosen = mails.filter((m) => sel.has(mailKey(m)));
+  const act = (action: string, dest = "") =>
+    actOn(mails.filter((m) => sel.has(mailKey(m))), action, dest);
+
+  // `chosen` is the ticked mails (the bar) or the one mail of a row swipe:
+  // both take the same pinned-mail warning, confirm and background job.
+  const actOn = async (chosen: Mail[], action: string, dest = "") => {
     if (!chosen.length) return;
     const verb = actionVerb(action, dest);
     const plan = await planMailAction(chosen, action, verb);
@@ -232,7 +236,11 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
         </EmptyState>
       )}
       <MailRows mails={mails} sel={sel} onToggle={toggle} onOpen={setView}
-        onPin={togglePin} detailed paged />
+        onPin={togglePin} detailed paged
+        // (the bar's buttons are disabled while a move runs: so is a swipe)
+        swipe={{ bg: "bg-surface",
+          trash: (m) => { if (!busy) void actOn([m], "trash"); },
+          read: (m) => { if (!busy) void actOn([m], "mark_read"); } }} />
       {mails.length < total && (
         <div className="py-3 text-center">
           <Button variant="secondary" disabled={more} onClick={loadMore}>
