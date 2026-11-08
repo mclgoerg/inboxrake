@@ -1065,7 +1065,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             { value: "starttls", label: "STARTTLS" }]} />
       </SettingsRow>
       <SettingsRow label={t("User")}>
-        <Input className="w-44 sm:w-64" value={f.user} aria-label={t("User")}
+        <Input className="w-56 sm:w-64" value={f.user} aria-label={t("User")}
           onChange={set("user")} />
       </SettingsRow>
       {f.preset === "gmail" && (

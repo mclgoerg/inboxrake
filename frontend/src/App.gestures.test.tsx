@@ -44,6 +44,7 @@ import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from
   "./dialogTestUtils";
+import { setLang } from "./i18n";
 import type { AppState, Config } from "./types";
 
 const cfg = {
@@ -266,8 +267,32 @@ test("More > Select starts Select mode with that row ticked, and swiping is off 
 
 test("the Scan header subline names the scan's progress", async () => {
   await mount({ status: "scanning", progress: "Inbox: 640/1623" });
-  expect(screen.getByText("Scanning… 640 of 1,623 mails")).toBeTruthy();
+  expect(screen.getByText("Scanning Inbox… 640 of 1,623")).toBeTruthy();
   expect(screen.queryByText(/scanned .* ago/)).toBeNull();
+});
+
+test("the subline names the folder being scanned, as the counter is per folder", async () => {
+  await mount({ status: "scanning", progress: "Archive/2023: 12/340" });
+  expect(screen.getByText("Scanning 2023… 12 of 340")).toBeTruthy();
+});
+
+test("the subline is German in German and shortens a nested folder path", async () => {
+  setLang("de");
+  try {
+    await mount({ status: "scanning", progress: "inbox: 640/1623" });
+    expect(screen.getByText("Scanne Posteingang… 640 von 1.623")).toBeTruthy();
+    cleanup();
+    await mount({ status: "scanning", progress: "Archive/2023/Receipts: 5/9" });
+    const line = screen.getByText("Scanne Receipts… 5 von 9");
+    expect(line.getAttribute("title")).toBe("Archive/2023/Receipts");
+  } finally {
+    setLang("en");
+  }
+});
+
+test("a counter without a folder keeps the plain mails wording", async () => {
+  await mount({ status: "scanning", progress: "640/1623" });
+  expect(screen.getByText("Scanning… 640 of 1,623 mails")).toBeTruthy();
 });
 
 test("the subline says just Scanning… while there is no count yet", async () => {

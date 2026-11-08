@@ -432,9 +432,12 @@ function FileItem({ f, list, on, onToggle }: {
         ${on ? "border-accent" : "border-line hover:bg-chip"}`}>
       <div className={`relative grid h-20 place-items-center rounded-control
         ${k.tile}`}>
-        <Checkbox round checked={on} onChange={onToggle} aria-label={label}
-          className="absolute left-0 top-0"
-          onClick={(e) => e.stopPropagation()} />
+        {/* positioned by the wrapper: Checkbox's own `relative` would beat
+            an `absolute` class, leaving the disc centred in the tile */}
+        <span className="absolute left-0 top-0">
+          <Checkbox round checked={on} onChange={onToggle} aria-label={label}
+            onClick={(e) => e.stopPropagation()} />
+        </span>
         <div className="grid justify-items-center gap-0.5" aria-hidden>
           {k.icon}
           <span className="type-meta font-semibold">{ext}</span>

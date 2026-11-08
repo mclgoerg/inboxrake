@@ -51,7 +51,7 @@ import { t } from "./i18n";
 import { usePaneHeight, useSplitPane } from "./splitPane";
 import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
   parseFilter,
-  parseProgress, retainedMailKeys, shortcutTarget, smartMembers } from "./lib";
+  parseProgress, progressFolder, retainedMailKeys, shortcutTarget, smartMembers } from "./lib";
 import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
   unsubscribableKeys }
   from "./smart";
@@ -2131,8 +2131,16 @@ export default function App() {
   // mails" from the backend's "Folder: done/total" progress, else just the
   // label.
   const scanProgress = scanning ? parseProgress(state?.progress ?? "") : null;
-  const scanLine = scanProgress ? t("scan.progress",
-    { done: scanProgress.done, total: scanProgress.total }) : t("Scanning…");
+  const scanFolder = scanning ? progressFolder(state?.progress ?? "") : null;
+  const scanLine = !scanProgress ? t("Scanning…")
+    : scanFolder ? t("scan.progress_folder", {
+      // INBOX is the one folder name the protocol fixes; a nested path
+      // shows its last segment (the full path is the subline's title)
+      folder: scanFolder.toUpperCase() === "INBOX" ? t("Inbox")
+        : scanFolder.split("/").pop() || scanFolder,
+      done: scanProgress.done, total: scanProgress.total })
+    : t("scan.progress",
+      { done: scanProgress.done, total: scanProgress.total });
   // The Senders toolbar (row 2 of the group pages): neither the Overview nor
   // All mails.
   const sendersToolbar = !overview && !flat;
@@ -2420,7 +2428,8 @@ export default function App() {
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
           {!toolPage && !scrolled && (scanning || !!scannedAgo) && (
-            <div className="type-meta text-muted">
+            <div className="truncate type-meta text-muted"
+              title={scanning && scanFolder ? scanFolder : undefined}>
               {scanning ? scanLine : t("scan.age", { ago: scannedAgo })}
             </div>
           )}

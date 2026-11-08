@@ -424,6 +424,7 @@ export const DE: Record<string, string> = {
   "(no subject)": "(kein Betreff)",
   "No scan yet - hit “Scan”.": "Noch kein Scan - auf „Scannen“ klicken.",
   "Scanning…": "Scanne…",
+  "Inbox": "Posteingang",
   "Moving…": "Verschiebe…",
   "Restoring…": "Stelle wieder her…",
   "trash.counting": "Zähle…",
@@ -1418,6 +1419,7 @@ export const DE: Record<string, string> = {
   "menu.version": "v{version} (Build {id})",
   "scan.age": "gescannt vor {ago}",
   "scan.progress": "Scanne… {done} von {total} Mails",
+  "scan.progress_folder": "Scanne {folder}… {done} von {total}",
   "pull.hint": "Zum Scannen ziehen",
   "pull.release": "Loslassen zum Scannen",
   "login.section": "Anmeldung (optional)",
@@ -1561,8 +1563,6 @@ export const DE: Record<string, string> = {
   "filter.inactive_6m": "6+ Monaten",
   "filter.inactive_1y": "1+ Jahr",
   "filter.inactive_2y": "2+ Jahren",
-  "sort.desc_tip": "Absteigend sortiert - Klick für aufsteigend",
-  "sort.asc_tip": "Aufsteigend sortiert - Klick für absteigend",
   "qb.tip": "Filter zusammenklicken statt Syntax merken",
   "qb.title": "Filter erstellen",
   "qb.hint": "jede hinzugefügte Bedingung muss AUCH zutreffen (UND)",
@@ -1647,7 +1647,7 @@ export const DE: Record<string, string> = {
   "auto_scan.unit_hours": "Stunden",
   "search.placeholder_body": "Betreff, Absender und Mailtext suchen",
   "search.placeholder":
-    "Betreff oder Absender suchen",
+    "Betreff oder Absender",
   "search.empty_title":
     "Postfach durchsuchen",
   "search.empty_hint":

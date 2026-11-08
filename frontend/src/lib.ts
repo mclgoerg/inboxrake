@@ -359,3 +359,10 @@ export function parseProgress(s: string): { done: number; total: number }
   const total = Number(m[2]);
   return total > 0 ? { done: Number(m[1]), total } : null;
 }
+
+/** The folder of a "Folder: done/total" scan progress, or null for the other
+ *  forms (the counter is per folder, so the subline names it). */
+export function progressFolder(s: string): string | null {
+  const m = /^(.+): \d+\/\d+$/.exec(s);
+  return m ? m[1] : null;
+}

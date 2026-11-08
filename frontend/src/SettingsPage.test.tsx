@@ -270,9 +270,9 @@ test("choosing a role folder acts on the edited account, not the active one",
       render(<Settings cfg={cfg} account="default" onClose={() => {}}
         onSaved={() => {}} onAccountsChanged={() => {}} />);
       await selectAccount("icloud");
-      fireEvent.change(await screen.findByLabelText(
-        "Which folder is your Trash folder?"),
-      { target: { value: "Trash" } });
+      fireEvent.click(await screen.findByRole("button",
+        { name: /Which folder is your Trash folder\?/ }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /^Trash/ }));
       await waitFor(() => expect(roleCalls).toEqual(
         [["trash", "Trash", "icloud"]]));
     } finally {
@@ -290,8 +290,9 @@ test("unsaved ticks survive the reload after a role choice", async () => {
     fireEvent.click(box);                       // untick, not saved yet
     expect(box.getAttribute("aria-checked")).toBe("false");
     const before = foldersCalls.length;
-    fireEvent.change(screen.getByLabelText(
-      "Which folder is your Trash folder?"), { target: { value: "Trash" } });
+    fireEvent.click(screen.getByRole("button",
+      { name: /Which folder is your Trash folder\?/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /^Trash/ }));
     await waitFor(() => expect(foldersCalls.length).toBeGreaterThan(before));
     // the reload answers "Projects is scanned" again - the user's untick stays
     await waitFor(() => expect(

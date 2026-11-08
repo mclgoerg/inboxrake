@@ -1709,44 +1709,6 @@ export function Chip({ on = false, children, className = "", ...rest }:
   );
 }
 
-/** Segmented chip: one pill holding several one-tap `ChipSegment`s, with an
- *  optional leading `label` (e.g. "Inactive:"). */
-export function ChipGroup({ label, children, className = "" }: {
-  label?: ReactNode; children: ReactNode; className?: string;
-}) {
-  const labelId = useId();
-  return (
-    <div role="group" aria-labelledby={label != null ? labelId : undefined}
-      className={`inline-flex min-h-8 coarse:min-h-9
-      items-stretch overflow-hidden rounded-full border border-line
-      bg-panel2 type-meta ${className}`}>
-      {label != null && (
-        <span id={labelId}
-          className="flex items-center pl-2 pr-1 text-muted sm:pl-3 sm:pr-1.5">
-          {label}
-        </span>
-      )}
-      {children}
-    </div>
-  );
-}
-
-export function ChipSegment({ on = false, children, className = "", ...rest }:
-  Omit<ComponentProps<"button">, "type"> & { on?: boolean }) {
-  return (
-    <button type="button" aria-pressed={on} {...rest}
-      className={`flex items-center whitespace-nowrap border-l border-line
-        px-2 transition-colors focus-visible:-outline-offset-2 sm:px-3
-        first:rounded-l-full last:rounded-r-full
-        enabled:active:translate-y-px
-        disabled:cursor-not-allowed disabled:bg-chip disabled:text-faint
-        ${on ? "bg-chiph text-body ring-1 ring-inset ring-accent"
-          : "text-muted enabled:hover:bg-chip"} ${className}`}>
-      {children}
-    </button>
-  );
-}
-
 /** Segmented control for mutually exclusive views (tablist), iOS look: a
  *  tinted track, the selected segment a raised pill (`segment-on` + small
  *  shadow, semibold), no accent ring, no dividers. `fill` makes

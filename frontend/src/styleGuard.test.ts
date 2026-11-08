@@ -128,7 +128,7 @@ const RULES: Rule[] = [
     // Button/Chip set `active:translate-y-px`, which REPLACES any transform
     // class on the same element (also behind a variant such as `sm:`): wrap
     // them instead of translating them.
-    jsxTags(src, /Button|Chip|ChipSegment/)
+    jsxTags(src, /Button|Chip/)
       .filter((tag) => /(?<![\w-])-?(translate|rotate|scale)-/.test(tag))
       .map((tag) => tag.slice(0, 60)) },
 ];
