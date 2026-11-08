@@ -155,6 +155,8 @@ export function useNav(initial: Page = DEFAULT_PAGE,
  *  every element tagged `data-scroll-id` (wide Settings, tool panels, lists);
  *  positions live in memory, per page route. */
 const SCROLL_BODY = "body";
+const RESTORE_MS = 2000;
+const USER_SCROLL = ["wheel", "touchstart", "keydown", "pointerdown"];
 let restoreNext = false;
 let entrySeq = 0;
 
@@ -211,20 +213,37 @@ export function useScrollPerPage(routeKey: string): void {
     if (first.current) { first.current = false; return; }
     if (was === routeKey) return;
     const want = revisit ? positions.current.get(routeKey) : undefined;
-    const apply = () => {
-      for (const [id, el] of scrollers()) el.scrollTop = want?.get(id) ?? 0;
-    };
-    apply();
+    // Late content (a list that loads after the route change) is too short
+    // to scroll yet: keep trying until each scroller can reach its saved
+    // position, for at most RESTORE_MS, and give up on the first user scroll.
+    const done = new Set<string>();
+    const t0 = performance.now();
     settling.current = true;
-    let n = 0;
     let raf = 0;
-    const tick = () => {
-      apply();
-      if (++n < 4) raf = requestAnimationFrame(tick);
-      else settling.current = false;
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      settling.current = false;
+      for (const ev of USER_SCROLL)
+        document.removeEventListener(ev, stop, true);
     };
-    raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); settling.current = false; };
+    for (const ev of USER_SCROLL)
+      document.addEventListener(ev, stop, { capture: true, passive: true });
+    const tick = () => {
+      const late = performance.now() - t0 > RESTORE_MS;
+      for (const [id, el] of scrollers()) {
+        if (done.has(id)) continue;
+        const target = want?.get(id) ?? 0;
+        if (late || el.scrollHeight - el.clientHeight >= target) {
+          el.scrollTop = target;
+          done.add(id);
+        }
+      }
+      const wanted = [SCROLL_BODY, ...(want?.keys() ?? [])];
+      if (late || wanted.every((id) => done.has(id))) stop();
+      else raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return stop;
   }, [routeKey]);
 }
 
