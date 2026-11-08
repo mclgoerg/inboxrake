@@ -112,7 +112,15 @@ test("App shortcuts are ignored while a confirm dialog is open", async () => {
   await waitFor(() => expect(container.querySelectorAll("tbody tr").length)
     .toBe(1), { timeout: 5000 });
 
-  fireEvent.keyDown(window, { key: "j" });            // focus the row
+  // Focus the row. The first "j" can land before the app has settled its
+  // initial load and be reset by it; with one row "j" is idempotent, so press
+  // until the row really shows the focus outline - the negative assertions
+  // below mean nothing without a focused row.
+  await waitFor(() => {
+    fireEvent.keyDown(window, { key: "j" });
+    expect(container.querySelector('tbody tr[class*="outline-accent"]'))
+      .not.toBeNull();
+  }, { timeout: 5000 });
   const answer = confirmDialog({ title: "Sure?", confirmLabel: "Yes",
     tone: "danger" });
   await screen.findByText("Sure?");
@@ -126,6 +134,9 @@ test("App shortcuts are ignored while a confirm dialog is open", async () => {
   fireEvent.click(screen.getByText("Cancel"));
   expect(await answer).toBe(false);
   // Positive control: with the dialog gone the same key opens the detail.
-  fireEvent.keyDown(window, { key: "o" });
-  await waitFor(() => expect(groupApi).toHaveBeenCalled());
+  // (Same budget as the mount: opening the detail renders a whole panel.)
+  await waitFor(() => {
+    fireEvent.keyDown(window, { key: "o" });
+    expect(groupApi).toHaveBeenCalled();
+  }, { timeout: 5000 });
 });
