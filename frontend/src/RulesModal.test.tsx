@@ -745,3 +745,35 @@ test("a new rule says it starts in report mode (the server always does)",
   renderNew();
   expect(screen.getByText("Starts in report mode")).toBeTruthy();
 });
+
+test("See last report shows the run in full, senders as rows; absent without a run",
+  () => {
+  renderCards([rule]);
+  expect(screen.queryByText("See last report")).toBeNull();
+  cleanup();
+  const ran: Rule = { ...rule, last_run: {
+    ts: 1, mode: "report", groups: 2, mails: 5, acted: 0, capped: 1,
+    skipped_protected: 1, skipped_pinned: 2, error: "", preview: [
+      { key: "a@x.example", label: "Anna", count: 3 },
+      { key: "b@x.example", label: "Bob", count: 2 }] } };
+  renderCards([ran]);
+  fireEvent.click(screen.getByText("See last report"));
+  const dlg = screen.getByRole("dialog", { name: "Last report" });
+  expect(dlg.textContent).toMatch(/2 groups/);
+  expect(dlg.textContent).toMatch(/2 protected mails skipped/);
+  expect(dlg.textContent).toMatch(/1 protected skipped/);
+  expect(dlg.textContent).toMatch(/1 mail beyond the per-run cap/);
+  expect(dlg.querySelectorAll("li")).toHaveLength(2);
+  expect(dlg.textContent).toContain("Anna");
+  // the card keeps its own last-run line with the preview
+  expect(screen.getAllByText(/Anna \(3\) · Bob \(2\)/)).toHaveLength(1);
+});
+
+test("a failed run's error shows in the report", () => {
+  renderCards([{ ...rule, last_run: { ts: 1, mode: "execute", groups: 0,
+    mails: 0, acted: 0, capped: 0, skipped_protected: 0, skipped_pinned: 0,
+    preview: [], error: "boom" } }]);
+  fireEvent.click(screen.getByText("See last report"));
+  expect(screen.getByRole("dialog", { name: "Last report" }).textContent)
+    .toContain("boom");
+});

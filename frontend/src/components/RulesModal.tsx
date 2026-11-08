@@ -29,7 +29,9 @@ const PURGE_DEFAULTS = {
 const isPurge = (scope: RuleScope | undefined) =>
   scope === "junk" || scope === "trash";
 
-function RunSummary({ rule }: { rule: Rule }) {
+function RunSummary({ rule, preview = true }: {
+  rule: Rule; preview?: boolean;
+}) {
   const r = rule.last_run;
   if (!r) return <span className="text-muted">{t("rule.never_ran")}</span>;
   if (r.error) return <span className="text-danger-fg">{errorText(r.error)}</span>;
@@ -58,7 +60,7 @@ function RunSummary({ rule }: { rule: Rule }) {
           {" "}· <Pin size={14} />
           {t("rule.pinned_skipped", { n: r.skipped_pinned })}
         </span>}
-      {r.preview.length > 0 && (
+      {preview && r.preview.length > 0 && (
         <span className="block text-muted">
           {r.preview.map((p) => `${p.label} (${p.count})`).join(" · ")}
         </span>
@@ -87,11 +89,48 @@ const ACTION_ICON: Record<string, ReactNode> = {
   mark_read: <MailOpen size={18} />,
 };
 
+/** The last run of a rule in full: when, report vs execute, the totals, what
+ *  was skipped, any error, and the top senders as rows. */
+function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
+  const r = rule.last_run!;
+  return (
+    <Modal onClose={onClose} label={t("rule.report_title")}>
+      <PanelHeader title={t("rule.report_title")} sub={rule.name}
+        onClose={onClose} />
+      <div className="space-y-3 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-2 type-meta text-muted">
+          <Tag tone={r.mode === "execute" ? "keep" : "safe"}>
+            {t(`mode.${r.mode}`)}</Tag>
+          {new Date(r.ts * 1000).toLocaleString()}
+        </div>
+        <div className="type-body"><RunSummary rule={rule} preview={false} />
+        </div>
+        {r.preview.length > 0 && (
+          <div>
+            <div className="mb-1 type-meta text-muted">
+              {t("rule.report_senders")}</div>
+            <ul className="divide-y divide-line rounded-card bg-panel2">
+              {r.preview.map((p) => (
+                <li key={p.key} className="flex items-center gap-2 px-3 py-2">
+                  <Avatar name={p.label} />
+                  <span className="min-w-0 flex-1 truncate type-body">
+                    {p.label}</span>
+                  <span className="type-body text-muted">{p.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
-function RuleCard({ rule, busy, onRun, onEdit, onMode, onDelete }: {
+function RuleCard({ rule, busy, onRun, onEdit, onReport, onMode, onDelete }: {
   rule: Rule; busy: boolean;
-  onRun: () => void; onEdit: () => void;
+  onRun: () => void; onEdit: () => void; onReport: () => void;
   onMode: (mode: "report" | "execute") => void; onDelete: () => void;
 }) {
   const purge = isPurge(rule.scope);
@@ -172,6 +211,11 @@ function RuleCard({ rule, busy, onRun, onEdit, onMode, onDelete }: {
               ? "rule.run_report_btn" : "rule.run_now")}
         </Button>
         <Button variant="secondary" size="sm" onClick={onEdit}>{t("Edit")}</Button>
+        {rule.last_run && !rule.last_run.pending && (
+          <Button variant="secondary" size="sm" onClick={onReport}>
+            {t("rule.see_report")}
+          </Button>
+        )}
         <Menu variant="quiet" icon label={t("rule.more", { name: rule.name })}
           className="ml-auto" trigger={<MoreHorizontal size={18} aria-hidden />}>
           <MenuItem danger onClick={onDelete}>{t("Delete")}</MenuItem>
@@ -192,6 +236,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   const [editId, setEditId] = useState<string | null>(null);
   // The side panel / sheet with the sentence builder. A filter handed in
   // (e.g. one the AI wrote) opens it straight away.
+  const [reportId, setReportId] = useState<string | null>(null);
   const [editing, setEditing] = useState(!!initialQuery);
   const onPage = useIsPage();
   const [busyId, setBusyId] = useState("");
@@ -550,6 +595,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           {rules.map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               onRun={() => run(rule)} onEdit={() => edit(rule)}
+              onReport={() => setReportId(rule.id)}
               onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
           ))}
           {!rules.length && <EmptyState>{t("rules.empty")}</EmptyState>}
@@ -564,6 +610,10 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
             className="w-104 shrink-0 border-l border-line">{editor}</aside>
         )}
       </div>
+      {rules.some((r) => r.id === reportId && r.last_run) && (
+        <ReportSheet rule={rules.find((r) => r.id === reportId)!}
+          onClose={() => setReportId(null)} />
+      )}
       {editing && !onPage && (
         <Modal full onClose={closeEditor}
           label={editId ? t("rule.edit_title") : t("rule.new_title")}>
