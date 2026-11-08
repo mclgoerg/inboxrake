@@ -1542,6 +1542,8 @@ export const DE: Record<string, string> = {
   "activity.undo_all": "Alle {n} zeigen",
   "activity.undo_fewer": "Weniger zeigen",
   "activity.undo": "Rückgängig-Verlauf",
+  "activity.undone": "rückgängig gemacht",
+  "activity.undone_n": "{n} rückgängig gemacht",
   "activity.undo_empty": "Nichts zum Rückgängigmachen.",
   "export.csv": "CSV exportieren",
   "export.csv_tip": "Aktuelle Gruppierung als CSV exportieren",

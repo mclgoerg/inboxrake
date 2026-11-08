@@ -26,17 +26,41 @@ const monthKey = (d: Date) => d.getFullYear() * 12 + d.getMonth();
  *  undo label "N mails from Junk|Trash". That is rescuing, not cleaning. */
 const FROM_ROLE = /^\d+ mails? from (Junk|Trash)$/;
 
+/** Rescue = a move out of Junk / Trash: `from_role` on newer entries, the
+ *  label text only as the fallback for old ones. */
+const isRescue = (e: AuditEntry): boolean =>
+  !!e.from_role || FROM_ROLE.test(e.label);
+
+/** How many mails of each entry (by id) later undos restored. The same
+ *  undo entry listed twice (overlapping lists) counts once. */
+export function undoneCounts(entries: AuditEntry[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const e of entries) {
+    if (e.action === "undo" && e.undoes?.id) {
+      if (e.id) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
+      }
+      out.set(e.undoes.id, (out.get(e.undoes.id) ?? 0) + e.undoes.count);
+    }
+  }
+  return out;
+}
+
 /** The cleaning done in `now`'s calendar month (local time). `count` of an
  *  entry is what was really affected, so partial / cancelled runs count by
- *  it. Rescues from Junk / Trash and mark-as-read rules are not cleaning. */
+ *  it. Rescues from Junk / Trash and mark-as-read rules are not cleaning;
+ *  mails restored by an undo are subtracted again (size pro rata). */
 export function monthSummary(entries: AuditEntry[], now: Date,
     rules: Rule[] = []): MonthSummary {
   const key = monthKey(now);
+  const undone = undoneCounts(entries);
   const moved = entries.filter((e) => MOVERS.has(e.action)
-    && !FROM_ROLE.test(e.label));
+    && !isRescue(e));
   const counted = entries.filter((e) => {
     if (e.count <= 0 || monthKey(new Date(e.ts * 1000)) !== key) return false;
-    if (MOVERS.has(e.action)) return !FROM_ROLE.test(e.label);
+    if (MOVERS.has(e.action)) return !isRescue(e);
     if (e.action !== "rule_execute") return false;
     if (rules.find((r) => `rule:${r.id}` === e.actor)?.action === "mark_read")
       return false;
@@ -47,10 +71,12 @@ export function monthSummary(entries: AuditEntry[], now: Date,
   let mails = 0;
   let bytes = 0;
   for (const e of counted) {
+    const back = Math.min(e.count, e.id ? undone.get(e.id) ?? 0 : 0);
+    const n = e.count - back;
     const day = new Date(e.ts * 1000).getDate();
-    weeks[Math.min(3, Math.floor((day - 1) / 7))] += e.count;
-    mails += e.count;
-    bytes += e.bytes;
+    weeks[Math.min(3, Math.floor((day - 1) / 7))] += n;
+    mails += n;
+    bytes += Math.round(e.bytes * n / e.count);
   }
   return { mails, bytes, weeks };
 }

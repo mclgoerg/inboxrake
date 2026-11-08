@@ -2817,8 +2817,11 @@ def _from_role_label(n: int, role: str) -> tuple[str, dict]:
 def _record_undo(label: str, meta: dict, action: str, dest: str,
                  acc, quiet: bool = False,
                  label_fields: dict | None = None,
-                 copies: list[dict] | None = None) -> None:
-    """Append a move job to the undo log (acc.lock held). `quiet` = the
+                 copies: list[dict] | None = None,
+                 audit_id: str = "") -> None:
+    """Append a move job to the undo log (acc.lock held). `audit_id` is the
+    id of the audit entry that records the same action, so an undo can say
+    what it undid. `quiet` = the
     caller shows its own toast (Folders panel), so the UI's generic "moved
     N" toast for new undo entries stays silent. `label_fields`: optional
     structured label (see `_from_role_label`)."""
@@ -2835,6 +2838,7 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                          "action": action, "count": len(items),
                          "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
                          **({"copies": copies} if copies is not None else {}),
+                         **({"audit_id": audit_id} if audit_id else {}),
                          **(label_fields or {})})
     del acc.undo_log[:-UNDO_MAX]
     acc.state["undo"] = _undo_summaries(acc)
@@ -2891,6 +2895,7 @@ def _delete_worker(acc) -> None:
 
         moved_uids: dict[str, set[int]] = {}
         copies: list[dict] = []
+        audit_id = auditlog.new_id()
         done = 0
         t0 = time.time()
         log.info("action %r started: %d mails (%s)", action,
@@ -2901,7 +2906,8 @@ def _delete_worker(acc) -> None:
             if not moved_uids:
                 return
             meta = _apply_removal(moved_uids, acc)
-            _record_undo(label, meta, action, resolved[0], acc, copies=copies)
+            _record_undo(label, meta, action, resolved[0], acc, copies=copies,
+                         audit_id=audit_id)
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
@@ -2951,7 +2957,7 @@ def _delete_worker(acc) -> None:
             count=done if action == "mark_read" else freed[1],
             size=0 if action == "mark_read" else freed[0], label=label,
             outcome="error" if error else ("cancelled" if cancelled else "ok"),
-            error=error)
+            error=error, entry_id=audit_id)
         if job.get("completion") is not None:
             job["completion"].update(moved=done if action == "mark_read" else freed[1],
                                      error=error or ("action_cancelled" if cancelled else ""), done=True)
@@ -3926,7 +3932,10 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None) -> dict:
         "undo", account=acc.name, count=restored, label=entry["label"],
         outcome=("error" if failed and not restored else
                  "ok" if restored == entry["count"] else "partial"),
-        error=error_text(failed) if failed else "")
+        error=error_text(failed) if failed else "",
+        entry_id=auditlog.new_id(),
+        undoes=({"id": entry["audit_id"], "count": restored}
+                if entry.get("audit_id") and restored else None))
     if failed is not None:
         if restored:
             _rescan_after_restore(acc, restored, "restored", {
@@ -4205,6 +4214,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
                    moved_uids=moved_uids, copies=copies)
     except Exception as exc:            # fold in what DID move, then raise
         error = exc
+    audit_id = auditlog.new_id()
     moved = moved_uids.get(src, set())
     meta = {src: {u: known[u] for u in moved}} if moved else {}
     size = sum(m["size"] for m in meta.get(src, {}).values())
@@ -4213,7 +4223,8 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
         label, fields = _from_role_label(len(moved), role)
         with acc.lock:
             _record_undo(label, meta, move_action, dest, acc, quiet=True,
-                         label_fields=fields, copies=copies)
+                         label_fields=fields, copies=copies,
+                         audit_id=audit_id)
             key = ROLE_COUNTED.get(role)
             if key and acc.state[key] is not None:
                 acc.state[key] = max(0, acc.state[key] - len(moved))
@@ -4225,7 +4236,8 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
         move_action, account=acc.name, count=len(moved), size=size,
         label=_from_role_label(len(moved), role)[0],
         outcome="error" if error else "ok",
-        error=error_text(error) if error else "")
+        error=error_text(error) if error else "",
+        entry_id=audit_id, from_role=role)
     if error:
         raise error
     rescan = False
@@ -4412,6 +4424,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
     items: list[tuple[str, str]] = []
     copies: list[dict] = []
     moved = 0
+    audit_id = auditlog.new_id()
     failure: Exception | None = None
     role = target = ""
     try:
@@ -4446,7 +4459,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
         with acc.lock:
             if items:
                 acc.undo_log.append({
-                    "id": f"{time.time_ns():x}",
+                    "id": f"{time.time_ns():x}", "audit_id": audit_id,
                     "ts": int(time.time()), "label": label,
                     "action": "move_contents", "count": len(items),
                     "items": items, "in": target, "copies": copies})
@@ -4460,7 +4473,8 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
         auditlog.record("move_contents", account=acc.name, count=moved,
                         label=f"{label} \u2192 {decode_mutf7(target)}",
                         outcome="ok" if failure is None else "partial",
-                        error="" if failure is None else str(failure))
+                        error="" if failure is None else str(failure),
+                        entry_id=audit_id)
     if failure is not None:
         if moved:
             raise RuntimeError(coded(MOVED_THEN_FAILED, n=moved,
@@ -5158,13 +5172,15 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
             if tc is not None:
                 acc.state["trash_count"] = tc + len(stranded)
         if stranded:
+            audit_id = auditlog.new_id()
             meta = {src: {m["uid"]: m for m in stranded}}
             stranded_label, fields = _from_role_label(len(stranded), role)
             copies = [{"folder": src, "source_uid": m["uid"],
                        "msgid": m.get("msgid", ""), "uid": m.get("undo_uid"),
                        "uv": m.get("undo_uv", 0), "in": trash} for m in stranded]
             _record_undo(stranded_label, meta, "trash", trash, acc,
-                         quiet=True, label_fields=fields, copies=copies)
+                         quiet=True, label_fields=fields, copies=copies,
+                         audit_id=audit_id)
             last = acc.undo_log[-1] if acc.undo_log else None
             if last and last["label"] == stranded_label:
                 res["undo"] = {"ts": last["ts"], "label": last["label"],
@@ -5177,7 +5193,8 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
         auditlog.record("trash", actor=actor, account=acc.name,
                         count=len(stranded),
                         size=sum(m["size"] for m in stranded),
-                        label=_from_role_label(len(stranded), role)[0])
+                        label=_from_role_label(len(stranded), role)[0],
+                        entry_id=audit_id, from_role=role)
     if led.deleted or stranded:
         skipped = []
         if res["skipped_protected"]:

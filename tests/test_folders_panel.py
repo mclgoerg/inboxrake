@@ -229,3 +229,19 @@ def test_busy_delete_refuses(junked):
     mailops.STATE["delete"]["status"] = "running"
     assert _move("trash", [42], r["uv"]).status_code == 409
     mailops.STATE["delete"]["status"] = "idle"
+
+
+def test_not_junk_audit_entry_is_a_rescue_that_undo_names(junked):
+    from backend import auditlog
+    mailops.run_scan()
+    r = _list()
+    assert _move("not_junk", [42], r["uv"]).status_code == 200
+    wait_scan_done()
+    moved = next(e for e in auditlog.load("default", 0, 99)["entries"]
+                 if e["action"] == "move")
+    assert moved["from_role"] == "junk" and moved["id"]
+    assert client.post("/api/undo", json={"index": -1}).status_code == 200
+    wait_scan_done()
+    undo = next(e for e in auditlog.load("default", 0, 99)["entries"]
+                if e["action"] == "undo")
+    assert undo["undoes"] == {"id": moved["id"], "count": 1}

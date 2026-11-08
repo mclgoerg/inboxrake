@@ -213,3 +213,27 @@ def test_api_export_csv(bridge):
     body = r.text
     assert "label" in body.splitlines()[0]           # header row
     assert "dhl" in body
+
+
+# ------------------------------------------------ undo-aware (additive fields)
+
+def test_undo_entry_names_the_audit_entry_it_undid(bridge):
+    scan(bridge)
+    mailops.delete_groups("sender", ["noreply@dhl.example"])
+    wait_delete_done()
+    mailops.undo_last()
+    wait_scan_done()
+    trash = next(e for e in entries() if e["action"] == "trash")
+    undo = next(e for e in entries() if e["action"] == "undo")
+    assert trash["id"]
+    assert undo["undoes"] == {"id": trash["id"], "count": 3}
+
+
+def test_entries_without_the_new_fields_still_load(bridge):
+    path = auditlog._path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "ts": 1, "account": "default", "action": "trash", "count": 2}) + "\n")
+    (e,) = entries()
+    assert e["count"] == 2
+    assert "id" not in e and "undoes" not in e and "from_role" not in e

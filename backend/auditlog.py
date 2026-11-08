@@ -63,16 +63,34 @@ def _needs_leading_newline(path: Path) -> bool:
         return False
 
 
+def new_id() -> str:
+    """A stable id for a new entry, so an undo can name what it undid (the
+    undo-log entry carries it as `audit_id` until the action is recorded)."""
+    return f"{time.time_ns():x}"
+
+
 def record(action: str, actor: str = "user", account: str | None = None,
           count: int = 0, size: int = 0, label: str = "",
-          outcome: str = "ok", error: str = "") -> None:
+          outcome: str = "ok", error: str = "", entry_id: str = "",
+          from_role: str = "", undoes: dict | None = None) -> None:
     """Append one entry. Never raises - a logging failure must not break
-    the mailbox action it is recording."""
+    the mailbox action it is recording.
+
+    Optional, additive fields (absent on older entries): `id` (`entry_id`),
+    `from_role` ("junk" | "trash": a move OUT of that role folder, i.e. a
+    rescue rather than cleaning) and `undoes` ({id, count}: this undo entry
+    restored `count` mails of the entry with that `id`)."""
     account = account or accounts.default_name()
     entry = {"ts": int(time.time()), "account": account, "actor": actor,
              "action": action, "count": count, "bytes": size,
              "label": str(label)[:200], "outcome": outcome,
              "error": str(error)[:300]}
+    if entry_id:
+        entry["id"] = entry_id
+    if from_role:
+        entry["from_role"] = from_role
+    if undoes:
+        entry["undoes"] = undoes
     try:
         with _LOCK:
             path = _path()
@@ -112,7 +130,10 @@ def _load_all(account: str) -> list[dict]:
             "action": entry.get("action", ""), "count": entry.get("count", 0),
             "bytes": entry.get("bytes", 0), "label": entry.get("label", ""),
             "outcome": entry.get("outcome", "ok"),
-            "error": entry.get("error", "")})
+            "error": entry.get("error", ""),
+            # additive fields: only present on entries that carry them
+            **{k: entry[k] for k in ("id", "from_role", "undoes")
+               if entry.get(k)}})
     return out
 
 

@@ -168,3 +168,19 @@ test("shows the time of day and the error text of a partial entry inline",
   expect(document.querySelector("time")!.textContent).toMatch(/\d{2}:\d{2}/);
   audit.mockResolvedValue({ total: 3, entries });
 });
+
+test("an entry that a later undo restored carries an undone pill", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const mk = (over: Partial<AuditEntry>): AuditEntry => ({
+    ts: now, account: "default", actor: "user", action: "trash", count: 4,
+    bytes: 0, label: "", outcome: "ok", error: "", ...over });
+  audit.mockResolvedValue({ total: 3, entries: [
+    mk({ action: "undo", id: "u1", label: "undid-one",
+      undoes: { id: "a", count: 4 } }),
+    mk({ id: "a", label: "trashed-one" }),
+    mk({ id: "b", label: "trashed-two" })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText(/trashed-one/));
+  expect(screen.getAllByText("undone")).toHaveLength(1);
+  audit.mockResolvedValue({ total: 3, entries });
+});

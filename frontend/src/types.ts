@@ -304,6 +304,12 @@ export interface AuditEntry {
   label: string;
   outcome: string;
   error: string;
+  /** Stable id of newer entries (absent on old ones). */
+  id?: string;
+  /** A move OUT of Junk / Trash (a rescue, not cleaning); newer entries. */
+  from_role?: "junk" | "trash";
+  /** On an undo entry: it restored `count` mails of the entry `id`. */
+  undoes?: { id: string; count: number };
 }
 
 export interface AuditResp {
