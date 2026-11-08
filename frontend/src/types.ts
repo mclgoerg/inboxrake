@@ -277,6 +277,11 @@ export interface StatsResp {
   rated_mails: { delete_safe: number; review: number; keep: number };
   years: { year: string; count: number; size: number }[];
   months: { month: string; count: number; size: number }[];
+  /** full month history / last 31 days with the unread share per bucket
+   *  (absent on a backend from before the period switch) */
+  months_all?: { month: string; count: number; size: number;
+    unread: number }[];
+  days?: { day: string; count: number; size: number; unread: number }[];
   categories: { tag: string; count: number; size: number }[];
   top_domains: { domain: string; count: number; size: number }[];
   top_senders: { key: string; label: string; count: number;

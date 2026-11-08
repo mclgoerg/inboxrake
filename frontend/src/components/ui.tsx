@@ -1050,6 +1050,92 @@ export function StatTile({ label, value }: { label: string; value: ReactNode }) 
   );
 }
 
+/** Progress ring (SVG, theme tokens): `frac` 0..1 of the accent arc over a
+ *  `chip` track, `children` in the centre. Decorative unless `label` is set
+ *  (then `role="img"`); pair it with the same figure as visible text. */
+export function Ring({ frac, px = 56, label, children }: {
+  frac: number; px?: number; label?: string; children?: ReactNode;
+}) {
+  const R = 50;                       // viewBox 120, stroke 12 -> inner radius 44
+  const C = 2 * Math.PI * R;
+  const f = Math.max(0, Math.min(1, frac));
+  return (
+    <div role={label ? "img" : undefined} aria-label={label}
+      aria-hidden={label ? undefined : true}
+      className="relative grid shrink-0 place-items-center"
+      // a pixel size chosen per use (tile vs card), not a layout token
+      style={{ width: px, height: px }}>
+      <svg viewBox="0 0 120 120" fill="none" strokeWidth={14}
+        className="absolute inset-0 size-full -rotate-90">
+        <circle cx="60" cy="60" r={R} className="stroke-chip" />
+        {f > 0 && (   // no arc at 0: a round cap would draw a stray dot
+          <circle cx="60" cy="60" r={R} strokeLinecap="round"
+            className="stroke-accent" strokeDasharray={`${C * f} ${C}`} />
+        )}
+      </svg>
+      {children && <div className="relative type-caption">{children}</div>}
+    </div>
+  );
+}
+
+/** Tiny decorative column chart (sparkline) of `values`, scaled to the
+ *  largest. Always accompanied by the figure it illustrates, so it is hidden
+ *  from assistive tech. */
+export function MiniBars({ values, className = "" }: {
+  values: number[]; className?: string;
+}) {
+  const max = Math.max(1, ...values);
+  return (
+    <div aria-hidden="true"
+      className={`flex h-10 w-20 items-end gap-px ${className}`}>
+      {values.map((v, i) => (
+        <div key={i} className="min-w-px flex-1 rounded-full bg-accent/70"
+          style={{ height: `${Math.max(8, (100 * v) / max)}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/** Donut chart: one `Hue` slice per entry (`hueFillAt` colours, never the
+ *  only signal - callers render a legend with the values), `children` in the
+ *  hole. Slices are masked discs, so no raw colours are needed; the hole is a
+ *  disc in `holeClass` (the surface the donut sits on, default `bg-panel2`). */
+export function Donut({ slices, px = 152, label, holeClass = "bg-panel2",
+  children }: {
+  slices: number[]; px?: number; label: string; holeClass?: string;
+  children?: ReactNode;
+}) {
+  const total = slices.reduce((a, b) => a + b, 0) || 1;
+  let at = 0;
+  return (
+    <div role="img" aria-label={label}
+      className="relative grid shrink-0 place-items-center"
+      // a pixel size chosen per use, not a layout token
+      style={{ width: px, height: px }}>
+      {slices.map((v, i) => {
+        const from = (360 * at) / total;
+        // a hairline gap between slices (the surface shows through)
+        const span = Math.max(0, (360 * v) / total - (slices.length > 1 ? 1.5 : 0));
+        at += v;
+        const mask = `conic-gradient(from ${from}deg, #000 ${span}deg, transparent 0)`;
+        return (
+          <div key={i}
+            className={`absolute inset-0 rounded-full ${hueFillAt(i)}`}
+            // slice = conic mask over a full disc; colour comes from the class
+            style={{ maskImage: mask, WebkitMaskImage: mask }} />
+        );
+      })}
+      {/* hole = 64 % of the disc: a ring width that reads at 120-152 px */}
+      <div className={`absolute inset-[18%] rounded-full ${holeClass}`} />
+      {/* centre text must fit the hole (64 % wide), so it wraps inside 56 % */}
+      <div className="relative grid justify-items-center text-center"
+        style={{ maxWidth: "56%" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** Account-switcher-sized avatar - thin wrapper around `Avatar`. */
 export function AccountAvatar({ name, size, className = "" }: {
   name: string; size?: "sm" | "md" | "lg"; className?: string;
