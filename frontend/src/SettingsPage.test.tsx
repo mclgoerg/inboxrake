@@ -659,7 +659,20 @@ test("digest schedule + recipient + time are included in Save", () => {
   fireEvent.click(screen.getByText("Save"));
   expect(saveCalls[0].imap.digest).toEqual(
     { schedule: "weekly", recipient: "me@elsewhere.example",
-      hour: 20, minute: 30 });
+      hour: 20, minute: 30, url: "", lang: "en" });
+});
+
+test("the digest link and language are included in Save (language "
+  + "defaults to the UI language)", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={cfg} account="default" section="digest" />);
+  fireEvent.change(screen.getByLabelText("Link to Inboxrake"),
+    { target: { value: " https://app.example " } });
+  popupPick(screen.getByRole("button", { name: /^Language of the mail/ }),
+    "Deutsch");
+  fireEvent.click(screen.getByText("Save"));
+  expect(saveCalls[0].imap.digest).toMatchObject(
+    { url: "https://app.example", lang: "de" });
 });
 
 test("the time field only appears once a schedule is picked", () => {
@@ -1404,4 +1417,10 @@ test("AI key: after Save or Revert the key shows '•••• set' again", asyn
   expect(await screen.findByText("•••• set")).toBeTruthy();
   expect(saveCalls.at(-1).ai.api_key).toBe("sk-2");
   saveResult = null;
+});
+
+test("the digest language row says so while none is stored yet", () => {
+  render(<Settings cfg={cfg} account="default" section="digest" />);
+  expect(screen.getByText(/Not saved yet - mails go out in English/))
+    .toBeTruthy();
 });

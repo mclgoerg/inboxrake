@@ -84,7 +84,11 @@ ENV_IMAP = {
     # of DIGEST_SCHEDULES; empty recipient means "this account's own
     # address" (resolved at send time, not stored here); hour/minute
     # (local server time, 24h) is when a due daily/weekly digest fires.
-    "digest": {"schedule": "off", "recipient": "", "hour": 8, "minute": 0},
+    # url = the app's public address (http/https; "" = the mail's buttons
+    # are left out), lang = the mail's language (DIGEST_LANGS; "" = not
+    # chosen yet: English until the section is saved from the UI).
+    "digest": {"schedule": "off", "recipient": "", "hour": 8, "minute": 0,
+               "url": "", "lang": ""},
     # Automatic background scanning (off by default everywhere): fires
     # every `value` `unit` ("minutes" | "hours"), aligned to align_minute
     # (0-59, minute-of-hour phase - e.g. every 3h at align_minute=10 fires
@@ -108,7 +112,8 @@ NEUTRAL_IMAP = {
     "smtp_host": "", "smtp_port": 465, "smtp_security": "auto",
     "user": "", "password": "", "cafile": "", "preset": "custom",
     "oauth": None,
-    "digest": {"schedule": "off", "recipient": "", "hour": 8, "minute": 0},
+    "digest": {"schedule": "off", "recipient": "", "hour": 8, "minute": 0,
+               "url": "", "lang": ""},
     "auto_scan": {"enabled": False, "unit": "hours", "value": 6,
                  "align_minute": 0},
     # Global mail search may also look INSIDE message bodies: "server"
@@ -339,6 +344,29 @@ PASSWORD_ONLY_PRESETS = ("proton", "icloud", "fastmail", "gmx", "mailbox",
                          "yahoo")
 OAUTH_ONLY_PRESETS = ("outlook",)
 DIGEST_SCHEDULES = ("off", "daily", "weekly")
+DIGEST_LANGS = ("en", "de")
+
+
+DIGEST_BAD_URL = "digest_bad_url"      # coded error, worded by the UI
+
+
+def clean_app_url(raw) -> str:
+    """The app address for the digest's buttons: "" or an http(s) URL with a
+    host (no query or fragment: the mail appends `/#/<page>`), without a
+    trailing slash. Raises ValueError(DIGEST_BAD_URL) for anything else."""
+    from urllib.parse import urlsplit
+    url = str(raw or "").strip()
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url)
+        ok = (parts.scheme in ("http", "https") and bool(parts.hostname)
+              and not parts.query and not parts.fragment)
+    except ValueError:
+        ok = False
+    if not ok or len(url) > 300 or any(c.isspace() or c in '<>"' for c in url):
+        raise ValueError(DIGEST_BAD_URL)
+    return url.rstrip("/")
 BODY_SEARCH_MODES = ("disabled", "server", "local")
 
 
@@ -456,7 +484,10 @@ def _load_accounts(saved: dict, env_first: bool = True) -> dict[str, dict]:
         out[name]["digest"] = {
             "schedule": digest.get("schedule", "off"),
             "recipient": digest.get("recipient", ""),
-            "hour": digest.get("hour", 8), "minute": digest.get("minute", 0)}
+            "hour": digest.get("hour", 8), "minute": digest.get("minute", 0),
+            "url": digest.get("url", ""),
+            "lang": digest.get("lang")
+            if digest.get("lang") in DIGEST_LANGS else ""}
         auto_scan = out[name].get("auto_scan")
         auto_scan = auto_scan if isinstance(auto_scan, dict) else {}
         out[name]["auto_scan"] = {
@@ -689,11 +720,15 @@ def _fold_imap(block: dict, imap_in: dict) -> None:
         d = imap_in["digest"]
         digest = dict(block.get("digest")
                       or {"schedule": "off", "recipient": "",
-                          "hour": 8, "minute": 0})
+                          "hour": 8, "minute": 0, "url": "", "lang": ""})
         if d.get("schedule") in DIGEST_SCHEDULES:
             digest["schedule"] = d["schedule"]
         if "recipient" in d:
             digest["recipient"] = str(d["recipient"]).strip()[:200]
+        if "url" in d:
+            digest["url"] = clean_app_url(d["url"])
+        if d.get("lang") in DIGEST_LANGS:
+            digest["lang"] = d["lang"]
         for field, lo, hi in (("hour", 0, 23), ("minute", 0, 59)):
             if field in d:
                 try:

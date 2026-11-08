@@ -56,6 +56,9 @@ const imapFields = (c: Config, name: string) => {
     oauthConnected: im.oauth?.connected ?? false,
     digestSchedule: (im.digest?.schedule ?? "off") as DigestSchedule,
     digestRecipient: im.digest?.recipient ?? "",
+    digestUrl: im.digest?.url ?? "",
+    // the language the user reads the app in, until they chose one
+    digestLang: (im.digest?.lang || getLang()) as "en" | "de",
     digestTime: `${String(im.digest?.hour ?? 8).padStart(2, "0")}:`
       + `${String(im.digest?.minute ?? 0).padStart(2, "0")}`,
     autoScanEnabled: im.auto_scan?.enabled ?? false,
@@ -116,7 +119,7 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
     "security", "user", "smtpHost", "smtpPort", "smtpSecurity", "cafile",
     "auth", "oauthClientId", "oauthClientSecret"] },
   { label: "settings.sec.digest", fields: ["digestSchedule", "digestRecipient",
-    "digestTime"] },
+    "digestTime", "digestUrl", "digestLang"] },
   { label: "settings.sec.autoscan", fields: ["autoScanEnabled",
     "autoScanUnit", "autoScanValue", "autoScanAlign"] },
   { label: "settings.sec.general", fields: ["bodySearch", "smartMin",
@@ -382,7 +385,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           cafile: f.cafile, preset: f.preset, user: f.user,
           digest: { schedule: f.digestSchedule,
             recipient: f.digestRecipient,
-            hour: digestHour || 0, minute: digestMinute || 0 },
+            hour: digestHour || 0, minute: digestMinute || 0,
+            url: f.digestUrl.trim(), lang: f.digestLang },
           auto_scan: { enabled: f.autoScanEnabled, unit: f.autoScanUnit,
             value: +f.autoScanValue || 1,
             align_minute: +f.autoScanAlign || 0 },
@@ -1260,6 +1264,20 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             placeholder={imapOf(cfg, editAcct).user
               || t("digest.recipient_placeholder")}
             onChange={set("digestRecipient")} />
+        </SettingsRow>
+        <SettingsRow label={t("digest.lang")}
+          sub={imapOf(cfg, editAcct).digest?.lang ? undefined
+            : t("digest.lang_unset")}>
+          <PopupSelect name={t("digest.lang")} value={f.digestLang}
+            onChange={(v) => put("digestLang", v)}
+            options={[{ value: "en", label: "English" },
+              { value: "de", label: "Deutsch" }]} />
+        </SettingsRow>
+        <SettingsRow label={t("digest.url")} sub={t("digest.url_help")} stack>
+          <Input className="w-full" type="url" inputMode="url"
+            aria-label={t("digest.url")} value={f.digestUrl}
+            placeholder="https://inboxrake.example"
+            onChange={set("digestUrl")} />
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup footnote={digestTestMsg || undefined}>

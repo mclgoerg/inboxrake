@@ -660,7 +660,7 @@ def test_stats_audit_counts_and_role_index_after_a_purge(monkeypatch):
     assert mailops.STATE["trash_count"] == 1
     assert _uids(fake, "Trash") == [5]
     _, subj_text, _ = digestmod.compose("default", 0)[0:3]
-    assert "Permanently deleted: 2" in subj_text
+    assert "2 deleted for good" in subj_text
 
 
 def test_empty_trash_also_counts_as_freed_and_in_the_digest(monkeypatch):
@@ -673,7 +673,7 @@ def test_empty_trash_also_counts_as_freed_and_in_the_digest(monkeypatch):
     e = _entries("empty_trash")
     assert len(e) == 1 and e[0]["bytes"] == 207
     _, text, _ = digestmod.compose("default", 0)
-    assert "Permanently deleted: 2" in text and "Space freed: 207 B" in text
+    assert "2 deleted for good" in text and "207 B freed" in text
     assert _uids(fake, "Trash") == []
 
 
