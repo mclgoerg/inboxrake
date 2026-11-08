@@ -1,22 +1,22 @@
 """Per-account daily/weekly activity digest email.
 
-A summary of what Inboxrake did for one account since its last digest:
-actions taken (from the audit log), mails/bytes freed, rule runs (incl.
-report-mode previews not yet applied), and unsubscribe outcomes. Sent
-as multipart/alternative (plain text + a lightly branded HTML part, no
-external assets - see smtpout.send) so it reads well in any client.
-Schedule + recipient live in the account's own config block (see
-config.DIGEST_SCHEDULES); `last_sent` is a small per-tenant file,
+"Your week" for one account, laid out like the app's Overview: a balance
+block (arrived / cleaned up / mailbox size with the change since the last
+digest, 8 weeks of bars), "Needs you" (still mailing after unsubscribe, Junk,
+AI safe-to-delete - each with a button into the app when the account has a
+"Link to Inboxrake" address) and "What happened" as sentences, from the audit
+log (trash / deleted for good + freed, rules by name, unsubscribes). Sent as
+multipart/alternative (plain text + HTML built from tables and inline styles
+only, no external assets - see smtpout.send). The mail is English or German
+(the account's digest `lang`); every literal string lives in STRINGS below.
+Schedule + recipient + link + language live in the account's own config
+block (see config.DIGEST_SCHEDULES); `last_sent` is a small per-tenant file,
 following the same pattern as mailops.py's replied.json (per-account,
 atomic write).
 
 No empty digests: a send is skipped entirely when nothing happened in
 the period - callers (the scheduler and the /test endpoint) both see
 that via send_digest()'s return value instead of a mail going out.
-
-The backend has no i18n infrastructure, so the mail body is English
-only and every literal string lives in STRINGS below - translation (if
-ever added) only has to touch this one dict.
 """
 
 from __future__ import annotations
@@ -24,7 +24,9 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import html as htmlmod
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -32,10 +34,15 @@ from pathlib import Path
 from . import accounts
 from . import auditlog
 from . import config as cfgmod
+from . import labelstore
 from . import mailops
+from . import overview as overviewmod
 from . import rules as rulesmod
 from . import smtpout
+from . import stats as statsmod
 from . import tenants
+from . import unsubstore
+from . import verdictstore
 
 log = logging.getLogger("inboxrake.digest")
 
@@ -54,53 +61,144 @@ _PERIOD_DAYS = {"daily": 1, "weekly": 7}
 
 _LOCK = threading.Lock()
 
-STRINGS = {
-    "subject": "Inboxrake activity digest ({account})",
-    "heading": "Activity digest",
-    "since": "Since {since}",
-    "since_ever": "the beginning",
-    "trash": "Moved to Trash",
-    "purge": "Permanently deleted",
-    "archive": "Archived",
-    "move": "Moved to a folder",
-    "mark_read": "Marked as read",
-    "unsubscribe_attempts": "Unsubscribe attempts",
-    "rule_preview": "Rule previews (not yet applied)",
-    "rule_preview_note":
-        "\"Rule previews\" are mails a REPORT-mode rule matched - nothing "
-        "was moved. Open Rules in the app to review it and switch it to "
-        "Execute if it looks right.",
-    "rule_applied": "Rule actions (applied automatically)",
-    "freed": "Space freed",
-    "still_mailing": "Senders still mailing after you unsubscribed",
-    "unsub_header": "Unsubscribe outcomes",
-    "unsub_done": "done",
-    "unsub_link": "needs manual confirmation",
-    "unsub_failed": "failed",
+_EN = {
+    "subject": "Your week: {arrived} in, {cleaned} cleaned up",
+    "demo_subject": "Preview - your week: {arrived} in, {cleaned} cleaned up",
+    "title": "Your week in your inbox",
+    "arrived": "arrived",
+    "cleaned": "cleaned up",
+    "mailbox": "mailbox",
+    "size_less": "{size} less",
+    "size_more": "{size} more",
+    "weeks_ago": "8 weeks ago",
+    "this_week": "this week",
+    "bars_alt": "Mails per week, oldest first - arrived: {arrived}; "
+                "cleaned up: {cleaned}",
+    "needs_you": "Needs you",
+    "still_one": "{n} still mailing after you unsubscribed",
+    "still_other": "{n} still mailing after you unsubscribed",
+    "still_sub_one": "{m} mail since you unsubscribed",
+    "still_sub_other": "{m} mails since you unsubscribed",
+    "junk_one": "{n} mail in Junk",
+    "junk_other": "{n} mails in Junk",
+    "ai_one": "The AI says {n} mail can go",
+    "ai_other": "The AI says {n} mails can go",
+    "btn_block": "Block",
+    "btn_look": "Look",
+    "btn_review": "Review",
+    "btn_rules": "Rules",
+    "happened": "What happened",
+    "trash": "{n} moved to Trash",
+    "purge": "{n} deleted for good",
+    "freed": "{size} freed",
+    "tidied_archive": "{n} archived",
+    "tidied_move": "{n} moved to a folder",
+    "tidied_read": "{n} marked as read",
+    "rule_one": "Rule \"{name}\" ran {runs} time",
+    "rule_other": "Rule \"{name}\" ran {runs} times",
+    "rules_many": "{rules} rules ran {runs} times",
+    "rule_sub_one": "{mails} mail handled",
+    "rule_sub_other": "{mails} mails handled",
+    "rules_top": "most: \"{name}\"",
+    "preview_one": "{n} mail waiting in a rule preview",
+    "preview_other": "{n} mails waiting in rule previews",
+    "preview_sub": "A report-mode rule matched them - nothing was moved. "
+                   "Switch it to Execute if it looks right.",
+    "unsub_done": "{n} unsubscribed",
+    "unsub_attempts": "{n} unsubscribe attempts",
+    "unsub_link": "{n} waiting for your confirmation",
+    "unsub_failed": "{n} failed",
     "footer": "Sent by Inboxrake.",
-    "demo_subject": "Inboxrake activity digest preview ({account})",
+    "open_app": "Open Inboxrake",
     "demo_banner":
         "PREVIEW with made-up example data - nothing below has actually "
         "happened yet. Do some cleanup, then send another test to see "
         "your real activity.",
-    "demo_since": "example data",
+    "months": ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+               "Sep", "Oct", "Nov", "Dec"),
+    "day": "{d} {m}",
+    "demo_name": "Old newsletters",
 }
 
-# audit-log action -> STRINGS key, in the order they're shown.
-_ACTION_LABELS = (
-    ("trash", "trash"), ("purge", "purge"), ("archive", "archive"),
-    ("move", "move"),
-    ("mark_read", "mark_read"), ("rule_report", "rule_preview"),
-    ("rule_execute", "rule_applied"),
-)
+_DE = {
+    "subject": "Deine Woche: {arrived} rein, {cleaned} aufgeräumt",
+    "demo_subject":
+        "Vorschau - deine Woche: {arrived} rein, {cleaned} aufgeräumt",
+    "title": "Deine Woche im Postfach",
+    "arrived": "angekommen",
+    "cleaned": "aufgeräumt",
+    "mailbox": "Postfach",
+    "size_less": "{size} weniger",
+    "size_more": "{size} mehr",
+    "weeks_ago": "vor 8 Wochen",
+    "this_week": "diese Woche",
+    "bars_alt": "Mails pro Woche, älteste zuerst - angekommen: {arrived}; "
+                "aufgeräumt: {cleaned}",
+    "needs_you": "Braucht dich",
+    "still_one": "{n} schreibt trotz Abmeldung weiter",
+    "still_other": "{n} schreiben trotz Abmeldung weiter",
+    "still_sub_one": "{m} Mail seit der Abmeldung",
+    "still_sub_other": "{m} Mails seit der Abmeldung",
+    "junk_one": "{n} Mail im Junk-Ordner",
+    "junk_other": "{n} Mails im Junk-Ordner",
+    "ai_one": "Die KI sagt: {n} Mail kann weg",
+    "ai_other": "Die KI sagt: {n} Mails können weg",
+    "btn_block": "Blockieren",
+    "btn_look": "Ansehen",
+    "btn_review": "Prüfen",
+    "btn_rules": "Regeln",
+    "happened": "Was passiert ist",
+    "trash": "{n} in den Papierkorb",
+    "purge": "{n} endgültig gelöscht",
+    "freed": "{size} frei",
+    "tidied_archive": "{n} archiviert",
+    "tidied_move": "{n} in Ordner verschoben",
+    "tidied_read": "{n} als gelesen markiert",
+    "rule_one": "Regel „{name}“ lief {runs}-mal",
+    "rule_other": "Regel „{name}“ lief {runs}-mal",
+    "rules_many": "{rules} Regeln liefen {runs}-mal",
+    "rule_sub_one": "{mails} Mail bearbeitet",
+    "rule_sub_other": "{mails} Mails bearbeitet",
+    "rules_top": "meist: „{name}“",
+    "preview_one": "{n} Mail wartet in einer Regel-Vorschau",
+    "preview_other": "{n} Mails warten in Regel-Vorschauen",
+    "preview_sub": "Eine Regel im Berichtsmodus hat sie gefunden - nichts "
+                   "wurde verschoben. Stell sie auf Ausführen, wenn es "
+                   "passt.",
+    "unsub_done": "{n} abgemeldet",
+    "unsub_attempts": "{n} Abmeldeversuche",
+    "unsub_link": "{n} warten auf deine Bestätigung",
+    "unsub_failed": "{n} fehlgeschlagen",
+    "footer": "Gesendet von Inboxrake.",
+    "open_app": "Inboxrake öffnen",
+    "demo_banner":
+        "VORSCHAU mit ausgedachten Beispieldaten - nichts davon ist "
+        "wirklich passiert. Räum erst etwas auf und sende dann noch "
+        "einen Test, um deine echte Aktivität zu sehen.",
+    "months": ("Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli",
+               "Aug.", "Sep.", "Okt.", "Nov.", "Dez."),
+    "day": "{d}. {m}",
+    "demo_name": "Alte Newsletter",
+}
 
-def _fmt_bytes(n: int) -> str:
+STRINGS_BY_LANG = {"en": _EN, "de": _DE}
+STRINGS = _EN       # the English set (tests and callers without a language)
+
+
+def _fmt_bytes(n: int, lang: str = "en") -> str:
     size = float(n)
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024 or unit == "GB":
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            out = (f"{size:.0f} {unit}" if unit == "B" or size >= 100
+                   else f"{size:.1f} {unit}")
+            return out.replace(".", ",") if lang == "de" else out
         size /= 1024
     return f"{size:.1f} GB"
+
+
+def _plural(S: dict, key: str, n: int, **kw) -> str:
+    """S[key_one] for exactly one, else S[key_other]."""
+    return S[f"{key}_{'one' if n == 1 else 'other'}"].format(n=n, **kw)
 
 
 def _path() -> Path:
@@ -187,6 +285,11 @@ def due(account: str, schedule: str, hour: int = 8, minute: int = 0,
     return now_dt >= next_dt
 
 
+# audit-log actions whose mail counts the digest sums up
+_COUNTED = ("trash", "purge", "archive", "move", "mark_read", "rule_report",
+            "rule_execute")
+
+
 def _aggregate(entries: list[dict],
               known_rule_ids: set[str]) -> tuple[dict[str, int], int, int,
                                                  dict[str, int]]:
@@ -212,7 +315,7 @@ def _aggregate(entries: list[dict],
                 continue
         if a == "empty_trash":      # Empty Trash is a permanent delete too
             a = "purge"
-        if any(a == action for action, _ in _ACTION_LABELS):
+        if a in _COUNTED:
             mail_counts[a] = mail_counts.get(a, 0) + e.get("count", 0)
         if a == "purge":            # "freed" = permanently deleted only
             freed += e.get("bytes", 0)
@@ -223,139 +326,329 @@ def _aggregate(entries: list[dict],
     return mail_counts, freed, unsub_attempts, unsub_outcomes
 
 
-def _rows(mail_counts: dict[str, int], freed: int,
-          still_mailing: int = 0) -> list[tuple[str, str]]:
-    """-> [(label, value)] for every metric that actually happened."""
-    rows = [(STRINGS[label], str(mail_counts[action]))
-            for action, label in _ACTION_LABELS if mail_counts.get(action)]
-    if freed:
-        rows.append((STRINGS["freed"], _fmt_bytes(freed)))
-    if still_mailing:
-        rows.append((STRINGS["still_mailing"], str(still_mailing)))
-    return rows
+def _rows_data(S: dict, d: dict) -> tuple[list[dict], list[dict]]:
+    """-> (needs, happened): the rows of the two sections, each
+    {icon, tone, title, sub, btn: (label, route) | None}."""
+    needs, happened = [], []
+    lang_size = d["lang"]
+    if d["still"]:
+        needs.append({
+            "icon": "!", "tone": "warn",
+            "title": _plural(S, "still", d["still"]),
+            "sub": _plural(S, "still_sub", d["still_mails"],
+                           m=d["still_mails"]),
+            "btn": (S["btn_block"], "senders")})
+    if d["junk"]:
+        needs.append({"icon": "✉", "tone": "warn",
+                      "title": _plural(S, "junk", d["junk"]), "sub": "",
+                      "btn": (S["btn_look"], "junk")})
+    if d["ai_mails"]:
+        needs.append({
+            "icon": "✦", "tone": "safe",
+            "title": _plural(S, "ai", d["ai_mails"]),
+            "sub": _fmt_bytes(d["ai_bytes"], lang_size),
+            "btn": (S["btn_review"], "senders")})
+
+    counts = d["counts"]
+    parts = [S[k].format(n=counts[k]) for k in ("trash", "purge")
+             if counts.get(k)]
+    if parts:
+        happened.append({
+            "icon": "✕", "tone": "bad", "title": ", ".join(parts),
+            "sub": S["freed"].format(size=_fmt_bytes(d["freed"], lang_size))
+            if d["freed"] else "", "btn": None})
+    tidy = [S[f"tidied_{k}"].format(n=counts[a]) for a, k in
+            (("archive", "archive"), ("move", "move"),
+             ("mark_read", "read")) if counts.get(a)]
+    if tidy:
+        happened.append({"icon": "✓", "tone": "calm",
+                         "title": ", ".join(tidy), "sub": "", "btn": None})
+    rules = d["rules"]                    # [(name, runs, mails)], top first
+    if rules:
+        runs = sum(r[1] for r in rules)
+        mails = sum(r[2] for r in rules)
+        if len(rules) == 1:
+            title = _plural(S, "rule", runs, name=rules[0][0], runs=runs)
+            sub = _plural(S, "rule_sub", mails, mails=mails)
+        else:
+            title = S["rules_many"].format(rules=len(rules), runs=runs)
+            sub = (_plural(S, "rule_sub", mails, mails=mails) + " · "
+                   + S["rules_top"].format(name=rules[0][0]))
+        happened.append({"icon": "✓", "tone": "calm", "title": title,
+                         "sub": sub, "btn": None})
+    if counts.get("rule_report"):
+        happened.append({
+            "icon": "⚑", "tone": "warn",
+            "title": _plural(S, "preview", counts["rule_report"]),
+            "sub": S["preview_sub"], "btn": (S["btn_rules"], "rules")})
+    if d["unsub_attempts"]:
+        o = d["unsub_outcomes"]
+        sub = " · ".join(S[f"unsub_{k}"].format(n=o[k])
+                              for k in ("link", "failed") if o[k])
+        happened.append({
+            "icon": "↩", "tone": "calm",
+            "title": S["unsub_done"].format(n=o["done"]) if o["done"]
+            else S["unsub_attempts"].format(n=d["unsub_attempts"]),
+            "sub": sub, "btn": None})
+    return needs, happened
 
 
-def _compose_text(account: str, since_str: str, rows: list[tuple[str, str]],
-                  mail_counts: dict[str, int], unsub_attempts: int,
-                  unsub_outcomes: dict[str, int],
-                  banner: str | None = None) -> str:
-    headline = banner if banner else STRINGS["since"].format(since=since_str)
-    lines = [STRINGS["heading"], headline, ""]
-    for label, value in rows:
-        lines.append(f"{label}: {value}")
-    if unsub_attempts:
-        lines.append(f"{STRINGS['unsubscribe_attempts']}: {unsub_attempts}")
-        lines.append("")
-        lines.append(f"{STRINGS['unsub_header']}:")
-        for status in ("done", "link", "failed"):
-            if unsub_outcomes[status]:
-                lines.append(
-                    f"  {STRINGS[f'unsub_{status}']}: {unsub_outcomes[status]}")
-    if mail_counts.get("rule_report"):
-        lines.append("")
-        lines.append(STRINGS["rule_preview_note"])
-    lines.append("")
-    lines.append(f"-- \n{STRINGS['footer']}")
+def _link(url: str, route: str) -> str:
+    return f"{url}/#/{route}"
+
+
+def _range(S: dict, since_ts: float, now: float) -> str:
+    def one(ts: float) -> str:
+        t = time.localtime(ts)
+        return S["day"].format(d=t.tm_mday, m=S["months"][t.tm_mon - 1])
+    return f"{one(now - 7 * 86400)} – {one(now)}"
+
+
+def _compose_text(S: dict, d: dict, account: str, url: str,
+                  banner: str | None) -> str:
+    needs, happened = _rows_data(S, d)
+    lines = []
+    if banner:
+        lines += [banner, ""]
+    lines += [f"{S['title']} ({d['range']})", ""]
+    lines.append(f"{S['arrived']}: {d['arrived']}   {S['cleaned']}: "
+                 f"{d['cleaned']}"
+                 + (f"   {S['mailbox']}: {_fmt_bytes(d['size'], d['lang'])}"
+                    if d["size"] is not None else ""))
+    if d["delta"]:
+        key = "size_less" if d["delta"] < 0 else "size_more"
+        lines.append(S[key].format(
+            size=_fmt_bytes(abs(d["delta"]), d["lang"])))
+    for title, rows in ((S["needs_you"], needs), (S["happened"], happened)):
+        if not rows:
+            continue
+        lines += ["", title.upper()]
+        for r in rows:
+            lines.append(f"- {r['title']}" + (f" ({r['sub']})" if r["sub"]
+                                              else ""))
+            if r["btn"] and url:
+                lines.append(f"  {r['btn'][0]}: {_link(url, r['btn'][1])}")
+    lines += ["", f"-- \n{S['footer']}"]
+    if url:
+        lines.append(f"{S['open_app']}: {url}/")
     return "\n".join(lines) + "\n"
 
 
-# Brand palette (frontend/src/index.css @theme, light variant) reused for
-# the email's one and only theme. Deliberately NOT trying to also offer a
-# prefers-color-scheme dark variant: several mail apps (seen: Proton Mail)
-# apply their OWN heuristic dark-mode repaint to HTML mail and don't
-# reliably respect an email's explicit dark overrides, which fought our
-# colors instead of complementing them. The color-scheme/supported-color-
-# schemes meta tags below are the signal that tends to opt an email out
-# of that auto-repaint - one deliberately light, high-contrast theme reads
-# correctly far more reliably than trying to out-guess every client's
-# own inversion heuristics. No external assets (images/fonts/tracking
-# pixels) either way.
+# Palette (frontend/src/index.css @theme) as inline styles with a dark
+# variant via prefers-color-scheme: clients that honour it (Apple Mail,
+# iOS, Outlook.com, Gmail apps) switch, the rest keep the light colours,
+# which stay readable everywhere. Both classes and inline styles carry the
+# colour: the inline light value is the fallback, the `!important` dark
+# rule in <style> wins where supported. No external assets.
 _LIGHT = {"surface": "#eee5d0", "panel": "#faf5e9", "panel2": "#f2ead7",
           "line": "#dccfb2", "accent": "#96570a", "muted": "#6e5e45",
-          "body": "#2c2115", "chip": "#e5d9bd"}
+          "body": "#2c2115", "chip": "#e5d9bd", "good": "#3d8a5a",
+          "goodbg": "#d6ebdc", "sand": "#e9c98f", "warnbg": "#f6e2c2",
+          "badbg": "#f4d6d0", "bad": "#b4412f"}
+_DARK = {"surface": "#17120b", "panel": "#241d12", "panel2": "#2e2618",
+         "line": "#4a3d27", "accent": "#e0a050", "muted": "#b8a888",
+         "body": "#f4ecda", "chip": "#3a2f1c", "good": "#6cc28a",
+         "goodbg": "#1f3a29", "sand": "#8a6a36", "warnbg": "#3d2e14",
+         "badbg": "#41231d", "bad": "#e8806f"}
+# class -> (css property, palette key)
+_CLASSES = {"bg": ("background-color", "surface"),
+            "card": ("background-color", "panel"),
+            "foot": ("background-color", "panel2"),
+            "chip": ("background-color", "chip"),
+            "ln": ("border-color", "line"),
+            "tx": ("color", "body"), "mu": ("color", "muted"),
+            "ac": ("color", "accent"),
+            "bin": ("background-color", "sand"),
+            "bout": ("background-color", "good"),
+            "good": ("color", "good"),
+            "t-warn": ("background-color", "warnbg"),
+            "t-safe": ("background-color", "goodbg"),
+            "t-bad": ("background-color", "badbg"),
+            "t-calm": ("background-color", "chip"),
+            "btn": ("background-color", "chip")}
+_TONE_BG = {"warn": "warnbg", "safe": "goodbg", "bad": "badbg",
+            "calm": "chip"}
+_TONE_FG = {"warn": "accent", "safe": "good", "bad": "bad", "calm": "good"}
+_FONT = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,"
+         "Arial,sans-serif")
 
 
-def _compose_html(account: str, since_str: str, rows: list[tuple[str, str]],
-                  mail_counts: dict[str, int], unsub_attempts: int,
-                  unsub_outcomes: dict[str, int],
-                  banner: str | None = None) -> str:
-    import html as htmlmod
+def _style_block() -> str:
+    dark = "".join(f".{c}{{{prop}:{_DARK[key]} !important;}}"
+                   for c, (prop, key) in _CLASSES.items())
+    return ("<style>:root{color-scheme:light dark;supported-color-schemes:"
+            "light dark;}@media (prefers-color-scheme: dark){" + dark
+            + "}</style>")
+
+
+def _bars_html(S: dict, d: dict) -> str:
+    """Eight weeks as table cells: arrivals grow up from the middle line,
+    cleaned-up mails down (colour is not the only signal: the labels and
+    the alt text name both)."""
     esc = htmlmod.escape
-    row_html = "".join(
-        f'<tr style="border-bottom:1px solid {_LIGHT["line"]};">'
-        f'<td style="padding:6px 0;font-size:14px;color:{_LIGHT["muted"]};">'
-        f'{esc(label)}</td>'
-        f'<td style="padding:6px 0;font-size:14px;font-weight:600;'
-        f'color:{_LIGHT["body"]};text-align:right;">{esc(value)}</td></tr>'
-        for label, value in rows)
-    unsub_html = ""
-    if unsub_attempts:
-        outcome_items = "".join(
-            f'<li>{esc(STRINGS[f"unsub_{status}"])}: {unsub_outcomes[status]}'
-            f'</li>'
-            for status in ("done", "link", "failed") if unsub_outcomes[status])
-        unsub_html = f"""
-        <p style="margin:16px 0 4px;font-size:14px;color:{_LIGHT["body"]};">
-          <strong>{esc(STRINGS["unsubscribe_attempts"])}:</strong>
-          {unsub_attempts}
-        </p>
-        <ul style="margin:4px 0 0;padding-left:20px;font-size:13px;
-          color:{_LIGHT["muted"]};">{outcome_items}</ul>"""
-    note_html = ""
-    if mail_counts.get("rule_report"):
-        note_html = (f'<p style="margin:16px 0 0;font-size:12px;'
-                     f'color:{_LIGHT["muted"]};">'
-                     f'{esc(STRINGS["rule_preview_note"])}</p>')
-    banner_html = ""
-    if banner:
-        banner_html = (
-            f'<tr><td style="padding:10px 24px;background:{_LIGHT["chip"]};'
-            f'font-size:12px;color:{_LIGHT["accent"]};font-weight:600;'
-            f'border-bottom:1px solid {_LIGHT["line"]};">'
-            f'{esc(banner)}</td></tr>')
-    since_html = "" if banner else f"""
-          <div style="font-size:13px;color:{_LIGHT["muted"]};
-            margin-top:2px;">
-            {esc(STRINGS["since"].format(since=since_str))}
-          </div>"""
+    top = max(max(d["weeks_in"] + d["weeks_out"]), 1)
+    full = 46
+
+    def bar(n: int, cls: str, color: str) -> str:
+        if n <= 0:
+            return ""
+        h = max(2, round(full * n / top))
+        return (f'<table role="presentation" width="100%" cellpadding="0" '
+                f'cellspacing="0" height="{h}"><tr><td height="{h}" '
+                f'class="{cls}" style="height:{h}px;background-color:'
+                f'{color};font-size:0;line-height:0;border-radius:2px;">'
+                f'&nbsp;</td></tr></table>')
+
+    ups = "".join(
+        f'<td valign="bottom" height="{full}" style="padding:0 2px;'
+        f'height:{full}px;">{bar(n, "bin", _LIGHT["sand"])}</td>'
+        for n in d["weeks_in"])
+    downs = "".join(
+        f'<td valign="top" height="{full}" style="padding:0 2px;'
+        f'height:{full}px;">{bar(n, "bout", _LIGHT["good"])}</td>'
+        for n in d["weeks_out"])
+    alt = S["bars_alt"].format(arrived=" ".join(map(str, d["weeks_in"])),
+                               cleaned=" ".join(map(str, d["weeks_out"])))
+    return (f'<table role="presentation" width="100%" cellpadding="0" '
+            f'cellspacing="0" aria-label="{esc(alt, quote=True)}" '
+            f'title="{esc(alt, quote=True)}"><tr>{ups}</tr>'
+            f'<tr>{downs}</tr></table>')
+
+
+def _row_html(r: dict, url: str) -> str:
+    esc = htmlmod.escape
+    bg, fg = _LIGHT[_TONE_BG[r["tone"]]], _LIGHT[_TONE_FG[r["tone"]]]
+    sub = (f'<div class="mu" style="font-size:13px;color:{_LIGHT["muted"]};'
+           f'margin-top:2px;">{esc(r["sub"])}</div>') if r["sub"] else ""
+    btn = ""
+    if r["btn"] and url:
+        href = esc(_link(url, r["btn"][1]), quote=True)
+        btn = (f'<td align="right" valign="middle" style="padding:10px 0 '
+               f'10px 8px;" width="1"><a href="{href}" class="btn tx" '
+               f'style="display:inline-block;padding:8px 14px;border-radius:'
+               f'10px;background-color:{_LIGHT["chip"]};color:'
+               f'{_LIGHT["accent"]};font-size:14px;font-weight:600;'
+               f'text-decoration:none;white-space:nowrap;">'
+               f'{esc(r["btn"][0])}</a></td>')
+    return (
+        f'<tr><td class="ln" style="border-top:1px solid {_LIGHT["line"]};">'
+        f'<table role="presentation" width="100%" cellpadding="0" '
+        f'cellspacing="0"><tr>'
+        f'<td width="32" valign="top" style="padding:12px 12px 12px 0;">'
+        f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+        f'<td align="center" width="32" height="32" class="t-{r["tone"]}" '
+        f'style="width:32px;height:32px;border-radius:16px;'
+        f'background-color:{bg};color:{fg};font-size:15px;'
+        f'line-height:32px;">{r["icon"]}</td></tr></table></td>'
+        f'<td valign="middle" style="padding:11px 0;">'
+        f'<div class="tx" style="font-size:15px;font-weight:600;'
+        f'color:{_LIGHT["body"]};">{esc(r["title"])}</div>{sub}</td>'
+        f'{btn}</tr></table></td></tr>')
+
+
+def _section_html(title: str, rows: list[dict], url: str) -> str:
+    if not rows:
+        return ""
+    esc = htmlmod.escape
+    return (
+        f'<tr><td style="padding:18px 24px 0;"><div class="mu" '
+        f'style="font-size:12px;letter-spacing:.06em;text-transform:'
+        f'uppercase;font-weight:600;color:{_LIGHT["muted"]};'
+        f'padding-bottom:6px;">{esc(title)}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" '
+        f'cellspacing="0">{"".join(_row_html(r, url) for r in rows)}'
+        f'</table></td></tr>')
+
+
+def _compose_html(S: dict, d: dict, account: str, url: str,
+                  banner: str | None) -> str:
+    esc = htmlmod.escape
+    L = _LIGHT
+    needs, happened = _rows_data(S, d)
+    banner_html = (
+        f'<tr><td class="chip ac" style="padding:10px 24px;'
+        f'background-color:{L["chip"]};font-size:12px;color:{L["accent"]};'
+        f'font-weight:600;">{esc(banner)}</td></tr>') if banner else ""
+    delta = ""
+    if d["delta"]:
+        key = "size_less" if d["delta"] < 0 else "size_more"
+        arrow = "▼" if d["delta"] < 0 else "▲"
+        delta = (f'<div style="font-size:13px;font-weight:600;color:'
+                 f'{L["good"] if d["delta"] < 0 else L["accent"]};'
+                 f'margin-top:2px;" class="{"good" if d["delta"] < 0 else "ac"}">'
+                 f'{arrow} '
+                 f'{esc(S[key].format(size=_fmt_bytes(abs(d["delta"]), d["lang"])))}'
+                 f'</div>')
+    size = (f'<div class="mu" style="font-size:13px;color:{L["muted"]};">'
+            f'{esc(S["mailbox"])}</div><div class="tx" style="font-size:26px;'
+            f'font-weight:700;color:{L["body"]};">'
+            f'{esc(_fmt_bytes(d["size"], d["lang"]))}</div>{delta}'
+            if d["size"] is not None else "")
+    num = lambda label, n, color, cls: (   # noqa: E731
+        f'<div class="mu" style="font-size:13px;color:{L["muted"]};">'
+        f'{esc(label)}</div><div style="font-size:30px;font-weight:700;'
+        f'color:{color};" class="{cls}">{n}</div>')
+    open_app = (f' &middot; <a href="{esc(url + "/", quote=True)}" '
+                f'class="ac" style="color:{L["accent"]};">'
+                f'{esc(S["open_app"])}</a>') if url else ""
     return f"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+{_style_block()}
 </head>
-<body style="margin:0;padding:0;background:{_LIGHT["surface"]};
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
-  Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<body class="bg" style="margin:0;padding:0;background-color:{L["surface"]};
+  font-family:{_FONT};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+    class="bg" style="background-color:{L["surface"]};">
     <tr><td align="center" style="padding:24px 12px;">
       <table role="presentation" width="480" cellpadding="0" cellspacing="0"
-        style="width:480px;max-width:100%;background:{_LIGHT["panel"]};
-        border:1px solid {_LIGHT["line"]};border-radius:12px;
-        overflow:hidden;">
+        class="card ln" style="width:480px;max-width:100%;
+        background-color:{L["panel"]};border:1px solid {L["line"]};
+        border-radius:16px;overflow:hidden;">
         {banner_html}
-        <tr><td style="padding:20px 24px;
-          border-bottom:1px solid {_LIGHT["line"]};">
-          <div style="font-size:12px;letter-spacing:.04em;
-            text-transform:uppercase;color:{_LIGHT["muted"]};">
-            Inboxrake &middot; {esc(account)}
-          </div>
-          <div style="font-size:18px;font-weight:600;
-            color:{_LIGHT["body"]};margin-top:2px;">
-            {esc(STRINGS["heading"])}
-          </div>{since_html}
+        <tr><td style="padding:20px 24px 0;">
+          <div class="mu" style="font-size:12px;letter-spacing:.06em;
+            text-transform:uppercase;font-weight:600;color:{L["muted"]};">
+            Inboxrake &middot; {esc(account)}</div>
+          <div class="tx" style="font-size:24px;font-weight:700;
+            color:{L["body"]};margin-top:2px;">{esc(S["title"])}</div>
+          <div class="mu" style="font-size:13px;color:{L["muted"]};
+            margin-top:2px;">{esc(d["range"])}</div>
         </td></tr>
-        <tr><td style="padding:8px 24px 20px;">
+        <tr><td style="padding:16px 24px 0;">
           <table role="presentation" width="100%" cellpadding="0"
-            cellspacing="0">{row_html}</table>
-          {unsub_html}
-          {note_html}
+            cellspacing="0" class="foot ln" style="background-color:
+            {L["panel2"]};border:1px solid {L["line"]};border-radius:14px;">
+            <tr><td style="padding:14px 16px 4px;">
+              <table role="presentation" width="100%" cellpadding="0"
+                cellspacing="0"><tr>
+                <td valign="top" width="26%">{num(S["arrived"], d["arrived"], L["accent"], "ac")}</td>
+                <td valign="top" width="26%">{num(S["cleaned"], d["cleaned"], L["good"], "good")}</td>
+                <td valign="top" align="right">{size}</td>
+              </tr></table>
+            </td></tr>
+            <tr><td style="padding:8px 14px 0;">{_bars_html(S, d)}</td></tr>
+            <tr><td style="padding:4px 16px 12px;">
+              <table role="presentation" width="100%" cellpadding="0"
+                cellspacing="0"><tr>
+                <td class="mu" style="font-size:12px;color:{L["muted"]};">
+                  {esc(S["weeks_ago"])}</td>
+                <td class="mu" align="right" style="font-size:12px;
+                  color:{L["muted"]};">{esc(S["this_week"])}</td>
+              </tr></table>
+            </td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:14px 24px;background:{_LIGHT["panel2"]};
-          font-size:12px;color:{_LIGHT["muted"]};">
-          {esc(STRINGS["footer"])}
+        {_section_html(S["needs_you"], needs, url)}
+        {_section_html(S["happened"], happened, url)}
+        <tr><td style="padding:18px 24px 0;"></td></tr>
+        <tr><td class="foot mu" style="padding:14px 24px;
+          background-color:{L["panel2"]};font-size:12px;color:{L["muted"]};">
+          {esc(S["footer"])}{open_app}
         </td></tr>
       </table>
     </td></tr>
@@ -365,9 +658,141 @@ def _compose_html(account: str, since_str: str, rows: list[tuple[str, str]],
 """
 
 
-def compose(account: str, since_ts: int) -> tuple[str, str, str] | None:
+# --------------------------------------------------------------- the data
+
+_FROM_ROLE = re.compile(r"^\d+ mails? from (Junk|Trash)$")
+
+
+def _cleaned_weeks(entries: list[dict], rules: list[dict],
+                   now: float) -> list[int]:
+    """Mails cleaned per rolling 7-day bucket (oldest first), the same
+    rules as the app's Overview (frontend activity.ts cleaning()): moves to
+    Trash / archive / a folder and rule runs without a move entry of their
+    own, rescues out of Junk / Trash excluded, restored mails subtracted."""
+    movers = ("trash", "archive", "move")
+
+    def rescue(e):
+        return bool(e.get("from_role")) or bool(
+            _FROM_ROLE.match(e.get("label") or ""))
+
+    undone: dict[str, int] = {}
+    for e in entries:
+        u = e.get("undoes")
+        if e["action"] == "undo" and isinstance(u, dict) and u.get("id"):
+            undone[u["id"]] = undone.get(u["id"], 0) + int(u.get("count", 0))
+    moved = [e for e in entries if e["action"] in movers and not rescue(e)]
+    actions = {f"rule:{r['id']}": r.get("action") for r in rules}
+    out = [0] * overviewmod.WEEKS
+    for e in entries:
+        count = e.get("count", 0)
+        if count <= 0:
+            continue
+        if e["action"] in movers:
+            counts = not rescue(e)
+        else:
+            counts = (e["action"] == "rule_execute"
+                      and actions.get(e.get("actor")) != "mark_read"
+                      and not any(m.get("actor") == e.get("actor")
+                                  and abs(m["ts"] - e["ts"]) <= 600
+                                  for m in moved))
+        if not counts:
+            continue
+        n = count - min(count, undone.get(e.get("id") or "", 0))
+        i = overviewmod.WEEKS - 1 - int(max(0.0, now - e["ts"])
+                                        // overviewmod.WEEK_S)
+        if i >= 0:
+            out[i] += n
+    return out
+
+
+def _rule_runs(entries: list[dict], rules: list[dict]) -> list[tuple]:
+    """[(name, runs, mails)] of the rules that were executed in `entries`,
+    most mails first (a deleted rule has no name to show: skipped)."""
+    names = {r["id"]: r["name"] for r in rules}
+    acc: dict[str, list[int]] = {}
+    for e in entries:
+        actor = e.get("actor", "")
+        if e["action"] != "rule_execute" or not actor.startswith("rule:"):
+            continue
+        rid = actor.split(":", 1)[1]
+        if rid in names:
+            runs = acc.setdefault(rid, [0, 0])
+            runs[0] += 1
+            runs[1] += e.get("count", 0)
+    return sorted(((names[rid], v[0], v[1]) for rid, v in acc.items()),
+                  key=lambda r: (-r[2], r[0]))
+
+
+def _snapshot(account: str, since_ts: int, now: float) -> dict:
+    """The Overview's own numbers for the mail: the last 7 days' arrivals,
+    cleaned-up mails, mailbox size (+ change since the last digest), the 8
+    weekly bars, and what needs the user (still mailing, Junk, AI safe)."""
+    acc = accounts.get(account)
+    ov = overviewmod.build(acc, None, now)
+    weeks_in = ov["weeks"]
+    rules = rulesmod.load_rules()
+    all_entries = auditlog._load_all(account)
+    weeks_out = _cleaned_weeks(all_entries, rules, now)
+
+    cut = mailops._still_mailing_cutoffs(unsubstore.load_account(account))
+    sender_verdicts = verdictstore.load_account(account).get("sender") or {}
+    by_user = labelstore.verdicts(account)
+    still_senders: set[str] = set()
+    still_mails = 0
+    size = 0
+    with acc.lock:
+        indexed = bool(acc.index)
+        for m in acc.index.values():
+            size += m["size"]
+            if m["addr"] in cut and m["ts"] and m["ts"] > cut[m["addr"]]:
+                still_senders.add(m["addr"])
+                still_mails += 1
+        ai_mails = ai_bytes = 0
+        for key, rec in (acc.state["groups"].get("sender") or {}).items():
+            if (sender_verdicts.get(key) or {}).get("verdict") \
+                    == "delete_safe" and key not in by_user:
+                ai_mails += rec["count"]
+                ai_bytes += rec["size"]
+        junk = acc.state.get("junk_count") or 0
+
+    delta = None
+    if indexed:
+        ref = since_ts or now - overviewmod.WEEK_S
+        older = [s for s in statsmod.load(account)["scans"]
+                 if s.get("ts") and s["ts"] <= ref]
+        if older:
+            delta = size - int(older[-1].get("size", 0))
+    return {"arrived": weeks_in[-1], "cleaned": weeks_out[-1],
+            "weeks_in": weeks_in, "weeks_out": weeks_out,
+            "size": size if indexed else None, "delta": delta,
+            "still": len(still_senders), "still_mails": still_mails,
+            "junk": junk, "ai_mails": ai_mails, "ai_bytes": ai_bytes}
+
+
+def _digest_lang(account: str) -> tuple[str, str]:
+    block = cfgmod.load_config()["accounts"].get(account) or {}
+    d = block.get("digest") or {}
+    lang = d.get("lang") if d.get("lang") in STRINGS_BY_LANG else "en"
+    return lang, d.get("url") or ""
+
+
+def _build(account: str, d: dict, lang: str, url: str,
+           banner: str | None, demo: bool) -> tuple[str, str, str]:
+    S = STRINGS_BY_LANG[lang]
+    d = {**d, "lang": lang}
+    subject = S["demo_subject" if demo else "subject"].format(
+        arrived=d["arrived"], cleaned=d["cleaned"])
+    return (subject, _compose_text(S, d, account, url, banner),
+            _compose_html(S, d, account, url, banner))
+
+
+def compose(account: str, since_ts: int, now: float | None = None,
+            lang: str | None = None,
+            url: str | None = None) -> tuple[str, str, str] | None:
     """-> (subject, text_body, html_body), or None if nothing happened
-    since `since_ts` (callers must not send a mail in that case)."""
+    since `since_ts` (callers must not send a mail in that case). `lang` /
+    `url` default to the account's digest settings."""
+    now = now if now is not None else time.time()
     # auditlog's own digest-send records never count as "activity" - a
     # digest send recording itself as activity would never run dry.
     entries = [e for e in auditlog._load_all(account)
@@ -375,47 +800,49 @@ def compose(account: str, since_ts: int) -> tuple[str, str, str] | None:
     if not entries:
         return None
 
-    known_rule_ids = {r["id"] for r in rulesmod.load_rules()}
+    rules = rulesmod.load_rules()
+    known_rule_ids = {r["id"] for r in rules}
     mail_counts, freed, unsub_attempts, unsub_outcomes = _aggregate(
         entries, known_rule_ids)
-    rows = _rows(mail_counts, freed)
-    if not rows and not unsub_attempts:
+    if not any(mail_counts.values()) and not freed and not unsub_attempts:
         # every entry in the period turned out to be a phantom rule
         # reference (its rule was deleted meanwhile) - same as no
         # activity at all.
         return None
-    # Only a line on a digest that goes out anyway - it never triggers one.
-    rows += _rows({}, 0, mailops.count_still_mailing(accounts.get(account),
-                                                     account))
-    since_str = (time.strftime("%Y-%m-%d %H:%M", time.localtime(since_ts))
-                 if since_ts else STRINGS["since_ever"])
-    subject = STRINGS["subject"].format(account=account)
-    text = _compose_text(account, since_str, rows, mail_counts,
-                         unsub_attempts, unsub_outcomes)
-    html = _compose_html(account, since_str, rows, mail_counts,
-                        unsub_attempts, unsub_outcomes)
-    return subject, text, html
+    cfg_lang, cfg_url = _digest_lang(account)
+    lang = lang or cfg_lang
+    url = cfg_url if url is None else url
+    d = _snapshot(account, since_ts, now)
+    d.update(counts=mail_counts, freed=freed, unsub_attempts=unsub_attempts,
+             unsub_outcomes=unsub_outcomes,
+             rules=_rule_runs(entries, rules),
+             range=_range(STRINGS_BY_LANG[lang], since_ts, now))
+    return _build(account, d, lang, url, None, False)
 
 
-def compose_demo(account: str) -> tuple[str, str, str]:
+def compose_demo(account: str, lang: str | None = None,
+                 url: str | None = None) -> tuple[str, str, str]:
     """A fabricated, clearly-labeled example digest - used only by
     POST /api/digest/test when there's genuinely nothing real to show
     yet, so a first-time user can see what the mail looks like without
     having to go clean up mail first. Never counted as a real send."""
-    mail_counts = {"trash": 42, "purge": 12, "archive": 6, "move": 2,
-                   "mark_read": 15, "rule_report": 7, "rule_execute": 3}
-    freed = 18_400_000
-    unsub_attempts = 4
-    unsub_outcomes = {"done": 2, "link": 1, "failed": 1}
-    rows = _rows(mail_counts, freed, 3)
-    subject = STRINGS["demo_subject"].format(account=account)
-    text = _compose_text(account, STRINGS["demo_since"], rows, mail_counts,
-                         unsub_attempts, unsub_outcomes,
-                         banner=STRINGS["demo_banner"])
-    html = _compose_html(account, STRINGS["demo_since"], rows, mail_counts,
-                        unsub_attempts, unsub_outcomes,
-                        banner=STRINGS["demo_banner"])
-    return subject, text, html
+    cfg_lang, cfg_url = _digest_lang(account)
+    lang = lang or cfg_lang
+    url = cfg_url if url is None else url
+    S = STRINGS_BY_LANG[lang]
+    d = {"arrived": 81, "cleaned": 96,
+         "weeks_in": [62, 70, 85, 58, 74, 66, 79, 81],
+         "weeks_out": [30, 12, 118, 45, 38, 33, 28, 96],
+         "size": 238_000_000, "delta": -7_650_000,
+         "still": 3, "still_mails": 14, "junk": 11,
+         "ai_mails": 663, "ai_bytes": 22_500_000,
+         "counts": {"trash": 42, "purge": 12, "archive": 6, "move": 2,
+                    "mark_read": 15, "rule_report": 7, "rule_execute": 3},
+         "freed": 7_650_000, "unsub_attempts": 4,
+         "unsub_outcomes": {"done": 2, "link": 1, "failed": 1},
+         "rules": [(S["demo_name"], 3, 38)],
+         "range": _range(S, 0, time.time())}
+    return _build(account, d, lang, url, S["demo_banner"], True)
 
 
 def send_digest(account: str, test: bool = False) -> dict:

@@ -1494,13 +1494,16 @@ export const DE: Record<string, string> = {
   "digest.recipient": "Empfänger",
   "digest.recipient_placeholder": "eigene Adresse dieses Kontos",
   "digest.time": "Uhrzeit (24h, lokale Zeit des Servers)",
+  "digest.lang": "Sprache der Mail",
+  "digest.url": "Link zu Inboxrake",
+  "digest.url_help":
+    "Die Adresse deiner Inboxrake-Installation (https://...). Damit öffnen "
+    + "die Knöpfe in der Mail die richtige Seite; ohne sie entfallen sie.",
   "digest.help":
-    "Eine Zusammenfassung dessen, was Inboxrake für dieses Konto seit "
-    + "der letzten Übersicht getan hat - durchgeführte Aktionen, "
-    + "freigewordene Mails/Speicherplatz, Regel-Vorschauen (Treffer von "
-    + "Regeln, die noch im Berichtsmodus laufen, also noch nicht "
-    + "angewendet wurden) und Abbestell-Ergebnisse. Entfällt komplett, "
-    + "wenn nichts passiert ist.",
+    "Deine Woche wie in der Übersicht - angekommene und aufgeräumte "
+    + "Mails, was dich braucht und was Inboxrake seit der letzten Mail "
+    + "getan hat (endgültig gelöscht, Regeln, Abmeldungen). Entfällt "
+    + "komplett, wenn nichts passiert ist.",
   "digest.send_test": "Test-Übersicht senden",
   "digest.test_sent": "Gesendet!",
   "digest.test_sent_demo":

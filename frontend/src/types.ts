@@ -567,6 +567,8 @@ export interface DigestSettings {
   recipient: string;       // "" = the account's own address
   hour: number;            // local server time, 24h
   minute: number;
+  url?: string;            // the app's address for the mail's buttons ("" = none)
+  lang?: "" | "en" | "de"; // the mail's language ("" = not chosen: English)
 }
 
 export type BodySearchMode = "disabled" | "server" | "local";

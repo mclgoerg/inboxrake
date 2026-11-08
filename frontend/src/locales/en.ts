@@ -286,11 +286,16 @@ export const EN: Record<string, string> = {
   "digest.recipient": "Recipient",
   "digest.recipient_placeholder": "this account's own address",
   "digest.time": "Time (24h, server's local time)",
+  "digest.lang": "Language of the mail",
+  "digest.url": "Link to Inboxrake",
+  "digest.url_help":
+    "Your Inboxrake address (https://...). With it the mail's buttons open "
+    + "the right page; without it they are left out.",
   "digest.help":
-    "A summary of what Inboxrake did for this account since the last "
-    + "digest - actions taken, mails/bytes freed, rule previews (matches "
-    + "found by rules still in report-only mode, not yet applied) and "
-    + "unsubscribe outcomes. Skipped entirely when nothing happened.",
+    "Your week like the Overview shows it - mails arrived and cleaned "
+    + "up, what needs you, and what Inboxrake did since the last digest "
+    + "(deleted for good, rules, unsubscribes). Skipped entirely when "
+    + "nothing happened.",
   "digest.send_test": "Send test digest",
   "digest.test_sent": "Sent!",
   "digest.test_sent_demo":

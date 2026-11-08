@@ -216,18 +216,18 @@ def _digest_with_activity(monkeypatch, flagged):
 
 def test_digest_line_present_when_flagged(monkeypatch):
     subject, text, html = _digest_with_activity(monkeypatch, True)
-    label = digestmod.STRINGS["still_mailing"]
-    assert f"{label}: 1" in text
-    assert label in html
+    assert "1 still mailing after you unsubscribed" in text
+    assert "1 mail since you unsubscribed" in text
+    assert "1 still mailing after you unsubscribed" in html
 
 
 def test_digest_line_absent_when_none(monkeypatch):
     _, text, html = _digest_with_activity(monkeypatch, False)
-    assert digestmod.STRINGS["still_mailing"] not in text
-    assert digestmod.STRINGS["still_mailing"] not in html
+    assert "still mailing" not in text
+    assert "still mailing" not in html
 
 
 def test_digest_demo_shows_the_line():
     _, text, html = digestmod.compose_demo("default")
-    assert digestmod.STRINGS["still_mailing"] in text
-    assert digestmod.STRINGS["still_mailing"] in html
+    assert "3 still mailing after you unsubscribed" in text
+    assert "3 still mailing after you unsubscribed" in html

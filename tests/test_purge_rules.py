@@ -806,7 +806,7 @@ def test_audit_undo_stats_and_digest_count_a_rule_purge_as_a_purge(
     month = statsmod.load()["actions"][time.strftime("%Y-%m")]
     assert month["purge"] == 2 and month["purged_bytes"] == 103 + 104
     _, text, _ = digestmod.compose("default", 0)
-    assert "Permanently deleted: 2" in text and "Space freed: 207 B" in text
+    assert "2 deleted for good" in text and "207 B freed" in text
     assert mailops.STATE["trash_count"] == 1
     assert _uids(fake, "Trash") == [5]
 
