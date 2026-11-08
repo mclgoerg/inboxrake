@@ -1,6 +1,6 @@
 import { ChevronRight, Users, X, ZoomIn } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { fmtDate } from "../lib";
+import { useState, type ReactNode, type Ref } from "react";
+import { engagementTier, fmtDate } from "../lib";
 import { fmtNum } from "../numfmt";
 import { t } from "../i18n";
 import { domainOf, fmtBig, monthsSince, openedPct, pct, tickState, toneOf,
@@ -30,8 +30,10 @@ function Cell({ label, value, sub, valueClass = "" }: {
  *  Below the page width it sticks to the bottom edge (`docked`) and can be
  *  closed - it is no dialog, so the tiles stay tappable. */
 export function SpaceDetails({ item, hasAi, totalSize, canShow, docked,
-  onShow, onSelect, onZoom, onClose }: {
+  onShow, onSelect, onZoom, onClose, cardRef }: {
   item: MapItem; hasAi: boolean; totalSize: number;
+  /** The card's element (the page pads itself by its height when docked). */
+  cardRef?: Ref<HTMLElement>;
   /** Something the Senders filter can express (not an "Other" bucket). */
   canShow: boolean; docked: boolean;
   onShow: () => void; onSelect: () => void;
@@ -39,21 +41,18 @@ export function SpaceDetails({ item, hasAi, totalSize, canShow, docked,
   onZoom?: () => void; onClose: () => void;
 }) {
   const months = item.last ? monthsSince(item.last) : null;
-  const opened = openedPct(item);
-  const tone = toneOf(item, "engagement");
+  const tier = engagementTier(item.engagement);
   const sub = item.kind === "sender"
     ? `${domainOf(item.label)} · ${t("space.n_mails", { n: item.count })}`
     : `${t("space.n_senders", { n: item.senders })} · ${
       t("space.n_mails", { n: item.count })}`;
   return (
-    <section aria-label={t("space.details", { name: nameOf(item) })}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") { e.stopPropagation(); onClose(); }
-      }}
+    <section ref={cardRef} aria-label={t("space.details", { name: nameOf(item) })}
       className={docked
-        // pinned to the bottom of the scrolling page, edge to edge
-        ? `sticky bottom-0 z-(--z-sticky) -mx-4 -mb-4 rounded-t-card border-t
-          border-line bg-panel p-4 shadow-bar sm:-mx-5 sm:-mb-5 sm:px-5`
+        // pinned to the bottom of the scrolling page, edge to edge (sticky
+        // offsets count from inside the page padding: -bottom-4 undoes it)
+        ? `sticky -bottom-4 z-(--z-sticky) -mx-4 -mb-4 rounded-t-card border-t
+          border-line bg-panel p-4 shadow-bar sm:-bottom-5 sm:-mx-5 sm:-mb-5 sm:px-5`
         : "rounded-card border border-line bg-panel2 p-4"}>
       <div className="flex items-center gap-3">
         <Avatar name={nameOf(item)} size="md" />
@@ -69,8 +68,11 @@ export function SpaceDetails({ item, hasAi, totalSize, canShow, docked,
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Cell label={t("space.d_size")} value={fmtBig(item.size)}
           sub={t("space.d_of_mailbox", { p: fmtPct(pct(item.size, totalSize)) })} />
-        <Cell label={t("space.d_opened")} value={fmtPct(opened)}
-          sub={toneText(tone, "engagement")} />
+        {/* the colour of "engagement" mode: the score, built from the read
+            share, replies, newsletter status and how recent the last mail is */}
+        <Cell label={t("space.d_opened")} value={t(`space.d_eng_${tier}`)}
+          sub={[t("eng.read", { n: openedPct(item) }),
+            t(item.replied ? "eng.replied" : "eng.never_replied")].join(" · ")} />
         <Cell label={t("space.d_last")}
           value={item.last ? fmtDate(item.last) : "-"}
           sub={months === null ? undefined : months < 1
@@ -134,6 +136,7 @@ export function SpaceList({ level, by, sel, selecting, focusId, onOpen, onTick }
                   onChange={() => onTick(it)} />
               )}
               <button type="button" onClick={() => onOpen(it)}
+                data-row={it.id}
                 aria-current={!selecting && focusId === it.id ? "true"
                   : undefined}
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-3
@@ -158,7 +161,8 @@ export function SpaceList({ level, by, sel, selecting, focusId, onOpen, onTick }
                 <span className="shrink-0 text-right type-meta tabular-nums
                   text-muted">
                   <span className="block">{fmtBig(it.size)}</span>
-                  <span className="block">{fmtPct(pct(it.size, total))}</span>
+                  <span className="block">{fmtPct(pct(it.size, total))}
+                    {" · "}{t("space.n_mails", { n: it.count })}</span>
                 </span>
                 {it.kind !== "sender"
                   ? <ChevronRight size={16} className="shrink-0 text-faint"

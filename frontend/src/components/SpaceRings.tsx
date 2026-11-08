@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { childTiles, fmtBig, pct, tickState, toneOf, type ColorBy,
   type MapItem } from "../spacemap";
 import { arcCentre, arcPath, layoutRings } from "../sunburst";
-import { fmtPct, itemLabel, nameOf, TONE_FILL } from "./spaceUi";
+import { fmtPct, itemLabel, nameOf, TONE_FILL, TONE_STROKE } from "./spaceUi";
 
 // Drawing space: a 400 x 400 box around the centre. The hole holds the text.
 const HOLE = 88, MID = 140, EDGE = 198, GAP_RING = 2;
@@ -76,7 +76,7 @@ export function SpaceRings({ level, trail, by, sel, selecting, focus,
                 strokeWidth={on ? 3 : 1.5} strokeLinejoin="round"
                 onClick={() => { if (!locked) onPress(it, parent ? [parent, it] : [it]); }}
                 className={`${TONE_FILL[toneOf(it, by)]}
-                  ${on ? "stroke-body" : "stroke-panel"}
+                  ${on ? "stroke-body" : TONE_STROKE[toneOf(it, by)]}
                   transition-colors hover:brightness-110
                   ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}>
                 <title>{itemLabel(it, ticked(it))}</title>
@@ -92,7 +92,7 @@ export function SpaceRings({ level, trail, by, sel, selecting, focus,
       {/* the hole: 88 of the 200 radius units, so 28 % in from each side */}
       <div className="pointer-events-none absolute grid place-items-center
         text-center" style={{ inset: "28%" }}>
-        <div className="min-w-0 max-w-full">
+        <div className="w-full min-w-0">
           {shown && (
             <div className="truncate type-meta text-muted">{nameOf(shown)}</div>
           )}

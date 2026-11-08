@@ -28,6 +28,8 @@ export interface MapItem {
   verdictMails: number;
   ratedMails: number;
   unread: number;           // for the "opened" share (the engagement backbone)
+  /** Any sender inside has been written to. */
+  replied: boolean;
   senders: number;          // sender groups inside
   /** Sender keys a tick selects: everything inside except protected. */
   keys: string[];
@@ -60,6 +62,7 @@ const senderItem = (g: Group): MapItem => ({
   verdictMails: g.ai ? g.count : 0,
   ratedMails: g.ai ? g.count : 0,
   unread: g.unread ?? 0,
+  replied: !!g.replied,
   senders: 1,
   keys: g.protected ? [] : [g.key],
   protectedSenders: g.protected ? 1 : 0,
@@ -82,7 +85,7 @@ function parent(id: string, kind: "domain" | "other", label: string,
     id, kind, label, size, count, last,
     engagement: count ? eng / count : 0,
     verdict, verdictMails: verdict ? votes[verdict] ?? 0 : 0,
-    ratedMails: rated, unread,
+    ratedMails: rated, unread, replied: kids.some((k) => k.replied),
     senders: kids.reduce((a, k) => a + k.senders, 0),
     keys: kids.flatMap((k) => k.keys),
     protectedSenders: kids.reduce((a, k) => a + k.protectedSenders, 0),
@@ -185,15 +188,27 @@ const HEAT_TONE: Tone[] = ["quiet", "mid", "strong"];
 export const toneOf = (it: MapItem, by: ColorBy, now = nowMs()): Tone =>
   by === "ai" ? (it.verdict ?? "none") : HEAT_TONE[heatOf(it, by, now)];
 
+/** The senders inside an item (the item itself for a sender). */
+export const leafSenders = (it: MapItem): MapItem[] =>
+  it.kind === "sender" ? [it] : it.children.flatMap(leafSenders);
+
 /** Size per tone of `items` (every tone of the mode, zero ones included)
- *  and the total. The headline sentence and the stacked bar read this. */
+ *  and the total. The headline sentence and the stacked bar read this.
+ *  Engagement and age follow the tile colours; the AI sums add up each
+ *  SENDER's own verdict (a domain tile shows its dominant one, but the MB
+ *  of a mixed domain must not all land under it), unrated senders under
+ *  "none". */
 export function toneSums(items: MapItem[], by: ColorBy, now = nowMs()):
     { total: number; sums: { tone: Tone; size: number }[] } {
   const sums = TONES[by].map((tone) => ({ tone, size: 0 }));
   let total = 0;
   for (const it of items) {
     total += it.size;
-    sums[TONES[by].indexOf(toneOf(it, by, now))].size += it.size;
+    if (by === "ai") {
+      for (const s of leafSenders(it)) {
+        sums[TONES.ai.indexOf(s.verdict ?? "none")].size += s.size;
+      }
+    } else sums[TONES[by].indexOf(toneOf(it, by, now))].size += it.size;
   }
   return { total, sums };
 }

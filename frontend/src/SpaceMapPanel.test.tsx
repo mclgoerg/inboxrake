@@ -107,13 +107,13 @@ test("colour modes: AI verdict only when something is rated; legend follows",
   () => {
     const { unmount } = show();
     expect(screen.queryByRole("tab", { name: "AI verdict" })).toBeNull();
-    expect(screen.getByText("Rarely opened")).toBeTruthy();
+    expect(screen.getByText("Low engagement")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Age of last mail" }));
     expect(screen.getByText("Last mail over 2 years ago")).toBeTruthy();
     unmount();
     show(groups(g("a@big.example", MB, { ai: { verdict: "keep", reason: "" } })));
     fireEvent.click(screen.getByRole("tab", { name: "AI verdict" }));
-    expect(screen.getByText("Not rated")).toBeTruthy();
+    expect(screen.getByText("Not rated yet")).toBeTruthy();
     expect(screen.getByText("Delete-safe")).toBeTruthy();
   });
 
@@ -187,6 +187,7 @@ test("the accessible list names the biggest of the level", () => {
   expect(rows[0].textContent).toContain("big.example");
   expect(rows[0].textContent).toContain("900.0 MB");
   expect(rows[0].textContent).toContain("75 %");
+  expect(rows[0].textContent).toContain("320 mails");
 });
 
 test("empty mailbox: a hint instead of a map", () => {
@@ -222,11 +223,11 @@ test("headline: a sentence with the share and MB per colour", () => {
     g("c@busy.example", 300 * MB, { engagement: 90 })));
   const head = within(screen.getByRole("region", { name: "Space by colour" }));
   expect(head.getByText("60 %")).toBeTruthy();
-  expect(head.getByText("of your space is mail you rarely open")).toBeTruthy();
+  expect(head.getByText("of your space is mail you barely engage with")).toBeTruthy();
   const legend = screen.getByRole("list", { name: "Color legend" });
-  expect(within(legend).getByText("Rarely opened").parentElement!.textContent)
+  expect(within(legend).getByText("Low engagement").parentElement!.textContent)
     .toContain("600.0 MB");
-  expect(within(legend).getByText("Often read").parentElement!.textContent)
+  expect(within(legend).getByText("High engagement").parentElement!.textContent)
     .toContain("300.0 MB");
   fireEvent.click(screen.getByRole("tab", { name: "Age of last mail" }));
   expect(screen.getByText(/of your space is mail with no new message in over 2 years/))
@@ -237,7 +238,7 @@ test("the headline follows the level: drilled in, it is about that domain",
   () => {
     show();
     zoomTile(/^big\.example/);
-    expect(screen.getByText(/of the space in big\.example is mail you rarely/))
+    expect(screen.getByText(/of the space in big\.example is mail you barely engage with/))
       .toBeTruthy();
   });
 
@@ -269,8 +270,11 @@ test("a tap shows details: size, share, opened, last mail, AI, actions", () => {
   expect(within(d).getByText("30 of 40 mails")).toBeTruthy();
   expect(within(d).getByRole("button", { name: "Show in Senders" })).toBeTruthy();
   expect(within(d).getByRole("button", { name: "Zoom in" })).toBeTruthy();
-  // Opened = the read share of all its mails: 13 of 40
-  expect(within(d).getByText("33 %")).toBeTruthy();
+  // Engagement (the score behind the colour) in words + what it is built
+  // from: the read share of all its mails, 13 of 40, and no replies
+  expect(within(d).getByText("Engagement")).toBeTruthy();
+  expect(within(d).getByText("Medium")).toBeTruthy();
+  expect(within(d).getByText("33% read · never replied")).toBeTruthy();
 });
 
 test("Show in Senders hands over a filter: @domain, or from:<sender>", () => {
@@ -401,7 +405,7 @@ test("rings: inner ring domains, outer ring their senders, centre = total",
     expect(seg("s:b@big.example")).toBeTruthy();
     expect(screen.getAllByText("1.2 GB").length).toBeGreaterThan(0);
     expect(screen.getByText("375 mails")).toBeTruthy();
-    expect(screen.getByText("17 % rarely opened")).toBeTruthy();
+    expect(screen.getByText("17 % low engagement")).toBeTruthy();
     // the picture is described; the list next to it is the keyboard route
     expect(rings().getAttribute("aria-label")).toMatch(/list next to it/);
   });
@@ -413,7 +417,7 @@ test("rings: tap = details in the centre + card, Zoom in makes the domain "
   fireEvent.click(seg("d:big.example"));
   expect(within(details()).getByText("3 senders · 320 mails"))
     .toBeTruthy();
-  expect(screen.getByText("75 % · 320 mails")).toBeTruthy();
+  expect(screen.getAllByText("75 % · 320 mails").length).toBe(2);   // centre + list row
   fireEvent.click(screen.getAllByRole("button", { name: /^Zoom in/ })[0]);
   expect(screen.getByRole("navigation", { name: "Space map path" }).textContent)
     .toContain("big.example");
@@ -450,4 +454,100 @@ test("rings: every row of the list is reachable by keyboard", () => {
   const rows = within(list()).getAllByRole("button");
   expect(rows.length).toBe(3);
   for (const r of rows) expect(r.tabIndex).toBeGreaterThanOrEqual(0);
+});
+
+test("AI sums add up each sender's own verdict, unrated is its own bucket",
+  () => {
+    const ai = (verdict: "delete_safe" | "keep") => ({ verdict, reason: "" });
+    // one domain: 600 MB safe-to-delete sender, 300 MB keep, 100 MB unrated;
+    // by mails "keep" dominates the domain tile - the MB must not all go there
+    show(groups(
+      g("a@mix.example", 600 * MB, { count: 10, ai: ai("delete_safe") }),
+      g("b@mix.example", 300 * MB, { count: 50, ai: ai("keep") }),
+      g("c@mix.example", 100 * MB, { count: 5 })));
+    fireEvent.click(screen.getByRole("tab", { name: "AI verdict" }));
+    const head = within(screen.getByRole("region", { name: "Space by colour" }));
+    expect(head.getByText("60 %")).toBeTruthy();
+    const legend = within(head.getByRole("list", { name: "Color legend" }));
+    expect(legend.getByText("Delete-safe").parentElement!.textContent)
+      .toContain("600.0 MB");
+    expect(legend.getByText("Keep").parentElement!.textContent)
+      .toContain("300.0 MB");
+    expect(legend.getByText("Not rated yet").parentElement!.textContent)
+      .toContain("100.0 MB");
+  });
+
+test("Esc closes the card first (focus anywhere), the page only afterwards",
+  () => {
+    const close = vi.fn();
+    render(<SpaceMapPanel groups={BASE} onDone={onDone} onShow={onShow}
+      onClose={close} />);
+    fireEvent.click(tile(/^mid\.example/));
+    (screen.getByRole("radio", { name: "Rings" }) as HTMLElement).focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: /^Details of / })).toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+test("closing the card puts focus back on the tile; zooming on the list",
+  () => {
+    show();
+    fireEvent.click(tile(/^mid\.example/));
+    fireEvent.click(within(details()).getByRole("button", { name: "Close" }));
+    expect(document.activeElement).toBe(tile(/^mid\.example/));
+    fireEvent.click(tile(/^big\.example/));
+    fireEvent.click(within(details()).getByRole("button", { name: "Zoom in" }));
+    expect(document.activeElement!.hasAttribute("data-row")).toBe(true);
+  });
+
+test("switching Select off clears the selection and the capsule", () => {
+  show();
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  fireEvent.click(tile(/^mid\.example/));
+  expect(review()).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  expect(screen.queryByRole("button", { name: "Review in Senders" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  expect(screen.queryByRole("button", { name: "Review in Senders" })).toBeNull();
+});
+
+test("while selecting, a row of a one-sender domain ticks it", () => {
+  show();
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  fireEvent.click(within(list()).getByRole("button", { name: /small\.example/ }));
+  expect(screen.getByText("1 sender - 100.0 MB selected")).toBeTruthy();
+  // still on the top level: nothing was zoomed into
+  expect(screen.getByRole("navigation", { name: "Space map path" }).textContent)
+    .toBe("All mail");
+});
+
+test("the docked card pads the page and scrolls the tapped tile above it",
+  () => {
+    show();
+    const scroller = document.querySelector<HTMLElement>('[data-scroll-id="panel"]')!;
+    const scrollBy = vi.fn();
+    scroller.scrollBy = scrollBy as never;
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 800, left: 0,
+      right: 400, width: 400, height: 800 } as DOMRect);
+    // the card is 300 px tall; the tile sits at 600-700, under the card
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight",
+      { configurable: true, get() { return 300; } });
+    const t = tile(/^mid\.example/);
+    t.getBoundingClientRect = () => ({ top: 600, bottom: 700, left: 0,
+      right: 100, width: 100, height: 100 } as DOMRect);
+    fireEvent.click(t);
+    expect(scroller.querySelector<HTMLElement>('[aria-hidden="true"][style*="height: 300px"]'))
+      .toBeTruthy();
+    // free area 8..492: the tile's bottom (700) moves up to 492
+    expect(scrollBy).toHaveBeenCalledWith({ top: 208 });
+    delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+  });
+
+test("on a page there is no docked card: no padding, no scrolling", () => {
+  showPage();
+  const scroller = document.querySelector<HTMLElement>('[data-scroll-id="panel"]')!;
+  fireEvent.click(tile(/^mid\.example/));
+  expect(scroller.querySelector('[style*="height: 300px"]')).toBeNull();
 });

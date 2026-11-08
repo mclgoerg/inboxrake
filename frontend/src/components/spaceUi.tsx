@@ -6,25 +6,35 @@ import { fmtBig, pct, toneSums, type ColorBy, type MapItem, type Tone }
 
 /* Shared pieces of the Space map views (tiles, rings, details, lists). */
 
-/** Colour of a tone as a filled tile (background + readable text). */
+/** Colour of a tone as a filled tile (background + readable text). The
+ *  quiet / unrated ones get a hairline: their fill alone is too close to the
+ *  page colour in the light theme (>= 1.5:1 with the line). Every entry has
+ *  a border so the sizes stay equal. */
 export const TONE_BG: Record<Tone, string> = {
-  strong: "bg-accent text-on-accent",
-  mid: "bg-accent/45 text-body",
-  quiet: "bg-chip text-body",
-  delete_safe: "bg-safe-bg text-safe-fg",
-  review: "bg-review-bg text-review-fg",
-  keep: "bg-keep-bg text-keep-fg",
-  none: "bg-chip text-muted",
+  strong: "border border-transparent bg-accent text-on-accent",
+  mid: "border border-transparent bg-accent/45 text-body",
+  quiet: "border border-faint bg-chiph text-body",
+  delete_safe: "border border-transparent bg-safe-bg text-safe-fg",
+  review: "border border-transparent bg-review-bg text-review-fg",
+  keep: "border border-transparent bg-keep-bg text-keep-fg",
+  none: "border border-faint bg-chiph text-muted",
 };
-/** The same colours as an SVG fill (ring segments). */
+/** The same colours as an SVG fill (ring segments) ... */
 export const TONE_FILL: Record<Tone, string> = {
   strong: "fill-accent",
   mid: "fill-accent/45",
-  quiet: "fill-chip",
+  quiet: "fill-chiph",
   delete_safe: "fill-safe-bg",
   review: "fill-review-bg",
   keep: "fill-keep-bg",
-  none: "fill-chip",
+  none: "fill-chiph",
+};
+/** ... and the outline between segments (the page colour; a hairline for the
+ *  quiet ones, see TONE_BG). */
+export const TONE_STROKE: Record<Tone, string> = {
+  strong: "stroke-panel", mid: "stroke-panel", quiet: "stroke-faint",
+  delete_safe: "stroke-panel", review: "stroke-panel", keep: "stroke-panel",
+  none: "stroke-faint",
 };
 /** And as the bar of a list row / the stacked bar (needs to show on a chip). */
 export const TONE_BAR: Record<Tone, string> = {
@@ -108,8 +118,8 @@ export function SpaceHeadline({ items, by, where }: {
         aria-label={t("space.legend")}>
         {sums.map((s) => (
           <li key={s.tone} className="inline-flex items-center gap-1.5">
-            <span className={`size-3 rounded-badge border border-line
-              ${TONE_BG[s.tone]}`} aria-hidden />
+            <span className={`size-3 rounded-badge ${TONE_BG[s.tone]}`}
+              aria-hidden />
             {toneText(s.tone, by)}
             <span className="font-semibold tabular-nums text-body">
               {fmtBig(s.size)}</span>

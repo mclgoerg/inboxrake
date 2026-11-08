@@ -43,7 +43,11 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
   const page = useIsPage();
   const coarse = useMediaQuery("(pointer: coarse)");
   const lastTap = useRef({ id: "", at: 0 });
-  const mapTop = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const cardEl = useRef<HTMLElement>(null);
+  const [cardH, setCardH] = useState(0);
+  // Where keyboard focus goes after the next render (an item id, or "first").
+  const refocus = useRef<string | null>(null);
 
   const domains = useMemo(() => buildDomains(groups), [groups]);
   const hasAi = useMemo(
@@ -120,14 +124,24 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
     lastTap.current = { id: it.id, at: now };
     setFocusId(it.id);
   };
-  // A row opens what is behind it (also while selecting: its checkbox ticks);
-  // a sender has nothing behind it, so selecting ticks it, else its card.
+  // A row opens what is behind it (also while selecting: its checkbox ticks).
+  // A sender - or a domain with one sender, which has no level of its own -
+  // has nothing behind it: selecting ticks it, else its card opens.
   const openRow = (it: MapItem) => {
-    if (it.kind !== "sender") zoom(it);
-    else if (selecting) tick(it);
+    if (selecting && (it.kind === "sender" || soleSender(it))) tick(it);
+    else if (it.kind !== "sender") { refocus.current = "first"; zoom(it); }
     else setFocusId(it.id);
   };
-  const toggleSelecting = () => { setSelecting(!selecting); setFocusId(null); };
+  // Leaving Select mode drops the selection and its capsule.
+  const toggleSelecting = () => {
+    if (selecting) setSel(new Set());
+    setSelecting(!selecting);
+    setFocusId(null);
+  };
+  const closeCard = (back = true) => {
+    if (back && focusId) refocus.current = focusId;
+    setFocusId(null);
+  };
   const setViewKeep = (v: View) => {
     setView(v);
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ }
@@ -158,20 +172,69 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
   const { total: levelTotal, sums } = toneSums(level, mode);
   const caption = t(`space.ring_${mode}`, { p: pct(sums[0].size, levelTotal) });
   const docked = !!focus && !selecting && !page;
-  // The docked phone card covers the lower half: bring the map to the top
-  // of the screen so the tapped tile stays in view above it.
+  // The docked card must never hide what was tapped: the page keeps a
+  // spacer of the card's height and the tapped item is scrolled above the card.
+  useEffect(() => {
+    const el = cardEl.current;
+    if (!docked || !el) { setCardH(0); return; }
+    const sync = () => setCardH(el.offsetHeight);
+    sync();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [docked, focus?.id]);
   const focusShown = docked ? focus?.id : null;
   useEffect(() => {
-    if (focusShown) mapTop.current?.scrollIntoView?.({ block: "start" });
-  }, [focusShown]);
+    const box = scroller.current;
+    if (!focusShown || !box || !cardH) return;
+    const at = [...box.querySelectorAll<HTMLElement | SVGElement>(
+      "[data-item], [data-seg]")]
+      .find((e) => (e.dataset.item ?? e.dataset.seg) === focusShown);
+    if (!at) return;
+    const r = at.getBoundingClientRect(), v = box.getBoundingClientRect();
+    const top = v.top + 8, bottom = v.bottom - cardH - 8;
+    // taller than the free space: its top edge wins
+    if (r.height > bottom - top || r.top < top) box.scrollBy({ top: r.top - top });
+    else if (r.bottom > bottom) box.scrollBy({ top: r.bottom - bottom });
+  }, [focusShown, cardH]);
+  // Esc closes the card first, wherever focus is, and only then the page.
+  const cardOpen = !!focus && !selecting;
+  useEffect(() => {
+    if (!cardOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeCard();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+  // Focus back to the tile (or its list row) after the card closes; after a
+  // zoom to the first row of the new level.
+  useEffect(() => {
+    const want = refocus.current;
+    if (!want) return;
+    refocus.current = null;
+    const box = scroller.current;
+    if (!box) return;
+    const all = [...box.querySelectorAll<HTMLElement>("[data-item], [data-row]")];
+    const hit = want === "first"
+      ? box.querySelector<HTMLElement>("[data-row]")
+      : all.find((e) => e.dataset.item === want)
+        ?? all.find((e) => e.dataset.row === want);
+    hit?.focus();
+  });
   const card = focus && !selecting && (
     <SpaceDetails item={focus} hasAi={hasAi} totalSize={totals.size}
       docked={!page}
       canShow={showQuery(focus) !== null}
       onShow={() => { const q = showQuery(focus); if (q) onShow(q); }}
       onSelect={() => selectItem(focus)}
-      onZoom={focus.kind === "sender" ? undefined : () => zoom(focus)}
-      onClose={() => setFocusId(null)} />
+      onZoom={focus.kind === "sender" ? undefined
+        : () => { refocus.current = "first"; zoom(focus); }}
+      onClose={() => closeCard()} cardRef={cardEl} />
   );
   const list = (
     <SpaceList level={level} by={mode} sel={sel} selecting={selecting}
@@ -203,7 +266,7 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
         <div className="p-4"><EmptyState>{t("space.empty")}</EmptyState></div>
       ) : (
         <>
-          <div data-scroll-id="panel"
+          <div data-scroll-id="panel" ref={scroller}
             className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5
               ${picked.length ? "pb-28" : ""}`}>
             {!(page && view === "rings") && headline}
@@ -221,7 +284,7 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
             {/* main column + a fixed-width side column (details, list) */}
             <div className={page ? "grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-4"
               : "space-y-3"}>
-              <div ref={mapTop} className="min-w-0 scroll-mt-2 space-y-3">
+              <div className="min-w-0 space-y-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <nav aria-label={t("space.crumbs")}
                     className="flex flex-wrap items-center gap-x-1 type-meta">
@@ -258,6 +321,8 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
                 {list}
               </div>
             </div>
+            {/* room for the pinned card, so nothing ends up under it */}
+            {docked && <div aria-hidden style={{ height: cardH }} />}
             {!page && card}
           </div>
           {picked.length > 0 && (

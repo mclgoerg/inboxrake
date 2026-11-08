@@ -65,7 +65,9 @@ export function SpaceTiles({ level, by, wide, sel, selecting, focusId, domainLev
             onClick={() => { if (!locked) onPress(it); }}
             style={{ left: r.x + gap / 2, top: r.y + gap / 2, width: w,
               height: h }}
-            className={`absolute box-border overflow-hidden rounded-control
+            data-item={it.id}
+            className={`absolute box-border flex flex-col items-stretch
+              justify-start overflow-hidden rounded-control
               p-2 text-left transition-colors hover:brightness-110
               enabled:active:translate-y-px focus-visible:z-(--z-sticky)
               focus-visible:-outline-offset-2
