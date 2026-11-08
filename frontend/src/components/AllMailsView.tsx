@@ -7,7 +7,7 @@ import { actionVerb, itemsOf, planMailAction } from "../mailActions";
 import type { AppState, Mail } from "../types";
 import { MailRows, MessageView } from "./MailList";
 import { SortControl } from "./SortControl";
-import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal, Select,
+import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal, PopupSelect,
   useToast }
   from "./ui";
 
@@ -245,17 +245,12 @@ export function AllMailsView({ state, onChanged, toolbarSlot }: {
           swap={moveDest === "?" ? "move" : null}
           actions={moveDest === "?" ? (
             <>
-              <Select value="" data-bar-field=""
+              <PopupSelect<string> up triggerProps={{ "data-bar-field": "" }}
                 className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"
-                onChange={(e) => {
-                  if (e.target.value) act("move", e.target.value);
-                  setMoveDest("");
-                }}>
-                <option value="" disabled>{t("Move to folder…")}</option>
-                {(state.folders_raw ?? []).map((f, i) => (
-                  <option key={f} value={f}>{state.folders[i] ?? f}</option>
-                ))}
-              </Select>
+                placeholder={t("Move to folder…")}
+                onChange={(f) => { act("move", f); setMoveDest(""); }}
+                options={(state.folders_raw ?? []).map((f, i) => ({
+                  value: f, label: state.folders[i] ?? f }))} />
               <Button variant="secondary" size="icon" label={t("Cancel")}
                 data-bar-cancel="" className="shrink-0 rounded-full"
                 onClick={() => setMoveDest("")}>

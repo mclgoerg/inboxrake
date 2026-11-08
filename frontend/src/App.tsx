@@ -38,7 +38,7 @@ import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuDivider, MenuGroup, MenuHeading, MenuItem, Notice, ProgressBar,
-  promptDialog, Segmented, Select, Spinner, useAppearance, useMediaQuery, useToast,
+  promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
   PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
 import { nowMs } from "./clock";
@@ -1554,6 +1554,10 @@ export default function App() {
       // panel flags don't know about.
       if (anyModal || isModalOpen()
           || ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)
+          // A pop-up button is a select: its keys are its own - and so are
+          // all keys while any menu is open (its items / type-ahead).
+          || el.closest?.("[data-popup-select]")
+          || document.querySelector('[role="menu"]')
           // Menus and tablists own their navigation keys while focused
           // (but not j/k etc., e.g. after a mouse click left focus on a tab).
           || (el.closest?.('[role="menu"], [role="tablist"]')
@@ -2410,20 +2414,15 @@ export default function App() {
           )}
           actions={moveDest === "?" ? (
             <>
-              <Select value="" data-bar-field=""
+              <PopupSelect<string> up triggerProps={{ "data-bar-field": "" }}
                 className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"
-                onChange={(e) => {
-                  if (e.target.value) act([...selected], "move",
-                    e.target.value, ...retentionParams());
+                placeholder={t("Move to folder…")}
+                onChange={(f) => {
+                  act([...selected], "move", f, ...retentionParams());
                   setMoveDest("");
-                }}>
-                <option value="" disabled>{t("Move to folder…")}</option>
-                {(state?.folders_raw ?? []).map((f, i) => (
-                  <option key={f} value={f}>
-                    {state?.folders[i] ?? f}
-                  </option>
-                ))}
-              </Select>
+                }}
+                options={(state?.folders_raw ?? []).map((f, i) => ({
+                  value: f, label: state?.folders[i] ?? f }))} />
               <Button variant="secondary" size="icon" label={t("Cancel")}
                 data-bar-cancel="" className="shrink-0 rounded-full"
                 onClick={() => setMoveDest("")}>
@@ -2437,18 +2436,18 @@ export default function App() {
                 md:w-auto md:gap-2">
                 <span className="shrink-0 type-meta text-muted">
                   {t("bar.limit_to")}</span>
-                <Select value={retention} title={t("retention.help")}
-                  data-bar-field=""
+                <PopupSelect<typeof retention> up value={retention}
+                  name={t("bar.limit_to")}
+                  triggerProps={{ "data-bar-field": "",
+                    title: t("retention.help") }}
                   className="min-w-0 flex-1 md:w-44 md:flex-none xl:w-56"
-                  onChange={(e) =>
-                    setRetention(e.target.value as typeof retention)}>
-                  <option value="none">{t("retention.none")}</option>
-                  <option value="keep_latest">
-                    {t("retention.keep_latest")}</option>
-                  <option value="older_than_days">
-                    {t("retention.older_than_days")}
-                  </option>
-                </Select>
+                  onChange={setRetention}
+                  options={[
+                    { value: "none", label: t("retention.none") },
+                    { value: "keep_latest", label: t("retention.keep_latest") },
+                    { value: "older_than_days",
+                      label: t("retention.older_than_days") },
+                  ]} />
               </div>
               {retention !== "none" && (
                 <Input type="number" min={1} className="w-16 shrink-0"

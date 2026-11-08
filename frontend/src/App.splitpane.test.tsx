@@ -188,7 +188,7 @@ test("keys typed in a pane control are not list shortcuts", async () => {
   mount();
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  const sort = within(pane() as HTMLElement).getByDisplayValue("Sort: date");
+  const sort = within(pane() as HTMLElement).getByRole("button", { name: "Sort: date" });
   key("j", sort);
   key("Escape", sort);
   await new Promise((r) => setTimeout(r, 300));

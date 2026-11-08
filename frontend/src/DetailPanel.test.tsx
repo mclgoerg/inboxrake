@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDemo } from "./demoMode";
 import { setLang } from "./i18n";
+import { popupItem, popupPick } from "./toolTestUtils";
 import type { Group, Mail } from "./types";
 
 const group_ = vi.fn();
@@ -127,7 +128,7 @@ describe("DetailPanel", () => {
       renderPanel([mkMail(1), mkMail(2)],
         { group: mkGroup({ unsub: true }) });
       await waitFor(() => screen.getByText("Mail 1"));
-      expect(screen.queryByDisplayValue("Sort: date")).toBeNull();
+      expect(screen.queryByText("Sort: date")).toBeNull();   // icon only
       expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Sort: date" }));
       fireEvent.click(screen.getByRole("menuitemradio",
@@ -138,10 +139,13 @@ describe("DetailPanel", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it("on a wide screen Sort is a select and Unsubscribe a button", async () => {
+  it("on a wide screen Sort is a pop-up button and Unsubscribe a button", async () => {
     renderPanel([mkMail(1), mkMail(2)], { group: mkGroup({ unsub: true }) });
     await waitFor(() => screen.getByText("Mail 1"));
-    expect(screen.getByDisplayValue("Sort: date")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sort: date" })).toBeTruthy();
+    popupPick("Sort: date", "Sort: size");
+    expect(screen.getByRole("button", { name: "Sort: size" })).toBeTruthy();
+    popupPick("Sort: size", "Sort: date");
     expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeTruthy();
   });
 
@@ -503,23 +507,22 @@ describe("DetailPanel", () => {
     renderPanel([mkMail(1), mkMail(2)]);
     await waitFor(() => screen.getByText("Mail 1"));
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
-    const actionSelect = await screen.findByDisplayValue("Action…");
-    fireEvent.change(actionSelect, { target: { value: "move" } });
-    expect(await screen.findByDisplayValue("Move to folder…")).toBeTruthy();
+    popupPick(await screen.findByRole("button", { name: "Action…" }),
+      "Move to folder…");
+    expect(await screen.findByRole("button", { name: "Move to folder…" })).toBeTruthy();
 
     // Cancel goes back to the plain Action… control without acting.
     fireEvent.click(screen.getByTitle("Cancel"));
-    expect(await screen.findByDisplayValue("Action…")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Action…" })).toBeTruthy();
     expect(deleteMessages).not.toHaveBeenCalled();
 
     // Clearing the selection also resets it - re-selecting starts fresh
     // instead of reopening mid-move (the overview had this exact bug).
-    fireEvent.change(screen.getByDisplayValue("Action…"),
-      { target: { value: "move" } });
-    await screen.findByDisplayValue("Move to folder…");
+    popupPick(screen.getByRole("button", { name: "Action…" }), "Move to folder…");
+    await screen.findByRole("button", { name: "Move to folder…" });
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
-    expect(await screen.findByDisplayValue("Action…")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Action…" })).toBeTruthy();
   });
 
   it("AI rate mails is an Action… option (not the overflow menu) once "
@@ -536,8 +539,7 @@ describe("DetailPanel", () => {
     expect(screen.queryByRole("button", { name: /AI rate mails/ })).toBeNull();
     fireEvent.click(screen.getByLabelText("More"));   // close the menu back
 
-    fireEvent.change(await screen.findByDisplayValue("Action…"),
-      { target: { value: "ai_review" } });
+    popupPick(await screen.findByRole("button", { name: "Action…" }), /AI rate mails/);
     await waitFor(() => expect(aiGroup).toHaveBeenCalledWith(
       "sender", "s@x.example", 0, 50, [["INBOX", 1]]));
   });
@@ -616,8 +618,7 @@ describe("DetailPanel", () => {
     it("select-all never selects pinned mails", async () => {
       renderPanel([mkMail(1, { pinned: true }), mkMail(2), mkMail(3)]);
       await waitFor(() => screen.getByText("Mail 1"));
-      fireEvent.change(screen.getByDisplayValue("Select…"),
-        { target: { value: "all" } });
+      popupPick(screen.getByRole("button", { name: "Select…" }), "All / none");
       expect(await screen.findByText("2 selected")).toBeTruthy();
       expect((checkbox(0) as HTMLInputElement).checked).toBe(false);
       expect((checkbox(1) as HTMLInputElement).checked).toBe(true);
@@ -629,8 +630,7 @@ describe("DetailPanel", () => {
       renderPanel([mkMail(1, { ts: old, pinned: true }),
         mkMail(2, { ts: old }), mkMail(3, { ts: Date.now() / 1000 })]);
       await waitFor(() => screen.getByText("Mail 1"));
-      fireEvent.change(screen.getByDisplayValue("Select…"),
-        { target: { value: "older24" } });
+      popupPick(screen.getByRole("button", { name: "Select…" }), "Older than 2 years");
       expect(await screen.findByText("1 selected")).toBeTruthy();
       expect((checkbox(1) as HTMLInputElement).checked).toBe(true);
       expect((checkbox(0) as HTMLInputElement).checked).toBe(false);
@@ -710,8 +710,7 @@ describe("DetailPanel", () => {
       renderPanel([mkMail(1, { pinned: true, seen: false }), mkMail(2)]);
       await waitFor(() => screen.getByText("Mail 1"));
       fireEvent.click(checkbox(0));
-      fireEvent.change(await screen.findByDisplayValue("Action…"),
-        { target: { value: "mark_read" } });
+      popupPick(await screen.findByRole("button", { name: "Action…" }), "Mark read");
       expect((await findDialog()).textContent).not.toMatch(/protected/);
       await pressDialog("Mark as read (1)");
       await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
@@ -891,9 +890,9 @@ describe("DetailPanel header and action row", () => {
       async () => {
       const onMove = vi.fn().mockResolvedValue(false);
       await pick(onMove);
-      expect(screen.getByDisplayValue("Move to folder…")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Move to folder…" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(screen.queryByDisplayValue("Move to folder…")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
       expect(onMove).not.toHaveBeenCalled();
       expect(deleteMessages).not.toHaveBeenCalled();
     });
@@ -903,8 +902,7 @@ describe("DetailPanel header and action row", () => {
       const onMove = vi.fn().mockResolvedValue(true);
       const onClose = vi.fn();
       await pick(onMove, { onClose });
-      fireEvent.change(screen.getByDisplayValue("Move to folder…"),
-        { target: { value: "Archive" } });
+      popupPick(screen.getByRole("button", { name: "Move to folder…" }), "Archive");
       await waitFor(() => expect(onMove).toHaveBeenCalledWith(
         expect.objectContaining({ key: "s@x.example" }), "Archive"));
       await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -915,8 +913,7 @@ describe("DetailPanel header and action row", () => {
       const onMove = vi.fn().mockResolvedValue(false);
       const onClose = vi.fn();
       await pick(onMove, { onClose });
-      fireEvent.change(screen.getByDisplayValue("Move to folder…"),
-        { target: { value: "Archive" } });
+      popupPick(screen.getByRole("button", { name: "Move to folder…" }), "Archive");
       await waitFor(() => expect(onMove).toHaveBeenCalled());
       expect(onClose).not.toHaveBeenCalled();
     });
@@ -941,12 +938,12 @@ describe("DetailPanel header and action row", () => {
     it("an open picker resets when a mail gets ticked (no pop-back after "
       + "clearing)", async () => {
       await pick(vi.fn().mockResolvedValue(false));
-      expect(screen.getByDisplayValue("Move to folder…")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Move to folder…" })).toBeTruthy();
       fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
       await screen.findByText("1 selected");
       fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
       await screen.findByRole("button", { name: "Move" });
-      expect(screen.queryByDisplayValue("Move to folder…")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Move to folder…" })).toBeNull();
     });
 
     it("is not offered on a pooled row's Senders view, and neither is an "
@@ -1019,8 +1016,8 @@ describe("DetailPanel in demo mode", () => {
     fireEvent.click(screen.getByLabelText("More"));
 
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
-    const opt = await screen.findByRole("option",
-      { name: /AI rate mails/ }) as HTMLOptionElement;
+    const opt = popupItem(await screen.findByRole("button",
+      { name: "Action…" }), /AI rate mails/);
     expect(opt.disabled).toBe(true);
     expect(opt.textContent).toContain(HINT);
     expect(screen.getAllByText(HINT).length).toBeGreaterThan(0);

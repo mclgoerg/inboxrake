@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GroupTable, localizedSub } from "./components/GroupTable";
 import { EngagementMeter, PinBadge, TrackerBadge } from "./components/ui";
 import { setLang } from "./i18n";
+import { popupPick } from "./toolTestUtils";
 import type { Group } from "./types";
 
 const mk = (i: number): Group => ({
@@ -90,9 +91,8 @@ describe("GroupTable pagination", () => {
   });
 
   it("changes and persists the page size", () => {
-    const { container, getByText, getByDisplayValue } = renderTable();
-    fireEvent.change(getByDisplayValue("50 per page"),
-      { target: { value: "25" } });
+    const { container, getByText } = renderTable();
+    popupPick("50 per page", "25 per page");
     expect(rows(container)).toBe(25);
     getByText("Page 1 / 5");
     expect(localStorage.getItem("pmc_page_size")).toBe("25");

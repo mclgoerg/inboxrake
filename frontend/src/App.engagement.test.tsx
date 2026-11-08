@@ -44,6 +44,7 @@ const groupApi = api.group as ReturnType<typeof vi.fn>;
 import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import type { AppState, Config, Group } from "./types";
+import { popupPick } from "./toolTestUtils";
 
 const acctCfg = {
   excluded_folders: [] as string[],
@@ -123,12 +124,11 @@ test("sorting by engagement orders groups high to low, and the arrow " +
   await waitFor(() => expect(rowLabels(container).length).toBe(3),
     { timeout: 5000 });
 
-  fireEvent.change(screen.getByDisplayValue("Sort: mails"),
-    { target: { value: "engagement" } });
+  popupPick(/^Sort: Mails/, "Engagement");
   await waitFor(() => expect(rowLabels(container))
     .toEqual(["Bravo", "Charlie", "Alpha"]));
 
-  fireEvent.click(screen.getByLabelText(/Sorted descending/));
+  popupPick(/^Sort: Engagement/, "Ascending");
   await waitFor(() => expect(rowLabels(container))
     .toEqual(["Alpha", "Charlie", "Bravo"]));
 });
@@ -139,8 +139,7 @@ test("the engagement sort is persisted like the other sort keys", async () => {
   const first = render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await waitFor(() => expect(rowLabels(first.container).length).toBe(2),
     { timeout: 5000 });
-  fireEvent.change(screen.getByDisplayValue("Sort: mails"),
-    { target: { value: "engagement" } });
+  popupPick(/^Sort: Mails/, "Engagement");
   await waitFor(() =>
     expect(localStorage.getItem("pmc_sort_k")).toBe("engagement"));
   first.unmount();
@@ -148,7 +147,7 @@ test("the engagement sort is persisted like the other sort keys", async () => {
   const again = render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await waitFor(() => expect(rowLabels(again.container).length).toBe(2),
     { timeout: 5000 });
-  expect(screen.getByDisplayValue("Sort: engagement")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^Sort: Engagement/ })).toBeTruthy();
   expect(rowLabels(again.container)).toEqual(["Bravo", "Alpha"]);
 });
 

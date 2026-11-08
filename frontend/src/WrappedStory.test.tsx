@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { WrappedStory, CARD_MS, cardsFor } from "./components/WrappedStory";
 import { setLang } from "./i18n";
+import { popupPick } from "./toolTestUtils";
 import type { WrappedResp } from "./types";
 
 const base: WrappedResp = {
@@ -144,8 +145,7 @@ test("switching the year refetches and returns to the first card",
     expect(wrapped).toHaveBeenLastCalledWith(undefined);
     resp = { ...base, year: 2025, partial: false,
       received: { ...base.received, mails: 777 } };
-    fireEvent.change(screen.getByLabelText("Year"),
-      { target: { value: "2025" } });
+    popupPick("Year 2026", "2025");
     await screen.findByText("777");
     expect(wrapped).toHaveBeenLastCalledWith(2025);
     expect(screen.getByText("mails in 2025")).toBeTruthy();
@@ -157,6 +157,14 @@ test("a year without mail shows only the intro", async () => {
   expect(screen.getByText("No mail from 2026 in your mailbox.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Next card" })).toHaveProperty(
     "disabled", true);
+});
+
+test("arrow keys on the year pop-up belong to it, not to the cards", async () => {
+  await open();
+  const year = screen.getByRole("button", { name: /^Year/ });
+  year.focus();
+  fireEvent.keyDown(year, { key: "ArrowRight" });
+  expect(screen.getByText("You received")).toBeTruthy();   // still card 1
 });
 
 test("Save image: names are masked unless 'Show names' is on", async () => {

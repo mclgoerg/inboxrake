@@ -2,6 +2,7 @@
 /* Bulk-action retention selector (keep-latest-N / older-than-N-days). */
 
 import { openLimit } from "./barTestUtil";
+import { popupPick } from "./toolTestUtils";
 import { act, cleanup, fireEvent, render, screen, waitFor } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -143,9 +144,9 @@ test("keep-latest-N is sent through to the delete call", async () => {
   await selectFirstGroup();
 
   openLimit();
-  fireEvent.change(screen.getByTitle("Restrict this action to mails " +
+  popupPick(screen.getByTitle("Restrict this action to mails " +
     "beyond a keep-window instead of every mail in the selected groups."),
-    { target: { value: "keep_latest" } });
+    "Keep newest N, act on the rest");
   const n = await screen.findByPlaceholderText("N");
   fireEvent.change(n, { target: { value: "3" } });
 
@@ -176,9 +177,9 @@ test("the Trash button shows the retention-adjusted number, not the " +
   expect(bulkTrashButton().disabled).toBe(false);
 
   openLimit();
-  fireEvent.change(screen.getByTitle("Restrict this action to mails " +
+  popupPick(screen.getByTitle("Restrict this action to mails " +
     "beyond a keep-window instead of every mail in the selected groups."),
-    { target: { value: "keep_latest" } });
+    "Keep newest N, act on the rest");
   const n = await screen.findByPlaceholderText("N");
   fireEvent.change(n, { target: { value: "5" } });
 
@@ -205,9 +206,9 @@ test("an unrelated SSE status tick does not flap the settled count back " +
   await selectFirstGroup();
 
   openLimit();
-  fireEvent.change(screen.getByTitle("Restrict this action to mails " +
+  popupPick(screen.getByTitle("Restrict this action to mails " +
     "beyond a keep-window instead of every mail in the selected groups."),
-    { target: { value: "keep_latest" } });
+    "Keep newest N, act on the rest");
   const n = await screen.findByPlaceholderText("N");
   fireEvent.change(n, { target: { value: "5" } });
   await waitFor(() => expect(screen.getByText("Trash 7")).toBeTruthy());
@@ -235,9 +236,9 @@ test("older-than-days is sent through to the delete call", async () => {
   await selectFirstGroup();
 
   openLimit();
-  fireEvent.change(screen.getByTitle("Restrict this action to mails " +
+  popupPick(screen.getByTitle("Restrict this action to mails " +
     "beyond a keep-window instead of every mail in the selected groups."),
-    { target: { value: "older_than_days" } });
+    "Only mails older than N days");
   const n = await screen.findByPlaceholderText("N");
   fireEvent.change(n, { target: { value: "30" } });
 
@@ -270,6 +271,15 @@ test("pinned mails are left out of the Trash count; a fully pinned " +
   expect(screen.getByText(/all protected - nothing to move/)).toBeTruthy();
 });
 
+test("the limit pop-up is named after its label", async () => {
+  state = { ...baseState };
+  mountReady();
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  await selectFirstGroup();
+  openLimit();
+  expect(screen.getByRole("button", { name: "Limit to: All mails" })).toBeTruthy();
+});
+
 test("an active limit shows as a labelled token in the capsule and can be " +
   "removed from it", async () => {
   state = { ...baseState };
@@ -279,8 +289,8 @@ test("an active limit shows as a labelled token in the capsule and can be " +
   expect(screen.queryByText("Keep newest 3")).toBeNull();
 
   openLimit();
-  fireEvent.change(screen.getByTitle(/^Restrict this action/),
-    { target: { value: "keep_latest" } });
+  popupPick(screen.getByTitle(/^Restrict this action/),
+    "Keep newest N, act on the rest");
   fireEvent.change(await screen.findByPlaceholderText("N"),
     { target: { value: "3" } });
   fireEvent.click(screen.getByRole("button", { name: "Done" }));

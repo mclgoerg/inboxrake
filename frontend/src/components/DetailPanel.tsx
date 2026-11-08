@@ -19,7 +19,7 @@ import { ThreadView } from "./ThreadView";
 import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
   confirmDialog, DemoHint, EngagementMeter, ensureAiAck, Input, LINK,
   LINK_ACCENT, Loading, Menu, MenuItem, Modal, Notice, PanelHeader, PinButton,
-  ProtectButton, RatingChips, Segmented, Select, Spinner, StatTile,
+  PopupSelect, ProtectButton, RatingChips, Segmented, Spinner, StatTile,
   stillMailingText, Tag, tabPanelProps, TrackerBadge, useMediaQuery }
   from "./ui";
 
@@ -632,17 +632,15 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // own picker for ticked mails). Always with a way back.
   const movePicker = moveOpen && canMove && (
     <div className="flex items-center gap-2 px-4 pt-3">
-      <Select value="" className="min-w-0 flex-1"
-        onChange={(e) => {
-          const dest = e.target.value;
+      <PopupSelect<string> className="min-w-0 flex-1"
+        placeholder={t("Move to folder…")}
+        onChange={(dest) => {
           setMoveOpen(false);
-          if (dest) onMove!(group, dest).then((ok) => {
+          onMove!(group, dest).then((ok) => {
             if (ok) (onEmptied ?? onClose)();
           });
-        }}>
-        <option value="" disabled>{t("Move to folder…")}</option>
-        {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-      </Select>
+        }}
+        options={folders.map((f) => ({ value: f, label: f }))} />
       <Button variant="secondary" size="icon" label={t("Cancel")}
         className="shrink-0" onClick={() => setMoveOpen(false)}>
         <X size={18} />
@@ -681,13 +679,13 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     <div className="mx-4 mt-3 rounded-card border border-line bg-panel2 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="type-meta text-muted">{t("sieve.intro")}</span>
-        <Select value={sieveAction}
-          onChange={(e) =>
-            setSieveAction(e.target.value as SieveAction)}>
-          <option value="fileinto">{t("sieve.fileinto")}</option>
-          <option value="discard">{t("sieve.discard")}</option>
-          <option value="markread">{t("sieve.markread")}</option>
-        </Select>
+        <PopupSelect<SieveAction> value={sieveAction}
+          onChange={setSieveAction}
+          options={[
+            { value: "fileinto", label: t("sieve.fileinto") },
+            { value: "discard", label: t("sieve.discard") },
+            { value: "markread", label: t("sieve.markread") },
+          ]} />
         {sieveAction === "fileinto" && (
           <Input className="w-40" value={sieveFolder}
             placeholder="Archive"
@@ -805,22 +803,23 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
               </MenuItem>
             </Menu>
           ) : (
-            <Select value={sortBy} className="w-auto shrink-0"
-              onChange={(e) =>
-                setSortBy(e.target.value as "date" | "size")}>
-              <option value="date">{t("Sort: date")}</option>
-              <option value="size">{t("Sort: size")}</option>
-            </Select>
+            <PopupSelect<"date" | "size"> className="shrink-0"
+              value={sortBy} onChange={setSortBy}
+              options={[
+                { value: "date", label: t("Sort: date") },
+                { value: "size", label: t("Sort: size") },
+              ]} />
           )}
-          <Select value="" className="w-auto min-w-0 shrink"
-            onChange={(e) => selectPreset(e.target.value)}>
-            <option value="" disabled>{t("Select…")}</option>
-            <option value="all">{t("All / none")}</option>
-            <option value="older6">{t("Older than 6 months")}</option>
-            <option value="older12">{t("Older than 1 year")}</option>
-            <option value="older24">{t("Older than 2 years")}</option>
-            <option value="none">{t("Clear selection")}</option>
-          </Select>
+          <PopupSelect<string> className="min-w-0 shrink"
+            placeholder={t("Select…")} onChange={selectPreset}
+            options={[
+              { value: "all", label: t("All / none") },
+              { value: "older6", label: t("Older than 6 months") },
+              { value: "older12", label: t("Older than 1 year") },
+              { value: "older24", label: t("Older than 2 years") },
+              "divider",
+              { value: "none", label: t("Clear selection") },
+            ]} />
         </div>
       </div>
       {(anyRated || vFilter !== "all") && (
@@ -939,35 +938,23 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* The Action… select stays mounted even once "Move to
-                        folder…" is picked (matching the overview's bulk bar) -
-                        swapping it out for the folder-picker in place made the
-                        native iOS option list occasionally show the wrong
-                        (stale) options, since both selects shared one DOM
-                        node. The folder picker is a separate, additional
-                        control instead. */}
-                    <Select value="" className="min-w-0 flex-1" disabled={busy}
-                      onChange={(e) => onAction(e.target.value)}>
-                      <option value="" disabled>{t("Action…")}</option>
-                      <option value="archive">{t("Archive")}</option>
-                      <option value="move">{t("Move to folder…")}</option>
-                      <option value="mark_read">{t("Mark read")}</option>
-                      {(aiEnabled || demo) && (
-                        <option value="ai_review" disabled={demo}>
-                          {t("ai.rate")}{demo ? ` - ${demoHint()}` : ""}
-                        </option>
-                      )}
-                    </Select>
+                    <PopupSelect<string> up className="min-w-0 flex-1"
+                      disabled={busy} placeholder={t("Action…")}
+                      onChange={onAction}
+                      options={[
+                        { value: "archive", label: t("Archive") },
+                        { value: "move", label: t("Move to folder…") },
+                        { value: "mark_read", label: t("Mark read") },
+                        ...(aiEnabled || demo ? [{ value: "ai_review",
+                          label: `${t("ai.rate")}${demo ? ` - ${demoHint()}` : ""}`,
+                          disabled: demo }] : []),
+                      ]} />
                     {moveDest === "?" && (
                       <>
-                        <Select value="" className="min-w-0 flex-1"
-                          onChange={(e) => {
-                            if (e.target.value) act("move", e.target.value);
-                            setMoveDest("");
-                          }}>
-                          <option value="" disabled>{t("Move to folder…")}</option>
-                          {folders.map((f) => <option key={f} value={f}>{f}</option>)}
-                        </Select>
+                        <PopupSelect<string> up className="min-w-0 flex-1"
+                          placeholder={t("Move to folder…")}
+                          onChange={(f) => { act("move", f); setMoveDest(""); }}
+                          options={folders.map((f) => ({ value: f, label: f }))} />
                         <Button variant="secondary" size="icon" label={t("Cancel")}
                           className="shrink-0" onClick={() => setMoveDest("")}>
                           <X size={18} />

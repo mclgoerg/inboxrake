@@ -137,6 +137,9 @@ for (const [name, tk] of Object.entries(themes)) {
     }
     min("chiptext on chip", tk.chiptext, tk.chip);
     min("body on chip", tk.body, tk.chip);
+    // Segmented control: selected pill on, unselected label on the track.
+    min("body on segment-on", tk.body, tk["segment-on"]);
+    min("muted on chip (segment track)", tk.muted, tk.chip);
   });
 }
 

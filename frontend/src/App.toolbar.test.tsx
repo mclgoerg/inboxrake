@@ -281,7 +281,7 @@ test("All mails keeps its filter and sort in the toolbar row", async () => {
     screen.getByPlaceholderText("Search or filter…"))).toBe(true);
   fireEvent.click(screen.getByRole("tab", { name: "All mails" }));
   const input = await screen.findByPlaceholderText("filter mails…");
-  expect(screen.getByDisplayValue("Date")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^Sort: Date/ })).toBeTruthy();
   // Same slot as the group filter: directly under row A (Scan + tabs).
   expect(rowA.nextElementSibling?.contains(input)).toBe(true);
 });

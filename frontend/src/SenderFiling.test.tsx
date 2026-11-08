@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const knowledge = vi.fn();
 vi.mock("./api", () => ({ api: { knowledge: () => knowledge() } }));
 
+import { popupOptions, popupPick } from "./toolTestUtils";
 import { SenderFiling } from "./components/SenderFiling";
 import { setLang } from "./i18n";
 import type { Group, KnowledgeEntry, SmartWhy } from "./types";
@@ -35,8 +36,10 @@ const mount = (s: Group, over: { categories?: string[]; rev?: number } = {}) =>
   render(<SenderFiling sender={s} rowLabel="Other senders"
     categories={over.categories ?? []} rev={over.rev ?? 1}
     onFile={onFile} onReset={onReset} />);
-const select = () => screen.getByRole("combobox",
-  { name: "File this sender under" }) as HTMLSelectElement;
+const select = () => screen.getByRole("button",
+  { name: /^File this sender under/ });
+const shows = (text: string) =>
+  expect(select().textContent).toContain(text);
 
 beforeEach(() => {
   setLang("en");
@@ -55,14 +58,14 @@ describe("the box", () => {
       expect(screen.getByText("Now in “Other senders”. Nothing in its mails "
         + "says what it is about.")).toBeTruthy();
       await waitFor(() => expect(knowledge).toHaveBeenCalledTimes(1));
-      expect(select().value).toBe("auto");
+      shows("Automatic");
       expect(screen.queryByRole("button", { name: /Reset/ })).toBeNull();
       expect(screen.queryByText("Filed by you")).toBeNull();
     });
 
   it("offers Automatic, every kind and the user's categories", () => {
     mount(sender(), { categories: ["hobby"] });
-    expect([...select().options].map((o) => o.textContent)).toEqual([
+    expect(popupOptions(select())).toEqual([
       "Automatic", "Orders & deliveries", "Appointments & bookings",
       "Job applications", "Support & inquiries", "Accounts & security",
       "Newsletters", "Individuals", "Other senders", "Category “hobby”"]);
@@ -70,7 +73,7 @@ describe("the box", () => {
 
   it("files THIS sender (its own entry) when a kind is chosen", async () => {
     mount(sender());
-    fireEvent.change(select(), { target: { value: "support" } });
+    popupPick(select(), "Support & inquiries");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "a:a@solo.example", kind: "support" }], 1));
   });
@@ -80,7 +83,7 @@ describe("the box", () => {
     mount(sender({ smart_key: "k:orders", smart_why:
       { r: "rule", k: "orders", by: "a", entry: "a:a@solo.example" } }));
     await screen.findByText("Filed by you");
-    expect(select().value).toBe("orders");
+    shows("Orders & deliveries");
     fireEvent.click(screen.getByRole("button", { name: "Reset to automatic" }));
     await waitFor(() => expect(onReset).toHaveBeenCalledWith(["a:a@solo.example"]));
   });
@@ -90,14 +93,14 @@ describe("the box", () => {
       list([entry({})]);
       mount(sender());
       await screen.findByText("Filed by you");
-      fireEvent.change(select(), { target: { value: "auto" } });
+      popupPick(select(), "Automatic");
       await waitFor(() => expect(onReset).toHaveBeenCalledWith(["a:a@solo.example"]));
       cleanup();
       onReset.mockClear();
       list([]);
       mount(sender());
       await waitFor(() => expect(knowledge).toHaveBeenCalled());
-      fireEvent.change(select(), { target: { value: "auto" } });
+      popupPick(select(), "Automatic");
       expect(onReset).not.toHaveBeenCalled();
     });
 
@@ -106,7 +109,7 @@ describe("the box", () => {
     mount(sender({ smart_key: "k:jobs", smart_why:
       { r: "kept_ai", k: "jobs", by: "a", entry: "a:a@solo.example" } }));
     await screen.findByText("Kept AI answer");
-    expect(select().value).toBe("auto");
+    shows("Automatic");
     expect(screen.queryByText("Filed by you")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reset to automatic" }));
     await waitFor(() => expect(onReset).toHaveBeenCalledWith(["a:a@solo.example"]));
@@ -120,7 +123,7 @@ describe("the box", () => {
     await screen.findByText("Filed by you");
     expect(screen.getByText(/You filed its company under Support & inquiries\. Your rule for its company decides\./))
       .toBeTruthy();
-    expect(select().value).toBe("auto");
+    shows("Automatic");
     fireEvent.click(screen.getByRole("button",
       { name: "Reset its company to automatic" }));
     await waitFor(() => expect(onReset).toHaveBeenCalledWith(["co:solo.example"]));
@@ -151,7 +154,7 @@ describe("the box", () => {
     mount(sender());
     await waitFor(() => expect(knowledge).toHaveBeenCalled());
     expect(screen.getByText(/^Now in “Other senders”\./)).toBeTruthy();
-    expect(select().value).toBe("auto");
+    shows("Automatic");
   });
 
   it("while the entries cannot be loaded, the sender's own reason still "
@@ -160,7 +163,7 @@ describe("the box", () => {
     mount(sender({ smart_key: "k:support", smart_why: { r: "rule",
       k: "support", by: "a", entry: "a:a@solo.example" } }));
     await waitFor(() => expect(knowledge).toHaveBeenCalled());
-    expect(select().value).toBe("support");
+    shows("Support & inquiries");
     fireEvent.click(screen.getByRole("button", { name: "Reset to automatic" }));
     await waitFor(() => expect(onReset).toHaveBeenCalledWith(["a:a@solo.example"]));
   });
@@ -182,12 +185,12 @@ describe("the box", () => {
       let done: (ok: boolean) => void = () => {};
       onFile.mockImplementation(() => new Promise<boolean>((r) => { done = r; }));
       mount(sender());
-      fireEvent.change(select(), { target: { value: "support" } });
-      await waitFor(() => expect(select().disabled).toBe(true));
-      fireEvent.change(select(), { target: { value: "jobs" } });
+      popupPick(select(), "Support & inquiries");
+      await waitFor(() => expect((select() as HTMLButtonElement).disabled).toBe(true));
+      fireEvent.click(select());
       expect(onFile).toHaveBeenCalledTimes(1);
       done(true);
-      await waitFor(() => expect(select().disabled).toBe(false));
+      await waitFor(() => expect((select() as HTMLButtonElement).disabled).toBe(false));
     });
 
   it("reloads the entries when the mailbox state changes", async () => {
@@ -207,7 +210,7 @@ describe("the box", () => {
     await screen.findByText("Von dir eingeordnet");
     expect(screen.getByRole("button", { name: "Auf automatisch zurücksetzen" }))
       .toBeTruthy();
-    expect(screen.getByRole("combobox",
-      { name: "Diesen Absender einordnen unter" })).toBeTruthy();
+    expect(screen.getByRole("button",
+      { name: /^Diesen Absender einordnen unter/ })).toBeTruthy();
   });
 });

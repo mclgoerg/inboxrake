@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { FILE_KINDS, filedKindName, smartReason } from "../smart";
 import type { Group, KnowledgeEntry } from "../types";
 import type { FileEntry } from "./SenderList";
-import { LINK, Select, Tag } from "./ui";
+import { LINK, PopupSelect, Tag } from "./ui";
 
 /** "How Inboxrake files this sender": where the sender sits and why, a kind
  *  select to file it yourself (or back to Automatic), who filed it (you, or
@@ -73,20 +73,17 @@ export function SenderFiling({ sender, rowLabel, categories, rev, onFile,
         {byCompany && ` ${t("know.box_company")}`}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={mine} className="min-w-0 flex-1 sm:flex-none sm:w-64"
-          aria-label={t("know.box_select")} disabled={busy}
-          onChange={(e) => choose(e.target.value)}>
-          <option value="auto">{t("know.box_auto")}</option>
-          {FILE_KINDS.map((k) => (
-            <option key={k} value={k}>{filedKindName(k)}</option>
-          ))}
-          {categories.map((c) => (
-            <option key={c} value={`cat:${c}`}>{filedKindName(`cat:${c}`)}</option>
-          ))}
-          {mine !== "auto" && !known.has(mine) && (
-            <option value={mine}>{filedKindName(mine)}</option>
-          )}
-        </Select>
+        <PopupSelect<string> value={mine}
+          className="min-w-0 flex-1 sm:flex-none sm:w-64"
+          label={t("know.box_select")} disabled={busy} onChange={choose}
+          options={[
+            { value: "auto", label: t("know.box_auto") },
+            ...FILE_KINDS.map((k) => ({ value: k, label: filedKindName(k) })),
+            ...categories.map((c) => ({ value: `cat:${c}`,
+              label: filedKindName(`cat:${c}`) })),
+            ...(mine !== "auto" && !known.has(mine)
+              ? [{ value: mine, label: filedKindName(mine) }] : []),
+          ]} />
         {source && (
           <Tag tone={source === "user" ? "info" : "neutral"}>
             {source === "user" ? t("know.src_user") : t("know.src_ai")}

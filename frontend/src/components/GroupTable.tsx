@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
-import { Avatar, Button, cap, Checkbox, ShortDate, StillMailingBadge, Tag, Select, isModalOpen, type TagTone } from "./ui";
+import { Avatar, Button, cap, Checkbox, ShortDate, StillMailingBadge, Tag, PopupSelect, isModalOpen, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
   | "engagement";
@@ -475,19 +475,18 @@ export function GroupTable(props: Props) {
               disabled={page >= maxPage} onClick={() => setPage(maxPage)}>
             <ChevronsRight size={16} />
           </Button>
-          <Select
-            value={perPage}
-            onChange={(e) => {
-              const n = Number(e.target.value);
+          <PopupSelect<string> up value={String(perPage)}
+            onChange={(v) => {
+              const n = Number(v);
               setPerPage(n);
               setPage(0);
               localStorage.setItem("pmc_page_size", String(n));
-            }}>
-            {PAGE_SIZES.map((n) => (
-              <option key={n} value={n}>{n} {t("per page")}</option>
-            ))}
-            <option value={ALL}>{t("All")}</option>
-          </Select>
+            }}
+            options={[
+              ...PAGE_SIZES.map((n) => ({ value: String(n),
+                label: `${n} ${t("per page")}` })),
+              { value: String(ALL), label: t("All") },
+            ]} />
         </div>
       )}
     </div>

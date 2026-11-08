@@ -8,7 +8,7 @@ import {
   buildSummarySvg, paletteFromTheme, senderName, svgToPngBlob,
   type SummaryStrings,
 } from "../wrapped";
-import { Button, Checkbox, Loading, Modal, Select } from "./ui";
+import { Button, Checkbox, Loading, Modal, PopupSelect } from "./ui";
 
 /** How long an auto-advancing card stays up. */
 export const CARD_MS = 6000;
@@ -143,15 +143,11 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
             : t("wrapped.empty", { year: d.year })}>
           {d.years.length > 1 && (
             <div className={`${interactive} mt-2 max-w-48`}>
-              <Select aria-label={t("wrapped.year")} value={d.year}
-                className="w-full"
-                onChange={(e) => onYear(Number(e.target.value))}>
-                {[...d.years].reverse().map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </Select>
+              <PopupSelect<string> className="w-full"
+                label={t("wrapped.year")} value={String(d.year)}
+                onChange={(y) => onYear(Number(y))}
+                options={[...d.years].reverse().map((y) => ({
+                  value: String(y), label: String(y) }))} />
             </div>
           )}
           <p className="mt-2 type-meta text-muted">{t("wrapped.based_on")}</p>
@@ -320,6 +316,7 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
       // the year select and text fields keep their own arrow keys
       const el = e.target as HTMLInputElement | null;
       if (el?.tagName === "SELECT" || el?.tagName === "TEXTAREA"
+        || el?.closest?.("[data-popup-select], [role=menu]")
         || (el?.tagName === "INPUT" && el.type !== "checkbox")) return;
       if (e.key === "ArrowRight") { e.preventDefault(); next(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }

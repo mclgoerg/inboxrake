@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AllMailsView } from "./components/AllMailsView";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { popupPick } from "./toolTestUtils";
 import type { AppState, Mail, MailsResp } from "./types";
 
 const mails = vi.fn();
@@ -103,8 +104,7 @@ test("sort and filter go to the server; sender sort starts ascending",
     mails.mockResolvedValue(resp([mk(1)]));
     renderView();
     await screen.findByText("Subject 1");
-    fireEvent.change(screen.getByDisplayValue("Date"),
-      { target: { value: "sender" } });
+    popupPick(/^Sort:/, "Sender");
     await waitFor(() => expect(mails).toHaveBeenLastCalledWith(
       { offset: 0, limit: 100, sort: "sender", dir: "asc", q: "" }));
     fireEvent.change(screen.getByPlaceholderText("filter mails…"),
@@ -157,8 +157,7 @@ test("Move to folder asks for a folder and sends it", async () => {
   await screen.findByText("Subject 1");
   fireEvent.click(tick(1));
   barAction("move");
-  fireEvent.change(screen.getAllByDisplayValue("Move to folder…")[0],
-    { target: { value: "Archive" } });
+  popupPick("Move to folder…", "Archive");
   await pressDialog(/^Move → Archive \(1\)$/);
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));

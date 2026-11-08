@@ -1,7 +1,7 @@
 import { Plus, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { t } from "../i18n";
-import { Button, Chip, Input, Modal, SectionLabel, Select, useMediaQuery }
+import { Button, Chip, Input, Modal, PopupSelect, SectionLabel, useMediaQuery }
   from "./ui";
 
 /* Interactive helper for the filter/rule query DSL: instead of
@@ -39,6 +39,9 @@ export function QueryBuilder({ value, onChange, className = "",
     // Capture + stop: Esc closes only the popover, not a Modal around it.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // An open pop-up menu of the builder takes this Esc (its own handler
+      // closes just the menu); the builder stays.
+      if (document.querySelector('[role="menu"]')) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       closeRef.current();
@@ -109,25 +112,26 @@ export function QueryBuilder({ value, onChange, className = "",
       <div className="mt-3 grid grid-cols-[6.5rem_1fr_auto] sm:grid-cols-[7rem_1fr_auto] items-center
         gap-x-2 gap-y-2">
         {!senderOnly && row(t("qb.tag"),
-          <Select className="min-w-0 flex-1" value={tag}
-            onChange={(e) => setTag(e.target.value)}>
-            {TAGS.map((x) => <option key={x}>{x}</option>)}
-          </Select>, `tag:${tag}`)}
+          <PopupSelect<string> className="min-w-0 flex-1" value={tag}
+            onChange={setTag}
+            options={TAGS.map((x) => ({ value: x, label: x }))} />, `tag:${tag}`)}
         {!senderOnly && row(t("qb.ai"),
-          <Select className="min-w-0 flex-1" value={ai}
-            onChange={(e) => setAi(e.target.value)}>
-            <option value="safe">{t("qb.ai_safe")}</option>
-            <option value="review">{t("qb.ai_review")}</option>
-            <option value="keep">{t("qb.ai_keep")}</option>
-          </Select>, `ai:${ai}`)}
+          <PopupSelect<string> className="min-w-0 flex-1" value={ai}
+            onChange={setAi}
+            options={[
+              { value: "safe", label: t("qb.ai_safe") },
+              { value: "review", label: t("qb.ai_review") },
+              { value: "keep", label: t("qb.ai_keep") },
+            ]} />, `ai:${ai}`)}
         {row(t(senderOnly ? "qb.age_sender" : "qb.age"), <>
           <Input className="w-16 shrink-0 sm:w-20" type="number" min="1"
             value={age} onChange={(e) => setAge(e.target.value)} />
-          <Select className="min-w-0 flex-1" value={ageUnit}
-            onChange={(e) => setAgeUnit(e.target.value as "m" | "y")}>
-            <option value="m">{t("qb.months")}</option>
-            <option value="y">{t("qb.years")}</option>
-          </Select>
+          <PopupSelect<"m" | "y"> className="min-w-0 flex-1" value={ageUnit}
+            onChange={setAgeUnit}
+            options={[
+              { value: "m", label: t("qb.months") },
+              { value: "y", label: t("qb.years") },
+            ]} />
         </>, `age:>${+age || 1}${ageUnit}`)}
         {row(t("qb.unread"), <>
           <Input className="w-16 shrink-0 sm:w-20" type="number"
