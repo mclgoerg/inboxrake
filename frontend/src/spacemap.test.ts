@@ -212,13 +212,13 @@ describe("labelLevel", () => {
 
 describe("shortName", () => {
   const [d] = buildDomains(groups(g("News.Team@chirper.example", MB),
-    g("x@shop.co.uk", MB)));
+    g("x@shop.co.example", MB)));
   const named = (label: string) => buildDomains(groups(g(label, MB)))[0];
   test("a domain without its TLD, second-level suffixes skipped", () => {
     expect(shortName(d)).toBeTruthy();
     expect(shortName(named("a@chirper.example"))).toBe("chirper");
     expect(shortName(named("a@mail.chirper.example"))).toBe("chirper");
-    expect(shortName(named("x@shop.co.uk"))).toBe("shop");
+    expect(shortName(named("x@shop.co.example"))).toBe("shop");
     expect(shortName(named("x@localhost"))).toBe("localhost");
   });
   test("a sender: its domain on a domain level the local part", () => {
