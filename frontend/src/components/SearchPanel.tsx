@@ -210,15 +210,17 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   }).filter((p) => p.s > 0), [groups]);
 
   // Resolves true when the mails are on their way to Trash.
-  const trashKeys = async (go: Set<string>): Promise<boolean> => {
+  const trashKeys = async (go: Set<string>, subject?: string):
+      Promise<boolean> => {
     if (!res || go.size === 0) return false;
-    if (!await confirmTrashMails(go.size)) return false;
+    if (!await confirmTrashMails(go.size, subject)) return false;
     try {
       const items = mails.filter((m) => go.has(mailKey(m)))
         .map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items);
       setRes({ ...res, mails: res.mails.filter((m) => !go.has(mailKey(m))) });
-      setSel(new Set());
+      // only the mails that went; other ticks stay (the reader trashes ONE)
+      setSel((cur) => new Set([...cur].filter((k) => !go.has(k))));
       setNote(t("note.background", { verb: t("Move to Trash") }));
       onDeleted();
       return true;
@@ -230,7 +232,9 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashSelected = () => trashKeys(new Set(picked));
   // The reader's Trash: the same confirm and call for the one open mail.
   const readerActions: ReaderActions = {
-    trash: async (m) => { if (await trashKeys(new Set([mailKey(m)]))) setView(null); },
+    trash: async (m) => {
+      if (await trashKeys(new Set([mailKey(m)]), m.subject)) setView(null);
+    },
   };
 
   const allSelected = mails.length > 0

@@ -187,8 +187,8 @@ test("MessageView offers the reader only for threaded mails, and hands the "
   await screen.findByText("3 mails");
   expect(screen.getByText("part of a thread")).toBeTruthy();   // not refetched
   expect(messages).not.toHaveBeenCalled();
-  // and back from the reader lands on the single message again
-  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  // and back from the reader lands on the single message again (named so)
+  fireEvent.click(screen.getByRole("button", { name: "Mail" }));
   await screen.findByRole("button", { name: "Read conversation" });
 });
 
@@ -255,3 +255,22 @@ test("a collapsed card shows the sender's name learnt from an opened mail",
     // a1 is collapsed and has the same address as the opened a2
     expect(screen.getAllByText("Boss Person")).toHaveLength(2);
   });
+
+test("another mail (previous / next) restarts the conversation: the open "
+  + "card is always the mail the toolbar acts on", async () => {
+  thread.mockResolvedValue(conv());
+  serve();
+  const trash = vi.fn();
+  const { rerender } = render(<ThreadView mail={a1} initial={bodyOf("first")}
+    onBack={() => {}} actions={{ trash }} />);
+  await screen.findByText("3 mails");
+  await screen.findByText("first");
+  rerender(<ThreadView mail={a2} onBack={() => {}} actions={{ trash }} />);
+  await waitFor(() => expect(thread).toHaveBeenLastCalledWith("INBOX", 3));
+  await screen.findByText("body of 3");                     // a2 is shown ...
+  expect(screen.queryByText("first")).toBeNull();           // ... a1's card is not
+  expect(document.querySelectorAll(
+    '[aria-expanded="true"]:not([aria-haspopup])')).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  expect(trash).toHaveBeenCalledWith(a2);                   // ... and it is the target
+});

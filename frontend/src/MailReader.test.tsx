@@ -11,6 +11,7 @@ import { MessageView } from "./components/MailList";
 import { ReaderHostProvider, parseFrom, toLine, type ReaderActions,
   type ReaderHost } from "./components/MailReader";
 import { pickFolder } from "./folderPickerTestUtil";
+import { ToastProvider } from "./components/ui";
 import { setLang } from "./i18n";
 import type { Mail, MessageDetail } from "./types";
 
@@ -177,7 +178,9 @@ test.each([
   const unsubscribe = vi.fn().mockResolvedValue(undefined);
   show(mk(1), {}, host({ unsubscribe, canUnsubscribe: () => true }));
   await screen.findByText("Unsubscribe link found");
-  expect(screen.getByText(line)).toBeTruthy();
+  expect(screen.getByText(`In this mail: ${line}`)).toBeTruthy();
+  // the button works on the sender's newest mail: say so
+  expect(screen.getByText(/using its newest mail/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
   await waitFor(() => expect(unsubscribe).toHaveBeenCalledWith("news@shop.example"));
 });
@@ -189,6 +192,7 @@ test("unsubscribe card: no button where the flow cannot run, done state, "
     unsubscribe: vi.fn(), canUnsubscribe: () => false }));
   await screen.findByText("Unsubscribe link found");
   expect(screen.queryByRole("button", { name: "Unsubscribe" })).toBeNull();
+  expect(screen.queryByText(/using its newest mail/)).toBeNull();   // no button, no promise
   unmount();
 
   const { unmount: u2 } = show(mk(1), {}, host({
@@ -386,3 +390,76 @@ test("the back button names where it goes", async () => {
   await screen.findByText(/Hi there/);
   expect(within(container).getByRole("button", { name: "All mail" })).toBeTruthy();
 });
+
+test("Copy address: the success toast only after the copy worked, an error "
+  + "toast when it did not", async () => {
+  const mount = () => render(
+    <ToastProvider>
+      <ReaderHostProvider value={host()}>
+        <MessageView mail={mk(1)} onBack={() => {}} />
+      </ReaderHostProvider>
+    </ToastProvider>);
+  message.mockResolvedValue(detail({ pinnable: false }));
+  const copy = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Copy address/ }));
+  };
+  vi.stubGlobal("navigator", { ...navigator,
+    clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  mount();
+  await screen.findByText(/Hi there/);
+  await copy();
+  await screen.findByText("Address copied");
+  cleanup();
+
+  vi.stubGlobal("navigator", { ...navigator,
+    clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+  mount();
+  await screen.findByText(/Hi there/);
+  await copy();
+  await screen.findByText("Could not copy the address");
+  expect(screen.queryByText("Address copied")).toBeNull();
+  cleanup();
+
+  vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+  mount();
+  await screen.findByText(/Hi there/);
+  await copy();
+  await screen.findByText("Could not copy the address");
+  vi.unstubAllGlobals();
+});
+
+test("the pin shown is the server's answer, not the list's older flag", async () => {
+  message.mockResolvedValue(detail({ pinnable: true, pinned: true }));
+  show(mk(1, { pinned: false }));
+  await screen.findByRole("button", { name: "Unpin" });
+});
+
+test("a pin made without an opener handler is reported to the opener",
+  async () => {
+    pinApi.mockResolvedValue({ ok: true });
+    const pinned = vi.fn();
+    await open({ pinned });
+    fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+    await waitFor(() => expect(pinned).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 1 }), true));
+  });
+
+test("inside the conversation Back names the mail it returns to", async () => {
+  thread.mockResolvedValue({ key: "k", label: "Plan", notes: [], mails: [mk(1)] });
+  await open(undefined, host(), mk(1), {});
+  fireEvent.click(screen.getByRole("button", { name: "Read conversation" }));
+  await screen.findByRole("heading", { name: "Plan" });
+  expect(screen.getByRole("button", { name: "Mail" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "All mail" })).toBeNull();
+});
+
+test("forwarded content is not folded away; a reply's quote still is",
+  async () => {
+    message.mockResolvedValue(detail({ subject: "Fwd: Plan", text:
+      "fyi\n---------- Forwarded message ---------\nFrom: x\nDate: Mon\n"
+      + "Subject: Plan\n\nthe passed-on text" }));
+    show(mk(1, { subject: "Fwd: Plan" }));
+    await screen.findByText(/the passed-on text/);
+    expect(screen.queryByRole("button", { name: /Show quoted text/ })).toBeNull();
+  });

@@ -57,14 +57,37 @@ describe("splitQuoted", () => {
     expect(hidden(t)).toContain("Old text");
   });
 
-  it("folds 'Original Message' and forwarded-message markers", () => {
+  it("folds 'Original Message' markers (a reply's history)", () => {
     expect(visible("ok\n-----Original Message-----\nFrom: x\nstuff"))
       .toBe("ok");
-    expect(visible("fyi\n---------- Forwarded message ---------\nFrom: x\nbody"))
-      .toBe("fyi");
     expect(visible("ok\n-----Ursprüngliche Nachricht-----\nVon: x\nalt"))
       .toBe("ok");
   });
+
+  it("never folds forwarded content - only real quoted replies", () => {
+    const gmail = "fyi\n---------- Forwarded message ---------\nFrom: x\n"
+      + "Date: Mon, 3 Mar 2024\nSubject: Plan\nTo: me\n\nthe forwarded body";
+    expect(splitQuoted(gmail)).toEqual([{ text: gmail, quoted: false }]);
+    const de = "zur Info\n---------- Weitergeleitete Nachricht ----------\n"
+      + "Von: x\nGesendet: Mo\nBetreff: Plan\n\nInhalt";
+    expect(splitQuoted(de)).toEqual([{ text: de, quoted: false }]);
+    const apple = "fyi\nBegin forwarded message:\n\nFrom: x\nDate: Mon\n"
+      + "Subject: Plan\n\nbody";
+    expect(splitQuoted(apple)).toEqual([{ text: apple, quoted: false }]);
+    // a ">" quote below the forward is still a quote
+    const both = gmail + "\n\nOn Tue, X wrote:\n> older";
+    expect(hidden(both)).toContain("older");
+    expect(visible(both)).toContain("the forwarded body");
+  });
+
+  it("a mail whose subject says it is a forward keeps its header blocks",
+    () => {
+      const t = "see below\n-----Original Message-----\nFrom: x\nSent: y\n"
+        + "Subject: z\nbody";
+      expect(splitQuoted(t, { forward: true }))
+        .toEqual([{ text: t, quoted: false }]);
+      expect(hidden(t)).toContain("body");
+    });
 
   it("does not fold a lone 'On … wrote:' sentence without a quote", () => {
     const t = "On Monday I wrote: nothing special.\nBye";

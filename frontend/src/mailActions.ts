@@ -64,9 +64,14 @@ export { mailKey };
 
 /** The one confirmation for "move the selected mails to Trash" in the list
  *  panels (Search, Attachments, Duplicates). */
-export const confirmTrashMails = (n: number): Promise<boolean> => {
+export const confirmTrashMails = (n: number, subject?: string):
+    Promise<boolean> => {
   const verb = actionVerb("trash");
+  // One mail from the reader is named by its subject, as everywhere else.
+  const what = n === 1 && subject !== undefined
+    ? t("confirm.b_subject", { subject: subject || t("(no subject)") })
+    : t("confirm.b_selected", { n });
   return confirmDialog({ title: verb, tone: "danger",
-    bullets: [t("confirm.b_selected", { n }), t("confirm.b_space")],
+    bullets: [what, t("confirm.b_space")],
     confirmLabel: t("confirm.btn_n", { verb, n }) });
 };

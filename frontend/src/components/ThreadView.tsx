@@ -16,8 +16,7 @@ type Body = MessageDetail | "loading" | { error: string };
  *  folded away. */
 const BATCH = 8;                    // mails per request / IMAP connection
 
-export function ThreadView({ mail, initial, onBack, actions, nav, pin,
-  backLabel }: {
+type ThreadViewProps = {
   mail: Mail;                       // the mail the reader was opened from
   initial?: MessageDetail;          // its text, if the caller already has it
   onBack: () => void;
@@ -27,9 +26,19 @@ export function ThreadView({ mail, initial, onBack, actions, nav, pin,
   backLabel?: string;
   /** The pin state of `mail` when a single-mail view already owns it. */
   pin?: PinState;
-}) {
-  // Below 1024 px Back closes the thread.
-  useBackLayer(true, onBack);
+};
+
+/** Keyed by the mail: moving to another mail (previous / next) starts the
+ *  conversation over, so the card that is open - and shown - is always the
+ *  mail the toolbar acts on. */
+export function ThreadView(props: ThreadViewProps) {
+  // Below 1024 px Back closes the thread (one entry across mails).
+  useBackLayer(true, props.onBack);
+  return <ThreadViewFor key={mailKey(props.mail)} {...props} />;
+}
+
+function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
+  backLabel }: ThreadViewProps) {
   const host = useReaderHost();
   const ownPin = useReaderPin(mail, initial, actions);
   const [conv, setConv] = useState<ConversationResp | null>(null);
@@ -181,7 +190,7 @@ export function ThreadView({ mail, initial, onBack, actions, nav, pin,
                     : "error" in body ? <BodyState error={body.error} />
                     : (
                       <>
-                        <MailText text={body.text}
+                        <MailText text={body.text} subject={m.subject}
                           showQuoted={quoted.has(k)}
                           onToggleQuoted={() => {
                             const next = new Set(quoted);

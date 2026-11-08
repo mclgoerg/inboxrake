@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor }
 import { afterEach, expect, test, vi } from "vitest";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DialogProvider } from "./components/ui";
-import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
 
@@ -205,6 +205,7 @@ test("the reader's Trash: the same confirm and call for the one mail; "
   fireEvent.click(screen.getByRole("button", { name: "Open" }));
   expect(screen.getByTestId("nav").textContent).toBe("3");
   fireEvent.click(screen.getByText("reader trash"));
+  expect((await findDialog()).textContent).toContain('"Scan 3"');   // the mail is named
   await cancelDialog();
   await expectNoDialog();
   expect(deleteMessages).not.toHaveBeenCalled();

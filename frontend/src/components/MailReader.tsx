@@ -14,7 +14,7 @@ import { api, fmtSize, mailKey } from "../api";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import { nowDate } from "../clock";
-import { splitQuoted } from "../quoted";
+import { isForward, splitQuoted } from "../quoted";
 import type { Mail, MessageDetail } from "../types";
 import { FolderPicker } from "./FolderPicker";
 import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, Spinner, Tag,
@@ -64,6 +64,9 @@ export interface ReaderActions {
   /** Set the pin; resolves false when it failed. Without it the reader
    *  calls the pin endpoint itself. */
   pin?: (m: Mail, pinned: boolean) => unknown;
+  /** Told after the reader pinned through the endpoint itself (no `pin`
+   *  handler): lets a list that shows the pin follow. */
+  pinned?: (m: Mail, pinned: boolean) => void;
 }
 
 /** The list the mail was opened from: enables previous / next. */
@@ -130,7 +133,8 @@ export function useReaderPin(mail: Mail, detail: MessageDetail | null | undefine
   const key = mailKey(mail);
   const [override, setOverride] = useState<{ key: string; on: boolean } | null>(null);
   const toast = useOptionalToast();
-  const seeded = mail.pinned ?? detail?.pinned ?? false;
+  // The server's answer for the open mail beats the list's (older) flag.
+  const seeded = detail?.pinned ?? mail.pinned ?? false;
   const on = override?.key === key ? override.on : seeded;
   const can = !!actions?.pin || !!detail?.pinnable
     || (mail.pinned !== undefined && !mail.sent);
@@ -140,7 +144,10 @@ export function useReaderPin(mail: Mail, detail: MessageDetail | null | undefine
       const r = actions?.pin
         ? await actions.pin(mail, next)
         : await api.pin(mail.folder, mail.uid, next);
-      if (r !== false) setOverride({ key, on: next });
+      if (r !== false) {
+        setOverride({ key, on: next });
+        if (!actions?.pin) actions?.pinned?.(mail, next);
+      }
     } catch (e: any) {
       toast?.show(`${t("pin.error")}: ${e.message ?? e}`, { variant: "error" });
     }
@@ -150,7 +157,7 @@ export function useReaderPin(mail: Mail, detail: MessageDetail | null | undefine
 
 /* ------------------------------- the frame ------------------------------ */
 
-const BAR_ITEM = `flex min-h-11 min-w-0 flex-1 cursor-pointer flex-col
+const BAR_ITEM = `flex min-h-11 min-w-0 flex-auto cursor-pointer flex-col
   items-center justify-center gap-0.5 rounded-control px-1 type-caption
   text-accent enabled:hover:bg-chip disabled:cursor-not-allowed
   disabled:text-faint`;
@@ -189,14 +196,18 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
       : t("thread.n_mails", { n: conversationCount }))
     : t("thread.title");
   const copy = () => {
-    void navigator.clipboard?.writeText(addr);
-    toast?.show(t("reader.copied"), { duration: 3000 });
+    const done = navigator.clipboard?.writeText(addr);
+    const failed = () => toast?.show(t("reader.copy_failed"),
+      { variant: "error" });
+    if (!done) { failed(); return; }
+    done.then(() => toast?.show(t("reader.copied"), { duration: 3000 }),
+      failed);
   };
 
   const face = (icon: ReactNode, label: string) => top ? (
     <>{icon}<span>{label}</span></>
   ) : (
-    <>{icon}<span className="max-w-full truncate">{label}</span></>
+    <>{icon}<span className="whitespace-nowrap">{label}</span></>
   );
   const btn = (key: string, icon: ReactNode, label: string,
     onClick: () => void, opts: { aria?: string; title?: string;
@@ -221,7 +232,7 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
 
   const moreMenu = (
     <Menu key="more" label={t("menu.more")} up={!top}
-      className={top ? "" : "min-w-0 flex-1"}
+      className={top ? "" : "min-w-0 flex-auto"}
       {...(top ? { variant: "secondary" as const, icon: true as const }
         : { triggerClass: `${BAR_ITEM} w-full` })}
       trigger={top ? <MoreHorizontal size={18} aria-hidden />
@@ -433,10 +444,12 @@ export function RawHeaders({ detail }: { detail: MessageDetail }) {
 
 /** Plain text, readable: the author's own text in reading size, quoted
  *  history folded behind "Show quoted text · N lines". No HTML, no links. */
-export function MailText({ text, showQuoted, onToggleQuoted }: {
-  text: string; showQuoted: boolean; onToggleQuoted: () => void;
+export function MailText({ text, subject = "", showQuoted, onToggleQuoted }: {
+  text: string; subject?: string; showQuoted: boolean;
+  onToggleQuoted: () => void;
 }) {
-  const segs = useMemo(() => splitQuoted(text), [text]);
+  const segs = useMemo(
+    () => splitQuoted(text, { forward: isForward(subject) }), [text, subject]);
   const quotedLines = segs.filter((s) => s.quoted).reduce((n, s) =>
     n + s.text.split("\n").filter((l) => l.trim()).length, 0);
   return (
@@ -482,6 +495,8 @@ export function UnsubCard({ mail, unsub }: {
   const host = useReaderHost();
   const [busy, setBusy] = useState(false);
   const status = host.unsubscribed?.(mail.addr) ?? null;
+  const canRun = !!host.unsubscribe && (host.canUnsubscribe?.(mail.addr) ?? true)
+    && status !== "done";
   const run = async () => {
     setBusy(true);
     try { await host.unsubscribe!(mail.addr); } finally { setBusy(false); }
@@ -492,10 +507,15 @@ export function UnsubCard({ mail, unsub }: {
       <IconTile tone="neutral"><MailMinus size={16} /></IconTile>
       <div className="min-w-0 flex-1">
         <div className="type-body font-semibold">{t("reader.unsub_title")}</div>
-        <div className="type-meta text-muted">{t(`reader.unsub_${unsub.method}`)}</div>
+        <div className="type-meta text-muted">
+          {t("reader.unsub_in_mail", { method: t(`reader.unsub_${unsub.method}`) })}
+        </div>
+        {canRun && (
+          <div className="type-meta text-muted">{t("reader.unsub_newest")}</div>
+        )}
       </div>
       {status === "done" ? <Tag tone="info">{t("Unsubscribed")}</Tag>
-        : host.unsubscribe && (host.canUnsubscribe?.(mail.addr) ?? true) && (
+        : canRun && (
           <Button variant="tinted" disabled={busy} onClick={() => void run()}>
             {busy ? t("Unsubscribing…") : t("confirm.unsubscribe_btn")}
           </Button>

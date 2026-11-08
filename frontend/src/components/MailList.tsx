@@ -49,7 +49,7 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
 
   if (reading) {
     return <ThreadView mail={mail} initial={detail ?? undefined} pin={pin}
-      actions={actions} nav={nav} backLabel={backLabel}
+      actions={actions} nav={nav} backLabel={t("reader.mail")}
       onBack={() => setReading(false)} />;
   }
 
@@ -70,6 +70,7 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
         <div className="mt-5">
           {error ? <BodyState error={error} />
             : detail ? <MailText text={detail.text} showQuoted={quoted}
+              subject={detail.subject || mail.subject}
               onToggleQuoted={() => setQuoted(!quoted)} />
             : <BodyState />}
         </div>

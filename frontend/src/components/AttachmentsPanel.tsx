@@ -170,9 +170,10 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
   // Resolves true when the mails are on their way to Trash.
-  const trashMails = async (go: AttMail[]): Promise<boolean> => {
+  const trashMails = async (go: AttMail[], subject?: string):
+      Promise<boolean> => {
     if (!mails || go.length === 0) return false;
-    if (!await confirmTrashMails(go.length)) return false;
+    if (!await confirmTrashMails(go.length, subject)) return false;
     try {
       const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items, "trash");
@@ -192,7 +193,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const readerActions: ReaderActions = {
     trash: async (m) => {
       const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m));
-      if (one && await trashMails([one])) setView(null);
+      if (one && await trashMails([one], one.subject)) setView(null);
     },
   };
 

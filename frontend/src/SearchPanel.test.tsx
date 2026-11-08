@@ -9,7 +9,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { ReactElement } from "react";
 import { SearchPanel } from "./components/SearchPanel";
 import { DialogProvider } from "./components/ui";
-import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
 import type { Group, SearchResp } from "./types";
 
@@ -326,9 +326,25 @@ test("the reader's Trash: the panel's confirm and call for the one mail, then "
   await expectNoDialog();
   expect(deleteMessages).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  expect((await findDialog()).textContent).toContain('"Parcel 2"');   // named, not "1 selected"
   await pressDialog(/Move to Trash \(1\)/);
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith([["INBOX", 2]]));
   await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
   expect(subject("Parcel 1")).toHaveLength(1);
   expect(subject("Parcel 2")).toHaveLength(0);
+});
+
+test("the reader's Trash drops only that mail from the selection", async () => {
+  search.mockResolvedValue({ mails: [mail(1), mail(2), mail(3)], notes: [] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  withDialogs(<SearchPanel bodySearch onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 3")).toHaveLength(1));
+  fireEvent.click(screen.getByRole("button", { name: "Select all 3" }));
+  fireEvent.click(subject("Parcel 3")[0]);
+  await screen.findByText("body text");
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
+  expect(screen.getByRole("button", { name: "Trash selected (2)" })).toBeTruthy();
 });

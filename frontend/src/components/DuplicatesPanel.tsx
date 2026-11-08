@@ -209,10 +209,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   // The reader's Trash: the same confirm and move for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
-      if (working || !await confirmTrashMails(1)) return;
+      if (working || !await confirmTrashMails(1, m.subject)) return;
       setView(null);
       await trashItems([[m.folder, m.uid]]);
     },
+    // the lists carry each copy's pin (it locks the copy): refresh them
+    pinned: () => { void loadAll().then(applyLists).catch(() => {}); },
   };
 
   const trashOlder = async (s: DupSet) => {

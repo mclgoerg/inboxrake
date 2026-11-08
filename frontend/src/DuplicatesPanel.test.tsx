@@ -36,9 +36,11 @@ vi.mock("./api", async (orig) => ({
 // The mail viewer is its own component with its own tests.
 vi.mock("./components/MailList", () => ({
   MessageView: ({ mail, onBack, actions }: { mail: { uid: number };
-    onBack: () => void; actions?: { trash?: (m: unknown) => void } }) =>
+    onBack: () => void; actions?: { trash?: (m: unknown) => void;
+      pinned?: (m: unknown, p: boolean) => void } }) =>
     <div>viewing mail {mail.uid}<button onClick={onBack}>back to list</button>
       {actions?.trash && <button onClick={() => actions.trash!(mail)}>reader trash</button>}
+      {actions?.pinned && <button onClick={() => actions.pinned!(mail, true)}>reader pinned</button>}
     </div>,
 }));
 
@@ -438,6 +440,7 @@ test("the reader's Trash confirms, moves just that copy and returns to the list"
   fireEvent.click((await screen.findAllByRole("button", { name: /INBOX/ }))[0]);
   await screen.findByText("viewing mail 3");
   fireEvent.click(screen.getByText("reader trash"));
+  expect((await findDialog()).textContent).toContain('"Invoice"');   // the mail is named
   await cancelDialog();
   await expectNoDialog();
   expect(deleteMessages).not.toHaveBeenCalled();
@@ -446,6 +449,17 @@ test("the reader's Trash confirms, moves just that copy and returns to the list"
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 3]], "trash"));
   expect(screen.queryByText("viewing mail 3")).toBeNull();
+});
+
+test("a pin made in the reader refreshes the lists (a pinned copy is locked)",
+  async () => {
+  identicalWorld();
+  show();
+  fireEvent.click((await screen.findAllByRole("button", { name: /INBOX/ }))[0]);
+  await screen.findByText("viewing mail 3");
+  duplicates.mockClear();
+  fireEvent.click(screen.getByText("reader pinned"));
+  await waitFor(() => expect(duplicates).toHaveBeenCalled());
 });
 
 test("the header says how old the scan is", async () => {
