@@ -348,6 +348,8 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
               onClear={() => setSel(new Set())}
               actions={
                 <BarButton icon={<Eye size={16} aria-hidden />}
+                  disabled={chosen.length !== 1}
+                  title={chosen.length !== 1 ? t("atts.open_one") : undefined}
                   onClick={() => setView(chosen[0])}>
                   {t("atts.open")}
                 </BarButton>}
@@ -380,6 +382,7 @@ function FileItem({ f, list, on, onToggle }: {
       <Copy size={14} aria-hidden />{t("atts.in_mails", { n: f.copies })}
     </span>);
   const sub = [fmtSize(f.size), m.addr].join(" · ");
+  const subject = m.subject || t("(no subject)");
   const when = <ShortDate iso={m.date || ""} />;
   const ext = (f.ext || "file").toUpperCase();
   if (list) {
@@ -393,7 +396,9 @@ function FileItem({ f, list, on, onToggle }: {
           rounded-control ${k.tile}`}>{k.icon}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate type-body font-medium">{f.name}</span>
-          <span className="block truncate type-meta text-muted">{sub}</span>
+          <span className="block truncate type-meta text-muted">
+            {subject} · {sub}
+          </span>
         </span>
         <span className="shrink-0 type-meta text-muted">
           {badge || when}
@@ -402,7 +407,7 @@ function FileItem({ f, list, on, onToggle }: {
     );
   }
   return (
-    <li onClick={onToggle}
+    <li onClick={onToggle} title={`${subject} · ${f.name}`}
       className={`relative cursor-pointer rounded-card border bg-panel p-2
         ${on ? "border-accent" : "border-line hover:bg-chip"}`}>
       <div className={`relative grid h-20 place-items-center rounded-control

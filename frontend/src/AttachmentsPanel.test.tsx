@@ -184,3 +184,16 @@ test("Open shows the selected mail in the viewer", async () => {
   fireEvent.click(screen.getByLabelText("Select doc.pdf"));
   expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
 });
+
+test("Open needs exactly one mail; the subject stays visible in the list",
+  async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));   // 2 mails
+  expect((screen.getByRole("button", { name: "Open" }) as HTMLButtonElement)
+    .disabled).toBe(true);
+  fireEvent.click(screen.getByRole("radio", { name: "List" }));
+  expect(screen.getByText(/Scan 1 · 2 MB/)).toBeTruthy();
+});

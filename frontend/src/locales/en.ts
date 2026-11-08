@@ -971,6 +971,7 @@ export const EN: Record<string, string> = {
   "atts.sel_one": "1 mail · {size}",
   "atts.sel_note": "The whole mail goes to Trash, not only the file.",
   "atts.open": "Open",
+  "atts.open_one": "Open needs exactly one selected mail.",
   "atts.more": "Show {n} more",
   "atts.no_match": "No files match",
   "atts.no_match_hint": "Try another kind of file or age.",
