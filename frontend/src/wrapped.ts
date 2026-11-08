@@ -75,33 +75,34 @@ export function buildSummarySvg(
     const max = Math.max(...months);
     const peak = months.indexOf(max);
     months.forEach((v, i) => {
-      const h = Math.max(8, (200 * v) / max);
-      parts.push(`<rect x="${90 + i * 75}" y="${680 - h}" width="63" `
+      const h = Math.max(8, (180 * v) / max);
+      // below the big number and its unit line (baseline 580)
+      parts.push(`<rect x="${90 + i * 75}" y="${840 - h}" width="63" `
         + `height="${h}" rx="8" fill="${i === peak ? STORY_TEXT
           : "rgba(255,255,255,0.38)"}"/>`);
     });
   }
   str.stats.slice(0, 6).forEach((s, i) => {
     const x = 90 + (i % 2) * 450;
-    const y = 740 + Math.floor(i / 2) * 170;
+    const y = 880 + Math.floor(i / 2) * 160;
     parts.push(
-      `<rect x="${x}" y="${y}" width="420" height="145" rx="24" `
+      `<rect x="${x}" y="${y}" width="420" height="140" rx="24" `
       + `fill="rgba(255,255,255,0.14)"/>`,
-      text(x + 30, y + 72, 60, 700, STORY_TEXT, s.value),
-      text(x + 30, y + 116, 32, 400, STORY_MUTED, s.label));
+      text(x + 30, y + 70, 60, 700, STORY_TEXT, s.value),
+      text(x + 30, y + 114, 32, 400, STORY_MUTED, s.label));
   });
   const top = d.top_senders.slice(0, 5);
   if (top.length) {
-    parts.push(text(90, 1340, 36, 600, STORY_TEXT, str.topTitle));
+    parts.push(text(90, 1440, 36, 600, STORY_TEXT, str.topTitle));
     top.forEach((s, i) => {
-      const y = 1410 + i * 80;
+      const y = 1510 + i * 70;
       parts.push(
         text(90, y, 42, 500, STORY_TEXT, `${i + 1}. ${senderName(s, showNames)}`),
         text(990, y, 38, 400, STORY_MUTED, str.topRows[i] ?? "", "end"));
     });
   }
-  parts.push(text(90, 1840, 30, 400, STORY_MUTED, str.note));
-  parts.push(text(990, 1840, 30, 600, STORY_TEXT, str.footer, "end"));
+  parts.push(text(90, 1860, 30, 400, STORY_MUTED, str.note));
+  parts.push(text(990, 1860, 30, 600, STORY_TEXT, str.footer, "end"));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_W}" `
     + `height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}" `
     + `font-family="${FONT}">${parts.join("")}</svg>`;

@@ -62,7 +62,7 @@ function Slide({ lead, big, unit, word = false, children }: {
 }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-3 px-6 py-8
-      sm:px-8">
+      sm:px-10">
       <div className="type-heading text-knob/80">{lead}</div>
       <div className={`${word ? "type-display-word" : "type-display"}
         text-knob`}>{big}</div>
@@ -83,7 +83,7 @@ function Rows({ rows, showNames, from = 1 }: {
           rounded-card px-3 py-2 type-body text-knob">
           <span className="w-4 shrink-0 text-knob/70 tabular-nums">
             {i + from}</span>
-          <Avatar name={showNames ? s.label || s.addr : s.addr} size="md" />
+          <Avatar name={showNames ? s.label || s.addr : "?"} size="md" />
           <span className="min-w-0 flex-1 truncate font-medium">
             {senderName(s, showNames)}
           </span>
@@ -184,10 +184,9 @@ function daysSpan(d: WrappedResp): number {
     ? 366 : 365;
 }
 
-function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
+function Card({ card, d, showNames, onYear }: {
   card: CardKey; d: WrappedResp; showNames: boolean;
-  setShowNames: (v: boolean) => void; onYear: (y: number) => void;
-  onSave: () => void; saving: boolean;
+  onYear: (y: number) => void;
 }) {
   const r = d.received;
   const c = d.cleanup;
@@ -233,7 +232,7 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
           per: (Math.round(10 / every) / 10).toLocaleString(getLang()) });
       return (
         <div className="flex flex-1 flex-col justify-center gap-3 px-6 py-8
-          text-center text-knob sm:px-8">
+          text-center text-knob sm:px-10">
           <div className="type-heading text-knob/80">
             {t("wrapped.loudest.lead")}</div>
           <Avatar name={top.label || top.addr} size="xl"
@@ -350,19 +349,10 @@ function Card({ card, d, showNames, setShowNames, onYear, onSave, saving }: {
               <Stat key={s.label} value={s.value} label={s.label} />
             ))}
           </div>
-          <Rows rows={d.top_senders.slice(0, 3)} showNames={showNames} />
-          <div className={`${interactive} mt-2 flex flex-wrap items-center
-            gap-3 text-knob`}>
-            <Button disabled={saving} onClick={onSave}>
-              {t("wrapped.save")}
-            </Button>
-            <Checkbox label={t("wrapped.show_names")} checked={showNames}
-              onChange={(e) => setShowNames(e.target.checked)} />
+          {/* short windows: the card keeps tiles and controls, not rows */}
+          <div className="hidden [@media(min-height:60rem)]:block">
+            <Rows rows={d.top_senders.slice(0, 3)} showNames={showNames} />
           </div>
-          <p className="type-meta text-knob/70">
-            {showNames ? t("wrapped.names_shown") : t("wrapped.names_hidden")}
-            {" "}{t("wrapped.local_only")}
-          </p>
         </Slide>
       );
   }
@@ -478,14 +468,17 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
   };
 
   const zone = "absolute inset-y-0 z-0 w-1/2 cursor-pointer touch-pan-y";
-  const arrow = "max-sm:sr-only sm:shrink-0";
+  // Phones: screen-reader-only until focused (then a visible corner button)
+  const arrow = `max-sm:sr-only max-sm:focus-visible:not-sr-only
+    max-sm:focus-visible:absolute max-sm:focus-visible:bottom-4
+    max-sm:focus-visible:z-20 sm:shrink-0`;
   const cur = cards[idx];
   return (
     <Modal full onClose={onClose} label={t("wrapped.menu")}>
       <div className="flex min-h-0 flex-1 items-center justify-center
         sm:gap-3 sm:p-4">
         <Button variant="secondary" size="icon" label={t("wrapped.back")}
-          className={arrow} disabled={idx === 0} onClick={back}>
+          className={`${arrow} max-sm:focus-visible:left-4`} disabled={idx === 0} onClick={back}>
           <ChevronLeft size={18} />
         </Button>
         {/* Phones: the card is the whole screen. Desktop: a 9:16 card. */}
@@ -546,15 +539,32 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
                 <div className="pointer-events-none relative z-10 flex flex-1
                   flex-col">
                   <Card card={cur} d={data} showNames={showNames}
-                    setShowNames={setShowNames} saving={saving} onSave={save}
                     onYear={(y) => { setYear(y); setIdx(0); setElapsed(0); }} />
                 </div>
               </>
             )}
           </div>
+          {data && cur === "summary" && (
+            <div className="relative z-10 flex shrink-0 flex-col gap-2 px-6
+              pb-5 pt-2 text-knob sm:px-10">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button disabled={saving} onClick={save}>
+                  {t("wrapped.save")}
+                </Button>
+                <Checkbox label={t("wrapped.show_names")} checked={showNames}
+                  onChange={(e) => setShowNames(e.target.checked)} />
+              </div>
+              <p className="type-meta text-knob/70">
+                {showNames ? t("wrapped.names_shown")
+                  : t("wrapped.names_hidden")}
+                {" "}{t("wrapped.local_only")}
+              </p>
+            </div>
+          )}
         </div>
         <Button variant="secondary" size="icon" label={t("wrapped.next")}
-          className={arrow} disabled={!data || idx >= last} onClick={next}>
+          className={`${arrow} max-sm:focus-visible:right-4`}
+          disabled={!data || idx >= last} onClick={next}>
           <ChevronRight size={18} />
         </Button>
       </div>
