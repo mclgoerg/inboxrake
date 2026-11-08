@@ -15,6 +15,7 @@ import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { DetailPanel } from "./components/DetailPanel";
+import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
 import { Login } from "./components/Login";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
@@ -2395,7 +2396,39 @@ export default function App() {
     )}
   </>);
 
+  // What the mail reader (wherever a mail opens) reaches back into: the
+  // sender's page, the Block flow and the sender unsubscribe.
+  const senderGroup = (addr: string) => state?.groups.sender?.[addr];
+  const readerHost: ReaderHost = {
+    selfAddrs: acct?.user ? [acct.user] : [],
+    folders: (state?.folders_raw ?? []).map((f, i) => ({
+      value: f, label: state?.folders[i] ?? f })),
+    hasSender: (addr) => !!senderGroup(addr),
+    openSender: (addr) => {
+      const g = senderGroup(addr);
+      if (!g) return;
+      setSearchOpen(false); setDupsOpen(false); setAttsOpen(false);
+      setFoldersOpen(null);
+      openSender(g);
+    },
+    isBlocked: (addr) => blockedAddrs.has(addr),
+    blockSender: blockAddress,
+    canUnsubscribe: (addr) => {
+      const g = senderGroup(addr);
+      return !!g && g.unsub && !isPooled(g);
+    },
+    unsubscribed: (addr) => senderGroup(addr)?.unsubscribed?.status ?? null,
+    unsubscribe: async (addr) => {
+      const g = senderGroup(addr);
+      if (!g) return;
+      const r = await unsubscribeGroup("sender", g, demo);
+      notify(r.message, r.ok ? "info" : "error");
+      if (r.ok) refresh();
+    },
+  };
+
   return (
+    <ReaderHostProvider value={readerHost}>
     <div className={wide ? "pl-61" : undefined}>
     {wide && (
       <Sidebar page={page} onPage={goPage} onOpen={openTool}
@@ -2976,5 +3009,6 @@ export default function App() {
       )}
     </div>
     </div>
+    </ReaderHostProvider>
   );
 }

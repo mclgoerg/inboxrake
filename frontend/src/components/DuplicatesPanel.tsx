@@ -7,6 +7,7 @@ import { confirmTrashMails, itemsOf } from "../mailActions";
 import type { DupKind, DupSet, DupSummary, Mail } from "../types";
 import { DuplicateCompare, gapLabel } from "./DuplicateCompare";
 import { MessageView } from "./MailList";
+import type { ReaderActions } from "./MailReader";
 import { Avatar, Button, Checkbox, EmptyState, Loading, Modal, PanelHeader,
   Segmented, ShortDate, Tag, Toolbar, useMediaQuery, useOptionalToast } from "./ui";
 
@@ -205,6 +206,15 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     await trashItems(itemsOf(now.items));
   };
 
+  // The reader's Trash: the same confirm and move for the one open mail.
+  const readerActions: ReaderActions = {
+    trash: async (m) => {
+      if (working || !await confirmTrashMails(1)) return;
+      setView(null);
+      await trashItems([[m.folder, m.uid]]);
+    },
+  };
+
   const trashOlder = async (s: DupSet) => {
     if (working) return;
     const items = itemsOf(s.mails.slice(1));
@@ -399,7 +409,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
       />
 
       {view ? (
-        <MessageView mail={view} onBack={() => setView(null)} />
+        <MessageView mail={view} onBack={() => setView(null)}
+          actions={readerActions} backLabel={t("Duplicates")} />
       ) : (
         <>
           {(review || note) && (

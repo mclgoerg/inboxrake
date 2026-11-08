@@ -18,6 +18,8 @@ const deleteMessages = vi.fn();
 
 vi.mock("./api", () => ({
   api: { search: (...a: unknown[]) => search(...a),
+    message: () => Promise.resolve({ from: "x", to: "", date: "d",
+      subject: "s", text: "body text" }),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
   fmtSize: () => "1 KB",
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
@@ -304,4 +306,29 @@ async () => {
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 2]]));
   await waitFor(() => expect(onDeleted).toHaveBeenCalled());
+});
+
+test("the reader's Trash: the panel's confirm and call for the one mail, then "
+  + "the mail leaves the results; previous / next walk the results", async () => {
+  search.mockResolvedValue({ mails: [mail(1), mail(2)], notes: [] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  withDialogs(<SearchPanel bodySearch onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(subject("Parcel 1")[0]);
+  await screen.findByText("body text");
+  fireEvent.click(screen.getByRole("button", { name: "Next mail" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Next mail" }) as
+    HTMLButtonElement).disabled).toBe(true));
+
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await cancelDialog();
+  await expectNoDialog();
+  expect(deleteMessages).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith([["INBOX", 2]]));
+  await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
+  expect(subject("Parcel 1")).toHaveLength(1);
+  expect(subject("Parcel 2")).toHaveLength(0);
 });

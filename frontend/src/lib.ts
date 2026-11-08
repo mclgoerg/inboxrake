@@ -27,13 +27,15 @@ export const fmtSizeGb = (b: number): string =>
 
 /** Short locale date for display: "6 Oct" / "6. Okt." this year, with the
  *  year ("6 Oct 2024") otherwise; `time` appends the wall-clock HH:MM of
- *  the string ("6 Oct, 21:48") when it has one. Takes the leading
+ *  the string ("6 Oct, 21:48") when it has one; `weekday` prefixes it ("Tue,
+ *  6 Oct"). Takes the leading
  *  YYYY-MM-DD of an ISO string; anything else (empty, malformed) is
  *  returned unchanged. `lang` is passed in (callers use getLang()) so this
  *  file stays dependency-free. Put the full ISO date in a title - see
  *  ShortDate in ui.tsx. */
 export function fmtDate(iso: string, now: Date = nowDate(),
-                        opts: { lang?: "en" | "de"; time?: boolean } = {}
+                        opts: { lang?: "en" | "de"; time?: boolean;
+                                weekday?: boolean } = {}
 ): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(iso || "");
   if (!m) return iso;
@@ -45,6 +47,7 @@ export function fmtDate(iso: string, now: Date = nowDate(),
   if (withTime) dt.setUTCHours(Number(m[4]), Number(m[5]));
   return new Intl.DateTimeFormat(opts.lang === "de" ? "de-DE" : "en-GB", {
     day: "numeric", month: "short", timeZone: "UTC",
+    ...(opts.weekday ? { weekday: "short" } : {}),
     ...(y === now.getFullYear() ? {} : { year: "numeric" }),
     ...(withTime ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }
       : {}),

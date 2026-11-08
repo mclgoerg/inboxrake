@@ -7,6 +7,7 @@ import { actionVerb, itemsOf, planMailAction } from "../mailActions";
 import type { AppState, Mail } from "../types";
 import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
+import type { ReaderActions } from "./MailReader";
 import { SortControl } from "./SortControl";
 import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
   useToast }
@@ -124,21 +125,23 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     setSel(next);
   };
 
-  const togglePin = async (m: Mail) => {
+  const togglePin = async (m: Mail, pinned = !m.pinned): Promise<boolean> => {
     try {
-      await api.pin(m.folder, m.uid, !m.pinned);
+      await api.pin(m.folder, m.uid, pinned);
       setMails((cur) => cur.map((x) =>
-        mailKey(x) === mailKey(m) ? { ...x, pinned: !m.pinned } : x));
+        mailKey(x) === mailKey(m) ? { ...x, pinned } : x));
       // A freshly pinned mail drops out of the selection: it must not stay
       // ticked unnoticed.
-      if (!m.pinned && sel.has(mailKey(m))) {
+      if (pinned && sel.has(mailKey(m))) {
         const next = new Set(sel);
         next.delete(mailKey(m));
         setSel(next);
       }
+      return true;
     } catch (e: any) {
       toast.show(`${t("pin.error")}: ${e.message ?? e}`,
         { variant: "error" });
+      return false;
     }
   };
 
@@ -147,14 +150,15 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
 
   // `chosen` is the ticked mails (the bar) or the one mail of a row swipe:
   // both take the same pinned-mail warning, confirm and background job.
+  // Resolves true when the job was queued (the reader closes after that).
   const actOn = async (chosen: Mail[], action: string, dest = "") => {
-    if (!chosen.length) return;
+    if (!chosen.length) return false;
     const verb = actionVerb(action, dest);
     const plan = await planMailAction(chosen, action, verb);
-    if (plan.kind === "cancelled") return;
+    if (plan.kind === "cancelled") return false;
     if (plan.kind === "all_pinned") {
       toast.show(t("toast.all_pinned"));
-      return;
+      return false;
     }
     const { acting, force } = plan;
     const keys = new Set(acting.map(mailKey));
@@ -172,11 +176,22 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       // Short-lived: the result toast (App) follows when the job ends.
       toast.show(t("note.background", { verb }), { duration: 3000 });
       onChanged();
+      setBusy(false);
+      return true;
     } catch (e: any) {
       toast.show(t("err.generic", { msg: e.message ?? e }),
         { variant: "error" });
     }
     setBusy(false);
+    return false;
+  };
+
+  // The reader's toolbar: the same confirm / pinned flow as the bar, and the
+  // reader closes once the mail is on its way out.
+  const readerActions: ReaderActions = {
+    trash: async (m) => { if (await actOn([m], "trash")) setView(null); },
+    move: async (m, dest) => { if (await actOn([m], "move", dest)) setView(null); },
+    pin: (m, pinned) => togglePin(m, pinned),
   };
 
   const onAction = (v: string) => {
@@ -288,7 +303,9 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       {view && (
         // The reader owns the history entry (MessageView), not this shell.
         <Modal onClose={() => setView(null)} full backLayer={false}>
-          <MessageView mail={view} onBack={() => setView(null)} />
+          <MessageView mail={view} onBack={() => setView(null)}
+            actions={readerActions} backLabel={t("nav.all_mail")}
+            nav={{ list: mails, onOpen: setView }} />
         </Modal>
       )}
     </div>

@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AllMailsView } from "./components/AllMailsView";
+import { ReaderHostProvider } from "./components/MailReader";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { pickFolder } from "./folderPickerTestUtil";
@@ -47,7 +48,10 @@ const state = {
 const onChanged = vi.fn();
 const renderView = () =>
   render(<ToastProvider><DialogProvider>
-    <AllMailsView state={state} onChanged={onChanged} />
+    <ReaderHostProvider value={{ selfAddrs: [], folders: [
+      { value: "INBOX", label: "INBOX" }, { value: "Archive", label: "Archive" }] }}>
+      <AllMailsView state={state} onChanged={onChanged} />
+    </ReaderHostProvider>
   </DialogProvider></ToastProvider>);
 
 beforeEach(() => {
@@ -222,6 +226,75 @@ test("opening a mail shows it in the message view", async () => {
   renderView();
   fireEvent.click(await screen.findByText("Subject 1"));
   await screen.findByText("body text");
+});
+
+// ------------------------------------------- the reader's own toolbar
+
+const openMail = async (uid: number) => {
+  fireEvent.click(await screen.findByText(`Subject ${uid}`));
+  await screen.findByText("body text");
+};
+
+test("reader Trash: the bar's confirm and call for that one mail, then the "
+  + "reader closes", async () => {
+  mails.mockResolvedValue(resp([mk(1), mk(2)], 2));
+  renderView();
+  await openMail(2);
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  expect((await findDialog()).textContent).toContain('"Subject 2"');
+  await pressDialog("Move to Trash (1)");
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["Archive", 2]], "trash", "", false));
+  await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
+  expect(screen.getByText("1 of 1 mails")).toBeTruthy();
+});
+
+test("reader Trash: cancelling keeps the mail open; a pinned mail is warned "
+  + "about and sent with force", async () => {
+  mails.mockResolvedValue(resp([mk(1, { pinned: true })], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  expect((await findDialog()).textContent).toMatch(/protected mail "Subject 1"/);
+  await cancelDialog();
+  await expectNoDialog();
+  expect(deleteMessages).not.toHaveBeenCalled();
+  expect(screen.getByText("body text")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await pressDialog("Move to Trash anyway");
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 1]], "trash", "", true));
+});
+
+test("reader Move: the bar's move call for that one mail", async () => {
+  mails.mockResolvedValue(resp([mk(1)], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Move this mail to a folder" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+  await pressDialog(/^Move → Archive \(1\)$/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));
+});
+
+test("reader Pin: the pin call, and the list row follows", async () => {
+  mails.mockResolvedValue(resp([mk(1)], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+  await waitFor(() => expect(pin).toHaveBeenCalledWith("INBOX", 1, true));
+  await screen.findByRole("button", { name: "Unpin" });
+});
+
+test("reader previous / next walk the loaded list", async () => {
+  mails.mockResolvedValue(resp([mk(1), mk(2)], 2));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Next mail" }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "s" })).toBeTruthy());
+  expect((screen.getByRole("button", { name: "Next mail" }) as HTMLButtonElement)
+    .disabled).toBe(true);
+  expect(screen.getByRole("button", { name: "All mail" })).toBeTruthy();
 });
 
 test("a new groups_rev refreshes in place keeping the loaded pages",

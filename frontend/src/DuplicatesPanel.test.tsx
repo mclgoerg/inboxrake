@@ -35,8 +35,11 @@ vi.mock("./api", async (orig) => ({
 
 // The mail viewer is its own component with its own tests.
 vi.mock("./components/MailList", () => ({
-  MessageView: ({ mail, onBack }: { mail: { uid: number }; onBack: () => void }) =>
-    <div>viewing mail {mail.uid}<button onClick={onBack}>back to list</button></div>,
+  MessageView: ({ mail, onBack, actions }: { mail: { uid: number };
+    onBack: () => void; actions?: { trash?: (m: unknown) => void } }) =>
+    <div>viewing mail {mail.uid}<button onClick={onBack}>back to list</button>
+      {actions?.trash && <button onClick={() => actions.trash!(mail)}>reader trash</button>}
+    </div>,
 }));
 
 // a whole minute, so ":SS" in a test is the same in every time zone
@@ -425,6 +428,24 @@ test("opening a copy shows the mail and back returns to the list", async () => {
   await screen.findByText("viewing mail 3");
   fireEvent.click(screen.getByText("back to list"));
   await screen.findByText("keep · newest");
+});
+
+test("the reader's Trash confirms, moves just that copy and returns to the list",
+  async () => {
+  identicalWorld();
+  deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+  show();
+  fireEvent.click((await screen.findAllByRole("button", { name: /INBOX/ }))[0]);
+  await screen.findByText("viewing mail 3");
+  fireEvent.click(screen.getByText("reader trash"));
+  await cancelDialog();
+  await expectNoDialog();
+  expect(deleteMessages).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("reader trash"));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 3]], "trash"));
+  expect(screen.queryByText("viewing mail 3")).toBeNull();
 });
 
 test("the header says how old the scan is", async () => {

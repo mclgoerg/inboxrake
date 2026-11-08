@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { confirmTrashMails } from "../mailActions";
 import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
 import { MessageView } from "./MailList";
+import type { ReaderActions } from "./MailReader";
 import { BarButton, BulkBar, Button, Checkbox, EmptyState, Loading, Modal,
   PanelHeader, PopupSelect, Segmented, ShortDate, Spinner } from "./ui";
 
@@ -168,19 +169,31 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     sel.has(mailKey(m)) && visibleKeys.has(mailKey(m)));
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
-  const trash = async () => {
-    if (!mails || chosen.length === 0) return;
-    if (!await confirmTrashMails(chosen.length)) return;
+  // Resolves true when the mails are on their way to Trash.
+  const trashMails = async (go: AttMail[]): Promise<boolean> => {
+    if (!mails || go.length === 0) return false;
+    if (!await confirmTrashMails(go.length)) return false;
     try {
-      const items = chosen.map((m) => [m.folder, m.uid] as [string, number]);
+      const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items, "trash");
-      setMails(mails.filter((m) => !sel.has(mailKey(m))));
-      setSel(new Set());
+      const gone = new Set(go.map(mailKey));
+      setMails(mails.filter((m) => !gone.has(mailKey(m))));
+      setSel((cur) => new Set([...cur].filter((k) => !gone.has(k))));
       setNote(t("note.background", { verb: t("Move to Trash") }));
       onDeleted();
+      return true;
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
+      return false;
     }
+  };
+  const trash = () => trashMails(chosen);
+  // The reader's Trash: the same confirm and call for the one open mail.
+  const readerActions: ReaderActions = {
+    trash: async (m) => {
+      const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m));
+      if (one && await trashMails([one])) setView(null);
+    },
   };
 
   // An empty panel (nothing analyzed yet / nothing found) shrinks to its
@@ -217,7 +230,10 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       />
 
       {view ? (
-        <MessageView mail={view} onBack={() => setView(null)} />
+        <MessageView mail={view} onBack={() => setView(null)}
+          actions={readerActions} backLabel={t("Attachments")}
+          nav={{ onOpen: setView, list: [...new Map(visible.flatMap((f) =>
+            f.mails).map((m) => [mailKey(m), m])).values()] }} />
       ) : (
         <>
           {(atts?.status === "error" || note) && (
