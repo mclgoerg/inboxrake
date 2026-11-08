@@ -519,7 +519,7 @@ def test_compose_uses_the_accounts_language_and_link(monkeypatch):
     subject, text, html = digestmod.compose("default", 0)
     assert subject.startswith("Deine Woche:")
     assert "2 in den Papierkorb" in text
-    assert "Inboxrake öffnen" in html and "https://app.example/" in html
+    assert "Inboxrake öffnen" in html and html.count("app.example") == 1
 
 
 def test_cleaned_count_skips_rescues_and_subtracts_undo():
