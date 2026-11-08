@@ -86,6 +86,8 @@ const ERROR_CODES: Record<string, string> = {
   labels_unscanned: "labels.err.unscanned",
   labels_scan_running: "labels.err.scan_running",
   labels_unknown_sender: "labels.err.unknown_sender",
+  // the digest's app address (backend/config.py)
+  digest_bad_url: "digest.err.bad_url",
   // special-folder choices (backend/mailops.py)
   role_not_candidate: "folder.err.not_candidate",
   role_ambiguous: "folder.err.ambiguous",

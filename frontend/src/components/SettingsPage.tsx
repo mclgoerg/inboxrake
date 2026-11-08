@@ -1265,14 +1265,16 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
               || t("digest.recipient_placeholder")}
             onChange={set("digestRecipient")} />
         </SettingsRow>
-        <SettingsRow label={t("digest.lang")}>
+        <SettingsRow label={t("digest.lang")}
+          sub={imapOf(cfg, editAcct).digest?.lang ? undefined
+            : t("digest.lang_unset")}>
           <PopupSelect name={t("digest.lang")} value={f.digestLang}
             onChange={(v) => put("digestLang", v)}
             options={[{ value: "en", label: "English" },
               { value: "de", label: "Deutsch" }]} />
         </SettingsRow>
-        <SettingsRow label={t("digest.url")} sub={t("digest.url_help")}>
-          <Input className="w-full sm:w-64" type="url" inputMode="url"
+        <SettingsRow label={t("digest.url")} sub={t("digest.url_help")} stack>
+          <Input className="w-full" type="url" inputMode="url"
             aria-label={t("digest.url")} value={f.digestUrl}
             placeholder="https://inboxrake.example"
             onChange={set("digestUrl")} />

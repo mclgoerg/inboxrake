@@ -1418,3 +1418,9 @@ test("AI key: after Save or Revert the key shows '•••• set' again", asyn
   expect(saveCalls.at(-1).ai.api_key).toBe("sk-2");
   saveResult = null;
 });
+
+test("the digest language row says so while none is stored yet", () => {
+  render(<Settings cfg={cfg} account="default" section="digest" />);
+  expect(screen.getByText(/Not saved yet - mails go out in English/))
+    .toBeTruthy();
+});

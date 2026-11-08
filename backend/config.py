@@ -347,21 +347,25 @@ DIGEST_SCHEDULES = ("off", "daily", "weekly")
 DIGEST_LANGS = ("en", "de")
 
 
+DIGEST_BAD_URL = "digest_bad_url"      # coded error, worded by the UI
+
+
 def clean_app_url(raw) -> str:
     """The app address for the digest's buttons: "" or an http(s) URL with a
-    host, without a trailing slash. Raises ValueError for anything else."""
+    host (no query or fragment: the mail appends `/#/<page>`), without a
+    trailing slash. Raises ValueError(DIGEST_BAD_URL) for anything else."""
     from urllib.parse import urlsplit
     url = str(raw or "").strip()
     if not url:
         return ""
     try:
         parts = urlsplit(url)
-        ok = parts.scheme in ("http", "https") and bool(parts.hostname)
+        ok = (parts.scheme in ("http", "https") and bool(parts.hostname)
+              and not parts.query and not parts.fragment)
     except ValueError:
         ok = False
     if not ok or len(url) > 300 or any(c.isspace() or c in '<>"' for c in url):
-        raise ValueError("the digest link must be an http:// or https:// "
-                         "address")
+        raise ValueError(DIGEST_BAD_URL)
     return url.rstrip("/")
 BODY_SEARCH_MODES = ("disabled", "server", "local")
 

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from backend import accounts as accountsmod
 from backend import aifilter
 from backend import auditlog
+from backend import config as cfgmod
 from backend import errortext
 from backend import knowledgestore
 from backend import labelstore
@@ -93,7 +94,7 @@ def _backend_codes() -> set[str]:
     return set(mailops.FOLDER_ERROR_CODES) | aifilter.CODES | {
         v for k, v in vars(knowledgestore).items()
         if k.isupper() and isinstance(v, str) and v.startswith("knowledge_")
-    } | {v for k, v in vars(labelstore).items()
+    } | {cfgmod.DIGEST_BAD_URL} | {v for k, v in vars(labelstore).items()
          if k.isupper() and isinstance(v, str) and v.startswith("labels_")}
 
 

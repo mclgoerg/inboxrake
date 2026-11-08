@@ -63,8 +63,14 @@ _LOCK = threading.Lock()
 
 _EN = {
     "subject": "Your week: {arrived} in, {cleaned} cleaned up",
-    "demo_subject": "Preview - your week: {arrived} in, {cleaned} cleaned up",
+    "subject_7d": "Last 7 days: {arrived} in, {cleaned} cleaned up",
+    "preview_prefix": "Preview - ",
     "title": "Your week in your inbox",
+    "title_7d": "Your inbox, last 7 days",
+    "window": "Last 7 days",
+    "happened_since": "What happened since {since}",
+    "junk_replied_one": "{k} from someone you replied to",
+    "junk_replied_other": "{k} from people you replied to",
     "arrived": "arrived",
     "cleaned": "cleaned up",
     "mailbox": "mailbox",
@@ -122,9 +128,14 @@ _EN = {
 
 _DE = {
     "subject": "Deine Woche: {arrived} rein, {cleaned} aufgeräumt",
-    "demo_subject":
-        "Vorschau - deine Woche: {arrived} rein, {cleaned} aufgeräumt",
+    "subject_7d": "Letzte 7 Tage: {arrived} rein, {cleaned} aufgeräumt",
+    "preview_prefix": "Vorschau - ",
     "title": "Deine Woche im Postfach",
+    "title_7d": "Dein Postfach, letzte 7 Tage",
+    "window": "Letzte 7 Tage",
+    "happened_since": "Was passiert ist seit {since}",
+    "junk_replied_one": "{k} von jemandem, dem du geantwortet hast",
+    "junk_replied_other": "{k} von Leuten, denen du geantwortet hast",
     "arrived": "angekommen",
     "cleaned": "aufgeräumt",
     "mailbox": "Postfach",
@@ -340,7 +351,10 @@ def _rows_data(S: dict, d: dict) -> tuple[list[dict], list[dict]]:
             "btn": (S["btn_block"], "senders")})
     if d["junk"]:
         needs.append({"icon": "✉", "tone": "warn",
-                      "title": _plural(S, "junk", d["junk"]), "sub": "",
+                      "title": _plural(S, "junk", d["junk"]),
+                      "sub": _plural(S, "junk_replied", d["junk_replied"],
+                                     k=d["junk_replied"])
+                      if d["junk_replied"] else "",
                       "btn": (S["btn_look"], "junk")})
     if d["ai_mails"]:
         needs.append({
@@ -401,7 +415,17 @@ def _range(S: dict, since_ts: float, now: float) -> str:
     def one(ts: float) -> str:
         t = time.localtime(ts)
         return S["day"].format(d=t.tm_mday, m=S["months"][t.tm_mon - 1])
-    return f"{one(now - 7 * 86400)} – {one(now)}"
+    return f"{S['window']} · {one(now - 7 * 86400)} – {one(now)}"
+
+
+def _happened_title(S: dict, since_ts: float) -> str:
+    return (S["happened_since"].format(since=_since(S, since_ts))
+            if since_ts else S["happened"])
+
+
+def _since(S: dict, ts: float) -> str:
+    t = time.localtime(ts)
+    return S["day"].format(d=t.tm_mday, m=S["months"][t.tm_mon - 1])
 
 
 def _compose_text(S: dict, d: dict, account: str, url: str,
@@ -410,7 +434,7 @@ def _compose_text(S: dict, d: dict, account: str, url: str,
     lines = []
     if banner:
         lines += [banner, ""]
-    lines += [f"{S['title']} ({d['range']})", ""]
+    lines += [f"{d['title']} ({d['range']})", ""]
     lines.append(f"{S['arrived']}: {d['arrived']}   {S['cleaned']}: "
                  f"{d['cleaned']}"
                  + (f"   {S['mailbox']}: {_fmt_bytes(d['size'], d['lang'])}"
@@ -419,7 +443,7 @@ def _compose_text(S: dict, d: dict, account: str, url: str,
         key = "size_less" if d["delta"] < 0 else "size_more"
         lines.append(S[key].format(
             size=_fmt_bytes(abs(d["delta"]), d["lang"])))
-    for title, rows in ((S["needs_you"], needs), (S["happened"], happened)):
+    for title, rows in ((S["needs_you"], needs), (d["happened_title"], happened)):
         if not rows:
             continue
         lines += ["", title.upper()]
@@ -615,7 +639,7 @@ def _compose_html(S: dict, d: dict, account: str, url: str,
             text-transform:uppercase;font-weight:600;color:{L["muted"]};">
             Inboxrake &middot; {esc(account)}</div>
           <div class="tx" style="font-size:24px;font-weight:700;
-            color:{L["body"]};margin-top:2px;">{esc(S["title"])}</div>
+            color:{L["body"]};margin-top:2px;">{esc(d["title"])}</div>
           <div class="mu" style="font-size:13px;color:{L["muted"]};
             margin-top:2px;">{esc(d["range"])}</div>
         </td></tr>
@@ -644,7 +668,7 @@ def _compose_html(S: dict, d: dict, account: str, url: str,
           </table>
         </td></tr>
         {_section_html(S["needs_you"], needs, url)}
-        {_section_html(S["happened"], happened, url)}
+        {_section_html(d["happened_title"], happened, url)}
         <tr><td style="padding:18px 24px 0;"></td></tr>
         <tr><td class="foot mu" style="padding:14px 24px;
           background-color:{L["panel2"]};font-size:12px;color:{L["muted"]};">
@@ -691,7 +715,8 @@ def _cleaned_weeks(entries: list[dict], rules: list[dict],
             counts = not rescue(e)
         else:
             counts = (e["action"] == "rule_execute"
-                      and actions.get(e.get("actor")) != "mark_read"
+                      and e.get("actor") in actions     # a deleted rule: no
+                      and actions[e["actor"]] != "mark_read"
                       and not any(m.get("actor") == e.get("actor")
                                   and abs(m["ts"] - e["ts"]) <= 600
                                   for m in moved))
@@ -705,10 +730,16 @@ def _cleaned_weeks(entries: list[dict], rules: list[dict],
     return out
 
 
+def _one_line(text: str) -> str:
+    """User text for the plain-text part: control characters (line breaks
+    included) become spaces."""
+    return re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+", " ", str(text)).strip()
+
+
 def _rule_runs(entries: list[dict], rules: list[dict]) -> list[tuple]:
     """[(name, runs, mails)] of the rules that were executed in `entries`,
     most mails first (a deleted rule has no name to show: skipped)."""
-    names = {r["id"]: r["name"] for r in rules}
+    names = {r["id"]: _one_line(r["name"]) for r in rules}
     acc: dict[str, list[int]] = {}
     for e in entries:
         actor = e.get("actor", "")
@@ -754,6 +785,9 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
                 ai_mails += rec["count"]
                 ai_bytes += rec["size"]
         junk = acc.state.get("junk_count") or 0
+    replied = mailops.load_replied(acc)
+    junk_replied = sum(1 for m in mailops.role_mails("junk", acc)
+                       if m.get("addr") in replied)
 
     delta = None
     if indexed:
@@ -766,22 +800,27 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
             "weeks_in": weeks_in, "weeks_out": weeks_out,
             "size": size if indexed else None, "delta": delta,
             "still": len(still_senders), "still_mails": still_mails,
-            "junk": junk, "ai_mails": ai_mails, "ai_bytes": ai_bytes}
+            "junk": junk, "junk_replied": junk_replied, "ai_mails": ai_mails, "ai_bytes": ai_bytes}
 
 
-def _digest_lang(account: str) -> tuple[str, str]:
+def _digest_cfg(account: str) -> tuple[str, str, bool]:
+    """-> (language, app address, weekly schedule?) of the account."""
     block = cfgmod.load_config()["accounts"].get(account) or {}
     d = block.get("digest") or {}
     lang = d.get("lang") if d.get("lang") in STRINGS_BY_LANG else "en"
-    return lang, d.get("url") or ""
+    return lang, d.get("url") or "", d.get("schedule") == "weekly"
 
 
 def _build(account: str, d: dict, lang: str, url: str,
            banner: str | None, demo: bool) -> tuple[str, str, str]:
     S = STRINGS_BY_LANG[lang]
-    d = {**d, "lang": lang}
-    subject = S["demo_subject" if demo else "subject"].format(
+    d = {**d, "lang": lang,
+         "title": S["title" if d["weekly"] else "title_7d"]}
+    subject = S["subject" if d["weekly"] else "subject_7d"].format(
         arrived=d["arrived"], cleaned=d["cleaned"])
+    if demo:
+        subject = S["preview_prefix"] + (subject[0].lower() + subject[1:]
+                                         if lang == "en" else subject)
     return (subject, _compose_text(S, d, account, url, banner),
             _compose_html(S, d, account, url, banner))
 
@@ -809,14 +848,15 @@ def compose(account: str, since_ts: int, now: float | None = None,
         # reference (its rule was deleted meanwhile) - same as no
         # activity at all.
         return None
-    cfg_lang, cfg_url = _digest_lang(account)
+    cfg_lang, cfg_url, weekly = _digest_cfg(account)
     lang = lang or cfg_lang
     url = cfg_url if url is None else url
     d = _snapshot(account, since_ts, now)
     d.update(counts=mail_counts, freed=freed, unsub_attempts=unsub_attempts,
              unsub_outcomes=unsub_outcomes,
              rules=_rule_runs(entries, rules),
-             range=_range(STRINGS_BY_LANG[lang], since_ts, now))
+             weekly=weekly, range=_range(STRINGS_BY_LANG[lang], since_ts, now),
+             happened_title=_happened_title(STRINGS_BY_LANG[lang], since_ts))
     return _build(account, d, lang, url, None, False)
 
 
@@ -826,7 +866,7 @@ def compose_demo(account: str, lang: str | None = None,
     POST /api/digest/test when there's genuinely nothing real to show
     yet, so a first-time user can see what the mail looks like without
     having to go clean up mail first. Never counted as a real send."""
-    cfg_lang, cfg_url = _digest_lang(account)
+    cfg_lang, cfg_url, weekly = _digest_cfg(account)
     lang = lang or cfg_lang
     url = cfg_url if url is None else url
     S = STRINGS_BY_LANG[lang]
@@ -841,7 +881,9 @@ def compose_demo(account: str, lang: str | None = None,
          "freed": 7_650_000, "unsub_attempts": 4,
          "unsub_outcomes": {"done": 2, "link": 1, "failed": 1},
          "rules": [(S["demo_name"], 3, 38)],
-         "range": _range(S, 0, time.time())}
+         "weekly": weekly, "junk_replied": 1,
+         "range": _range(S, 0, time.time()),
+         "happened_title": S["happened"]}
     return _build(account, d, lang, url, S["demo_banner"], True)
 
 

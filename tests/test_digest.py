@@ -51,7 +51,7 @@ def test_compose_aggregates_seeded_entries_and_respects_since_boundary():
 
     subject, text, html = digestmod.compose("default", 0)
     # 5 trashed + 2 archived + 3 rule-moved = 10 cleaned up
-    assert subject == "Your week: 0 in, 10 cleaned up"
+    assert subject == "Last 7 days: 0 in, 10 cleaned up"   # not weekly
     for body in (text, html):
         assert "5 moved to Trash" in body
         assert "7 deleted for good" in body     # purge + empty_trash
@@ -462,7 +462,7 @@ def _demo(lang="en", url=""):
 
 def test_demo_has_balance_needs_you_and_what_happened():
     subject, text, html = _demo()
-    assert subject == "Preview - your week: 81 in, 96 cleaned up"
+    assert subject == "Preview - last 7 days: 81 in, 96 cleaned up"
     for body in (text, html):
         assert "PREVIEW with made-up example data" in body
         assert "81" in body and "96" in body and "227 MB" in body
@@ -478,7 +478,7 @@ def test_demo_has_balance_needs_you_and_what_happened():
 
 def test_demo_in_german():
     subject, text, html = _demo("de")
-    assert subject == "Vorschau - deine Woche: 81 rein, 96 aufgeräumt"
+    assert subject == "Vorschau - Letzte 7 Tage: 81 rein, 96 aufgeräumt"
     for body in (text, html):
         assert "Braucht dich" in body.replace("BRAUCHT DICH", "Braucht dich")
         assert "3 schreiben trotz Abmeldung weiter" in body
@@ -517,7 +517,7 @@ def test_compose_uses_the_accounts_language_and_link(monkeypatch):
         "digest": {"lang": "de", "url": "https://app.example/"}}})
     auditlog.record("trash", account="default", count=2, size=100)
     subject, text, html = digestmod.compose("default", 0)
-    assert subject.startswith("Deine Woche:")
+    assert subject.startswith("Letzte 7 Tage:")
     assert "2 in den Papierkorb" in text
     assert "Inboxrake öffnen" in html and html.count("app.example") == 1
 
@@ -542,9 +542,63 @@ def test_digest_url_and_language_settings():
     saved = r.json()["accounts"]["default"]["digest"]
     assert saved["url"] == "https://app.example/x" and saved["lang"] == "de"
     for bad in ("javascript:alert(1)", "ftp://x.example", "app.example",
-                "https://", 'https://a.example/"x'):
+                "https://", 'https://a.example/"x',
+                "https://a.example/?x=1", "https://a.example/#/x"):
         assert save({"url": bad}).status_code == 400
     assert save({"lang": "fr"}).json()["accounts"]["default"][
         "digest"]["lang"] == "de"                  # unknown: unchanged
     assert save({"url": ""}).json()["accounts"]["default"][
         "digest"]["url"] == ""
+
+
+def test_weekly_schedule_says_your_week_and_what_happened_has_its_start():
+    cfgmod.update_config({"account": "default", "imap": {
+        "host": "h", "user": "me@x.example", "password": "pw",
+        "digest": {"schedule": "weekly"}}})
+    auditlog.record("trash", account="default", count=2, size=100)
+    subject, text, html = digestmod.compose("default", 0)
+    assert subject.startswith("Your week:")
+    assert "Your week in your inbox" in html and "Last 7 days" in html
+    assert "What happened</div>" in html or "WHAT HAPPENED" in text
+    since = int(time.time()) - 3 * 86400
+    auditlog.record("trash", account="default", count=1, size=1)
+    _, text, html = digestmod.compose("default", since)
+    assert "What happened since " in html and "WHAT HAPPENED SINCE" in text
+
+
+def test_cleaned_count_ignores_runs_of_a_deleted_rule():
+    rule = rulesmod.create_rule({"name": "temp", "query": "x"})
+    auditlog.record("rule_execute", actor=f"rule:{rule['id']}",
+                    account="default", count=7)
+    rulesmod.delete_rule(rule["id"])
+    entries = auditlog._load_all("default")
+    assert digestmod._cleaned_weeks(entries, rulesmod.load_rules(),
+                                    time.time())[-1] == 0
+
+
+def test_text_part_keeps_user_strings_on_one_line():
+    rule = rulesmod.create_rule({"name": "a\nb\rc\x07d", "query": "x"})
+    auditlog.record("rule_execute", actor=f"rule:{rule['id']}",
+                    account="default", count=4)
+    _, text, _ = digestmod.compose("default", 0)
+    assert 'Rule "a b c d" ran 1 time' in text
+
+
+def test_junk_line_counts_mails_from_people_you_replied_to(monkeypatch):
+    from backend import accounts as accountsmod
+    acc = accountsmod.get("default")
+    with acc.lock:
+        acc.state["junk_count"] = 3
+        acc.role_index["junk"] = {
+            "a": {"addr": "a@x.example"}, "b": {"addr": "b@x.example"},
+            "c": {"addr": "c@x.example"}}
+        acc.replied.add("b@x.example")
+        acc.replied_loaded = True
+    auditlog.record("trash", account="default", count=1, size=1)
+    _, text, html = digestmod.compose("default", 0)
+    assert "3 mails in Junk (1 from someone you replied to)" in text
+    # none replied -> no extra line
+    with acc.lock:
+        acc.replied.clear()
+    _, text, _ = digestmod.compose("default", 0)
+    assert "replied" not in text

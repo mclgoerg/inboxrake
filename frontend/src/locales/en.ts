@@ -286,6 +286,11 @@ export const EN: Record<string, string> = {
   "digest.recipient": "Recipient",
   "digest.recipient_placeholder": "this account's own address",
   "digest.time": "Time (24h, server's local time)",
+  "digest.lang_unset":
+    "Not saved yet - mails go out in English until you save.",
+  "digest.err.bad_url":
+    "The link must be a web address like https://inboxrake.example - "
+    + "starting with http:// or https://, without ? or #.",
   "digest.lang": "Language of the mail",
   "digest.url": "Link to Inboxrake",
   "digest.url_help":
