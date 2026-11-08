@@ -97,8 +97,8 @@ test("no chip renders when nothing is still mailing", async () => {
   expect(screen.queryByText(/^Still mailing/)).toBeNull();
 });
 
-test("the chip counts flagged groups; tap 1 filters, tap 2 selects the " +
-  "non-protected matches, tap 3 clears", async () => {
+test("the row counts flagged groups; tapping it filters, the banner selects "
+  + "the non-protected matches, tapping the checked row clears", async () => {
   localStorage.setItem("pmc_account", "proton");
   const hit = mkGroup({ key: "a@x.example", label: "Sender A", count: 5,
     still_mailing: sm(2) });
@@ -112,30 +112,34 @@ test("the chip counts flagged groups; tap 1 filters, tap 2 selects the " +
   await waitFor(() => expect(screen.getAllByText("Sender A").length)
     .toBeGreaterThan(0));
   await screen.findByRole("button", { name: "Filter" });
-  // The quick filter now lives in the Filter menu (one open + click per tap).
   const tap = () => {
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /^Still mailing \(2\)/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /^Still mailing/ }));
   };
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  expect(screen.getByRole("menuitemradio", { name: /^Still mailing/ })
+    .textContent).toBe("Still mailing2");
+  fireEvent.keyDown(document, { key: "Escape" });
 
-  tap();                                    // tap 1: filter
+  tap();                                    // filter
   expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
     .value).toBe("is:still-mailing");
   expect(screen.queryAllByText("Sender C").length).toBe(0);
   expect(screen.queryAllByText("Sender B").length).toBeGreaterThan(0);
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-  expect(screen.getByRole("menuitemradio", { name: /^Still mailing \(2\)/ })
+  expect(screen.getByRole("menuitemradio", { name: /^Still mailing/ })
     .getAttribute("aria-checked")).toBe("true");
   fireEvent.keyDown(document, { key: "Escape" });
 
-  tap();                                    // tap 2: select
+  // the banner selects the non-protected match
+  fireEvent.click(screen.getAllByRole("button",
+    { name: /^Select the 1 match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
 
-  tap();                                    // tap 3: clear
+  tap();                                    // checked row again: clear
   await waitFor(() => expect((screen.getByPlaceholderText("Search or filter…") as
     HTMLInputElement).value).toBe(""));
   expect(screen.queryAllByText("Sender C").length).toBeGreaterThan(0);
-  expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
 });
 
 test("the row shows the badge; a tap opens the popover with the numbers",

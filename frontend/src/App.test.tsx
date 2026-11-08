@@ -487,56 +487,66 @@ test("selecting a group reveals the bulk-action bar; Clear selection " +
   await waitFor(() => expect(screen.queryByText(/^Trash \d+$/)).toBeNull());
 });
 
-test("a quick filter first narrows the filter box, then (tapped " +
-  "again) adds the matches to the selection", async () => {
+test("a quick filter row filters (tap again = off); the banner adds the "
+  + "matches to the selection and Clear removes exactly those", async () => {
   renderWithOneSenderGroup();
   await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
     .toBeGreaterThan(0));
-  // The quick filters live in the Filter menu: one open + click per tap.
-  const chip = { click: () => {
+  const row = () => {
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "6 mo" }));
-  } };
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /^6\+ months/ }));
+  };
+  const box = () => (screen.getByPlaceholderText("Search or filter…") as
+    HTMLInputElement).value;
 
-  // Tap 1: filters only, selection untouched.
-  chip.click();
-  expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
-    .value).toBe("age:>6m");
+  // No filter, no banner.
+  expect(screen.queryByTestId("select-matches")).toBeNull();
+  // Tap: filters only, selection untouched; the banner appears.
+  row();
+  expect(box()).toBe("age:>6m");
   expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
+  expect(screen.getByTestId("filter-token").textContent)
+    .toContain("Inactive 6+ months");
 
-  // Tap 2: same filter already showing -> selects every match.
-  chip.click();
+  // Banner: selects every match (select mode on).
+  fireEvent.click(screen.getAllByRole("button",
+    { name: /^Select (all \d+ matches|the 1 match)/ })[0]);
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
+  expect(screen.getAllByTestId("select-matches")[0].textContent)
+    .toMatch(/selected/);
+  expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();   // select mode
 
-  // Tap 3: un-selects exactly what tap 2 selected (not just a no-op
-  // "leave it alone") AND clears the filter - so the bulk bar disappears
-  // too, not just the filter text.
-  chip.click();
-  await waitFor(() => {
-    const el = screen.getByPlaceholderText("Search or filter…");
-    expect((el as HTMLInputElement).value).toBe("");
-  });
+  // Clear: un-selects exactly those; the filter stays.
+  fireEvent.click(screen.getAllByRole("button", { name: "Clear" })[0]);
   expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
+  expect(box()).toBe("age:>6m");
 
-  // Regression: a second full cycle must look IDENTICAL to the first -
-  // each tap produces a visible change - not collapse into "tap 1 and 2
-  // both look like nothing happened" just because the matches were
-  // still selected from the first cycle (tap 3 must have undone that).
-  // Tap 4: filters again, still nothing selected.
-  chip.click();
-  expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
-    .value).toBe("age:>6m");
-  expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
-  // Tap 5: selects again - the bulk bar must (re)appear.
-  chip.click();
+  // Tapping the checked row clears the filter; the banner goes with it.
+  row();
+  expect(box()).toBe("");
+  expect(screen.queryByTestId("select-matches")).toBeNull();
+});
+
+test("a TYPED filter gets the banner too, and 'Select all' keeps what was "
+  + "selected before", async () => {
+  renderWithOneSenderGroup();
+  await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
+    .toBeGreaterThan(0));
+  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
+    { target: { value: "dhl" } });
+  expect(screen.queryByTestId("filter-token")).toBeNull();   // typed = text
+  fireEvent.click(screen.getAllByRole("button",
+    { name: /^Select (all \d+ matches|the 1 match)/ })[0]);
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
-  // Tap 6: clears again, bulk bar gone again.
-  chip.click();
-  await waitFor(() => {
-    const el = screen.getByPlaceholderText("Search or filter…");
-    expect((el as HTMLInputElement).value).toBe("");
-  });
-  expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
+});
+
+test("no matches, no banner", async () => {
+  renderWithOneSenderGroup();
+  await waitFor(() => expect(screen.getAllByText("DHL Paket").length)
+    .toBeGreaterThan(0));
+  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
+    { target: { value: "zzz-no-such-sender" } });
+  expect(screen.queryByTestId("select-matches")).toBeNull();
 });
 
 test("the More menu exposes CSV export without requiring a selection",

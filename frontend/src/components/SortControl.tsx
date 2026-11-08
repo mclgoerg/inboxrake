@@ -10,17 +10,20 @@ import { Menu, MenuDivider, MenuItem, PopupSelect, useMediaQuery }
  *  the sort keys (active one marked) and Ascending / Descending, so the
  *  filter box keeps the row. Shared by the group list and All mails. */
 export function SortControl<K extends string>({ options, value, dir,
-  onValue, onDir }: {
+  onValue, onDir, plain = false }: {
   options: { k: K; label: string }[];
   value: K;
   dir: "asc" | "desc";
   onValue: (k: K) => void;
   onDir: (d: "asc" | "desc") => void;
+  /** Phone trigger as a plain accent icon (the Senders toolbar). */
+  plain?: boolean;
 }) {
   const phone = useMediaQuery("(width < 48rem)");
   if (phone) {
     return (
-      <Menu variant="secondary" icon
+      <Menu variant={plain ? "plain" : "secondary"} icon
+        triggerClass={plain ? "coarse:size-11" : undefined}
         label={t("sort.menu_state", {
           key: t(options.find((o) => o.k === value)?.label ?? ""),
           dir: t(dir === "asc" ? "sort.ascending" : "sort.descending")

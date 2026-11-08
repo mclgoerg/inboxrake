@@ -103,6 +103,32 @@ test("Trash and Undo through the UI", async () => {
   expect(Object.keys(await senders()).length).toBe(Object.keys(before).length);
 });
 
+// One tap per filter, then the visible "Select all N matches" banner; nothing
+// is trashed here, only selected and cleared again.
+test("filter row, Select all matches banner, Clear, row again to clear", async () => {
+  await page.getByRole("link", { name: /^Senders/ }).click();
+  const box = page.getByPlaceholder("Search or filter…");
+  await expect(page.locator("[data-gidx]").first()).toBeVisible();
+  const pick = async () => {
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: /^6\+ months/ }).click();
+  };
+  await pick();
+  await expect(box).toHaveValue("age:>6m");
+  await expect(page.getByTestId("filter-token")).toContainText("Inactive 6+ months");
+  await page.getByRole("button", { name: /^Select (all \d+ matches|the 1 match)/ }).click();
+  await expect(page.getByRole("region", { name: "Selection actions" })).toBeVisible();
+  // (the table and the phone card list each render one; only one is laid out)
+  await expect(page.getByTestId("select-matches").filter({ visible: true }))
+    .toContainText(/matches? (is )?selected|match is selected/);
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Selection actions" })).toHaveCount(0);
+  await expect(box).toHaveValue("age:>6m");           // the filter stays
+  await pick();                                        // the checked row again
+  await expect(box).toHaveValue("");
+  await expect(page.getByTestId("select-matches")).toHaveCount(0);
+});
+
 // Scan, delete and undo are the jobs that run on threads in the real app. In
 // the demo they run inside the request; a change that makes them WAIT for
 // another thread would hang here (and trip the test timeout).

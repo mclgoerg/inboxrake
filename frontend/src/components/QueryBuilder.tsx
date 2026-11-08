@@ -15,15 +15,27 @@ const TAGS = ["newsletter", "shipping", "finance", "shopping", "social",
   "travel", "dev/cloud", "automated"];
 
 export function QueryBuilder({ value, onChange, className = "",
-  senderOnly = false }: {
+  senderOnly = false, plain = false, label, open: openProp, onOpenChange }: {
   value: string;
   onChange: (q: string) => void;
   className?: string;                    // extra classes for the trigger
   /** Only the conditions a Junk / Trash purge rule can answer (sender text,
    *  age, unread share); no tags, AI, attachment or flag conditions. */
   senderOnly?: boolean;
+  /** Trigger look: a plain accent icon (inside the filter field) instead of
+   *  the boxed secondary button. */
+  plain?: boolean;
+  /** Accessible name of the trigger (default: the "click conditions
+   *  together" tip). */
+  label?: string;
+  /** Controlled open state, so another control ("Build a filter…" in the
+   *  Filter menu) can open it; uncontrolled when absent. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = openProp ?? own;
+  const setOpen = (v: boolean) => { setOwn(v); onOpenChange?.(v); };
   const phone = useMediaQuery("(max-width: 639px)");
   const trigger = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLDivElement>(null);
@@ -168,8 +180,8 @@ export function QueryBuilder({ value, onChange, className = "",
 
   return (
     <>
-      <Button ref={trigger} variant="secondary" size="icon"
-        className={className} label={t("qb.tip")} aria-expanded={open}
+      <Button ref={trigger} variant={plain ? "plain" : "secondary"} size="icon"
+        className={className} label={label ?? t("qb.tip")} aria-expanded={open}
         onClick={() => setOpen(!open)}>
         <SlidersHorizontal size={18} />
       </Button>

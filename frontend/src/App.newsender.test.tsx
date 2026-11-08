@@ -89,12 +89,12 @@ test("no New chip renders when nothing is flagged", async () => {
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   await waitFor(() => expect(screen.getAllByText("Sender A").length)
     .toBeGreaterThan(0));
-  expect(screen.queryByText(/^New \(/)).toBeNull();
+  expect(screen.queryByText(/^New senders/)).toBeNull();
 });
 
-test("the New chip shows a live count; tap 1 filters, tap 2 selects " +
-  "only the flagged, non-protected groups, tap 3 clears the filter",
-  async () => {
+test("the New senders row shows a live count; tapping it filters, the "
+  + "banner selects only the flagged, non-protected groups, tapping the "
+  + "checked row clears the filter", async () => {
   localStorage.setItem("pmc_account", "proton");
   const flagged = mkGroup({
     key: "a@x.example", label: "Sender A", count: 5, new: true });
@@ -110,18 +110,20 @@ test("the New chip shows a live count; tap 1 filters, tap 2 selects " +
   await waitFor(() => expect(screen.getAllByText("Sender A").length)
     .toBeGreaterThan(0));
 
-  // The chip's count is every flagged group (2) - protection only
-  // affects which ones selectPreset actually adds to the selection.
   await screen.findByRole("button", { name: "Filter" });
-  // The quick filter now lives in the Filter menu (one open + click per tap).
   const tap = () => {
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /^New \(2\)/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /^New senders/ }));
   };
+  // The row's count is every flagged group (2) - protection only affects
+  // which ones the banner adds to the selection.
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  expect(screen.getByRole("menuitemradio", { name: /^New senders/ })
+    .textContent).toBe("New senders2");
+  fireEvent.keyDown(document, { key: "Escape" });
 
-  // Tap 1: filters to is:new, selection untouched. Both flagged groups
-  // stay visible (protection only affects selection, not visibility),
-  // the unflagged one disappears.
+  // Tap: filters to is:new, selection untouched. Both flagged groups stay
+  // visible (protection only affects selection), the unflagged one goes.
   tap();
   expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
     .value).toBe("is:new");
@@ -129,34 +131,39 @@ test("the New chip shows a live count; tap 1 filters, tap 2 selects " +
   expect(screen.queryAllByText("Sender B").length).toBeGreaterThan(0);
   expect(screen.queryAllByText("Sender C").length).toBe(0);
   expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
-  // The chip itself must survive its OWN filter being active (regression
-  // check: its count/visibility come from the full mailbox, not the
-  // now-filtered list).
+  // The row survives its OWN filter being active (count from the full
+  // mailbox) and is the one checked.
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-  expect(screen.getByRole("menuitemradio", { name: /^New \(2\)/ })
+  expect(screen.getByRole("menuitemradio", { name: /^New senders/ })
     .getAttribute("aria-checked")).toBe("true");
   fireEvent.keyDown(document, { key: "Escape" });
 
-  // Tap 2: already showing is:new -> selects every match except the
-  // protected one (bar scoped to exactly Sender A's 5 mails).
-  tap();
+  // Banner: selects every match except the protected one (bar scoped to
+  // exactly Sender A's 5 mails); it says so and keeps the filter on Clear.
+  expect(screen.getAllByText("1 protected stays unselected").length)
+    .toBeGreaterThan(0);
+  fireEvent.click(screen.getAllByRole("button",
+    { name: /^Select the 1 match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
+  expect(screen.getAllByText("The 1 match is selected").length)
+    .toBeGreaterThan(0);
+  fireEvent.click(screen.getAllByRole("button", { name: "Clear" })[0]);
+  expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
+  expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
+    .value).toBe("is:new");
 
-  // Tap 3: un-selects what tap 2 selected AND clears the filter (Sender
-  // C reappears, the bulk bar disappears).
+  // Tapping the checked row again clears the filter.
   tap();
   await waitFor(() => {
     const el = screen.getByPlaceholderText("Search or filter…");
     expect((el as HTMLInputElement).value).toBe("");
   });
   expect(screen.queryAllByText("Sender C").length).toBeGreaterThan(0);
-  expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
 
-  // Regression: a second cycle must look identical to the first - tap 2
-  // must visibly reselect (not silently no-op because tap 3 left the
-  // matches selected).
-  tap();                                  // tap 4: filter
+  // A second round behaves the same: filter, then the banner reselects.
+  tap();
   expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
-  tap();                                   // tap 5: select
+  fireEvent.click(screen.getAllByRole("button",
+    { name: /^Select the 1 match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
 });

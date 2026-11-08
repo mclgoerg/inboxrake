@@ -231,7 +231,7 @@ test("the grouping segments mark the current one with aria-selected",
     expect(sel()).toEqual(["All mails"]);
   });
 
-test("each Inactive segment applies its own preset", async () => {
+test("each Inactive row applies its own preset; tapping it again clears", async () => {
   await open();
   const box = () => (screen.getByPlaceholderText("Search or filter…") as
     HTMLInputElement).value;
@@ -239,16 +239,18 @@ test("each Inactive segment applies its own preset", async () => {
     { name: "Filter" }));
   menu();
   expect(screen.getByRole("group", { name: "Quick filters" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Inactive for" })).toBeTruthy();
   fireEvent.keyDown(document, { key: "Escape" });
-  for (const [name, q] of [["6 mo", "age:>6m"], ["1 yr", "age:>1y"],
-    ["2 yr", "age:>2y"]]) {
+  for (const [name, q] of [[/^6\+ months/, "age:>6m"], [/^1\+ year/, "age:>1y"],
+    [/^2\+ years/, "age:>2y"]] as const) {
     menu();
     fireEvent.click(screen.getByRole("menuitemradio", { name }));
     expect(box()).toBe(q);
     menu();
     expect(screen.getByRole("menuitemradio", { name })
       .getAttribute("aria-checked")).toBe("true");
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("menuitemradio", { name }));
+    expect(box()).toBe("");                       // checked row = off
   }
 });
 
@@ -273,6 +275,81 @@ test("on a phone the sort control is a menu for key and direction",
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Ascending" }));
     expect(localStorage.getItem("pmc_sort_dir")).toBe("1");
   });
+
+const phoneMedia = () => vi.stubGlobal("matchMedia", (q: string) => ({
+  matches: true, media: q, addEventListener: () => {},
+  removeEventListener: () => {},
+}));
+
+test("phone: the summary sits left of plain Filter / Sort / Select / More "
+  + "actions under the search field", async () => {
+  phoneMedia();
+  await open();
+  const field = screen.getByPlaceholderText("Search or filter…");
+  const line = screen.getByRole("button", { name: "Filter" }).parentElement!;
+  // same line: summary, Filter, Sort, Select, More - after the field
+  await waitFor(() => expect(line.textContent).toContain("1 group"));
+  expect(line.contains(field)).toBe(false);
+  for (const name of ["Filter", /^Sort: /, "Select", "More"])
+    expect(line.contains(screen.getByRole("button", { name }))).toBe(true);
+  for (const name of ["Filter", /^Sort: /, "Select"])
+    expect(screen.getByRole("button", { name }).className)
+      .toContain("text-accent");
+  expect(screen.getByRole("button", { name: "More" })
+    .querySelector("span")!.className).toContain("rounded-full");
+  // Select / Done toggles select mode
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  expect(screen.getByRole("button", { name: "Done" })
+    .getAttribute("aria-pressed")).toBe("true");
+});
+
+test("phone: the summary is the short two-line form", async () => {
+  window.location.hash = "#/senders";
+  phoneMedia();
+  state = { ...baseState, scanned_ts: 1700000000, status: "done",
+    groups: { ...baseState.groups, sender: { [group.key]: group } } };
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  const summary = () => screen.getByRole("button", { name: "Filter" })
+    .parentElement!.firstElementChild!;
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 group3 mails · /));
+  expect(screen.queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
+    { target: { value: "acme" } });
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1 group/));
+});
+
+test("phone: Filter opens the sheet; a row filters live, the field shows "
+  + "its token, Reset clears", async () => {
+  phoneMedia();
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  const sheet = screen.getByRole("dialog", { name: "Filter" });
+  fireEvent.click(within(sheet).getByRole("button", { name: /^2\+ years/ }));
+  expect((screen.getByPlaceholderText("Search or filter…") as
+    HTMLInputElement).value).toBe("age:>2y");
+  expect(screen.getByTestId("filter-token").textContent)
+    .toContain("Inactive 2+ years");
+  expect(screen.getByRole("dialog", { name: "Filter" })).toBeTruthy();
+  fireEvent.click(within(sheet).getByRole("button", { name: "Reset" }));
+  expect((screen.getByPlaceholderText("Search or filter…") as
+    HTMLInputElement).value).toBe("");
+  fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("the QueryBuilder trigger is a trailing icon in the field; 'Build a "
+  + "filter…' in the Filter menu opens the same builder", async () => {
+  await open();
+  const field = screen.getByPlaceholderText("Search or filter…").parentElement!;
+  const trigger = within(field).getByRole("button", { name: "Build a filter" });
+  fireEvent.click(trigger);
+  expect(screen.getByText(/every condition you add must ALSO match/))
+    .toBeTruthy();
+  fireEvent.click(trigger);                       // closed again
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /^Build a filter/ }));
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+});
 
 test("All mails keeps its filter and sort in the toolbar row", async () => {
   await open();
