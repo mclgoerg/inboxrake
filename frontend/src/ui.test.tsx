@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip, ChipGroup, ChipSegment,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
-  MenuGroup, MenuHeading, MiniBars, PopupSelect, Ring, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
+  MenuGroup, MenuHeading, PopupSelect, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
