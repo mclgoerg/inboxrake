@@ -1572,3 +1572,15 @@ test("Donut draws one slice per entry and exposes its label", () => {
   expect(container.querySelectorAll("div.inset-0").length)
     .toBe(2);
 });
+
+test("MiniBars with a label is an image; dimLast fades the last bar", () => {
+  render(<MiniBars values={[1, 4, 0]} label="Jan 1, Feb 4, Mar 0" dimLast
+    sizeClass="h-16 w-full" />);
+  const chart = screen.getByRole("img", { name: "Jan 1, Feb 4, Mar 0" });
+  expect(chart.className).toContain("h-16");
+  const bars = [...chart.children] as HTMLElement[];
+  expect(bars).toHaveLength(3);
+  expect(bars[1].style.height).toBe("100%");
+  expect(bars[0].style.height).toBe("25%");
+  expect(bars[2].className).toContain("opacity-40");
+});

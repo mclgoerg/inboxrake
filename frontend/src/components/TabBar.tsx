@@ -1,4 +1,4 @@
-import { BarChart3, ChevronRight, LayoutDashboard, Users, Wand2 } from "lucide-react";
+import { BarChart3, LayoutDashboard, Users, Wand2 } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { hashOf, type Page } from "../nav";
 import { t } from "../i18n";
@@ -48,49 +48,5 @@ export function TabBar({ page, onPage }: {
         </a>
       ))}
     </nav>
-  );
-}
-
-/** An inset list of tool rows (the Clean up / Insights tab pages): panel
- *  card, hairlines between rows. */
-export function ToolList({ label, children }: {
-  label: string; children: ReactNode;
-}) {
-  return (
-    <ul aria-label={label} className="mb-4 overflow-hidden rounded-card
-      bg-panel">
-      {children}
-    </ul>
-  );
-}
-
-/** One row of a `ToolList`: icon, label (+ optional sub line), count and a
- *  chevron. Disabled rows keep the rule the old Tools menu had. */
-export function ToolRow({ icon, label, sub, count, disabled, onClick }: {
-  icon: ReactNode; label: string; sub?: string; count?: number | null;
-  disabled?: boolean; onClick: () => void;
-}) {
-  return (
-    // The hairline starts after the icon (inset list), not at the card edge.
-    <li className="relative not-first:after:absolute not-first:after:inset-x-0
-      not-first:after:top-0 not-first:after:ml-12 not-first:after:border-t
-      not-first:after:border-line not-first:after:content-['']">
-      <button type="button" disabled={disabled} onClick={onClick}
-        className="flex min-h-12 w-full items-center gap-3 px-3 py-2
-          text-left transition-colors enabled:hover:bg-panel2
-          disabled:cursor-not-allowed disabled:text-faint">
-        <span className="shrink-0 text-muted">{icon}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate type-body">{label}</span>
-          {sub && (
-            <span className="block truncate type-meta text-muted">{sub}</span>
-          )}
-        </span>
-        {!!count && (
-          <span className="type-meta tabular-nums text-muted">{count}</span>
-        )}
-        <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
-      </button>
-    </li>
   );
 }

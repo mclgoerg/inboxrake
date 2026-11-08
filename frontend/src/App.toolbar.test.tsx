@@ -21,6 +21,9 @@ vi.mock("./api", () => ({
     authProbe: () => Promise.resolve({ mode: "none", authed: true }),
     getConfig: () => Promise.resolve(cfg),
     state: () => stateRequest() ?? Promise.resolve(state),
+    stats: () => Promise.reject(new Error("no stats")),
+    wrapped: () => Promise.reject(new Error("no wrapped")),
+    audit: () => Promise.resolve({ entries: [], total: 0 }),
     scan: () => Promise.resolve({ ok: true }),
     version: () => Promise.resolve({ build: "v1" }),
     mails: (...a: unknown[]) => mails(...a),
@@ -138,7 +141,7 @@ test("the tool pages list every tool with a label; no loose tool icons",
         .toBeTruthy();
     openTab("Insights");
     for (const n of ["Statistics", "Space map", "Your year in mail",
-      "Trackers", "Activity"])
+      "Trackers", "Recent activity"])
       expect(screen.getByRole("button", { name: new RegExp(`^${n}`) }))
         .toBeTruthy();
     // Search all mail is a top-bar icon on every page
@@ -148,15 +151,19 @@ test("the tool pages list every tool with a label; no loose tool icons",
 test("Clean up and Insights are tab pages with their tools in order",
   async () => {
     await open();
-    const names = (list: string) => within(screen.getByRole("list",
-      { name: list })).getAllByRole("button")
-      .map((i) => i.textContent!.replace(/(Triage|Rules|Duplicates|Attachments|Junk|Trash|Statistics|Space map|Your year in mail|Trackers|Activity|AI review).*/, "$1"));
+    const strip = (els: HTMLElement[]) => els.map((i) => i.textContent!
+      .replace(/^[A-Z]?(?=Triage)/, "").replace(/(Triage|Rules|Duplicates|Attachments|Junk|Trash|Statistics|Space map|Your year in mail|Trackers|Recent activity|AI review).*/, "$1"));
     openTab("Clean up");
-    expect(names("Clean up")).toEqual(["Triage", "Duplicates", "Attachments",
-      "Rules", "Junk", "Trash", "AI review"]);
+    // Triage is the feature card above the tile list
+    expect(strip(screen.getAllByRole("button", {
+      name: /^(Triage|Duplicates|Attachments|Rules|Junk|Trash|AI review)/ }))).toEqual(["Triage", "Duplicates",
+      "Attachments", "AI review", "Junk", "Rules", "Trash"]);
+    expect(within(screen.getByRole("list", { name: "Clean up" }))
+      .getAllByRole("button")).toHaveLength(6);
     openTab("Insights");
-    expect(names("Insights")).toEqual(["Statistics", "Space map",
-      "Your year in mail", "Trackers", "Activity"]);
+    expect(strip(screen.getAllByRole("button", {
+      name: /^(Statistics|Space map|Your year in mail|Trackers|Recent activity)/ }))).toEqual(["Statistics", "Space map",
+      "Trackers", "Your year in mail", "Recent activity"]);
     expect(window.location.hash).toBe("#/insights");
   });
 

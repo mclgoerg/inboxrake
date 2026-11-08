@@ -4,6 +4,7 @@ import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
+import { openUnsubPage, unsubscribeGroup } from "../unsub";
 import { t } from "../i18n";
 import { actionVerb, planMailAction } from "../mailActions";
 import { nowDate } from "../clock";
@@ -249,27 +250,12 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     setBusy(false);
   };
 
-  // The demo's links point at a made-up host: explain instead of opening it.
-  const openUnsubPage = (link: string): string => {
-    if (demo) return t("unsub.demo_hint");
-    window.open(link, "_blank", "noopener");
-    return t("Opened the sender's unsubscribe page - confirm it there.");
-  };
-
   const unsubscribe = async () => {
     setBusy(true);
     setNote(t("Unsubscribing…"));
-    try {
-      const r = await api.unsubscribe(grouping, group.key);
-      if (r.action === "link") {
-        setNote(openUnsubPage(r.detail));
-      } else {
-        setNote(`${t("Unsubscribed")} (${r.method}).`);
-      }
-      onDeleted();   // refresh App's state so the persisted status shows up
-    } catch (e: any) {
-      setNote(t("err.unsub", { msg: e.message ?? String(e) }));
-    }
+    const r = await unsubscribeGroup(grouping, group, demo);
+    setNote(r.message);
+    if (r.ok) onDeleted();   // refresh App's state so the persisted status shows up
     setBusy(false);
   };
 
@@ -536,7 +522,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       <>
         <ActionButton className={CELL} disabled={busy} icon={<ExternalLink size={18} />}
           label={t("unsub.open_link")}
-          onClick={() => setNote(openUnsubPage(unsubscribedNow.link))} />
+          onClick={() => setNote(openUnsubPage(unsubscribedNow.link, demo))} />
         <ActionButton className={CELL} disabled={busy} icon={<Check size={18} />}
           label={t("unsub.mark_done")} onClick={ackUnsubscribe} />
       </>

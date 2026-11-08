@@ -112,12 +112,12 @@ const mount = async (over: Partial<AppState> = {},
   fireEvent.click(screen.getByRole("link", { name: /Clean up|Aufräumen/ }));
 };
 
-test("Junk row before the Trash row: icon + count", async () => {
+test("Junk tile before the Trash tile: icon + count", async () => {
   await mount();
   const junk = await screen.findByRole("button", { name: /^Junk/ });
   const trash = screen.getByRole("button", { name: /^Trash/ });
-  expect(junk.textContent).toBe("Junk3");
-  expect(trash.textContent).toBe("Trash12");
+  expect(junk.textContent).toContain("3");
+  expect(trash.textContent).toContain("12");
   expect(junk.querySelector("svg")).toBeTruthy();
   expect(junk.compareDocumentPosition(trash)
     & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -127,26 +127,26 @@ test("German labels", async () => {
   setLang("de");
   await mount({ junk_count: 4 }, multiCfg);
   expect((await screen.findByRole("button", { name: /^Spam/ })).textContent)
-    .toBe("Spam4");
+    .toContain("4");
   expect(screen.getByRole("button", { name: /^Papierkorb/ }).textContent)
-    .toBe("Papierkorb12");
+    .toContain("12");
 });
 
-test("the rows stay, without a count, while Junk is empty or unknown",
+test("the tiles stay while Junk is empty (0) or unknown (Check)",
   async () => {
   await mount({ junk_count: 0 });
   expect((await screen.findByRole("button", { name: /^Junk/ })).textContent)
-    .toBe("Junk");
+    .toContain("0");
   cleanup();
   await mount({ junk_count: null });
   expect((await screen.findByRole("button", { name: /^Junk/ })).textContent)
-    .toBe("Junk");
+    .toContain("Check");
   cleanup();
   await mount({ junk_count: undefined });
   expect((await screen.findByRole("button", { name: /^Junk/ })).textContent)
-    .toBe("Junk");
+    .toContain("Check");
   expect(screen.getByRole("button", { name: /^Trash/ }).textContent)
-    .toBe("Trash12");
+    .toContain("12");
 });
 
 test("the Trash row opens the panel on Trash, the Junk row on Junk",

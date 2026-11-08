@@ -11,7 +11,7 @@ const PAGE_SIZE = 50;
 /** Rules are referenced by id (stable across renames); resolve to the
  *  rule's current name for display, falling back to the id if it was
  *  since deleted. */
-const actorLabel = (actor: string, rules: Rule[]): string => {
+export const actorLabel = (actor: string, rules: Rule[]): string => {
   if (!actor.startsWith("rule:")) return t("audit.by", { actor: t(actor) });
   const id = actor.slice(5);
   const name = rules.find((r) => r.id === id)?.name;
@@ -20,7 +20,7 @@ const actorLabel = (actor: string, rules: Rule[]): string => {
 
 /** `t()` with a tiered fallback: a `prefix.<key>` translation, or the raw
  *  key itself when there is no (yet) translated entry for it. */
-const tOr = (prefix: string, key: string): string => {
+export const tOr = (prefix: string, key: string): string => {
   const full = `${prefix}.${key}`;
   const s = t(full);
   return s === full ? key : s;
