@@ -536,3 +536,54 @@ describe("Smart rows", () => {
     expect(shortcutTarget("thread", g())).toBeNull();
   });
 });
+
+describe("the in: window (mirrors backend test_window_filter.py)", () => {
+  const NOW = 1_800_000_000;
+  const D = 86400;
+  const at = (q: string, over: Partial<Group>) =>
+    matchGroup(g(over), parseFilter(q), NOW * 1000);
+  const sm = (last_ts?: number) => ({ n: 2, senders: 1, since_ts: 1,
+    addrs: [], ...(last_ts === undefined ? {} : { last_ts }) });
+
+  it("parses N min / h / d; anything else is text", () => {
+    expect(parseFilter("in:7d").inSeconds).toBe(7 * D);
+    expect(parseFilter("in:12h").inSeconds).toBe(12 * 3600);
+    expect(parseFilter("in:90min").inSeconds).toBe(90 * 60);
+    expect(parseFilter("dhl").inSeconds).toBeNull();
+    const f = parseFilter("in:7");
+    expect(f.inSeconds).toBeNull();
+    expect(f.text).toEqual(["in:7"]);
+    expect(parseFilter("in:3w").inSeconds).toBeNull();
+  });
+  it("is:new in a window uses the first-seen time", () => {
+    expect(at("is:new in:7d", { new: true, new_ts: NOW - 2 * D })).toBe(true);
+    expect(at("is:new in:7d", { new: true, new_ts: NOW - 9 * D })).toBe(false);
+    expect(at("is:new in:7d", { new: true, new_ts: 0 })).toBe(false);
+    expect(at("is:new in:7d", { new: true })).toBe(false);
+    expect(at("is:new", { new: true, new_ts: NOW - 9 * D })).toBe(true);
+    expect(at("is:new in:30d", { new: false, new_ts: NOW - 20 * D }))
+      .toBe(true);
+  });
+  it("is:still-mailing in a window uses the newest late mail", () => {
+    expect(at("is:still-mailing in:7d", { still_mailing: sm(NOW - D) }))
+      .toBe(true);
+    expect(at("is:still-mailing in:7d", { still_mailing: sm(NOW - 8 * D) }))
+      .toBe(false);
+    expect(at("is:still-mailing in:7d", { still_mailing: sm() })).toBe(false);
+    expect(at("is:still-mailing in:7d", { still_mailing: null })).toBe(false);
+    expect(at("is:still-mailing", { still_mailing: sm(NOW - 80 * D) }))
+      .toBe(true);
+  });
+  it("ai:... in a window uses the verdict date", () => {
+    const ai = (ts?: number, verdict = "delete_safe") =>
+      ({ ai: { verdict, reason: "x", ...(ts ? { ts } : {}) } as Group["ai"] });
+    expect(at("ai:safe in:2d", ai(NOW - 3600))).toBe(true);
+    expect(at("ai:safe in:2d", ai(NOW - 3 * D))).toBe(false);
+    expect(at("ai:safe in:2d", ai())).toBe(false);               // undated
+    expect(at("ai:safe in:2d", ai(NOW - 3600, "keep"))).toBe(false);
+    expect(at("ai:safe", ai())).toBe(true);
+  });
+  it("a window alone changes nothing", () => {
+    expect(at("in:1min", {})).toBe(true);
+  });
+});

@@ -2275,20 +2275,31 @@ def _group_ai(rec: dict, protected: bool, held: set[str], acc) -> dict | None:
     return ai
 
 
-def _group_new(rec: dict, new_addrs: set[str], acc) -> bool:
-    """True if any mail in this group comes from a sender first seen
-    within the new-sender window (lock held) - same CONTAINS traversal
-    as _group_protected, so a domain/subject group is flagged as soon
-    as any of its senders is new. Read-only signal: never affects which
-    actions are available, only a badge/filter."""
-    if not new_addrs:
-        return False
+def _new_fields(first_seen: int | None, cutoff: float) -> dict:
+    """`new` (a sender first seen within the window) and `new_ts` (when the
+    group's newest sender was first seen; 0 = unknown / known from the
+    first scan on)."""
+    return {"new": first_seen is not None and first_seen >= cutoff,
+            "new_ts": max(first_seen or 0, 0)}
+
+
+def _group_first_seen(rec: dict, first_seen: dict[str, int],
+                      acc) -> int | None:
+    """The newest first-seen time among the senders of this group (lock
+    held; None = none of them is tracked) - same CONTAINS traversal as
+    _group_protected, so a domain/subject group follows its newest sender.
+    A scan-seeded sender has 0 ("known forever"). Read-only signal: never
+    affects which actions are available, only a badge / the `is:new` filter
+    (new = this is within the new-sender window; `in:` asks for a window of
+    its own)."""
+    newest = None
     for folder, uids in rec["folders"].items():
         for uid in uids:
             m = acc.index.get(ikey(folder, uid))
-            if m and m["addr"] in new_addrs:
-                return True
-    return False
+            ts = first_seen.get(m["addr"]) if m else None
+            if ts is not None and (newest is None or ts > newest):
+                newest = ts
+    return newest
 
 
 # A sender is "still mailing" once it sends mail that ARRIVED more than this
@@ -2308,14 +2319,17 @@ def _still_mailing_cutoffs(entries: dict[str, dict]) -> dict[str, int]:
 
 def _group_still_mailing(rec: dict, cutoffs: dict[str, int],
                          entries: dict[str, dict], acc) -> dict | None:
-    """{n, since_ts, senders, addrs} when mails of this group ARRIVED (the
+    """{n, since_ts, last_ts, senders, addrs} when mails of this group ARRIVED
+    (the
     index's INTERNALDATE `ts`, never the sender-controlled Date header)
     after one of its senders' unsubscribe + grace (lock held); else None.
     `n` counts this group's own mails; `since_ts` is the earliest
-    unsubscribe time among the offending senders; `addrs` is capped."""
+    unsubscribe time among the offending senders, `last_ts` the arrival of the
+    newest offending mail; `addrs` is capped."""
     if not cutoffs:
         return None
     n = 0
+    last = 0
     hit: set[str] = set()
     for folder, uids in rec["folders"].items():
         for uid in uids:
@@ -2325,11 +2339,13 @@ def _group_still_mailing(rec: dict, cutoffs: dict[str, int],
             cut = cutoffs.get(m["addr"])
             if cut is not None and m["ts"] and m["ts"] > cut:
                 n += 1
+                last = max(last, m["ts"])
                 hit.add(m["addr"])
     if not n:
         return None
     return {"n": n, "senders": len(hit),
             "since_ts": min(int(entries[a]["ts"]) for a in hit),
+            "last_ts": int(last),
             "addrs": sorted(hit)[:_STILL_MAILING_ADDRS_CAP]}
 
 
@@ -2416,8 +2432,9 @@ def public_state(acc=None) -> dict:
             if v != "delete_safe"}
     unsub_entries = unsubstore.load_account(acc.name)
     still_cut = _still_mailing_cutoffs(unsub_entries)
-    new_addrs = knownsenders.new_since(acc.name, cfg.get(
-        "new_sender_window_days", knownsenders.NEW_SENDER_WINDOW_DAYS))
+    first_seen = knownsenders.load_account(acc.name)
+    new_cutoff = time.time() - cfg.get(
+        "new_sender_window_days", knownsenders.NEW_SENDER_WINDOW_DAYS) * 86400
     pinned = pinstore.load_account(acc.name)
     tsig, tmap = trackers.tracker_map_sig(acc)   # {} without a body index
     now = time.time()
@@ -2432,7 +2449,8 @@ def public_state(acc=None) -> dict:
                     "protected": (prot := _group_protected(rec, paddrs, acc)),
                     "ai": _group_ai(rec, prot, held, acc),
                     "unsubscribed": _group_unsub(rec, unsub_entries, acc),
-                    "new": _group_new(rec, new_addrs, acc),
+                    **_new_fields(_group_first_seen(rec, first_seen, acc),
+                                  new_cutoff),
                     "still_mailing": _group_still_mailing(
                         rec, still_cut, unsub_entries, acc),
                     # Recomputed from the CURRENT aggregates: unread/count
@@ -2528,6 +2546,10 @@ def run_scan(acc=None) -> None:
                                   sp.tag_overrides)
             cached = apply_verdicts(groups, acc.name, sp.protected)
             with acc.lock:
+                # new since the previous scan (for the Overview's balance)
+                arrived = statsmod.arrivals(
+                    list(acc.index.values()), acc.state.get("scanned_ts"),
+                    messages)
                 acc.index.clear()
                 for m in messages:
                     acc.index[ikey(m["folder"], m["uid"])] = m
@@ -2575,7 +2597,7 @@ def run_scan(acc=None) -> None:
                      time.time() - t0)
             statsmod.record_scan(len(messages),
                                  sum(m["size"] for m in messages),
-                                 len(groups["sender"]), acc.name)
+                                 len(groups["sender"]), acc.name, arrived)
             save_snapshot(acc)
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
         finally:
@@ -5519,7 +5541,9 @@ def search_body(query: str, limit: int = 500, acc=None,
 
 MAIL_SORTS = ("date", "size", "sender")
 _MQ_RE = re.compile(r"^(age|size|att|from|domain|folder|is|has|"
-                    r"tag|ai|unread|eng):(.*)$")
+                    r"tag|ai|unread|eng|in):(.*)$")
+_MQ_IN_RE = re.compile(r"^(\d+)(min|h|d)$")
+_MQ_IN_UNIT = {"min": 60, "h": 3600, "d": 86400}
 _MQ_AGE_RE = re.compile(r"^>?(\d+)(d|m|y)$")
 _MQ_SIZE_RE = re.compile(r"^>?(\d+)(k|m|g)?$")
 _MQ_UNIT = {"k": 1024, "m": 1048576, "g": 1073741824, "": 1}
@@ -5531,7 +5555,8 @@ def parse_mail_query(q: str) -> dict:
     Per-mail qualifiers: `age:>6m|2y|30d` (older than), `size:>1m` (at
     least), `att:>1m` (attachment bytes - only for mails the attachment
     analysis has covered), `from:addr` (exact), `domain:example.com`,
-    `folder:text`, `is:unread|read`, `has:pinned`.
+    `folder:text`, `is:unread|read`, `has:pinned`, `in:7d|12h|90min` (arrived
+    within that window - the same term the group filter takes).
     Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`,
     `is:unsub|protected|replied|new|...`, `has:` other than pinned) have no
     per-mail meaning here: they are NOT applied and are reported back in
@@ -5540,7 +5565,7 @@ def parse_mail_query(q: str) -> dict:
     out: dict = {"text": [], "age_days": None, "size_min": None,
                  "att_min": None, "from_addr": None, "domain": None,
                  "folder": None, "read": None, "pinned": False,
-                 "ignored": []}
+                 "in_seconds": None, "ignored": []}
     for tok in (q or "").strip().lower().split():
         m = _MQ_RE.match(tok)
         if not m:
@@ -5564,6 +5589,8 @@ def parse_mail_query(q: str) -> dict:
             out["read"] = val == "read"
         elif kind == "has" and val == "pinned":
             out["pinned"] = True
+        elif kind == "in" and (a := _MQ_IN_RE.match(val)):
+            out["in_seconds"] = int(a.group(1)) * _MQ_IN_UNIT[a.group(2)]
         elif kind in ("tag", "ai", "unread", "eng", "is", "has"):
             out["ignored"].append(tok)
         else:                       # malformed age:/size:/att: value
@@ -5588,6 +5615,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
     f = parse_mail_query(q)
     cutoff = (time.time() - f["age_days"] * 86400
               if f["age_days"] is not None else None)
+    since = (time.time() - f["in_seconds"]
+             if f["in_seconds"] is not None else None)
     pinned = pinstore.load_account(acc.name)
     verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
         cfgmod.load_config().get("protected")))
@@ -5612,6 +5641,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                     and m.get("att_size", 0) < f["att_min"]:
                 continue
             if cutoff is not None and not (m["ts"] and m["ts"] < cutoff):
+                continue
+            if since is not None and not (m["ts"] and m["ts"] >= since):
                 continue
             if f["text"]:
                 hay = f"{m['subject']}\n{m['addr']}\n{m['name']}".lower()

@@ -1,16 +1,20 @@
-import { BellOff, ChevronRight, Hourglass, MoreHorizontal, Newspaper,
-  Paperclip, Sparkles, X } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cleanedWeeks, entriesSince, WEEK_S } from "../activity";
+import { api } from "../api";
+import { nowMs } from "../clock";
 import { t } from "../i18n";
 import { fmtSize } from "../lib";
-import { biggestSenders, storageSegments, totalsOf } from "../overview";
+import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
+  trendOf, visitSince } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
-  TOP_CARDS, unionTotals, type Dismissed, type QuickWinCard }
-  from "../quickwins";
-import type { Group } from "../types";
-import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex, Menu,
-  MenuItem, ProgressBar, Spinner, useMediaQuery } from "./ui";
+  unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
+import type { AuditEntry, Group, OverviewResp, Rule } from "../types";
+import { BalanceCard, KindsCard, LastWeekCard, NextSteps, type WeekRange }
+  from "./OverviewCards";
+import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex,
+  ProgressBar, Spinner } from "./ui";
 
 /** What the page shows: the figures, or the guidance of a mailbox that has
  *  none yet (replaces the old first-run card on the Senders page). */
@@ -31,29 +35,34 @@ export interface OverviewProps {
   canScan: boolean;
   /** Setup is not available in the demo: the reason as a hint. */
   setupHint?: string;
+  /** Changes when a scan or an action changed the mailbox: the numbers are
+   *  fetched again (at most every REFETCH_MS). */
+  rev: number;
+  /** The last finished scan: the numbers are fetched again at once. */
+  scannedTs: number | null;
+  /** The account's rules (a mark-as-read rule is not cleaning). */
+  rules: Rule[];
+  /** Mails in Junk now; unknown / not scanned = null or undefined. */
+  junk: number | null | undefined;
   onSetup: () => void;
   onVerify: () => void;
   onTest: () => void;
   onScan: () => void;
   onReview: (c: QuickWinCard) => void;
+  /** Review of the checked next steps: the union of their senders. */
+  onReviewMany: (cs: QuickWinCard[]) => void;
   onCleanUp: (c: QuickWinCard) => void;
   /** Open one sender's detail on the Senders page. */
   onOpenSender: (g: Group) => void;
+  /** The "Last week" rows open the list their count came from; `window` is
+   *  the `in:` term value of the view's time range ("7d", "90min"). */
+  onOpenAllMail: (window: string) => void;
+  onOpenNewSenders: (window: string) => void;
+  onOpenStillMailing: (window: string) => void;
+  onOpenJunk: () => void;
+  /** New AI verdicts: Senders, the ones the AI called safe, in the window. */
+  onOpenAiVerdicts: (window: string) => void;
 }
-
-// Icon tile per suggestion: a fitting icon in a semantic tone.
-const CARD_TILE: Record<string, { icon: ReactNode; tone: string }> = {
-  old_newsletters: { icon: <Newspaper size={18} aria-hidden />,
-    tone: "bg-review-bg text-review-fg" },
-  quiet_low: { icon: <Hourglass size={18} aria-hidden />,
-    tone: "bg-info-bg text-info-fg" },
-  unsubscribed: { icon: <BellOff size={18} aria-hidden />,
-    tone: "bg-new-bg text-new-fg" },
-  big_attachments: { icon: <Paperclip size={18} aria-hidden />,
-    tone: "bg-attach-bg text-attach-fg" },
-  ai_safe: { icon: <Sparkles size={18} aria-hidden />,
-    tone: "bg-safe-bg text-safe-fg" },
-};
 
 function Section({ title, action, children }: {
   title: string; action?: ReactNode; children: ReactNode;
@@ -66,122 +75,6 @@ function Section({ title, action, children }: {
       </div>
       {children}
     </section>
-  );
-}
-
-/** Suggestions: today's Quick wins as cards. Review shows the list, Clean
- *  up goes through the caller's normal confirm - nothing here touches the
- *  mailbox itself. */
-function Suggestions({ cards, onDismiss, onReview, onCleanUp }: {
-  cards: QuickWinCard[];
-  onDismiss: (c: QuickWinCard) => void;
-  onReview: (c: QuickWinCard) => void;
-  onCleanUp: (c: QuickWinCard) => void;
-}) {
-  const [all, setAll] = useState(false);
-  const phone = useMediaQuery("(max-width: 767px)");
-  const shown = all ? cards : cards.slice(0, TOP_CARDS);
-  return (
-    <Section title={t("overview.suggestions")}
-      action={cards.length > TOP_CARDS && (
-        <Button variant="quiet" size="sm" onClick={() => setAll(!all)}>
-          {all ? t("qw.less") : t("overview.show_all", { n: cards.length })}
-        </Button>
-      )}>
-      {phone ? (
-      /* Phones: a compact inset list. The row is Review; Clean up and
-         Not now sit in the row's More menu. */
-      <ul className="rounded-card bg-panel">
-        {shown.map((c) => {
-          const tile = CARD_TILE[c.def.id];
-          return (
-            <li key={c.def.id} data-testid="qw-card"
-              className="relative flex items-center
-                [&:not(:first-child)]:before:absolute
-                [&:not(:first-child)]:before:left-16
-                [&:not(:first-child)]:before:right-0
-                [&:not(:first-child)]:before:top-0
-                [&:not(:first-child)]:before:border-t
-                [&:not(:first-child)]:before:border-line">
-              <button type="button" onClick={() => onReview(c)}
-                aria-label={`${t("qw.review")}: ${t(c.def.titleKey)}`}
-                className="flex min-h-14 min-w-0 flex-1 items-center gap-3
-                  rounded-card py-2 pl-4 text-left transition-colors
-                  hover:bg-panel2">
-                <span className={`inline-flex size-8 shrink-0 items-center
-                  justify-center rounded-control ${tile?.tone ?? "bg-chip"}`}>
-                  {tile?.icon}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate type-body font-medium">
-                    {t(c.def.titleKey)}</span>
-                  <span className="block type-meta text-muted">
-                    {t("qw.card_meta", { mails: c.mails,
-                      size: fmtSize(c.size) })}
-                    {c.protectedSkipped > 0 && (
-                      <span> · {t("qw.protected_skipped",
-                        { n: c.protectedSkipped })}</span>
-                    )}
-                  </span>
-                </span>
-              </button>
-              <Menu variant="quiet" icon label={t("menu.more")}
-                className="shrink-0" triggerClass="coarse:size-11"
-                trigger={<MoreHorizontal size={18} aria-hidden />}>
-                <MenuItem onClick={() => onCleanUp(c)}>
-                  {t("qw.clean_up")}</MenuItem>
-                <MenuItem onClick={() => onDismiss(c)}>
-                  {t("qw.not_now")}</MenuItem>
-              </Menu>
-              <ChevronRight size={16} aria-hidden
-                className="mr-3 shrink-0 text-faint" />
-            </li>
-          );
-        })}
-      </ul>
-      ) : (
-      <ul className="grid gap-3 md:grid-cols-3">
-        {shown.map((c) => {
-          const tile = CARD_TILE[c.def.id];
-          return (
-            <li key={c.def.id} data-testid="qw-card"
-              className="flex flex-col gap-3 rounded-card bg-panel p-4">
-              <div className="flex items-start justify-between gap-2">
-                <span className={`inline-flex size-10 items-center
-                  justify-center rounded-control ${tile?.tone ?? "bg-chip"}`}>
-                  {tile?.icon}
-                </span>
-                <Button variant="quiet" size="icon" label={t("qw.not_now")}
-                  className="-mr-2 -mt-2 text-muted"
-                  onClick={() => onDismiss(c)}>
-                  <X size={16} />
-                </Button>
-              </div>
-              <div>
-                <div className="type-heading">{t(c.def.titleKey)}</div>
-                <div className="type-body">
-                  {t("qw.card_meta", { mails: c.mails,
-                    size: fmtSize(c.size) })}
-                  {c.protectedSkipped > 0 && (
-                    <span className="text-muted"> · {t("qw.protected_skipped",
-                      { n: c.protectedSkipped })}</span>
-                  )}
-                </div>
-                <div data-testid="qw-hint" className="mt-1 type-meta
-                  text-muted">{t(c.def.hintKey)}</div>
-              </div>
-              <div className="mt-auto flex items-center gap-2 pt-1">
-                <Button variant="tinted" size="sm"
-                  onClick={() => onReview(c)}>{t("qw.review")}</Button>
-                <Button variant="quiet" size="sm"
-                  onClick={() => onCleanUp(c)}>{t("qw.clean_up")}</Button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      )}
-    </Section>
   );
 }
 
@@ -236,14 +129,103 @@ function Guidance({ p }: { p: OverviewProps }) {
   );
 }
 
-/** The start page: how much space the mailbox takes, who holds it, and the
- *  ready-made cleanups. Read-only apart from opening Senders. */
+/** Min. time between two refetches caused by `rev` bumps alone (every bump
+ *  repeats a locked pass over the index on the server). */
+export const REFETCH_MS = 30_000;
+
+/** The counts behind the cards (`/api/overview`) and the mails cleaned per
+ *  week (the audit log). Fetched at once on mount, on an account switch, a
+ *  finished scan and "Retry"; other `rev` bumps (deleting, undo, a running
+ *  scan's ticks) refetch at most every REFETCH_MS, the last one still
+ *  arriving. A failed fetch leaves the old numbers in place and shows
+ *  "Retry" while there are none. `cleanedFloor`: epoch s before which the
+ *  audit log was not read (null = all of it). */
+function useOverviewData(account: string, rev: number,
+    scannedTs: number | null, rules: Rule[], since: number | null,
+    on: boolean) {
+  const [data, setData] = useState<OverviewResp | null>(null);
+  const [audit, setAudit] = useState<{ entries: AuditEntry[];
+    floor: number | null } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [tries, setTries] = useState(0);
+  const last = useRef(0);          // when the numbers were last asked for
+  const ask = useRef(0);           // the newest request: older ones are dropped
+  useEffect(() => { setData(null); setAudit(null); }, [account]);
+  const load = useCallback(() => {
+    const me = ++ask.current;
+    last.current = Date.now();
+    setFailed(false);
+    Promise.resolve()
+      .then(() => api.overview(
+        since === null ? null : Math.floor(since / 1000)))
+      .then((d) => me === ask.current && setData(d))
+      .catch(() => me === ask.current && setFailed(true));
+    const from = nowMs() / 1000 - 8 * WEEK_S;
+    Promise.resolve()
+      .then(() => entriesSince((o, l) => api.audit(o, l), from))
+      .then((r) => me === ask.current && setAudit({ entries: r.entries,
+        floor: r.complete || !r.entries.length ? null
+          : r.entries[r.entries.length - 1].ts }))
+      .catch(() => { /* the chart then shows only what arrived */ });
+  }, [since]);
+  // at once
+  useEffect(() => {
+    if (on) load();
+    return () => { ask.current++; };
+  }, [account, since, on, scannedTs, tries, load]);
+  // `rev` bumps: throttled, trailing
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (!on) return;
+    const wait = Math.max(0, last.current + REFETCH_MS - Date.now());
+    if (wait === 0) { load(); return; }
+    const h = setTimeout(load, wait);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rev]);
+  const cleaned = useMemo(() => data && audit
+    ? cleanedWeeks(audit.entries, data.now, rules, data.weeks.length) : null,
+  [data, audit, rules]);
+  return { data, cleaned, cleanedFloor: audit?.floor ?? null, failed,
+    retry: () => setTries((n) => n + 1) };
+}
+
+/** The moment of the previous visit of `account` (ms; null = none yet).
+ *  Leaving the Overview - or the page - records the visit. */
+function usePreviousVisit(account: string): number | null {
+  const [since, setSince] = useState<number | null>(
+    () => visitSince(loadVisit(account), nowMs()));
+  useEffect(() => {
+    const s = visitSince(loadVisit(account), nowMs());
+    setSince(s);
+    const leave = () => saveVisit(account, { since: s, left: nowMs() });
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+  }, [account]);
+  return since;
+}
+
+/** The start page: the balance of the last 8 weeks, what is new, the next
+ *  steps, what fills the inbox, and who holds the space. Read-only apart
+ *  from opening other pages and the "Not now" dismissals. */
 export function Overview(p: OverviewProps) {
   const { groups, account } = p;
   const [dismissed, setDismissed] = useState<Dismissed>(
     () => loadDismissed(account));
   useEffect(() => setDismissed(loadDismissed(account)), [account]);
+  const [range, setRange] = useState<WeekRange>("week");
+  const since = usePreviousVisit(account);
+  const { data, cleaned, cleanedFloor, failed, retry } = useOverviewData(
+    account, p.rev, p.scannedTs, p.rules, since,
+    p.phase === "data" && groups.length > 0);
   const totals = useMemo(() => totalsOf(groups), [groups]);
+  const trend = useMemo(
+    () => trendOf(data?.trend ?? null, totals.size, nowMs()),
+    [data, totals.size]);
   const segments = useMemo(
     () => storageSegments(groups, t("overview.everyone_else"), 4, hueIndex,
       HUE_COUNT), [groups]);
@@ -267,65 +249,61 @@ export function Overview(p: OverviewProps) {
 
   return (
     <div className="mx-auto max-w-5xl pb-6">
-      <section aria-label={t("overview.storage")}
-        className="rounded-card bg-panel p-5 sm:p-6">
-        <div className="type-meta font-medium text-muted">{p.accountLine}</div>
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-x-4
-          gap-y-2">
-          <div>
-            <div className="type-hero tabular-nums">{fmtSize(totals.size)}</div>
-            <div className="type-body text-muted">
-              {t("overview.summary", { mails: t("n.mails", { n: totals.mails }),
-                n: totals.senders })}
-            </div>
-          </div>
-          {canGo.size > 0 && (
-            <span className="mb-1 inline-flex items-center gap-1.5
-              rounded-full bg-safe-bg px-3 py-1 type-body font-medium
-              text-safe-fg">
-              <Sparkles size={16} aria-hidden />
-              {t("overview.can_go", { size: fmtSize(canGo.size) })}
-            </span>
-          )}
-        </div>
-        {/* Decorative: the legend below names every segment. */}
-        <div aria-hidden className="mt-5 flex h-2.5 gap-0.5 overflow-hidden
-          rounded-full">
-          {segments.map((s) => (
-            <span key={s.key || "rest"} style={{ flexGrow: s.size }}
-              className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
-          ))}
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 type-meta">
-          {segments.map((s) => {
-            const inner = (<>
-              <span aria-hidden className={`size-2 shrink-0 rounded-full
-                ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
-              <span className="truncate">{s.label}</span>
-              <span className="text-muted">{fmtSize(s.size)}</span>
-            </>);
-            return (
-              <li key={s.key || "rest"} className="min-w-0">
-                {s.group ? (
-                  <button type="button" onClick={() => p.onOpenSender(s.group!)}
-                    className="inline-flex max-w-full items-center gap-1.5
-                      rounded-control py-1.5 hover:text-accent">{inner}</button>
-                ) : (
-                  <span className="inline-flex max-w-full items-center
-                    gap-1.5 py-1.5">{inner}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      {cards.length > 0 && (
-        <Suggestions cards={cards} onDismiss={dismiss} onReview={p.onReview}
-          onCleanUp={p.onCleanUp} />
-      )}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4
+        xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <BalanceCard accountLine={p.accountLine} size={totals.size}
+          mails={totals.mails} senders={totals.senders} trend={trend}
+          data={data} cleaned={cleaned} cleanedFloor={cleanedFloor}
+          failed={failed} onRetry={retry} />
+        <LastWeekCard data={data} since={since} range={range}
+          onRange={setRange} junk={p.junk} failed={failed} onRetry={retry}
+          onOpenAllMail={p.onOpenAllMail} onOpenNew={p.onOpenNewSenders}
+          onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
+          onOpenAi={p.onOpenAiVerdicts} />
+        {cards.length > 0 && (
+          <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
+            onReview={p.onReview} onReviewMany={p.onReviewMany}
+            onCleanUp={p.onCleanUp} />
+        )}
+        <KindsCard data={data} failed={failed} onRetry={retry}
+          className={cards.length > 0 ? "" : "xl:col-span-2"} />
+      </div>
 
       <Section title={t("overview.biggest")}>
+        <section aria-label={t("overview.storage")}
+          className="mb-3 rounded-card bg-panel p-5">
+          {/* Decorative: the legend below names every segment. */}
+          <div aria-hidden className="flex h-2.5 gap-0.5 overflow-hidden
+            rounded-full">
+            {segments.map((s) => (
+              <span key={s.key || "rest"} style={{ flexGrow: s.size }}
+                className={`min-w-1 ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
+            ))}
+          </div>
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 type-meta">
+            {segments.map((s) => {
+              const inner = (<>
+                <span aria-hidden className={`size-2 shrink-0 rounded-full
+                  ${s.hue != null ? hueFillAt(s.hue) : "bg-faint"}`} />
+                <span className="truncate">{s.label}</span>
+                <span className="text-muted">{fmtSize(s.size)}</span>
+              </>);
+              return (
+                <li key={s.key || "rest"} className="min-w-0">
+                  {s.group ? (
+                    <button type="button"
+                      onClick={() => p.onOpenSender(s.group!)}
+                      className="inline-flex max-w-full items-center gap-1.5
+                        rounded-control py-1.5 hover:text-accent">{inner}</button>
+                  ) : (
+                    <span className="inline-flex max-w-full items-center
+                      gap-1.5 py-1.5">{inner}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
         <ul className="rounded-card bg-panel">
           {top.map((g) => (
             <li key={g.key}

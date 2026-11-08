@@ -82,16 +82,56 @@ def _write(data: dict) -> None:
         log.exception("could not persist stats history")
 
 
+# Mails dated up to this long before the previous scan still count as new
+# when they were not in its index (delivery lag); older ones are restores /
+# imports, not arrivals.
+ARRIVAL_SLACK_S = 86400
+ARRIVAL_KEEP_S = 62 * 86400     # per-day counts older than this are dropped
+
+
+def _ident(m: dict) -> str:
+    return m.get("msgid") or f'{m["folder"]}\0{m["uid"]}'
+
+
+def arrivals(prev_mails, prev_ts: int | None, messages: list,
+             now: float | None = None) -> dict | None:
+    """Mails of this scan (`messages`) that the previous scan's index
+    (`prev_mails`, taken at `prev_ts`) did not hold: {since, new, days} with
+    `days` = {UTC day number: count} by the mail's own arrival date. Mails
+    dated before the previous scan (minus a day) are restored / imported
+    ones, not arrivals. None when there is no previous scan to diff against
+    (the first scan is the baseline)."""
+    if not prev_ts or not prev_mails:
+        return None
+    now = now if now is not None else time.time()
+    seen = {_ident(m) for m in prev_mails}
+    floor = prev_ts - ARRIVAL_SLACK_S
+    days: dict[str, int] = {}
+    for m in messages:
+        ts = m.get("ts") or 0
+        if ts >= floor and ts >= now - ARRIVAL_KEEP_S \
+                and _ident(m) not in seen:
+            key = str(int(ts) // 86400)
+            days[key] = days.get(key, 0) + 1
+    return {"since": int(prev_ts), "new": sum(days.values()), "days": days}
+
+
 def record_scan(mails: int, size: int, senders: int,
-                account: str | None = None) -> None:
+                account: str | None = None,
+                arrived: dict | None = None) -> None:
+    """One scan snapshot. `arrived` (see `arrivals`) adds how many mails were
+    new since the previous scan - additive; older records have none."""
     account = account or accounts.default_name()
     with _LOCK:
         data = _load_all()
         entry = data["accounts"].setdefault(
             account, json.loads(json.dumps(_EMPTY)))
-        entry.setdefault("scans", []).append(
-            {"ts": int(time.time()), "mails": mails,
-             "size": size, "senders": senders})
+        rec = {"ts": int(time.time()), "mails": mails,
+               "size": size, "senders": senders}
+        if arrived is not None:
+            rec.update(new=arrived["new"], new_since=arrived["since"],
+                       new_days=arrived["days"])
+        entry.setdefault("scans", []).append(rec)
         entry["scans"] = entry["scans"][-MAX_SCANS:]
         _write(data)
 

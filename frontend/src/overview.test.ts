@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
 import { expect, test } from "vitest";
-import { biggestSenders, storageSegments, totalsOf } from "./overview";
+import { afterEach } from "vitest";
+import { biggestSenders, kindShares, loadVisit, percents, saveVisit,
+  storageSegments, totalsOf, trendOf, VISIT_GAP_MS, visitSince,
+  windowTerm } from "./overview";
 import type { Group } from "./types";
 
 const mk = (key: string, size: number, count = 5): Group => ({
@@ -49,4 +53,82 @@ test("adjacent segments never share a hue: the second takes the next one", () =>
   const byKey = (l: string) => (l === "a" ? 5 : l === "b" ? 5 : 0);
   expect(storageSegments(many, "Rest", 4, byKey, 6).slice(0, 3)
     .map((s) => s.hue)).toEqual([5, 0, 0 + 1]);
+});
+
+const DAY = 86400000;
+const MB = 1048576;
+
+test("trend: size now against the reference scan, honest about its age", () => {
+  const now = 100 * DAY;
+  const ref = (days: number, size: number) => ({
+    ts: (now - days * DAY) / 1000, size });
+  expect(trendOf(null, 5, now)).toBeNull();
+  expect(trendOf(ref(30, 100 * MB), 62 * MB, now))
+    .toEqual({ dir: "less", bytes: 38 * MB, days: 30, month: true });
+  expect(trendOf(ref(30, 100 * MB), 130 * MB, now)?.dir).toBe("more");
+  expect(trendOf(ref(30, 100 * MB), 100 * MB + 1000, now)?.dir).toBe("same");
+  // a younger history says how old the reference really is
+  expect(trendOf(ref(9, 100 * MB), 90 * MB, now))
+    .toMatchObject({ days: 9, month: false });
+  expect(trendOf(ref(60, 100 * MB), 90 * MB, now)?.month).toBe(false);
+  expect(trendOf(ref(0.1, 100 * MB), 90 * MB, now)?.days).toBe(1);
+});
+
+test("percents add up to exactly 100", () => {
+  expect(percents([1, 1, 1])).toEqual([34, 33, 33]);
+  expect(percents([45, 22, 18, 6, 9])).toEqual([45, 22, 18, 6, 9]);
+  expect(percents([0, 0])).toEqual([0, 0]);
+  expect(percents([1, 999]).reduce((a, b) => a + b, 0)).toBe(100);
+});
+
+test("kind shares: the biggest kinds, the rest folded into one Other", () => {
+  const items = [
+    { kind: "newsletter", count: 40 }, { kind: "shopping", count: 20 },
+    { kind: "automated", count: 15 }, { kind: "finance", count: 10 },
+    { kind: "travel", count: 5 }, { kind: "social", count: 4 },
+    { kind: "other", count: 6 }];
+  const s = kindShares(items, 5);
+  expect(s.map((x) => x.kind)).toEqual(
+    ["newsletter", "shopping", "automated", "finance", "travel", "other"]);
+  expect(s.at(-1)).toMatchObject({ rest: true, count: 10, pct: 10 });
+  expect(s.reduce((n, x) => n + x.pct, 0)).toBe(100);
+  expect(kindShares([], 5)).toEqual([]);
+  expect(kindShares([{ kind: "other", count: 3 }], 5))
+    .toEqual([{ kind: "other", count: 3, rest: true, pct: 100 }]);
+});
+
+afterEach(() => localStorage.clear());
+
+test("since last visit: the previous leave, or the visit before a short hop", () => {
+  const t = 1_000_000_000_000;
+  expect(visitSince(null, t)).toBeNull();
+  // left an hour ago: the window starts there
+  expect(visitSince({ since: 5, left: t - 3600_000 }, t)).toBe(t - 3600_000);
+  // left a minute ago (Senders and back): the earlier visit still counts
+  expect(visitSince({ since: 5, left: t - 60_000 }, t)).toBe(5);
+  expect(visitSince({ since: null, left: t - 60_000 }, t)).toBeNull();
+  expect(visitSince({ since: 5, left: t - VISIT_GAP_MS }, t)).toBe(t - VISIT_GAP_MS);
+});
+
+test("the visit record is per account and tolerates garbage", () => {
+  saveVisit("a", { since: 1, left: 2 });
+  expect(loadVisit("a")).toEqual({ since: 1, left: 2 });
+  expect(loadVisit("b")).toBeNull();
+  localStorage.setItem("pmc_ov_visit:c", "nope");
+  expect(loadVisit("c")).toBeNull();
+  localStorage.setItem("pmc_ov_visit:d", JSON.stringify({ left: 7 }));
+  expect(loadVisit("d")).toEqual({ since: null, left: 7 });
+});
+
+test("the in: window a Last-week row opens", () => {
+  const now = 1_000_000_000_000;
+  expect(windowTerm("week", null, now)).toBe("7d");
+  expect(windowTerm("week", now - 3600_000, now)).toBe("7d");
+  expect(windowTerm("since", null, now)).toBe("7d");
+  expect(windowTerm("since", now - 90 * 60_000, now)).toBe("90min");
+  expect(windowTerm("since", now - 3 * 3600_000, now)).toBe("3h");
+  expect(windowTerm("since", now - 2 * 86400_000, now)).toBe("2d");
+  // rounded up: the list never covers less than the count did
+  expect(windowTerm("since", now - 90_001, now)).toBe("2min");
+  expect(windowTerm("since", now - 100, now)).toBe("1min");
 });

@@ -43,6 +43,7 @@ from . import knowledgestore
 from . import knownsenders
 from . import mailops
 from . import oauthflow
+from . import overview as overviewmod
 from . import pinstore
 from . import presets as presetsmod
 from . import rules as rulesmod
@@ -1146,6 +1147,16 @@ def get_stats(account: str | None = Query(None)):
     return {**mailops.index_stats(acc),
             "scans": history["scans"][-30:],
             "actions": history["actions"]}
+
+
+@app.get("/api/overview")
+def get_overview(since: int | None = Query(None, ge=0),
+                 account: str | None = Query(None)):
+    """Numbers behind the Overview of ONE account: arrivals per week for 8
+    weeks, the last 7 days (and, with `since` = the previous visit's epoch
+    seconds, the time since then), the last 30 days by kind and the size
+    trend. Counts only - no subjects or addresses."""
+    return overviewmod.build(_acc(account), since)
 
 
 @app.get("/api/wrapped")

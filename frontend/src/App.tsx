@@ -139,6 +139,10 @@ export default function App() {
     ? DEFAULT_PAGE : navPage;
   const toolPage = isTabPage(page);
   const flat = page === "all";
+  // A query the flat list opens with (from the Overview's "Last week" row);
+  // gone as soon as the list is left, so the sidebar's All mail starts clean.
+  const [allMailsQuery, setAllMailsQuery] = useState("");
+  useEffect(() => { if (page !== "all") setAllMailsQuery(""); }, [page]);
   const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
@@ -1140,6 +1144,27 @@ export default function App() {
   };
   const cleanUpQuickWin = (c: QuickWinCard) => {
     actOn("sender", state?.groups?.sender ?? {}, c.keys, "trash");
+  };
+  // "Review N" of the Overview's next steps: one card = its own Review; more
+  // = the union of their (non-protected) senders selected, no filter (their
+  // queries differ). The Clean up flows stay per card.
+  const reviewQuickWins = (cs: QuickWinCard[]) => {
+    if (cs.length === 1) return reviewQuickWin(cs[0]);
+    showSenders();
+    setFilter("");
+    setSelected(new Set(cs.flatMap((c) => c.keys)));
+  };
+  // "Last week" rows: the matching filtered view or tool.
+  const openSendersFiltered = (query: string) => {
+    showSenders();
+    setFilter(query);
+  };
+  const openAllMailNewest = (query: string) => {
+    // newest first, so the top of the list is what just arrived
+    localStorage.setItem("pmc_mails_sort", "date");
+    localStorage.setItem("pmc_mails_dir", "desc");
+    setAllMailsQuery(query);
+    setFlat(true);
   };
 
   // Saved filter presets: unlike selectPreset() above (which ADDS to the
@@ -2705,12 +2730,22 @@ export default function App() {
             onVerify={() => setWizard({ mode: "first", step: "signin",
               account })}
             onTest={testConnection} onScan={startScan}
-            onReview={reviewQuickWin} onCleanUp={cleanUpQuickWin}
-            onOpenSender={openSender} />
+            rev={state.groups_rev} scannedTs={state.scanned_ts}
+            rules={state.rules ?? []}
+            junk={state.junk_count}
+            onReview={reviewQuickWin} onReviewMany={reviewQuickWins}
+            onCleanUp={cleanUpQuickWin} onOpenSender={openSender}
+            onOpenAllMail={(w) => openAllMailNewest(`in:${w}`)}
+            onOpenNewSenders={(w) => openSendersFiltered(`is:new in:${w}`)}
+            onOpenStillMailing={(w) => openSendersFiltered(
+              `is:still-mailing in:${w}`)}
+            onOpenJunk={() => openTool("junk")}
+            onOpenAiVerdicts={(w) => openSendersFiltered(`ai:safe in:${w}`)} />
         )
       ) : flat ? (
         state && (
           <AllMailsView key={state.account} state={state}
+            initialQuery={allMailsQuery}
             onChanged={refresh} toolbarSlot={toolbarSlot} />
         )
       ) : groups.length > 0 ? (

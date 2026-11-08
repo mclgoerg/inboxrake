@@ -106,6 +106,15 @@ def clear() -> None:
         _mails_cache.pop(tenants.current().id, None)
 
 
+def _ai_of(v: dict) -> dict:
+    """A group's `ai` from a stored verdict: verdict, reason and - when it
+    was recorded - the `ts` it came about at."""
+    out = {"verdict": v["verdict"], "reason": v["reason"]}
+    if v.get("ts"):
+        out["ts"] = v["ts"]
+    return out
+
+
 def apply_to_groups(groups: dict, account: str | None = None) -> int:
     """Attach one account's cached verdicts to scanned groups; returns how
     many were applied.
@@ -131,7 +140,7 @@ def apply_to_groups(groups: dict, account: str | None = None) -> int:
             if rec.get("fp") is not None and v.get("fp") != rec["fp"]:
                 stale.setdefault(grouping, []).append(key)
             elif rec.get("ai") is None:
-                rec["ai"] = {"verdict": v["verdict"], "reason": v["reason"]}
+                rec["ai"] = _ai_of(v)
                 applied += 1
     if stale:
         drop_verdicts(stale, account)
@@ -159,8 +168,7 @@ def sync_borrowed(groups: dict, data: dict) -> int:
             continue
         src = (live.get(key[2:]) or {}).get("ai") or cached.get(key[2:])
         before = rec.get("ai")
-        rec["ai"] = ({"verdict": src["verdict"], "reason": src["reason"]}
-                     if src else None)
+        rec["ai"] = _ai_of(src) if src else None
         gained += before is None and src is not None
     return gained
 

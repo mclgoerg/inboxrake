@@ -4,7 +4,7 @@ import type {
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   Config, ConversationResp, DupSet, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
-  LookalikeCount, MailsResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
+  LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubResult,
 } from "./types";
@@ -425,6 +425,10 @@ export const api = {
   wrapped: (year?: number) =>
     req<WrappedResp>(`/api/wrapped?tz=${-new Date().getTimezoneOffset()}`
       + (year === undefined ? "" : `&year=${year}`)),
+  /** `since` = epoch seconds of the previous Overview visit. */
+  overview: (since?: number | null) =>
+    req<OverviewResp>("/api/overview"
+      + (since == null ? "" : `?since=${Math.floor(since)}`)),
   audit: (offset = 0, limit = 50) =>
     req<AuditResp>(`/api/audit?offset=${offset}&limit=${limit}`),
   auditExportUrl: () => withAccount("/api/audit/export"),

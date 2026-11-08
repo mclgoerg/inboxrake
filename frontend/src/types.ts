@@ -64,6 +64,9 @@ export interface GroupAi {
   /** "user": the AI said "safe" but the row holds a sender the user put on
    *  hold, so it is shown as "review" (backend mailops._group_ai). */
   capped?: "user";
+  /** When the AI verdict came about (epoch s); absent on older verdicts and
+   *  on a verdict the user set. */
+  ts?: number;
 }
 
 /** One sender's own labels (GET/PUT /api/labels): what the user set, what
@@ -98,6 +101,7 @@ export interface StillMailing {
   n: number;            // this row's mails delivered after the unsubscribe
   senders: number;      // distinct senders behind them
   since_ts: number;     // unix time of the (earliest) unsubscribe
+  last_ts?: number;     // arrival of the newest mail after it (absent in old snapshots)
   addrs: string[];      // those senders, capped
 }
 
@@ -121,6 +125,8 @@ export interface Group {
   att_size: number;
   unsubscribed: GroupUnsub | null;
   new: boolean;
+  /** When the group's newest sender was first seen (epoch s); 0 = unknown. */
+  new_ts?: number;
   // Mails that ARRIVED after the sender's unsubscribe + grace (see
   // backend mailops._group_still_mailing); absent in old snapshots.
   still_mailing?: StillMailing | null;
@@ -774,6 +780,34 @@ export interface AiFilterResult {
 export interface WrappedSender {
   label: string; addr: string; mails: number; bytes: number;
 }
+/** One window of the Overview's "Last week" card (GET /api/overview). */
+export interface OverviewWindow {
+  from: number;            // epoch s the window starts at
+  mails: number;           // mails that arrived in it (still in the index)
+  senders: number;         // distinct senders of those
+  newsletters: number;     // ... of which mails with a List-Unsubscribe header
+  new_senders: number;     // senders first seen by a scan in it
+  still_mailing: number;   // senders that wrote in it after their unsubscribe
+  verdicts: number;        // senders rated by the AI in it
+  verdicts_safe: number;   // ... of which "safe to delete"
+}
+/** GET /api/overview: counts behind the Overview, one account. */
+export interface OverviewResp {
+  now: number;
+  /** Mails that arrived per rolling 7-day bucket, oldest first (8). */
+  weeks: number[];
+  /** Per bucket: true = an estimate from the mails still in the mailbox
+   *  (no arrival record covers it), false = counted at the scans. */
+  weeks_estimated: boolean[];
+  week: OverviewWindow;
+  /** The window since the previous visit; null without one. */
+  since: OverviewWindow | null;
+  kinds: { days: number; total: number;
+    items: { kind: string; count: number }[] };
+  /** The scan nearest to a month back; null when there is none to compare. */
+  trend: { ts: number; size: number; mails: number } | null;
+}
+
 export interface WrappedResp {
   year: number;
   /** The year is still running ("so far"). */
