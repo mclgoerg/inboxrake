@@ -1,5 +1,5 @@
-import { AlertCircle, Check, CheckCircle2, ChevronsUpDown, Eye, Info, MousePointerClick, Pin,
-  Shield, TriangleAlert, X }
+import { AlertCircle, Check, CheckCircle2, ChevronRight, ChevronsUpDown, Eye, Info, Minus,
+  MousePointerClick, Pin, Plus, Shield, TriangleAlert, X }
   from "lucide-react";
 import { createPortal } from "react-dom";
 import { createContext, useCallback, useContext, useEffect, useId,
@@ -2340,14 +2340,238 @@ export function useAppearance(): [Appearance, (a: Appearance) => void] {
   return [a, applyTheme];
 }
 
-/** System | Light | Dark as a Segmented control (Settings > General). */
+/** System | Light | Dark as three mini-window thumbnails to tap (Settings >
+ *  General): a radio group, arrows move the choice, the picked one has the
+ *  accent border. The pictures are fixed (`.appearance-thumb-*` in index.css),
+ *  they show the theme, not the one currently applied. */
 export function AppearanceControl({ className = "" }: { className?: string }) {
   const [a, set] = useAppearance();
+  const values = ["system", "light", "dark"] as const;
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1
+      : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const next = values[(values.indexOf(a) + d + values.length) % values.length];
+    set(next);
+    e.currentTarget.querySelector<HTMLElement>(
+      `[data-appearance="${next}"]`)?.focus();
+  };
   return (
-    <Segmented fill value={a} onChange={set} label={t("Appearance")}
-      className={className}
-      options={[{ value: "system", label: t("appearance.system") },
-        { value: "light", label: t("appearance.light") },
-        { value: "dark", label: t("appearance.dark") }]} />
+    <div role="radiogroup" aria-label={t("Appearance")} onKeyDown={onKey}
+      className={`flex gap-2 ${className}`}>
+      {values.map((v) => (
+        <button key={v} type="button" role="radio" aria-checked={a === v}
+          data-appearance={v} tabIndex={a === v ? 0 : -1}
+          onClick={() => set(v)}
+          className="group flex min-w-0 cursor-pointer flex-col items-center
+            gap-1 rounded-card p-1 coarse:min-w-11">
+          <span aria-hidden className={`appearance-thumb appearance-thumb-${v}
+            h-12 w-18 rounded-control border transition-colors
+            ${a === v ? "border-accent ring-2 ring-accent" : "border-line"}`} />
+          <span className={`type-meta ${a === v ? "font-semibold text-accent"
+            : "text-muted group-hover:text-body"}`}>
+            {t(`appearance.${v}`)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------- settings: grouped rows and controls ------------------ */
+
+/** Lets a control inside a `SettingsRow` take its accessible name and
+ *  description from the row's visible label / sub text. */
+const RowContext = createContext<{ labelId: string; descId?: string } | null>(
+  null);
+
+/** An inset rounded list of settings rows (iOS grouped list) with an optional
+ *  caption above and a footnote below. Rows are `SettingsRow`s separated by
+ *  hairlines; `padded` is for free-form content (a form, a table) that is not
+ *  made of rows. */
+export function SettingsGroup({ header, footnote, padded = false,
+  className = "", children }: {
+  header?: ReactNode; footnote?: ReactNode; padded?: boolean;
+  className?: string; children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div role="group" aria-labelledby={header ? `${id}-h` : undefined}
+      className={`mb-6 ${className}`}>
+      {header && (
+        <h3 id={`${id}-h`} className="mb-1.5 px-3 type-meta font-medium
+          text-muted">{header}</h3>
+      )}
+      <div className={`rounded-card border border-line bg-panel
+        ${padded ? "p-4" : "divide-y divide-line overflow-hidden"}`}>
+        {children}
+      </div>
+      {footnote && (
+        <p className="mt-1.5 px-3 type-meta text-muted">{footnote}</p>
+      )}
+    </div>
+  );
+}
+
+/** Colour tile behind a row icon (the root list of Settings). */
+export function IconTile({ tone = "neutral", children }: {
+  tone?: TagTone; children: ReactNode;
+}) {
+  return (
+    <span aria-hidden className={`flex size-7 shrink-0 items-center
+      justify-center rounded-control ${TAG_TONE[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+/** One row of a `SettingsGroup`: label (+ muted sub text) on the left, the
+ *  control or value on the right. With `onClick` the whole row is a button
+ *  with a trailing chevron (drill-down; `value` shows before it). `stack`
+ *  puts the children under the label at full width (an input, a text area).
+ *  `danger` makes it a destructive text row. Switch / Stepper inside take
+ *  their name from the label. */
+export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
+  stack = false, disabled, current, children }: {
+  label: ReactNode; sub?: ReactNode; icon?: ReactNode; value?: ReactNode;
+  onClick?: () => void; danger?: boolean; stack?: boolean;
+  disabled?: boolean;
+  /** The row of the page that is open (`aria-current`). */
+  current?: boolean; children?: ReactNode;
+}) {
+  const id = useId();
+  const ctx = { labelId: `${id}-l`, descId: sub ? `${id}-d` : undefined };
+  // The icon is decoration: an avatar's letter must not lead the row's name.
+  const iconEl = icon && <span aria-hidden className="contents">{icon}</span>;
+  const text = (
+    <span className="min-w-0 flex-1">
+      <span id={ctx.labelId} className={`block type-body
+        ${danger ? "text-danger-fg" : ""}`}>{label}</span>
+      {sub && (
+        <span id={ctx.descId} className="block type-meta text-muted">
+          {sub}
+        </span>
+      )}
+    </span>
+  );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} disabled={disabled}
+        aria-current={current ? "page" : undefined}
+        className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5
+          text-left transition-colors enabled:hover:bg-panel2
+          disabled:cursor-not-allowed disabled:text-faint">
+        {iconEl}
+        {text}
+        {value != null && value !== "" && (
+          <span className="min-w-0 max-w-1/2 truncate type-body
+            text-muted">{value}</span>
+        )}
+        {children}
+        <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
+      </button>
+    );
+  }
+  return (
+    <RowContext.Provider value={ctx}>
+      <div className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
+        : "min-h-12 items-center"}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {iconEl}
+          {text}
+        </div>
+        {children != null && (
+          <div className={stack ? "min-w-0" : "min-w-0 shrink-0"}>
+            {children}
+          </div>
+        )}
+      </div>
+    </RowContext.Provider>
+  );
+}
+
+/** On / off switch (`role="switch"`). The visible track is 28 px high, the
+ *  button around it 44 px. Named by `label`, else by the `SettingsRow` it
+ *  sits in. `onChange` gets the new state. */
+export function Switch({ checked, onChange, label, disabled = false,
+  className = "", ...rest }: {
+  checked: boolean; onChange: (on: boolean) => void; label?: string;
+  disabled?: boolean; className?: string;
+} & Omit<ComponentProps<"button">, "onChange" | "role" | "type"
+  | "aria-checked">) {
+  const row = useContext(RowContext);
+  return (
+    <button type="button" role="switch" aria-checked={checked}
+      aria-label={label} disabled={disabled}
+      aria-labelledby={label ? undefined : row?.labelId}
+      aria-describedby={row?.descId}
+      onClick={() => onChange(!checked)} {...rest}
+      className={`group inline-flex min-h-11 min-w-11 cursor-pointer
+        items-center justify-center disabled:cursor-not-allowed ${className}`}>
+      <span aria-hidden className={`relative block h-7 w-12 rounded-full
+        transition-colors motion-reduce:transition-none
+        ${disabled ? "bg-chip" : checked ? "bg-safe-fg" : "bg-chiph"}`}>
+        <span className={`absolute left-0.5 top-0.5 size-6 rounded-full
+          shadow-segment transition-transform motion-reduce:transition-none
+          ${disabled ? "bg-faint" : "bg-knob"}
+          ${checked ? "translate-x-5" : ""}`} />
+      </span>
+    </button>
+  );
+}
+
+/** Number stepper: [−] value unit [+]. The value is a spin button (Up / Down /
+ *  Right / Left step, PageUp / PageDown step by 10, Home / End jump to min /
+ *  max); the buttons are for pointers and stay out of the tab order. `format`
+ *  turns the value into its (translated, pluralised) text, e.g. "7 days".
+ *  Named by `label`,
+ *  else by the `SettingsRow` it sits in. */
+export function Stepper({ value, onChange, min, max, step = 1, format, label,
+  disabled = false }: {
+  value: number; onChange: (v: number) => void; min: number; max: number;
+  step?: number; format?: (v: number) => string; label?: string;
+  disabled?: boolean;
+}) {
+  const row = useContext(RowContext);
+  const to = (v: number) => onChange(Math.min(max, Math.max(min, v)));
+  const text = format ? format(value) : String(value);
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    const next = e.key === "ArrowUp" || e.key === "ArrowRight" ? value + step
+      : e.key === "ArrowDown" || e.key === "ArrowLeft" ? value - step
+      : e.key === "PageUp" ? value + 10 * step
+      : e.key === "PageDown" ? value - 10 * step
+      : e.key === "Home" ? min : e.key === "End" ? max : null;
+    if (next === null) return;
+    e.preventDefault();
+    to(next);
+  };
+  const btn = `inline-flex min-h-9 min-w-9 items-center justify-center
+    rounded-control text-muted transition-colors coarse:min-h-11
+    coarse:min-w-11 enabled:hover:bg-chiph enabled:hover:text-body
+    disabled:cursor-not-allowed disabled:text-faint`;
+  return (
+    <div className="inline-flex items-center rounded-control bg-chip">
+      <button type="button" tabIndex={-1} className={btn}
+        aria-label={t("stepper.decrease")} disabled={disabled || value <= min}
+        onClick={() => to(value - step)}>
+        <Minus size={16} aria-hidden />
+      </button>
+      <div role="spinbutton" tabIndex={disabled ? -1 : 0} aria-label={label}
+        aria-labelledby={label ? undefined : row?.labelId}
+        aria-describedby={row?.descId} aria-valuenow={value}
+        aria-valuemin={min} aria-valuemax={max} aria-valuetext={text}
+        aria-disabled={disabled || undefined} onKeyDown={onKey}
+        className="min-w-16 select-none rounded-control px-2 text-center
+          type-body tabular-nums">
+        {text}
+      </div>
+      <button type="button" tabIndex={-1} className={btn}
+        aria-label={t("stepper.increase")} disabled={disabled || value >= max}
+        onClick={() => to(value + step)}>
+        <Plus size={16} aria-hidden />
+      </button>
+    </div>
   );
 }

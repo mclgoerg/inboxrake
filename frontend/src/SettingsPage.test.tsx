@@ -2,9 +2,9 @@
 /* Provider presets: selecting one prefills the connection fields but
  * keeps everything editable; "custom" changes nothing. */
 
-import { cleanup, fireEvent, render as rtlRender, screen, waitFor, within }
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within }
   from "@testing-library/react";
-import type { ReactElement } from "react";
+import { useState, type ComponentProps, type ReactElement } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
 const foldersCalls: (string | undefined)[] = [];
@@ -13,6 +13,7 @@ const testDigestCalls: string[] = [];
 const roleCalls: unknown[][] = [];
 const oauthDisconnectCalls: string[] = [];
 let foldersResult: unknown = null;   // null: picker stays loading
+let saveResult: Promise<unknown> | null = null;   // null: a save never answers
 let testDigestResult: { sent: boolean; demo: boolean } =
   { sent: true, demo: false };
 const signOutAllCalls: number[] = [];
@@ -32,7 +33,7 @@ vi.mock("./api", () => ({
     },
     saveConfig: (body: any) => {
       saveCalls.push(body);
-      return new Promise(() => {});              // response irrelevant here
+      return saveResult ?? new Promise(() => {});   // response mostly irrelevant
     },
     testDigest: (account: string) => {
       testDigestCalls.push(account);
@@ -59,7 +60,9 @@ vi.mock("./api", () => ({
   fmtUsd: (n: number) => `$${n.toFixed(2)}`,
 }));
 
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsPage } from "./components/SettingsPage";
+import type { SettingsSection } from "./nav";
+import { popupItem, popupPick } from "./toolTestUtils";
 import { DialogProvider, ToastProvider } from "./components/ui";
 // The folder picker toasts its outcomes, so every render has a provider.
 const render = (ui: ReactElement) =>
@@ -105,6 +108,27 @@ const cfg: Config = {
   ai_stats: { input_tokens: 0, output_tokens: 0, cost: 0, runs: 0 },
 };
 
+/** The page with its route kept in state, like App keeps it in the URL:
+ *  `section` is the open section (the account section unless told), null the
+ *  phone root list. Rendered without matchMedia (jsdom), i.e. the < 1024 layout. */
+let goto: (s: SettingsSection | null) => void = () => {};
+function Settings({ section: first = "account", ...props }: Partial<
+  Omit<ComponentProps<typeof SettingsPage>, "section">> & { cfg: Config;
+  account: string; section?: SettingsSection | null }) {
+  const [section, setSection] = useState<SettingsSection | null>(first);
+  goto = setSection;
+  return <SettingsPage onClose={() => {}} onSaved={() => {}}
+    onAccountsChanged={() => {}} {...props} section={section}
+    onSection={(s) => setSection(s)} />;
+}
+const openSection = (s: SettingsSection | null) => act(() => { goto(s); });
+/** Pick an account like a tap on its row of the root list does. */
+const selectAccount = async (name: string) => {
+  openSection(null);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}`) }));
+  await screen.findByLabelText("Host");
+};
+
 afterEach(() => {
   cleanup();
   setLang("en");
@@ -117,7 +141,7 @@ const presetSelect = () =>
 const hostInput = () => screen.getByLabelText("Host") as HTMLInputElement;
 
 test("gmail preset prefills IMAP + SMTP fields", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(hostInput().value).toBe("127.0.0.1");
   fireEvent.change(presetSelect(), { target: { value: "gmail" } });
@@ -135,7 +159,7 @@ test("gmail preset prefills IMAP + SMTP fields", () => {
 });
 
 test("custom preset keeps the current fields", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "custom" } });
   expect(hostInput().value).toBe("127.0.0.1");
@@ -144,7 +168,7 @@ test("custom preset keeps the current fields", () => {
 
 test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
   () => {
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+    render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     const ca = () => (screen.getByLabelText(/CA file/) as HTMLInputElement);
     expect(ca().value).toBe("/certs/bridge-cert.pem");
@@ -156,22 +180,20 @@ test("switching Proton -> Custom drops Proton's CA path; Custom keeps its own",
   });
 
 test("prefilled fields stay editable", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "fastmail" } });
   fireEvent.change(hostInput(), { target: { value: "imap.mine.example" } });
   expect(hostInput().value).toBe("imap.mine.example");
 });
 
-test("folder discovery follows the account being edited", () => {
+test("folder discovery follows the account being edited", async () => {
   foldersCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(foldersCalls).toEqual(["default"]);
-  fireEvent.change(
-    screen.getByLabelText(/Account to edit/) as HTMLSelectElement,
-    { target: { value: "icloud" } });
-  expect(foldersCalls).toEqual(["default", "icloud"]);
+  await selectAccount("icloud");
+  await waitFor(() => expect(foldersCalls).toEqual(["default", "icloud"]));
   expect(hostInput().value).toBe("imap.mail.me.com");
   // manual re-discover button
   fireEvent.click(screen.getByText(/Discover/));
@@ -186,7 +208,7 @@ test("a virtual view folder is listed under special folders, no checkbox",
       { raw: "[Gmail]/Starred", name: "[Gmail]/Starred", role: null,
         view: true, excluded: true }] };
     try {
-      render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+      render(<Settings cfg={cfg} account="default" onClose={() => {}}
         onSaved={() => {}} onAccountsChanged={() => {}} />);
       expect(await screen.findByText("[Gmail]/Starred")).toBeTruthy();
       expect(screen.getByText(/Views of other folders - never scanned/))
@@ -208,7 +230,7 @@ test("a look-alike of a special folder is locked and unticked", async () => {
       role_source: null, ambiguous: false, looks_like: "trash",
       excluded: true }] };
   try {
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+    render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     const box = await screen.findByLabelText(/Gelöschte Elemente/);
     expect((box as HTMLInputElement).disabled).toBe(true);
@@ -238,11 +260,9 @@ test("choosing a role folder acts on the edited account, not the active one",
     roleCalls.length = 0;
     foldersResult = tiedTrash();
     try {
-      render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+      render(<Settings cfg={cfg} account="default" onClose={() => {}}
         onSaved={() => {}} onAccountsChanged={() => {}} />);
-      fireEvent.change(
-        screen.getByLabelText(/Account to edit/) as HTMLSelectElement,
-        { target: { value: "icloud" } });
+      await selectAccount("icloud");
       fireEvent.change(await screen.findByLabelText(
         "Which folder is your Trash folder?"),
       { target: { value: "Trash" } });
@@ -256,7 +276,7 @@ test("choosing a role folder acts on the edited account, not the active one",
 test("unsaved ticks survive the reload after a role choice", async () => {
   foldersResult = tiedTrash();
   try {
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+    render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     const box = await screen.findByLabelText("Projects") as HTMLInputElement;
     expect(box.checked).toBe(true);
@@ -277,8 +297,8 @@ test("unsaved ticks survive the reload after a role choice", async () => {
   }
 });
 
-const renderWithDialogs = (over: Partial<Parameters<typeof SettingsModal>[0]>
-  = {}) => render(<DialogProvider><SettingsModal cfg={cfg} account="default"
+const renderWithDialogs = (over: Partial<Parameters<typeof Settings>[0]>
+  = {}) => render(<DialogProvider><Settings cfg={cfg} account="default"
   onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}}
   {...over} /></DialogProvider>);
 
@@ -316,7 +336,7 @@ test("rename validates: empty and duplicate names are refused", async () => {
 test("a new account is named in a prompt and sent as add_account",
   async () => {
     saveCalls.length = 0;
-    renderWithDialogs();
+    renderWithDialogs({ section: null });
     fireEvent.click(screen.getByText("Add account"));
     const dlg = await findDialog();
     fireEvent.change(within(dlg).getByRole("textbox"),
@@ -374,55 +394,62 @@ test("a single account cannot be deleted (no Remove section)", () => {
   expect(screen.queryByText("Remove account")).toBeNull();
 });
 
-test("tabs switch the visible section", () => {
+test("sections switch the visible form; one section shows at a time", () => {
   renderWithDialogs();
-  expect(screen.getByRole("tab", { name: "Mail account" })
-    .getAttribute("aria-selected")).toBe("true");
-  fireEvent.click(screen.getByRole("tab", { name: "General" }));
-  expect(screen.getByText("Backup & restore")).toBeTruthy();
+  expect(hostInput()).toBeTruthy();
+  openSection("general");
+  expect(screen.getByText("Appearance")).toBeTruthy();
   expect(screen.queryByLabelText("Host")).toBeNull();
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  openSection("ai");
   expect(screen.getByText("Usage")).toBeTruthy();
-  expect(screen.queryByText("Backup & restore")).toBeNull();
+  expect(screen.queryByText("Appearance")).toBeNull();
+  openSection("backup");
+  expect(screen.getByText("Export")).toBeTruthy();
+  expect(screen.queryByText("Usage")).toBeNull();
 });
 
-test("the active tab controls one labelled tabpanel", () => {
-  render(<ToastProvider><DialogProvider><SettingsModal cfg={cfg}
-    account="default" onClose={() => {}} onSaved={() => {}}
-    onAccountsChanged={() => {}} /></DialogProvider></ToastProvider>);
-  for (const name of ["Mail account", "General", "Filed senders", "AI"]) {
-    const tab = screen.getByRole("tab", { name });
-    fireEvent.click(tab);
-    const panel = screen.getByRole("tabpanel");
-    expect(tab.getAttribute("aria-controls")).toBe(panel.id);
-    expect(panel.getAttribute("aria-labelledby")).toBe(tab.id);
-    expect(screen.getByRole("tabpanel", { name })).toBe(panel);
-    // Only the selected tab points at the panel.
-    expect(screen.getAllByRole("tab").filter((x) =>
-      x.getAttribute("aria-controls") === panel.id)).toEqual([tab]);
-  }
-});
+test("a section opens under its own heading with a way back to the root list",
+  () => {
+    renderWithDialogs({ section: null });
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 }))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^AI review/ }));
+    expect(screen.getByRole("heading", { name: "AI review", level: 1 }))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 }))
+      .toBeTruthy();
+    expect(screen.queryByText("Usage")).toBeNull();
+  });
 
-test("Cancel closes without saving; Save saves and stays open", () => {
-  saveCalls.length = 0;
-  const onClose = vi.fn();
-  renderWithDialogs({ onClose });
-  fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
-  fireEvent.click(screen.getByText("Cancel"));
-  expect(onClose).toHaveBeenCalledTimes(1);
-  expect(saveCalls).toEqual([]);
-  fireEvent.click(screen.getByText("Save"));
-  expect(saveCalls).toHaveLength(1);
-  expect(onClose).toHaveBeenCalledTimes(1);
-});
+test("Revert drops staged edits without saving; Save saves and stays open",
+  () => {
+    saveCalls.length = 0;
+    const onClose = vi.fn();
+    renderWithDialogs({ onClose });
+    // nothing staged: no save bar
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
+    const bar = screen.getByRole("region", { name: "Unsaved changes" });
+    expect(within(bar).getByRole("status").textContent)
+      .toBe("Connection changed");
+    fireEvent.click(screen.getByRole("button", { name: "Revert" }));
+    expect(hostInput().value).toBe("127.0.0.1");
+    expect(saveCalls).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(saveCalls).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 
-test("Export and Import live in General > Backup & restore", async () => {
+test("Export and Import live in Backup & restore", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(
     { ok: true, json: () => Promise.resolve({ rules: 2, verdicts: 3 }) })));
   const onSaved = vi.fn();
   const { container } = renderWithDialogs({ onSaved });
   expect(screen.queryByText("Export")).toBeNull();
-  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  openSection("backup");
   expect(screen.getByText("Export")).toBeTruthy();
   const input = container.querySelector('input[type="file"]') as HTMLInputElement;
   const pick = () => fireEvent.change(input, { target: { files: [
@@ -449,7 +476,7 @@ test("an import names the rules it could not take", async () => {
     json: () => Promise.resolve({ rules: 1, verdicts: 0, skipped_rules:
       ["Old rule", "Other"] }) })));
   const { container } = renderWithDialogs({ onSaved: vi.fn() });
-  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  openSection("backup");
   const input = container.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [
     new File(['{"rules":[]}'], "backup.json", { type: "application/json" })] } });
@@ -463,7 +490,7 @@ test("resetting AI spend and clearing verdicts need a confirmation",
   async () => {
     saveCalls.length = 0;
     renderWithDialogs();
-    fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+    openSection("ai");
     fireEvent.click(screen.getByText("Reset spend…"));
     await cancelDialog();
     fireEvent.click(screen.getByText("Clear AI verdict cache…"));
@@ -488,16 +515,23 @@ test("server settings (login + shared AI) are admin-only", () => {
     ai: { ...cfg.ai, available: true, source: "shared",
       shared_budget_usd: 5 },
   };
-  render(<SettingsModal cfg={asUser} account="default" onClose={() => {}}
+  render(<Settings cfg={asUser} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  // no Server tab at all for non-admins …
-  expect(screen.queryByRole("tab", { name: /Server/ })).toBeNull();
+  // no Server group at all for non-admins (not even by route) …
+  openSection(null);
+  expect(screen.queryByText("Sign-in & users")).toBeNull();
+  openSection("signin");
   expect(screen.queryByText(/Login \(optional\)/)).toBeNull();
   expect(screen.queryByText(/Shared AI key/)).toBeNull();
-  // … but the shared-key state is visible in the tenant's AI tab
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  // … Backup & restore stays reachable for everyone …
+  openSection(null);
+  expect(screen.getByText("Backup & restore")).toBeTruthy();
+  // … and the shared-key state is visible in the tenant's AI section
+  openSection("ai");
   expect(screen.getByText(/shared key/)).toBeTruthy();
   // saving must not send server-level sections (the API would 403)
+  fireEvent.change(screen.getByLabelText(/Model/),
+    { target: { value: "claude-opus-5" } });
   fireEvent.click(screen.getByText("Save"));
   expect(saveCalls.length).toBe(1);
   expect(saveCalls[0].auth).toBeUndefined();
@@ -514,9 +548,9 @@ test("the admin sees and saves the shared AI section", async () => {
       price_out: 0, default_tenant_budget_usd: 5, api_key: "",
       api_key_set: true },
   };
-  render(<SettingsModal cfg={asAdmin} account="default" onClose={() => {}}
+  render(<Settings cfg={asAdmin} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+  openSection("signin");
   expect(screen.getByText(/Shared AI key/)).toBeTruthy();
   // the per-user usage table loads (id + shared-key spend/cap visible)
   expect(await screen.findByText(/alice_x.example/)).toBeTruthy();
@@ -526,6 +560,8 @@ test("the admin sees and saves the shared AI section", async () => {
   const cleaned = screen.getByText("7").closest("td")!.textContent!;
   expect(cleaned).toContain("4 KB");
   expect(cleaned).not.toContain("2 KB");
+  fireEvent.change(screen.getAllByLabelText(/^Model/)[0],
+    { target: { value: "claude-opus-5" } });
   fireEvent.click(screen.getByText("Save"));
   expect(saveCalls[0].auth.mode).toBe("oidc");
   expect(saveCalls[0].auth.admin).toBe("me@x");
@@ -541,9 +577,9 @@ test("SSO warnings: open allow-list and missing admin", () => {
         redirect_base: "", allowed } },
   });
   const show = (c: Config) => {
-    render(<SettingsModal cfg={c} account="default" onClose={() => {}}
+    render(<Settings cfg={c} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+    openSection("signin");
   };
   show(mk("me@x.example", ["me@x.example"]));
   expect(screen.queryByText(/allowed-users list is empty/)).toBeNull();
@@ -567,7 +603,7 @@ test("Sign out all sessions asks first, then calls the API; hidden without a log
   const withLogin: Config = {
     ...cfg, auth: { ...cfg.auth, mode: "password", is_admin: true } };
   renderWithDialogs({ cfg: withLogin });
-  fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+  openSection("signin");
   fireEvent.click(screen.getByText("Sign out all sessions…"));
   await cancelDialog();
   await expectNoDialog();
@@ -578,37 +614,37 @@ test("Sign out all sessions asks first, then calls the API; hidden without a log
   expect(await screen.findByText(/All other sessions were signed out/))
     .toBeTruthy();
   cleanup();
-  render(<SettingsModal cfg={{ ...cfg, auth: { ...cfg.auth, mode: "none",
+  render(<Settings cfg={{ ...cfg, auth: { ...cfg.auth, mode: "none",
     is_admin: true } }} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+  openSection("signin");
   expect(screen.queryByText("Sign out all sessions…")).toBeNull();
 });
 
-test("tab switches keep unsaved edits and Save persists every tab", () => {
+test("section switches keep unsaved edits and Save persists every section", () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
-  // edit on the account tab …
+  // edit on the account section …
   fireEvent.change(hostInput(), { target: { value: "imap.new.example" } });
   // … wander off and back - the edit must survive
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  openSection("ai");
   fireEvent.change(screen.getByLabelText(/Model/),
     { target: { value: "claude-opus-5" } });
-  fireEvent.click(screen.getByRole("tab", { name: "Mail account" }));
+  openSection("account");
   expect(hostInput().value).toBe("imap.new.example");
-  // Save (from any tab) sends the fields of ALL tabs
+  // Save (from any section) sends the fields of ALL sections
   fireEvent.click(screen.getByText("Save"));
   expect(saveCalls[0].imap.host).toBe("imap.new.example");
   expect(saveCalls[0].ai.model).toBe("claude-opus-5");
 });
 
+const schedule = () => screen.getByRole("button", { name: /^Schedule/ });
+
 test("digest schedule + recipient + time are included in Save", () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.change(screen.getByLabelText("Schedule"),
-    { target: { value: "weekly" } });
+  render(<Settings cfg={cfg} account="default" section="digest" />);
+  popupPick(schedule(), "Weekly");
   fireEvent.change(screen.getByLabelText("Recipient"),
     { target: { value: "me@elsewhere.example" } });
   fireEvent.change(screen.getByLabelText(/^Time/),
@@ -620,45 +656,43 @@ test("digest schedule + recipient + time are included in Save", () => {
 });
 
 test("the time field only appears once a schedule is picked", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
+  render(<Settings cfg={cfg} account="default" section="digest" />);
   expect(screen.queryByLabelText(/^Time/)).toBeNull();
-  fireEvent.change(screen.getByLabelText("Schedule"),
-    { target: { value: "daily" } });
+  popupPick(schedule(), "Daily");
   expect(screen.getByLabelText(/^Time/)).toBeTruthy();
 });
+
+const step = (name: string | RegExp, key: string, times = 1) => {
+  const sp = screen.getByRole("spinbutton", { name });
+  for (let i = 0; i < times; i++) fireEvent.keyDown(sp, { key });
+  return sp;
+};
 
 test("the new-sender window defaults from config and is included in Save",
   () => {
     saveCalls.length = 0;
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: "General" }));
-    const field = screen.getByLabelText(/"New" sender window/) as
-      HTMLInputElement;
-    expect(field.value).toBe("7");
-    fireEvent.change(field, { target: { value: "3" } });
+    render(<Settings cfg={cfg} account="default" section="general" />);
+    const field = screen.getByRole("spinbutton", { name: /badge stays for/ });
+    expect(field.getAttribute("aria-valuenow")).toBe("7");
+    expect(field.textContent).toBe("7 days");
+    step(/badge stays for/, "ArrowDown", 4);
+    expect(field.textContent).toBe("3 days");
     fireEvent.click(screen.getByText("Save"));
     expect(saveCalls[0].new_sender_window_days).toBe(3);
   });
 
-test("switching the edited account reloads its own digest settings", () => {
-  render(<SettingsModal cfg={{
+test("switching the edited account reloads its own digest settings", async () => {
+  render(<Settings cfg={{
     ...cfg,
     accounts: { ...cfg.accounts,
       icloud: { ...cfg.accounts.icloud,
         digest: { schedule: "daily", recipient: "icloud@elsewhere.example",
           hour: 20, minute: 15 } },
     },
-  }} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect((screen.getByLabelText("Schedule") as HTMLSelectElement).value)
-    .toBe("off");
-  fireEvent.change(
-    screen.getByLabelText(/Account to edit/) as HTMLSelectElement,
-    { target: { value: "icloud" } });
-  expect((screen.getByLabelText("Schedule") as HTMLSelectElement).value)
-    .toBe("daily");
+  }} account="default" section="digest" />);
+  expect(schedule().textContent).toContain("Off");
+  popupPick(screen.getByRole("button", { name: /^Account default/ }), "icloud");
+  await waitFor(() => expect(schedule().textContent).toContain("Daily"));
   expect((screen.getByLabelText("Recipient") as HTMLInputElement).value)
     .toBe("icloud@elsewhere.example");
   expect((screen.getByLabelText(/^Time/) as HTMLInputElement).value)
@@ -667,30 +701,52 @@ test("switching the edited account reloads its own digest settings", () => {
 
 test("auto-scan fields only show cadence/alignment once enabled, and " +
     "save in the shape the backend expects", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect(screen.queryByLabelText(/Every/)).toBeNull();
-  expect(screen.queryByLabelText(/Start at minute/)).toBeNull();
+  render(<Settings cfg={cfg} account="default" section="autoscan" />);
+  expect(screen.queryByRole("spinbutton", { name: "Every" })).toBeNull();
+  expect(screen.queryByRole("spinbutton", { name: /Start at minute/ }))
+    .toBeNull();
 
-  fireEvent.change(screen.getByLabelText("Enabled") as HTMLSelectElement,
-    { target: { value: "on" } });
-  const every = screen.getByLabelText(/Every/) as HTMLInputElement;
-  const align = screen.getByLabelText(/Start at minute/) as HTMLInputElement;
-  expect(every.value).toBe("6");
-  expect(align.value).toBe("0");
+  const on = screen.getByRole("switch", { name: "Enabled" });
+  expect(on.getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(on);
+  expect(on.getAttribute("aria-checked")).toBe("true");
+  const every = screen.getByRole("spinbutton", { name: "Every" });
+  const align = screen.getByRole("spinbutton", { name: /Start at minute/ });
+  expect(every.getAttribute("aria-valuenow")).toBe("6");
+  expect(align.getAttribute("aria-valuenow")).toBe("0");
 
-  fireEvent.change(every, { target: { value: "15" } });
-  fireEvent.change(align, { target: { value: "10" } });
+  step("Every", "PageUp");             // 16
+  step("Every", "ArrowDown");          // 15
+  step(/Start at minute/, "PageUp");   // 10
   saveCalls.length = 0;
   fireEvent.click(screen.getByText("Save"));
   expect(saveCalls[0].imap.auto_scan).toEqual(
     { enabled: true, unit: "hours", value: 15, align_minute: 10 });
 });
 
+test("the auto-scan steppers stay inside what the backend accepts", () => {
+  render(<Settings cfg={cfg} account="default" section="autoscan" />);
+  fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
+  step("Every", "End");
+  expect(screen.getByRole("spinbutton", { name: "Every" })
+    .getAttribute("aria-valuenow")).toBe("24");
+  // minutes allow up to 1440, and a bigger hour value is clamped when
+  // the unit goes back to hours
+  popupPick(screen.getByRole("button", { name: /^Every hours/ }), "minutes");
+  step("Every", "End");
+  expect(screen.getByRole("spinbutton", { name: "Every" })
+    .getAttribute("aria-valuenow")).toBe("1440");
+  popupPick(screen.getByRole("button", { name: /^Every minutes/ }), "hours");
+  expect(screen.getByRole("spinbutton", { name: "Every" })
+    .getAttribute("aria-valuenow")).toBe("24");
+  step(/Start at minute/, "End");
+  expect(screen.getByRole("spinbutton", { name: /Start at minute/ })
+    .getAttribute("aria-valuenow")).toBe("59");
+});
+
 test("send test digest reports success", async () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  fireEvent.click(screen.getByText("Send test digest"));
+  render(<Settings cfg={cfg} account="default" section="digest" />);
+  fireEvent.click(screen.getByRole("button", { name: "Send test digest" }));
   expect(testDigestCalls).toEqual(["default"]);
   expect(await screen.findByText("Sent!")).toBeTruthy();
 });
@@ -698,74 +754,83 @@ test("send test digest reports success", async () => {
 test("send test digest reports a demo send distinctly from a real one",
   async () => {
     testDigestResult = { sent: true, demo: true };
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
-    fireEvent.click(screen.getByText("Send test digest"));
+    render(<Settings cfg={cfg} account="default" section="digest" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send test digest" }));
     expect(await screen.findByText(/preview with example data/)).toBeTruthy();
   });
 
-test("mail-text search mode defaults to server and saves the chosen mode",
+const searchSwitch = () =>
+  screen.getByRole("switch", { name: "Search inside mail text" });
+const searchWith = () => screen.getByRole("button", { name: /^Search with/ });
+
+test("mail-text search defaults to the server and saves the chosen mode",
   () => {
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
-    const mode = screen.getByLabelText("Search inside mail text") as
-      HTMLSelectElement;
-    expect(mode.value).toBe("server");
-    fireEvent.change(mode, { target: { value: "disabled" } });
+    render(<Settings cfg={cfg} account="default" section="general" />);
+    expect(searchSwitch().getAttribute("aria-checked")).toBe("true");
+    expect(searchWith().textContent).toContain("Ask the mail server");
+    fireEvent.click(searchSwitch());
+    expect(searchSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("button", { name: /^Search with/ })).toBeNull();
     saveCalls.length = 0;
     fireEvent.click(screen.getByText("Save"));
     expect(saveCalls[0].imap.body_search).toBe("disabled");
   });
 
+test("turning mail-text search back on restores the mode that was set", () => {
+  const withKey: Config = { ...cfg, secret_key_set: true };
+  render(<Settings cfg={withKey} account="default" section="general" />);
+  popupPick(searchWith(), /Local word index/);
+  fireEvent.click(searchSwitch());
+  expect(searchSwitch().getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(searchSwitch());
+  expect(searchWith().textContent).toContain("Local word index");
+});
+
 test("the Smart threshold defaults to 10 and saves clamped to 2-50", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  const n = screen.getByLabelText("Own row from N mails") as HTMLInputElement;
-  expect(n.value).toBe("10");
-  for (const [typed, sent] of [["25", 25], ["1", 2], ["999", 50], ["", 10]] as
-    [string, number][]) {
-    fireEvent.change(n, { target: { value: typed } });
+  const name = "Own row from N mails";
+  for (const [key, times, sent] of [["PageUp", 1, 20], ["Home", 1, 2],
+    ["End", 1, 50], ["ArrowUp", 5, 15]] as [string, number, number][]) {
     saveCalls.length = 0;
+    render(<Settings cfg={cfg} account="default" section="general" />);
+    expect(screen.getByRole("spinbutton", { name }).getAttribute("aria-valuenow"))
+      .toBe("10");
+    step(name, key, times);
     fireEvent.click(screen.getByText("Save"));
-    expect(saveCalls[0].imap.smart_min, typed).toBe(sent);
+    expect(saveCalls[0].imap.smart_min, key).toBe(sent);
+    cleanup();
   }
 });
 
 test("the Smart threshold is read from the account being edited", () => {
   const custom: Config = { ...cfg, accounts: { ...cfg.accounts,
     default: { ...acct, smart_min: 4 } } };
-  render(<SettingsModal cfg={custom} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect((screen.getByLabelText("Own row from N mails") as HTMLInputElement)
-    .value).toBe("4");
+  render(<Settings cfg={custom} account="default" section="general" />);
+  expect(screen.getByRole("spinbutton", { name: "Own row from N mails" })
+    .getAttribute("aria-valuenow")).toBe("4");
 });
 
 test("mail-text search mode is read from the account being edited", () => {
   const off: Config = { ...cfg, accounts: { ...cfg.accounts,
     default: { ...acct, body_search: "disabled" } } };
-  render(<SettingsModal cfg={off} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  expect((screen.getByLabelText("Search inside mail text") as
-    HTMLSelectElement).value).toBe("disabled");
+  render(<Settings cfg={off} account="default" section="general" />);
+  expect(searchSwitch().getAttribute("aria-checked")).toBe("false");
 });
 
 test("the local index option needs INBOXRAKE_SECRET_KEY on the server", () => {
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />);
-  const local = screen.getByText(/Local word index/) as HTMLOptionElement;
+  render(<Settings cfg={cfg} account="default" section="general" />);
+  const local = popupItem(searchWith(), /Local word index/) as
+    HTMLButtonElement;
   expect(local.disabled).toBe(true);
 });
 
 test("picking the local index saves it and points to the index panel",
   () => {
     const withKey: Config = { ...cfg, secret_key_set: true };
-    render(<SettingsModal cfg={withKey} account="default" onClose={() => {}}
-      onSaved={() => {}} onAccountsChanged={() => {}} />);
-    const mode = screen.getByLabelText("Search inside mail text") as
-      HTMLSelectElement;
-    expect((screen.getByText(/Local word index/) as HTMLOptionElement)
+    render(<Settings cfg={withKey} account="default" section="general" />);
+    expect((popupItem(searchWith(), /Local word index/) as HTMLButtonElement)
       .disabled).toBe(false);
-    fireEvent.change(mode, { target: { value: "local" } });
+    fireEvent.click(screen.getByRole("menuitemradio",
+      { name: /Local word index/ }));
     expect(screen.getByText(/stores NO readable mail text/)).toBeTruthy();
     // not saved as "local" yet: the build controls wait for the save
     expect(screen.getByText(/Save the settings first/)).toBeTruthy();
@@ -778,8 +843,7 @@ test("deleting sends delete_account for the account selected, not the active one
   async () => {
     saveCalls.length = 0;
     renderWithDialogs();
-    fireEvent.change(screen.getByLabelText(/Account to edit/),
-      { target: { value: "icloud" } });
+    await selectAccount("icloud");
     fireEvent.click(screen.getByText('Delete account "icloud"…'));
     await pressDialog("Delete account");
     await waitFor(() => expect(saveCalls).toEqual(
@@ -802,7 +866,7 @@ test("the delete dialog lists the data that goes with the account",
 test("account names like 'constructor' are valid, real duplicates are not",
   async () => {
     saveCalls.length = 0;
-    renderWithDialogs();
+    renderWithDialogs({ section: null });
     fireEvent.click(screen.getByText("Add account"));
     const dlg = await findDialog();
     fireEvent.change(within(dlg).getByRole("textbox"),
@@ -830,17 +894,17 @@ test("OAuth disconnect asks first; Cancel disconnects nothing", async () => {
 
 test("resetting spend names the amounts it clears", async () => {
   renderWithDialogs();
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  openSection("ai");
   fireEvent.click(screen.getByText("Reset spend…"));
   expect((await findDialog()).textContent).toContain("this month's spend");
   await cancelDialog();
 });
 
-test("the AI tab has a box for the user's own AI-sorting instructions, "
+test("the AI section has a box for the user's own AI-sorting instructions, "
   + "saved with the rest and capped at 1500 characters", () => {
   saveCalls.length = 0;
   renderWithDialogs();
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  openSection("ai");
   const box = screen.getByLabelText("Your instructions for AI sorting (optional)") as
     HTMLTextAreaElement;
   expect(box.value).toBe("");
@@ -854,12 +918,12 @@ test("the AI tab has a box for the user's own AI-sorting instructions, "
 });
 
 
-test("the Filed senders tab lists what the user filed; nothing to save there",
+test("the Filed senders section lists what the user filed; nothing to save there",
   async () => {
-    render(<ToastProvider><DialogProvider><SettingsModal cfg={cfg}
+    render(<ToastProvider><DialogProvider><Settings cfg={cfg}
       account="default" onClose={() => {}} onSaved={() => {}}
       onAccountsChanged={() => {}} aiAnswers={2} /></DialogProvider></ToastProvider>);
-    fireEvent.click(screen.getByRole("tab", { name: "Filed senders" }));
+    openSection("filed");
     expect(await screen.findByText("What Inboxrake knows about your senders"))
       .toBeTruthy();
     expect(await screen.findByText("amy@solo.example")).toBeTruthy();
@@ -871,7 +935,7 @@ test("the Filed senders tab lists what the user filed; nothing to save there",
 
 test("the backup text says the file lists sender addresses", () => {
   renderWithDialogs();
-  fireEvent.click(screen.getByRole("tab", { name: "General" }));
+  openSection("backup");
   expect(screen.getByText(/The file lists sender addresses - keep it private\./))
     .toBeTruthy();
 });
@@ -900,7 +964,7 @@ test("new account + gmail preset starts on App password: Password " +
   "field, no OAuth card, Save sends auth=password and no oauth block",
   async () => {
     saveCalls.length = 0;
-    render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+    render(<Settings cfg={cfg} account="default" onClose={() => {}}
       onSaved={() => {}} onAccountsChanged={() => {}} />);
     fireEvent.change(presetSelect(), { target: { value: "gmail" } });
     expect(signinTab("App password").getAttribute("aria-selected"))
@@ -917,7 +981,7 @@ test("new account + gmail preset starts on App password: Password " +
 test("switching to OAuth shows the OAuth card instead of the Password " +
   "field; Save sends auth=oauth + oauth.provider google", async () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "gmail" } });
   fireEvent.click(signinTab("OAuth"));
@@ -931,13 +995,13 @@ test("switching to OAuth shows the OAuth card instead of the Password " +
 
 test("a saved gmail account opens on the stored method - even when OAuth " +
   "is still connected but the method is App password", () => {
-  const { unmount } = render(<SettingsModal
+  const { unmount } = render(<Settings
     cfg={gmailCfg(oauthAcct({ auth: "oauth" }))} account="default"
     onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(signinTab("OAuth").getAttribute("aria-selected")).toBe("true");
   expect(screen.getByText("Connected")).toBeTruthy();
   unmount();
-  render(<SettingsModal cfg={gmailCfg(oauthAcct({ auth: "password" }))}
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "password" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   expect(signinTab("App password").getAttribute("aria-selected"))
@@ -947,7 +1011,7 @@ test("a saved gmail account opens on the stored method - even when OAuth " +
 
 test("an older backend (no auth field) derives the method from the " +
   "connected token", () => {
-  render(<SettingsModal cfg={gmailCfg(oauthAcct())} account="default"
+  render(<Settings cfg={gmailCfg(oauthAcct())} account="default"
     onClose={() => {}} onSaved={() => {}} onAccountsChanged={() => {}} />);
   expect(signinTab("OAuth").getAttribute("aria-selected")).toBe("true");
 });
@@ -956,7 +1020,7 @@ test("switching back and forth then Save never sends disconnect and keeps " +
   "the client id", async () => {
   saveCalls.length = 0;
   oauthDisconnectCalls.length = 0;
-  render(<SettingsModal cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   fireEvent.click(signinTab("App password"));
@@ -966,8 +1030,17 @@ test("switching back and forth then Save never sends disconnect and keeps " +
   expect(JSON.stringify(saveCalls[0])).not.toContain("disconnect");
   expect(lastSave().auth).toBe("password");
   expect(lastSave().oauth).toBeUndefined();
+  cleanup();
   saveCalls.length = 0;
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
+    account="default" />);
+  fireEvent.click(signinTab("App password"));
   fireEvent.click(signinTab("OAuth"));
+  // back on the saved method the form equals what is saved: nothing to save
+  // until something else is edited
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  fireEvent.change(screen.getByLabelText("User"),
+    { target: { value: "me2@gmail.example" } });
   await clickSave();
   expect(JSON.stringify(saveCalls[0])).not.toContain("disconnect");
   expect(lastSave().auth).toBe("oauth");
@@ -977,7 +1050,7 @@ test("switching back and forth then Save never sends disconnect and keeps " +
 
 test("whitespace is stripped from a Gmail app password", async () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "gmail" } });
   fireEvent.change(appPw(), { target: { value: "abcd efgh\u00a0ijkl  mnop" } });
@@ -987,7 +1060,7 @@ test("whitespace is stripped from a Gmail app password", async () => {
 
 test("other presets keep the password exactly as typed", async () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "icloud" } });
   fireEvent.change(screen.getByLabelText("Password"),
@@ -999,7 +1072,7 @@ test("other presets keep the password exactly as typed", async () => {
 test("connected gmail account -> iCloud preset: Save sends " +
   "auth=password and no oauth block (fix A)", async () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "icloud" } });
@@ -1013,7 +1086,7 @@ test("connected gmail account -> iCloud preset: Save sends " +
 test("outlook preset: OAuth card, no switch, no Password field, " +
   "auth=oauth", async () => {
   saveCalls.length = 0;
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "outlook" } });
   expect(screen.queryByRole("tab", { name: "OAuth" })).toBeNull();
@@ -1025,7 +1098,7 @@ test("outlook preset: OAuth card, no switch, no Password field, " +
 
 test("German: the sign-in switch is translated", () => {
   setLang("de");
-  render(<SettingsModal cfg={gmailCfg(oauthAcct({ auth: "password" }))}
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "password" }))}
     account="default" onClose={() => {}} onSaved={() => {}}
     onAccountsChanged={() => {}} />);
   expect(screen.getByRole("tab", { name: "App-Passwort" })).toBeTruthy();
@@ -1036,7 +1109,7 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
   "'required' for Gmail", () => {
   const secret = () => screen.getByLabelText("Client secret")
     .getAttribute("placeholder");
-  render(<SettingsModal cfg={cfg} account="default" onClose={() => {}}
+  render(<Settings cfg={cfg} account="default" onClose={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}} />);
   fireEvent.change(presetSelect(), { target: { value: "outlook" } });
   expect(secret()).toBe("optional");
@@ -1044,3 +1117,72 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
   fireEvent.click(screen.getByRole("tab", { name: "OAuth" }));
   expect(secret()).toBe("required");
 });
+
+test("Save waits for the request in flight: no double submit", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={cfg} account="default" />);
+  fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
+    .disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls).toHaveLength(1);
+});
+
+test("OAuth Connect saves, then leaves without the browser's 'Leave site?' prompt",
+  async () => {
+    saveCalls.length = 0;
+    saveResult = Promise.resolve(cfg);
+    try {
+      render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth",
+        oauth: { provider: "google", client_id: "", client_secret_set: false,
+          connected: false } }))} account="default" />);
+      fireEvent.change(screen.getByLabelText("Client ID"),
+        { target: { value: "new-id" } });
+      const stay = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(stay);
+      expect(stay.defaultPrevented).toBe(true);       // dirty: asks on reload
+      fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+      await waitFor(() => expect(saveCalls).toHaveLength(1));
+      await new Promise((r) => setTimeout(r, 20));
+      const go = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(go);
+      expect(go.defaultPrevented).toBe(false);        // the redirect is ours
+    } finally {
+      saveResult = null;
+    }
+  });
+
+test("changing the language with unsaved edits asks first (the switch reloads)",
+  async () => {
+    renderWithDialogs({ section: "general" });
+    fireEvent.click(screen.getByRole("switch", { name: "Search inside mail text" }));
+    popupPick(screen.getByRole("button", { name: /^Language/ }), "Deutsch");
+    expect((await findDialog()).textContent).toContain("Save your changes?");
+    await cancelDialog();
+    await expectNoDialog();
+    expect(localStorage.getItem("pmc_lang")).not.toBe("de");
+  });
+
+test("the language switch reloads without the 'Leave site?' prompt after Save or Discard",
+  async () => {
+    for (const choice of ["Save", "Discard changes"]) {
+      saveResult = Promise.resolve(cfg);
+      try {
+        renderWithDialogs({ section: "general" });
+        fireEvent.click(screen.getByRole("switch",
+          { name: "Search inside mail text" }));
+        popupPick(screen.getByRole("button", { name: /^Language/ }), "Deutsch");
+        await pressDialog(choice);
+        await waitFor(() => expect(localStorage.getItem("pmc_lang")).toBe("de"));
+        const ev = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(ev);
+        expect(ev.defaultPrevented, choice).toBe(false);
+      } finally {
+        saveResult = null;
+        localStorage.removeItem("pmc_lang");
+        setLang("en");
+        cleanup();
+      }
+    }
+  });

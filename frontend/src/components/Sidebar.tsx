@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 import { hashOf, type Page } from "../nav";
 import { t } from "../i18n";
 
-/** Tool entry points the sidebar can open: pages (`ToolPage`) and the
- *  dialogs that stay modals (Your year in mail, Settings). */
+/** Tool entry points the sidebar can open: pages (`ToolPage`, Settings) and
+ *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "activity" | "settings";
@@ -119,8 +119,10 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
           {t("nav.activity")}
         </button>
         <button type="button" aria-label={t("Settings")} title={t("Settings")}
-          className={`${IDLE} inline-flex size-9 shrink-0 items-center
-            justify-center rounded-control transition-colors coarse:size-11`}
+          aria-current={page === "settings" ? "page" : undefined}
+          className={`${page === "settings" ? CURRENT : IDLE} inline-flex
+            size-9 shrink-0 items-center justify-center rounded-control
+            transition-colors coarse:size-11`}
           onClick={() => onOpen("settings")}>
           <SettingsIcon size={16} aria-hidden />
         </button>

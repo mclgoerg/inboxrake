@@ -1,0 +1,1806 @@
+import { Archive, Bell, Check, ChevronLeft, Folder, KeyRound, Mail, Plus,
+  RefreshCw, Search, Settings as SettingsIcon, Shield, Sparkles, Star,
+  Tag as TagIcon, TriangleAlert } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState,
+  type MutableRefObject, type ReactNode } from "react";
+import { api, downloadFile, fmtUsd } from "../api";
+import { getLang, setLang, t, type Lang } from "../i18n";
+import { accountAuth, fmtAgo, fmtSize } from "../lib";
+import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
+  type SettingsSection } from "../nav";
+import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
+import type { AdminTenantStats, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
+  DigestSchedule, FoldersResp, ImapAccount, OauthProvider, Preset, Security,
+  SmtpSecurity } from "../types";
+import { FolderSettings } from "./FolderSettings";
+import { IndexPanel } from "./IndexPanel";
+import { KnowledgeSettings } from "./KnowledgeSettings";
+import { demoHint, useDemo } from "../demoMode";
+import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
+  confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
+  LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, Segmented, Select,
+  SettingsGroup, SettingsRow, Spinner, Stepper, Switch, type TagTone,
+  tabPanelProps, TextArea, useBulkBarHeight, useToast } from "./ui";
+
+/* Settings as a page (`#/settings/<section>`). From 1024 px a section column
+ * (with a search field) sits beside the form; below it an iOS-style root list
+ * drills down into one section. Edits are STAGED exactly like the old dialog:
+ * all of them live in this component, one Save persists every section, and a
+ * floating save bar (Revert / Save) shows only while something differs from
+ * what is saved. Appearance and language apply at once (browser-side). */
+
+const imapOf = (c: Config, name: string): ImapAccount =>
+  c.accounts[name] ?? c.accounts[c.default_account];
+
+const imapFields = (c: Config, name: string) => {
+  const im = imapOf(c, name);
+  return {
+    preset: (im.preset ?? "proton") as Preset,
+    host: im.host,
+    port: String(im.port),
+    security: (im.security ?? "ssl") as Security,
+    smtpHost: im.smtp_host ?? "",
+    smtpPort: String(im.smtp_port ?? 1025),
+    smtpSecurity: (im.smtp_security ?? "auto") as SmtpSecurity,
+    cafile: im.cafile ?? "",
+    user: im.user,
+    password: "",
+    auth: accountAuth(im),
+    oauthProvider: (im.oauth?.provider ?? "") as "" | OauthProvider,
+    oauthClientId: im.oauth?.client_id ?? "",
+    oauthClientSecret: "",
+    oauthClientSecretSet: im.oauth?.client_secret_set ?? false,
+    oauthConnected: im.oauth?.connected ?? false,
+    digestSchedule: (im.digest?.schedule ?? "off") as DigestSchedule,
+    digestRecipient: im.digest?.recipient ?? "",
+    digestTime: `${String(im.digest?.hour ?? 8).padStart(2, "0")}:`
+      + `${String(im.digest?.minute ?? 0).padStart(2, "0")}`,
+    autoScanEnabled: im.auto_scan?.enabled ?? false,
+    autoScanUnit: (im.auto_scan?.unit ?? "hours") as AutoScanUnit,
+    autoScanValue: String(im.auto_scan?.value ?? 6),
+    autoScanAlign: String(im.auto_scan?.align_minute ?? 0),
+    bodySearch: (im.body_search ?? "server") as BodySearchMode,
+    smartMin: String(im.smart_min ?? 10),
+  };
+};
+
+const initialForm = (c: Config, name: string) => ({
+  ...imapFields(c, name),
+  provider: c.ai.provider,
+  endpoint: c.ai.foundry_endpoint,
+  model: c.ai.model,
+  apiKey: "",
+  priceIn: c.ai.price_in ? String(c.ai.price_in) : "",
+  priceOut: c.ai.price_out ? String(c.ai.price_out) : "",
+  budget: c.ai.budget_usd ? String(c.ai.budget_usd) : "",
+  sortInstructions: c.ai.sort_instructions ?? "",
+  authMode: c.auth.mode as AuthMode,
+  authPassword: "",
+  // Server-level fields: only the admin receives them (cfg.auth.oidc /
+  // cfg.shared_ai are absent for other users, whose UI hides the
+  // sections anyway).
+  oidcIssuer: c.auth.oidc?.issuer ?? "",
+  oidcClientId: c.auth.oidc?.client_id ?? "",
+  oidcSecret: "",
+  oidcRedirect: c.auth.oidc?.redirect_base ?? "",
+  oidcAllowed: (c.auth.oidc?.allowed ?? []).join("\n"),
+  oidcAdmin: c.auth.admin ?? "",
+  sharedEnabled: c.shared_ai?.enabled ?? false,
+  sharedProvider: c.shared_ai?.provider ?? "anthropic",
+  sharedModel: c.shared_ai?.model ?? "claude-sonnet-5",
+  sharedEndpoint: c.shared_ai?.foundry_endpoint ?? "",
+  sharedKey: "",
+  sharedBudget: c.shared_ai?.default_tenant_budget_usd
+    ? String(c.shared_ai.default_tenant_budget_usd) : "",
+  newSenderWindowDays: String(c.new_sender_window_days ?? 7),
+});
+type Form = ReturnType<typeof initialForm>;
+
+const catText = (cats: Record<string, string[]>) =>
+  Object.entries(cats ?? {})
+    .map(([k, v]) => `${k}: ${v.join(", ")}`).join("\n");
+
+/** Everything the page stages: the form, the two list texts and the folder
+ *  picker. The baseline is the last saved copy; any difference is a change. */
+type Staged = {
+  f: Form; protectedText: string; categoriesText: string;
+  included: string[]; wildcards: string[];
+};
+
+/** Which form fields belong to which part of the "what changed" summary. */
+const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
+  { label: "settings.chg.connection", fields: ["preset", "host", "port",
+    "security", "user", "smtpHost", "smtpPort", "smtpSecurity", "cafile",
+    "auth", "oauthClientId", "oauthClientSecret"] },
+  { label: "settings.sec.digest", fields: ["digestSchedule", "digestRecipient",
+    "digestTime"] },
+  { label: "settings.sec.autoscan", fields: ["autoScanEnabled",
+    "autoScanUnit", "autoScanValue", "autoScanAlign"] },
+  { label: "settings.sec.general", fields: ["bodySearch", "smartMin",
+    "newSenderWindowDays"] },
+  { label: "settings.sec.ai", fields: ["provider", "endpoint", "model",
+    "apiKey", "priceIn", "priceOut", "budget", "sortInstructions"] },
+  { label: "settings.sec.signin", fields: ["authMode", "authPassword",
+    "oidcIssuer", "oidcClientId", "oidcSecret", "oidcRedirect", "oidcAllowed",
+    "oidcAdmin", "sharedEnabled", "sharedProvider", "sharedModel",
+    "sharedEndpoint", "sharedKey", "sharedBudget"] },
+];
+
+/** The save bar's text: one change is named ("Password changed", "AI review
+ *  changed"), several are counted. */
+function changeSummary(a: Staged, b: Staged): { text: string; n: number } {
+  const labels: string[] = [];
+  if (a.f.password !== b.f.password) labels.push("settings.chg.password");
+  for (const g of CHANGE_GROUPS)
+    if (g.fields.some((k) => a.f[k] !== b.f[k])) labels.push(g.label);
+  if (JSON.stringify([a.included, a.wildcards])
+    !== JSON.stringify([b.included, b.wildcards]))
+    labels.push("settings.chg.folders");
+  if (a.protectedText !== b.protectedText) labels.push("settings.sec.protected");
+  if (a.categoriesText !== b.categoriesText)
+    labels.push("settings.sec.categories");
+  const n = labels.length;
+  return { n, text: n === 1
+    ? (labels[0] === "settings.chg.password" ? t(labels[0])
+      : t("settings.changed", { what: t(labels[0]) }))
+    : t("settings.changes", { n }) };
+}
+
+const sameStaged = (a: Staged, b: Staged) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+/** What the page offers the app shell. */
+export type SettingsControl = {
+  /** Staged edits that are not saved. */
+  dirty: () => boolean;
+  /** Leaving with edits asks Save / Discard / Cancel; true = may leave. */
+  confirmLeave: () => Promise<boolean>;
+};
+
+type Status = "ok" | "check" | "nocreds";
+const statusOf = (im: ImapAccount): Status =>
+  !im.password_set && !im.oauth?.connected ? "nocreds"
+    : im.verified === false ? "check" : "ok";
+const STATUS_DOT: Record<Status, string> = {
+  ok: "bg-safe-fg", check: "bg-review-fg", nocreds: "bg-keep-fg" };
+
+function StatusDot({ status }: { status: Status }) {
+  return <span role="img" aria-label={t(`settings.status.${status}`)}
+    title={t(`settings.status.${status}`)}
+    className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
+}
+
+type SecDef = {
+  id: SettingsSection; label: string; icon: ReactNode; tone: TagTone;
+  value?: string;
+  /** Row labels of the section: what the search field also matches. */
+  rows: string[];
+};
+
+export function SettingsPage({ cfg, account, section, routeAccount = null,
+  onSection, onClose, onSaved, onAccountsChanged, aiAnswers = 0,
+  onKnowledgeChanged = () => {}, controlRef }: {
+  cfg: Config;
+  account: string;                       // the ACTIVE account
+  /** The open section (`#/settings/<section>`); null = the phone root list
+   *  (a section column + the default section from 1024 px). */
+  section: SettingsSection | null;
+  /** The account named in the route of the account section, if any. */
+  routeAccount?: string | null;
+  /** Open a section (push = a new history entry), or null for the root. */
+  onSection: (s: SettingsSection | null, account?: string | null,
+    push?: boolean) => void;
+  /** Leave the page (Esc / Back from the root): the app returns where the
+   *  user came from. */
+  onClose: () => void;
+  onSaved: (c: Config) => void;
+  /** Filed senders: AI answers of the active account that apply now (what
+   *  "Keep all AI answers" would keep) and a refresh after a change. */
+  aiAnswers?: number;
+  onKnowledgeChanged?: () => void;
+  /** Accounts were added/removed. `switchTo` names a new account to
+   *  activate (or null to let App re-validate the current one). */
+  onAccountsChanged: (c: Config, switchTo: string | null) => void;
+  controlRef?: MutableRefObject<SettingsControl | null>;
+}) {
+  const wide = useSidebar();
+  const toast = useToast();
+  const demo = useDemo();
+  // Which account the connection fields edit (defaults to the route's, else
+  // the active one; independent of the header switcher).
+  const startAcct = routeAccount && cfg.accounts[routeAccount] ? routeAccount
+    : cfg.accounts[account] ? account : cfg.default_account;
+  const [editAcct, setEditAcct] = useState(startAcct);
+  const [f, setF] = useState<Form>(() => initialForm(cfg, startAcct));
+  const [protectedText, setProtectedText] =
+    useState((cfg.protected ?? []).join("\n"));
+  const [categoriesText, setCategoriesText] =
+    useState(catText(cfg.categories));
+  // Folder picker: checked = scanned. Wildcard rules (e.g. Labels/*) are
+  // shown as removable chips and win over checkboxes.
+  const [folders, setFolders] = useState<FoldersResp | null>(null);
+  const [foldersErr, setFoldersErr] = useState("");
+  const [included, setIncluded] = useState<Set<string>>(new Set());
+  const [wildcards, setWildcards] = useState<string[]>([]);
+  const cur: Staged = { f, protectedText, categoriesText,
+    included: [...included].sort(), wildcards };
+  const [baseline, setBaseline] = useState<Staged>(() => ({
+    f: initialForm(cfg, startAcct),
+    protectedText: (cfg.protected ?? []).join("\n"),
+    categoriesText: catText(cfg.categories), included: [], wildcards: [] }));
+  const dirty = !sameStaged(baseline, cur);
+  const summary = changeSummary(baseline, cur);
+  // The latest values for handlers that run after an await (a dialog).
+  const latest = useRef({ dirty, cfg, baseline });
+  latest.current = { dirty, cfg, baseline };
+  const [q, setQ] = useState("");
+  const note = (msg: string, error = false) =>
+    toast.show(msg, { variant: error ? "error" : "success" });
+
+  const [digestTesting, setDigestTesting] = useState(false);
+  const [digestTestMsg, setDigestTestMsg] = useState("");
+  const sendTestDigest = async () => {
+    setDigestTesting(true);
+    setDigestTestMsg("");
+    try {
+      const r = await api.testDigest(editAcct);
+      setDigestTestMsg(t(r.demo ? "digest.test_sent_demo" : "digest.test_sent"));
+    } catch (e: any) {
+      setDigestTestMsg(t("err.generic", { msg: e.message ?? e }));
+    }
+    setDigestTesting(false);
+  };
+  // Admin usage overview (Sign-in & users): fetched once when it opens.
+  const [tenantStats, setTenantStats] =
+    useState<AdminTenantStats[] | null>(null);
+  const [tenantStatsErr, setTenantStatsErr] = useState("");
+
+  // Folder discovery is PER ACCOUNT (each provider names folders
+  // differently) and needs that account's SAVED credentials.
+  // `merge` (a reload after a role choice or a move) keeps the ticks and
+  // wildcard chips the user already changed instead of resetting them.
+  const touched = useRef(new Set<string>());
+  const discoverFolders = (name: string, merge = false) => {
+    if (!merge) touched.current.clear();
+    setFolders(null);
+    setFoldersErr("");
+    api.folders(name)
+      .then((r) => {
+        setFolders(r);
+        if (!merge) setWildcards(r.wildcards);
+        const nextIncluded = (prev: Set<string>) => new Set(r.folders
+          .filter((x) => merge && touched.current.has(x.raw)
+            ? prev.has(x.raw) : !x.excluded)
+          .map((x) => x.raw));
+        setIncluded(nextIncluded);
+        // What the server just told us is the saved state, not an edit.
+        if (!merge) setBaseline((b) => ({ ...b, wildcards: r.wildcards,
+          included: [...nextIncluded(new Set())].sort() }));
+      })
+      .catch((e) => setFoldersErr(String(e.message ?? e)));
+  };
+  const tick = (next: Set<string>) => {
+    for (const raw of new Set([...included, ...next]))
+      if (included.has(raw) !== next.has(raw)) touched.current.add(raw);
+    setIncluded(next);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { discoverFolders(editAcct); }, [editAcct]);
+
+  const set = (k: keyof Form) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement
+      | HTMLTextAreaElement>) =>
+      setF((o) => ({ ...o, [k]: e.target.value }));
+  const put = <K extends keyof Form>(k: K, v: Form[K]) =>
+    setF((o) => ({ ...o, [k]: v }));
+
+  // Which sign-in method a preset starts on: Gmail keeps the saved choice
+  // if the account already was Gmail, else App password (the default);
+  // Outlook is OAuth-only; custom keeps the saved choice; every other
+  // preset has no OAuth at all (so a leftover token block is not used).
+  const presetAuth = (p: Preset): AuthMethod => {
+    const saved = imapOf(cfg, editAcct);
+    return p === "outlook" ? "oauth"
+      : p === "gmail" ? (saved.preset === "gmail" ? accountAuth(saved)
+        : "password")
+      : p === "custom" ? accountAuth(saved)
+      : "password";
+  };
+  const applyPreset = (p: Preset) => {
+    if (p === "custom") {
+      // Leaving a preset must not keep its CA path (Proton's file does
+      // not exist elsewhere); an already-custom account keeps its own.
+      setF({ ...f, preset: p, auth: presetAuth(p),
+        cafile: f.preset === "custom" ? f.cafile : "" });
+      return;
+    }
+    const pre = PRESETS[p];
+    setF({ ...f, preset: p, host: pre.host, port: String(pre.port),
+      security: pre.security, smtpHost: pre.smtpHost,
+      smtpPort: String(pre.smtpPort), smtpSecurity: pre.smtpSecurity,
+      cafile: pre.cafile, auth: presetAuth(p) });
+  };
+  const presetHint = f.preset === "custom" ? ""
+    // Outlook's hint depends on whether this server has a shared
+    // Microsoft app (device code, no setup) or not (bring your own).
+    : f.preset === "outlook"
+      ? (cfg.oauth_ms_device_available ? "preset.hint.oauth_outlook_device"
+        : "preset.hint.oauth_outlook_byo")
+      : PRESETS[f.preset].hint;
+  // The provider preset already says which mail service this is, so it
+  // also decides the OAuth provider - no need to ask again. Only when the
+  // account signs in via OAuth: gmail -> google, outlook -> microsoft,
+  // custom -> whatever its saved oauth block has; others never.
+  const oauthProvider: "" | OauthProvider =
+    f.preset === "outlook" ? "microsoft"
+    : f.auth !== "oauth" ? ""
+    : f.preset === "gmail" ? "google"
+    : f.preset === "custom" ? f.oauthProvider
+    : "";
+  // The method actually in force: OAuth only where a provider exists.
+  const auth: AuthMethod = oauthProvider ? "oauth" : "password";
+
+  const excludedList = (): string[] | undefined => {
+    if (!folders) return undefined;   // picker never loaded: keep old config
+    const explicit = folders.folders
+      .filter((x) => !included.has(x.raw))
+      .map((x) => x.raw);
+    return [...wildcards, ...explicit];
+  };
+
+  // A save in flight: Save (bar and leave prompt) waits for it.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  // Set once the page is about to be replaced by a full navigation (OAuth
+  // consent): the browser's "Leave site?" prompt would be false then.
+  const leaving = useRef(false);
+  const save = async (extra: Record<string, unknown> = {}) => {
+    if (savingRef.current) return null;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const excluded = excludedList();
+      const [digestHour, digestMinute] = f.digestTime.split(":").map(Number);
+      const body: Record<string, unknown> = {
+        account: editAcct,
+        imap: { host: f.host, port: +f.port || 1143,
+          security: f.security, smtp_host: f.smtpHost,
+          smtp_port: +f.smtpPort || 1025, smtp_security: f.smtpSecurity,
+          cafile: f.cafile, preset: f.preset, user: f.user,
+          digest: { schedule: f.digestSchedule,
+            recipient: f.digestRecipient,
+            hour: digestHour || 0, minute: digestMinute || 0 },
+          auto_scan: { enabled: f.autoScanEnabled, unit: f.autoScanUnit,
+            value: +f.autoScanValue || 1,
+            align_minute: +f.autoScanAlign || 0 },
+          body_search: f.bodySearch,
+          smart_min: Math.min(50, Math.max(2, Math.round(+f.smartMin) || 10)),
+          auth,
+          // Google shows an app password as 4 groups of 4 letters; it
+          // never contains a space.
+          ...(f.password ? { password: f.preset === "gmail"
+            ? f.password.replace(/\s+/g, "") : f.password } : {}),
+          ...(oauthProvider ? { oauth: { provider: oauthProvider,
+            client_id: f.oauthClientId,
+            ...(f.oauthClientSecret
+              ? { client_secret: f.oauthClientSecret } : {}) } } : {}) },
+        ...(excluded ? { excluded_folders: excluded } : {}),
+        protected: protectedText.split("\n")
+          .map((s) => s.trim()).filter(Boolean),
+        categories: parseCategories(),
+        new_sender_window_days: +f.newSenderWindowDays || 7,
+        ai: { provider: f.provider, model: f.model,
+          foundry_endpoint: f.endpoint,
+          price_in: +f.priceIn || 0, price_out: +f.priceOut || 0,
+          budget_usd: +f.budget || 0,
+          sort_instructions: f.sortInstructions,
+          ...(f.apiKey ? { api_key: f.apiKey } : {}) },
+        // Server-level settings ride along for the admin only - the
+        // backend rejects them (403) from anyone else.
+        ...(cfg.auth.is_admin ? {
+          auth: { mode: f.authMode, admin: f.oidcAdmin.trim(),
+            ...(f.authPassword ? { password: f.authPassword } : {}),
+            oidc: { issuer: f.oidcIssuer, client_id: f.oidcClientId,
+              redirect_base: f.oidcRedirect,
+              allowed: f.oidcAllowed.split("\n")
+                .map((a) => a.trim()).filter(Boolean),
+              ...(f.oidcSecret ? { client_secret: f.oidcSecret } : {}) } },
+          shared_ai: { enabled: f.sharedEnabled,
+            provider: f.sharedProvider, model: f.sharedModel,
+            foundry_endpoint: f.sharedEndpoint,
+            default_tenant_budget_usd: +f.sharedBudget || 0,
+            ...(f.sharedKey ? { api_key: f.sharedKey } : {}) },
+        } : {}),
+        ...extra,
+      };
+      const next = await api.saveConfig(body);
+      onSaved(next);
+      const nf: Form = { ...f, apiKey: "", authPassword: "", oidcSecret: "",
+        sharedKey: "", authMode: next.auth.mode,
+        newSenderWindowDays: String(next.new_sender_window_days),
+        ...imapFields(next, editAcct) };
+      const pt = (next.protected ?? []).join("\n");
+      const ct = catText(next.categories);
+      setF(nf);
+      setProtectedText(pt);
+      setCategoriesText(ct);
+      setBaseline({ f: nf, protectedText: pt, categoriesText: ct,
+        included: [...included].sort(), wildcards });
+      note(t("Saved."));
+      return next;
+    } catch (e: any) {
+      note(t("err.generic", { msg: e.message ?? e }), true);
+      return null;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const parseCategories = (): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const line of categoriesText.split("\n")) {
+      const i = line.indexOf(":");
+      if (i < 1) continue;
+      const name = line.slice(0, i).trim().toLowerCase();
+      if (!name) continue;
+      out[name] = line.slice(i + 1).split(",")
+        .map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
+    return out;
+  };
+
+  /** Back to the saved copy (the save bar's Revert, a discarded leave). */
+  const revert = () => {
+    const b = latest.current.baseline;
+    touched.current.clear();
+    setF(b.f);
+    setProtectedText(b.protectedText);
+    setCategoriesText(b.categoriesText);
+    setIncluded(new Set(b.included));
+    setWildcards(b.wildcards);
+  };
+
+  /** Unsaved edits are about to be lost (leaving, switching account): ask
+   *  Save / Discard / Cancel. Resolves the config to continue from, or null
+   *  to stay. */
+  const resolveUnsaved = async (): Promise<Config | null> => {
+    if (!latest.current.dirty) return latest.current.cfg;
+    const r = await choiceDialog({
+      title: t("settings.leave_title"),
+      body: changeSummary(latest.current.baseline, cur).text,
+      confirmLabel: t("Save"), altLabel: t("settings.discard"),
+    });
+    if (r === "confirm") return await save();
+    if (r === "alt") { revert(); return latest.current.cfg; }
+    return null;
+  };
+  useLayoutEffect(() => {
+    if (!controlRef) return;
+    controlRef.current = {
+      dirty: () => latest.current.dirty,
+      confirmLeave: async () => (await resolveUnsaved()) !== null,
+    };
+    return () => { controlRef.current = null; };
+  });
+  // A reload / tab close with staged edits asks first.
+  useEffect(() => {
+    if (!dirty) return;
+    const on = (e: BeforeUnloadEvent) => {
+      if (leaving.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", on);
+    return () => window.removeEventListener("beforeunload", on);
+  }, [dirty]);
+
+  /** Make `name` the account the connection / digest / scan fields edit:
+   *  its fields replace the account-bound ones, in the form and the baseline
+   *  alike (they start clean). */
+  const loadAccount = (src: Config, name: string) => {
+    const fields = imapFields(src, name);
+    setEditAcct(name);
+    setF((o) => ({ ...o, ...fields }));
+    setBaseline((b) => ({ ...b, f: { ...b.f, ...fields } }));
+    setDigestTestMsg("");
+  };
+  const switchAccount = async (name: string): Promise<boolean> => {
+    if (name === editAcct) return true;
+    const src = await resolveUnsaved();
+    if (!src) return false;
+    loadAccount(src, name);
+    return true;
+  };
+
+  // The backend trims names and rejects empty/duplicate ones; say so up
+  // front. `own` (the account being renamed) may keep its name.
+  const accountNameError = (own?: string) => (value: string) => {
+    const name = value.trim();
+    if (!name) return t("account.err_empty");
+    if (name !== own && Object.hasOwn(cfg.accounts, name)) {
+      return t("account.err_dup", { name });
+    }
+    return null;
+  };
+
+  const renameAccount = async () => {
+    const name = (await promptDialog({
+      title: t("account.rename_title"),
+      label: t("account.rename_prompt", { name: editAcct }),
+      initial: editAcct, confirmLabel: t("account.rename_confirm"),
+      validate: accountNameError(editAcct),
+    }))?.trim();
+    if (!name || name === editAcct) return;
+    try {
+      const next = await api.saveConfig(
+        { rename_account: { from: editAcct, to: name } });
+      onAccountsChanged(next, account === editAcct ? name : null);
+      setEditAcct(name);
+      gotoSettings("account", name);
+      note(t("account.renamed", { name }));
+    } catch (e: any) {
+      note(t("err.generic", { msg: e.message ?? e }), true);
+    }
+  };
+
+  const newAccount = async () => {
+    if (!await resolveUnsaved()) return;
+    const name = (await promptDialog({
+      title: t("account.new_title"), label: t("account.new_prompt"),
+      confirmLabel: t("account.add"), validate: accountNameError(),
+    }))?.trim();
+    if (!name) return;
+    try {
+      const next = await api.saveConfig({ add_account: name });
+      onAccountsChanged(next, name);
+      loadAccount(next, name);
+      onSection("account", name, !wide && section === null);
+    } catch (e: any) {
+      note(t("err.generic", { msg: e.message ?? e }), true);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!await confirmDialog({
+      title: t("account.delete_title", { name: editAcct }),
+      bullets: [t("account.delete_data"), t("account.delete_rules"),
+        t("account.delete_mails")],
+      confirmLabel: t("account.delete_confirm"), tone: "danger",
+    })) return;
+    try {
+      const next = await api.saveConfig({ delete_account: editAcct });
+      onAccountsChanged(next, null);
+      loadAccount(next, next.default_account);
+      gotoSettings("account", next.default_account);
+    } catch (e: any) {
+      note(t("err.generic", { msg: e.message ?? e }), true);
+    }
+  };
+
+  // OAuth connect: the auth-code+PKCE flow is a full-page redirect (the
+  // provider's consent screen), so client_id/secret must be saved first.
+  // The device-code flow needs neither - it polls this page instead.
+  const [deviceInfo, setDeviceInfo] = useState<{
+    userCode: string; verificationUri: string; deviceCode: string;
+    interval: number;
+  } | null>(null);
+  const [oauthMsg, setOauthMsg] = useState("");
+
+  const connectOauth = async () => {
+    const next = await save();
+    if (!next) return;
+    leaving.current = true;
+    window.location.href = `/api/oauth/imap/login?account=` +
+      `${encodeURIComponent(editAcct)}&provider=${oauthProvider}`;
+  };
+
+  /** Re-read the account's saved sign-in state after an OAuth change. */
+  const refreshAccount = async () => {
+    const next = await api.getConfig();
+    onSaved(next);
+    loadAccount(next, editAcct);
+  };
+
+  const disconnectOauth = async () => {
+    if (!await confirmDialog({
+      title: t("oauth.disconnect_title"), body: t("oauth.disconnect_body"),
+      confirmLabel: t("oauth.disconnect"), tone: "danger",
+    })) return;
+    await api.oauthDisconnect(editAcct);
+    await refreshAccount();
+  };
+
+  const startDeviceConnect = async () => {
+    setOauthMsg("");
+    try {
+      const r = await api.oauthDeviceStart(editAcct);
+      setDeviceInfo({ userCode: r.user_code,
+        verificationUri: r.verification_uri, deviceCode: r.device_code,
+        interval: r.interval || 5 });
+    } catch (e: any) {
+      setOauthMsg(t("err.generic", { msg: e.message ?? e }));
+    }
+  };
+
+  useEffect(() => {
+    if (!deviceInfo) return;
+    const id = setInterval(async () => {
+      try {
+        const r = await api.oauthDevicePoll(editAcct, deviceInfo.deviceCode);
+        if (r.status === "complete") {
+          clearInterval(id);
+          setDeviceInfo(null);
+          await refreshAccount();
+          setOauthMsg(t("oauth.connected"));
+        } else if (r.status === "error") {
+          clearInterval(id);
+          setDeviceInfo(null);
+          setOauthMsg(t("err.generic", { msg: r.error ?? "" }));
+        }
+      } catch {
+        /* transient network error - keep polling until it expires */
+      }
+    }, deviceInfo.interval * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceInfo?.deviceCode]);
+
+  const [pi, po] = cfg.ai.prices_effective;
+  const s = cfg.ai_stats;
+
+  const resetStats = async () => {
+    if (!await confirmDialog({
+      title: t("confirm.reset_spend"),
+      body: t("confirm.reset_spend_body", { cost: fmtUsd(s.cost),
+        month: fmtUsd(cfg.ai.month_cost ?? 0) }),
+      confirmLabel: t("confirm.reset_spend_confirm"), tone: "danger",
+    })) return;
+    onSaved(await api.saveConfig({ reset_ai_stats: true }));
+  };
+
+  const signOutAll = async () => {
+    if (!await confirmDialog({
+      title: t("confirm.sign_out_all"),
+      body: t("confirm.sign_out_all_body"),
+      confirmLabel: t("confirm.sign_out_all_confirm"), tone: "danger",
+    })) return;
+    await api.signOutAll();
+    note(t("login.signed_out_all"));
+  };
+
+  const clearVerdicts = async () => {
+    if (!await confirmDialog({
+      title: t("confirm.clear_verdicts"),
+      body: t("confirm.clear_verdicts_body"),
+      confirmLabel: t("confirm.clear_verdicts_confirm"), tone: "danger",
+    })) return;
+    onSaved(await api.saveConfig({ clear_ai_verdicts: true }));
+    note(t("AI verdict cache cleared."));
+  };
+
+  const importInput = useRef<HTMLInputElement>(null);
+  const importBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!await confirmDialog({
+      title: t("import.title"),
+      bullets: [t("import.settings"), t("import.rules"), t("import.merged"),
+        t("import.secrets")],
+      confirmLabel: t("import.confirm"), tone: "danger",
+    })) return;
+    try {
+      const body = JSON.parse(await file.text());
+      const res = await fetch("/api/import_config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const r = await res.json();
+      onSaved(await api.getConfig());
+      note(t("import.done", { rules: r.rules, verdicts: r.verdicts,
+        knowledge: r.knowledge ?? 0 })
+        + (r.skipped_rules?.length
+          ? t("import.skipped", { names: r.skipped_rules.join(", ") }) : ""));
+    } catch (err: any) {
+      note(t("err.generic", { msg: err.message ?? err }), true);
+    }
+  };
+
+  /* ---------------------------- navigation model ---------------------------- */
+
+  const admin = !!cfg.auth.is_admin;
+  const acctNames = Object.keys(cfg.accounts);
+  const multi = acctNames.length > 1;
+  const saved = imapOf(cfg, editAcct);
+  const sched = saved.digest?.schedule ?? "off";
+  const clock = `${String(saved.digest?.hour ?? 8).padStart(2, "0")}:`
+    + `${String(saved.digest?.minute ?? 0).padStart(2, "0")}`;
+  const scan = saved.auto_scan;
+  const aiProvider = { anthropic: "Anthropic", openai: "OpenAI",
+    foundry: "Foundry", ollama: "Ollama" }[cfg.ai.provider];
+  const sec = (id: SettingsSection, icon: ReactNode, tone: TagTone,
+    value: string | undefined, rows: string[]): SecDef =>
+    ({ id, icon, tone, value, rows,
+      label: t(`settings.sec.${id}`) });
+  const defs: Record<SettingsSection, SecDef> = {
+    account: sec("account", null, "neutral", undefined,
+      [t("preset.label"), t("Host"), t("IMAP port"), t("imap.security"),
+        t("User"), t("Password"), t("smtp.host"), t("SMTP port"),
+        t("smtp.security"), t("cafile.label"), t("folders.discover"),
+        t("account.rename"), t("account.add")]),
+    general: sec("general", <SettingsIcon size={16} />, "neutral", undefined,
+      [t("Appearance"), t("Language"), t("settings.new_badge"),
+        t("smart.min_label"), t("body_search.label")]),
+    notifications: sec("notifications", <Bell size={16} />, "keep", undefined,
+      [t("notify.title")]),
+    protected: sec("protected", <Shield size={16} />, "safe",
+      cfg.protected?.length ? String(cfg.protected.length) : undefined, []),
+    categories: sec("categories", <TagIcon size={16} />, "review",
+      Object.keys(cfg.categories ?? {}).length
+        ? String(Object.keys(cfg.categories).length) : undefined,
+      [t("Custom categories")]),
+    filed: sec("filed", <Folder size={16} />, "info", undefined, []),
+    digest: sec("digest", <Mail size={16} />, "attach",
+      sched === "off" ? t("digest.off")
+        : `${cap(t(`sched.${sched}`))} ${clock}`,
+      [t("digest.schedule"), t("digest.recipient"), t("digest.time"),
+        t("digest.send_test")]),
+    autoscan: sec("autoscan", <RefreshCw size={16} />, "new",
+      scan?.enabled
+        ? t(scan.unit === "minutes" ? "settings.every_min"
+          : "settings.every_h", { n: scan.value }) : t("digest.off"),
+      [t("auto_scan.enabled"), t("auto_scan.every"), t("auto_scan.align")]),
+    ai: sec("ai", <Sparkles size={16} />, "attach",
+      cfg.ai.api_key_set || cfg.ai.source === "shared" ? aiProvider
+        : t("settings.not_set_up"),
+      [t("Provider"), t("Model"), t("API key"), t("budget.label"),
+        t("ai.sort_instructions"), t("ai.usage")]),
+    signin: sec("signin", <KeyRound size={16} />, "neutral", undefined,
+      [t("login.mode"), t("login.password_label"), t("shared.enabled"),
+        t("usage.section")]),
+    backup: sec("backup", <Archive size={16} />, "neutral", undefined,
+      [t("Export"), t("Import…")]),
+  };
+  const groups: { key: string; label?: string; ids: SettingsSection[] }[] = [
+    { key: "app", label: t("settings.group.app"),
+      ids: ["general", "notifications", "protected", "categories", "filed",
+        ...(admin ? [] : ["backup" as const])] },
+    { key: "automation", label: t("settings.group.automation"),
+      ids: ["digest", "autoscan"] },
+    { key: "ai", label: t("settings.group.ai"), ids: ["ai"] },
+    ...(admin ? [{ key: "server", label: t("settings.group.server"),
+      ids: ["signin" as const, "backup" as const] }] : []),
+  ];
+  const allowed = new Set<SettingsSection>(
+    SETTINGS_SECTIONS.filter((id) => id !== "signin" || admin));
+  // The section shown: the route's, else the first one on wide layouts.
+  const open: SettingsSection | null = section && allowed.has(section)
+    ? section : wide ? "general" : null;
+
+  const query = q.trim().toLowerCase();
+  const hits = query ? (SETTINGS_SECTIONS.filter((id) => allowed.has(id)
+    && id !== "account").map((id) => {
+    const d = defs[id];
+    const rows = d.rows.filter((r) => r.toLowerCase().includes(query));
+    return d.label.toLowerCase().includes(query) || rows.length
+      ? { d, rows: d.label.toLowerCase().includes(query) ? [] : rows } : null;
+  }).filter(<T,>(x: T | null): x is T => !!x)) : [];
+  const acctHits = query
+    ? acctNames.filter((n) => n.toLowerCase().includes(query)) : [];
+  const accountRows = !query || defs.account.rows
+    .some((r) => r.toLowerCase().includes(query));
+
+  const pick = async (id: SettingsSection, name?: string) => {
+    if (id === "account") {
+      const to = name ?? editAcct;
+      if (!await switchAccount(to)) return;
+      onSection("account", to, !wide && section === null);
+    } else {
+      onSection(id, null, !wide && section === null);
+    }
+    setQ("");
+  };
+
+  // Esc leaves the page (or, on a phone, goes up from a section) unless
+  // something nearer used it: a dialog, a pop-up, a text field.
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || isModalOpen()) return;
+      const el = e.target as HTMLElement | null;
+      if (el && ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) return;
+      e.preventDefault();
+      if (!wide && section) { onSection(null); return; }
+      void (async () => { if (await resolveUnsaved()) onClose(); })();
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  });
+
+  useEffect(() => {
+    if (open !== "signin" || !admin || tenantStats) return;
+    api.adminStats()
+      .then((r) => setTenantStats(r.tenants))
+      .catch((e) => setTenantStatsErr(String(e.message ?? e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Notifications are a browser-side switch (applies at once, not staged).
+  const [notifyOn, setNotifyOn] = useState(
+    () => localStorage.getItem("pmc_notify") === "1");
+  const setNotify = async (on: boolean) => {
+    if (!on) {
+      localStorage.setItem("pmc_notify", "0");
+      setNotifyOn(false);
+      return;
+    }
+    const perm = typeof Notification !== "undefined"
+      ? await Notification.requestPermission() : "denied";
+    if (perm === "granted") {
+      localStorage.setItem("pmc_notify", "1");
+      setNotifyOn(true);
+    } else {
+      note(t("notify.denied"), true);
+    }
+  };
+  // Body search is a switch; the mode it turns back on is the last one used.
+  const lastBodyMode = useRef<BodySearchMode>(
+    f.bodySearch === "disabled" ? "server" : f.bodySearch);
+  if (f.bodySearch !== "disabled") lastBodyMode.current = f.bodySearch;
+
+  /* ------------------------------ section bodies ---------------------------- */
+
+  const passwordField = (
+    <Field label={f.preset === "gmail" ? t("signin.password")
+      : t("Password")}>
+      <Input className="w-full" type="password" value={f.password}
+        placeholder={imapOf(cfg, editAcct).password_set
+          ? t("(unchanged)") : t("required")}
+        onChange={set("password")} />
+    </Field>
+  );
+  const oauthCard = !oauthProvider ? null : (
+    <div className="rounded-card border border-line bg-panel2 p-3">
+      <div className="type-section text-muted">
+        {t("oauth.title", { provider: oauthProvider === "google"
+          ? "Gmail" : "Outlook" })}
+      </div>
+
+      {oauthProvider === "google" && (
+        <p className="my-2 type-meta text-muted">{t("oauth.google_help")}</p>
+      )}
+      {oauthProvider === "microsoft" && cfg.oauth_ms_device_available && (
+        <p className="my-2 type-meta text-muted">{t("oauth.ms_device_help")}</p>
+      )}
+      {oauthProvider === "microsoft" && !cfg.oauth_ms_device_available && (
+        <p className="my-2 type-meta text-muted">{t("oauth.ms_byo_help")}</p>
+      )}
+
+      {!(oauthProvider === "microsoft"
+        && cfg.oauth_ms_device_available) && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Field label={t("oauth.client_id")}>
+            <Input className="w-full" value={f.oauthClientId}
+              onChange={set("oauthClientId")} />
+          </Field>
+          <Field label={t("oauth.client_secret")}>
+            <Input className="w-full" type="password"
+              value={f.oauthClientSecret}
+              placeholder={f.oauthClientSecretSet
+                ? t("(unchanged)")
+                : t(oauthProvider === "microsoft" ? "optional" : "required")}
+              onChange={set("oauthClientSecret")} />
+          </Field>
+        </div>
+      )}
+
+      <DemoHint className="mt-2" />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {f.oauthConnected ? (<>
+          <span className="inline-flex items-center gap-1.5 type-body
+            text-safe-fg">
+            <Check size={16} /> {t("oauth.connected")}
+          </span>
+          <Button variant="secondary" onClick={disconnectOauth}
+            disabled={demo}>
+            {t("oauth.disconnect")}
+          </Button>
+        </>) : oauthProvider === "microsoft"
+          && cfg.oauth_ms_device_available ? (
+          <Button onClick={startDeviceConnect} disabled={demo}>
+            {t("oauth.connect_device")}
+          </Button>
+        ) : (
+          <Button onClick={connectOauth} disabled={demo || !f.oauthClientId}>
+            {t("oauth.connect")}
+          </Button>
+        )}
+      </div>
+
+      {deviceInfo && (
+        <div className="mt-2 rounded-card border border-line bg-panel p-3
+          type-body">
+          <p>{t("oauth.device_instructions")}</p>
+          <p className="mt-1">
+            <a href={deviceInfo.verificationUri} target="_blank"
+              rel="noreferrer" className={LINK_ACCENT}>
+              {deviceInfo.verificationUri}
+            </a>
+          </p>
+          {/* tracking-widest: a code the user types, so keep its letters apart. */}
+          <p className="mt-1 font-mono type-heading tracking-widest">
+            {deviceInfo.userCode}
+          </p>
+        </div>
+      )}
+      {oauthMsg && (
+        <p className="mt-2 type-meta text-muted">{oauthMsg}</p>
+      )}
+    </div>
+  );
+
+  /** "Applies to account: [x]" - the digest, auto-scan and search settings
+   *  belong to ONE account; with several, this picks which. */
+  const scopeRow = multi && (
+    <SettingsRow label={t("settings.applies_to")}>
+      <PopupSelect name={t("settings.applies_to")} value={editAcct}
+        onChange={(v) => { void switchAccount(v); }}
+        options={acctNames.map((n) => ({ value: n, label: n }))} />
+    </SettingsRow>
+  );
+
+  const accountBody = (<>
+    <SettingsGroup footnote={t("account.hint")}>
+      <SettingsRow label={editAcct} sub={saved.user}
+        icon={<AccountAvatar name={editAcct} size="md" />}>
+        <Button variant="secondary" onClick={renameAccount}>
+          {t("account.rename")}
+        </Button>
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup padded header={t("settings.connection")}>
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <div className="sm:col-span-2">
+          <Field label={t("preset.label")}>
+            <Select className="w-full" value={f.preset}
+              onChange={(e) => applyPreset(e.target.value as Preset)}>
+              {(Object.keys(PRESET_LABELS) as Preset[]).map((p) => (
+                <option key={p} value={p}>{presetLabel(p)}</option>
+              ))}
+            </Select>
+          </Field>
+          {presetHint && (
+            <p className="mt-1 type-meta text-muted">{t(presetHint)}</p>
+          )}
+        </div>
+        <Field label={t("Host")}>
+          <Input className="w-full" value={f.host} onChange={set("host")} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t("IMAP port")}>
+            <Input className="w-full" type="number" value={f.port}
+              onChange={set("port")} />
+          </Field>
+          <Field label={t("imap.security")}>
+            <Select className="w-full" value={f.security}
+              onChange={set("security")}>
+              <option value="ssl">SSL/TLS</option>
+              <option value="starttls">STARTTLS</option>
+            </Select>
+          </Field>
+        </div>
+        <Field label={t("User")}>
+          <Input className="w-full" value={f.user} onChange={set("user")} />
+        </Field>
+        {f.preset === "gmail" && (
+        <div className="sm:col-span-2">
+          <div className="mb-1 type-meta text-muted">{t("signin.label")}</div>
+          <Segmented fill idPrefix="signin" label={t("signin.label")}
+            value={auth}
+            onChange={(v) => put("auth", v)}
+            options={[
+              { value: "password", label: t("signin.password") },
+              { value: "oauth", label: t("signin.oauth") }]} />
+          <div {...tabPanelProps("signin", auth)} className="mt-3">
+            {auth === "password" ? (<>
+              {passwordField}
+              <p className="mt-1 type-meta text-muted">
+                {t("signin.gmail_apppw_help")}
+              </p>
+            </>) : oauthCard}
+          </div>
+        </div>
+        )}
+        {f.preset !== "gmail" && auth === "password" && passwordField}
+        {f.preset !== "gmail" && oauthCard && (
+          <div className="sm:col-span-2">{oauthCard}</div>
+        )}
+      </div>
+    </SettingsGroup>
+    <SettingsGroup padded header={t("settings.advanced")}
+      footnote={t("smtp.help")}>
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <Field label={t("smtp.host")}>
+          <Input className="w-full" value={f.smtpHost}
+            placeholder={t("smtp.host_placeholder")}
+            onChange={set("smtpHost")} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t("SMTP port")}>
+            <Input className="w-full" type="number" value={f.smtpPort}
+              onChange={set("smtpPort")} />
+          </Field>
+          <Field label={t("smtp.security")}>
+            <Select className="w-full" value={f.smtpSecurity}
+              onChange={set("smtpSecurity")}>
+              <option value="auto">{t("sec.auto")}</option>
+              <option value="ssl">SSL/TLS</option>
+              <option value="starttls">STARTTLS</option>
+            </Select>
+          </Field>
+        </div>
+        <div className="sm:col-span-2">
+          <Field label={t("cafile.label")}>
+            <Input className="w-full" value={f.cafile}
+              placeholder="/certs/bridge-cert.pem"
+              onChange={set("cafile")} />
+          </Field>
+        </div>
+      </div>
+    </SettingsGroup>
+    <SettingsGroup padded>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="type-meta text-muted">
+          {t("folders.title", { name: editAcct })}
+        </span>
+        <Button variant="secondary" size="sm"
+          title={t("folders.discover_tip")}
+          onClick={() => discoverFolders(editAcct)}>
+          <RefreshCw size={14} className="mr-1 inline align-text-bottom" />
+          {t("folders.discover")}
+        </Button>
+      </div>
+      {!folders && !foldersErr && <Loading className="!p-3" />}
+      {foldersErr && (
+        <div className="type-meta text-danger-fg">
+          {foldersErr}
+          <span className="ml-1 text-muted">{t("folders.err_hint")}</span>
+        </div>
+      )}
+      {folders && (
+        <FolderSettings account={editAcct} data={folders}
+          included={included} setIncluded={tick} wildcards={wildcards}
+          setWildcards={setWildcards}
+          reload={() => discoverFolders(editAcct, true)} />
+      )}
+    </SettingsGroup>
+    {multi && (
+      <SettingsGroup padded header={t("account.remove_title")}
+        footnote={t("account.remove_help")}>
+        <Button variant="danger-quiet" onClick={deleteAccount}>
+          {t("account.delete", { name: editAcct })}
+        </Button>
+      </SettingsGroup>
+    )}
+  </>);
+
+  const generalBody = (<>
+    {cfg.secret_key_set === false && <Notice tone="warn" className="mb-4">
+      {t("secrets.plaintext_warning")}
+    </Notice>}
+    <SettingsGroup>
+      <SettingsRow label={t("Appearance")}><AppearanceControl /></SettingsRow>
+      <SettingsRow label={t("Language")}>
+        <PopupSelect name={t("Language")} value={getLang()}
+          // The language applies with a reload: staged edits would be lost,
+          // so they are saved or discarded first (the leave prompt).
+          onChange={(v) => { void (async () => {
+            if (v === getLang() || !await resolveUnsaved()) return;
+            setLang(v as Lang);
+            leaving.current = true;     // our own reload: no "Leave site?"
+            window.location.reload();
+          })(); }}
+          options={[{ value: "en", label: "English" },
+            { value: "de", label: "Deutsch" }]} />
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup header={t("settings.senders")}>
+      <SettingsRow label={t("settings.new_badge")}
+        sub={t("new_sender.window_help")}>
+        <Stepper min={1} max={365}
+          value={+f.newSenderWindowDays || 7}
+          format={(n) => t("settings.n_days", { n })}
+          onChange={(n) => put("newSenderWindowDays", String(n))} />
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup header={t("settings.for_account", { name: editAcct })}
+      footnote={t(f.bodySearch === "local"
+        ? "body_search.local_help" : "body_search.help")}>
+      {scopeRow}
+      <SettingsRow label={t("smart.min_label")} sub={t("smart.min_help")}>
+        <Stepper min={2} max={50}
+          value={Math.min(50, Math.max(2, Math.round(+f.smartMin) || 10))}
+          format={(n) => t("settings.n_senders", { n })}
+          onChange={(n) => put("smartMin", String(n))} />
+      </SettingsRow>
+      <SettingsRow label={t("body_search.label")}>
+        <Switch checked={f.bodySearch !== "disabled"}
+          onChange={(on) => put("bodySearch",
+            on ? lastBodyMode.current : "disabled")} />
+      </SettingsRow>
+      {f.bodySearch !== "disabled" && (
+        <SettingsRow label={t("settings.search_with")}>
+          <PopupSelect name={t("settings.search_with")} value={f.bodySearch}
+            onChange={(v) => put("bodySearch", v)}
+            options={[
+              { value: "server", label: t("body_search.server") },
+              { value: "local", label: t("body_search.local"),
+                disabled: !cfg.secret_key_set }]} />
+        </SettingsRow>
+      )}
+    </SettingsGroup>
+    {f.bodySearch === "local" && (
+      <SettingsGroup padded>
+        <IndexPanel account={editAcct}
+          savedMode={(cfg.accounts[editAcct]?.body_search ?? "server"
+            ) as BodySearchMode}
+          secretKeySet={!!cfg.secret_key_set} />
+      </SettingsGroup>
+    )}
+  </>);
+
+  const notificationsBody = (
+    <SettingsGroup>
+      <SettingsRow label={t("notify.title")} sub={t("notify.sub")}>
+        <Switch checked={notifyOn} onChange={setNotify} />
+      </SettingsRow>
+    </SettingsGroup>
+  );
+
+  const protectedBody = (
+    <SettingsGroup padded footnote={t("protected.help")}>
+      <TextArea aria-label={t("Protected senders")}
+        value={protectedText}
+        placeholder={"boss@work.example\n@mybank.example"}
+        onChange={(e) => setProtectedText(e.target.value)} />
+    </SettingsGroup>
+  );
+
+  const categoriesBody = (
+    <SettingsGroup padded footnote={t("categories.help")}>
+      <TextArea className="!min-h-16" aria-label={t("Custom categories")}
+        value={categoriesText}
+        placeholder={"insurance: allianz, huk, versicherung\nshipping: dhl, dpd"}
+        onChange={(e) => setCategoriesText(e.target.value)} />
+    </SettingsGroup>
+  );
+
+  const filedBody = (
+    <SettingsGroup padded className="min-w-0">
+      <KnowledgeSettings aiAnswers={aiAnswers}
+        onChanged={onKnowledgeChanged} />
+    </SettingsGroup>
+  );
+
+  const digestBody = (<>
+    <DemoHint className="mb-3" />
+    <DemoFieldset>
+      <SettingsGroup footnote={t("digest.help")}>
+        {scopeRow}
+        <SettingsRow label={t("digest.schedule")}>
+          <PopupSelect name={t("digest.schedule")} value={f.digestSchedule}
+            onChange={(v) => put("digestSchedule", v)}
+            options={[{ value: "off", label: t("digest.off") },
+              { value: "daily", label: cap(t("sched.daily")) },
+              { value: "weekly", label: cap(t("sched.weekly")) }]} />
+        </SettingsRow>
+        {f.digestSchedule !== "off" && (
+          <SettingsRow label={t("digest.time")}>
+            <Input type="time" aria-label={t("digest.time")}
+              value={f.digestTime} onChange={set("digestTime")} />
+          </SettingsRow>
+        )}
+        <SettingsRow label={t("digest.recipient")}>
+          <Input className="w-full sm:w-64" aria-label={t("digest.recipient")}
+            value={f.digestRecipient}
+            placeholder={imapOf(cfg, editAcct).user
+              || t("digest.recipient_placeholder")}
+            onChange={set("digestRecipient")} />
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup footnote={digestTestMsg || undefined}>
+        <SettingsRow label={t("digest.send_test")}>
+          <Button variant="secondary" size="sm" onClick={sendTestDigest}
+            disabled={demo || digestTesting}
+            aria-label={t("digest.send_test")}>
+            {digestTesting ? <Spinner /> : t("settings.send")}
+          </Button>
+        </SettingsRow>
+      </SettingsGroup>
+    </DemoFieldset>
+  </>);
+
+  const everyMax = f.autoScanUnit === "hours" ? 24 : 1440;
+  const autoscanBody = (
+    <SettingsGroup footnote={t("auto_scan.help")}>
+      {scopeRow}
+      <SettingsRow label={t("auto_scan.enabled")}>
+        <Switch checked={f.autoScanEnabled}
+          onChange={(on) => put("autoScanEnabled", on)} />
+      </SettingsRow>
+      {f.autoScanEnabled && (<>
+        <SettingsRow label={t("auto_scan.every")}>
+          <div className="flex items-center gap-2">
+            <Stepper min={1} max={everyMax}
+              value={Math.min(everyMax, Math.max(1, +f.autoScanValue || 1))}
+              onChange={(n) => put("autoScanValue", String(n))} />
+            <PopupSelect name={t("auto_scan.every")} value={f.autoScanUnit}
+              onChange={(u) => setF((o) => ({ ...o, autoScanUnit: u,
+                autoScanValue: String(Math.min(
+                  u === "hours" ? 24 : 1440, +o.autoScanValue || 1)) }))}
+              options={[{ value: "minutes", label: t("auto_scan.unit_minutes") },
+                { value: "hours", label: t("auto_scan.unit_hours") }]} />
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t("auto_scan.align")}>
+          <Stepper min={0} max={59}
+            value={Math.min(59, Math.max(0, +f.autoScanAlign || 0))}
+            format={(n) => t("settings.n_min", { n })}
+            onChange={(n) => put("autoScanAlign", String(n))} />
+        </SettingsRow>
+      </>)}
+    </SettingsGroup>
+  );
+
+  const aiBody = (<>
+    <DemoHint className="mb-3" />
+    <DemoFieldset>
+    <SettingsGroup padded header={t("AI review (optional)")}
+      footnote={t("ai.data_note")}>
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <Field label={t("Provider")}>
+          <Select className="w-full" value={f.provider}
+            onChange={set("provider")}>
+            <option value="anthropic">Anthropic API</option>
+            <option value="openai">OpenAI</option>
+            <option value="foundry">Microsoft Foundry</option>
+            <option value="ollama">Ollama / local (OpenAI-compatible)</option>
+          </Select>
+        </Field>
+        <Field label={t("Model")}>
+          <Input className="w-full" value={f.model} onChange={set("model")} />
+        </Field>
+        {(f.provider === "foundry" || f.provider === "ollama") && (
+          <div className="sm:col-span-2">
+            <Field label={f.provider === "foundry"
+              ? "Foundry endpoint (https://…services.ai.azure.com/anthropic)"
+              : `${t("endpoint.label")} (http://…:11434)`}>
+              <Input className="w-full" value={f.endpoint}
+                onChange={set("endpoint")} />
+            </Field>
+          </div>
+        )}
+        <div className="sm:col-span-2">
+          <Field label={t("API key")}>
+            <Input className="w-full" type="password" value={f.apiKey}
+              placeholder={cfg.ai.api_key_set
+                ? t("(unchanged)")
+                : f.provider === "ollama"
+                  ? t("key.optional")
+                  : cfg.ai.source === "shared"
+                    ? t("ai.shared_key_ph")
+                    : t("(no key - AI features hidden)")}
+              onChange={set("apiKey")} />
+          </Field>
+          {cfg.ai.source === "shared" && (
+            <p className="mt-1 type-meta text-muted">
+              {t("ai.shared_note", {
+                cap: cfg.ai.shared_budget_usd
+                  ? fmtUsd(cfg.ai.shared_budget_usd) : t("budget.none"),
+              })}
+            </p>
+          )}
+        </div>
+        <Field label={`$ / 1M in (auto: ${pi})`}>
+          <Input className="w-full" type="number" step="0.01" min="0"
+            value={f.priceIn} placeholder={`auto: ${pi}`}
+            onChange={set("priceIn")} />
+        </Field>
+        <Field label={`$ / 1M out (auto: ${po})`}>
+          <Input className="w-full" type="number" step="0.01" min="0"
+            value={f.priceOut} placeholder={`auto: ${po}`}
+            onChange={set("priceOut")} />
+        </Field>
+        <Field label={t("budget.label")}>
+          <Input className="w-full" type="number" step="0.5" min="0"
+            value={f.budget} placeholder={t("budget.none")}
+            onChange={set("budget")} />
+        </Field>
+        <div className="self-end pb-2 type-meta text-muted">
+          {t("budget.month", { spent: fmtUsd(cfg.ai.month_cost ?? 0) })}
+        </div>
+        <div className="sm:col-span-2">
+          <Field label={t("ai.sort_instructions")}>
+            <TextArea className="!min-h-16" maxLength={1500}
+              value={f.sortInstructions}
+              onChange={set("sortInstructions")} />
+          </Field>
+          <p className="mt-1 type-meta text-muted">
+            {t("ai.sort_instructions_help")}
+          </p>
+        </div>
+      </div>
+    </SettingsGroup>
+    </DemoFieldset>
+    <SettingsGroup padded header={t("ai.usage")}>
+      <p className="type-meta text-muted">
+        {t("AI spend")}: <b className="text-body">{fmtUsd(s.cost)}</b>
+        {" "}- {s.runs} {t("runs")}, {s.input_tokens.toLocaleString()} /{" "}
+        {s.output_tokens.toLocaleString()}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="danger-quiet" size="sm" onClick={resetStats}>
+          {t("ai.reset_spend")}
+        </Button>
+        <Button variant="danger-quiet" size="sm" onClick={clearVerdicts}>
+          {t("ai.clear_verdicts")}
+        </Button>
+      </div>
+    </SettingsGroup>
+  </>);
+
+  const signinBody = !admin ? null : (<>
+    <SettingsGroup padded header={t("login.section")}
+      footnote={t("login.help")}>
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <Field label={t("login.mode")}>
+          <Select className="w-full" value={f.authMode}
+            onChange={set("authMode")}>
+            <option value="none">{t("login.mode_none")}</option>
+            <option value="password">{t("login.mode_password")}</option>
+            <option value="oidc" disabled={demo}>
+              {t("login.mode_oidc")}{demo ? ` - ${demoHint()}` : ""}
+            </option>
+          </Select>
+        </Field>
+        {f.authMode === "password" && (
+          <Field label={t("login.password_label")}>
+            <Input className="w-full" type="password" value={f.authPassword}
+              placeholder={cfg.auth.password_set
+                ? t("(unchanged)") : t("required")}
+              onChange={set("authPassword")} />
+          </Field>
+        )}
+        {f.authMode === "oidc" && (
+          <>
+            <Field label={t("login.oidc_issuer")}>
+              <Input className="w-full" value={f.oidcIssuer}
+                placeholder="https://id.example.com"
+                onChange={set("oidcIssuer")} />
+            </Field>
+            <Field label={t("login.oidc_client")}>
+              <Input className="w-full" value={f.oidcClientId}
+                onChange={set("oidcClientId")} />
+            </Field>
+            <Field label={t("login.oidc_secret")}>
+              <Input className="w-full" type="password" value={f.oidcSecret}
+                placeholder={cfg.auth.oidc?.client_secret_set
+                  ? t("(unchanged)") : t("required")}
+                onChange={set("oidcSecret")} />
+            </Field>
+            <Field label={t("login.oidc_redirect")}>
+              <Input className="w-full" value={f.oidcRedirect}
+                placeholder={t("login.oidc_redirect_ph")}
+                onChange={set("oidcRedirect")} />
+            </Field>
+            <Field label={t("login.oidc_admin")}>
+              <Input className="w-full" value={f.oidcAdmin}
+                placeholder={t("login.oidc_admin_ph")}
+                onChange={set("oidcAdmin")} />
+            </Field>
+            <div className="self-end pb-2 type-meta text-muted">
+              {t("login.tenancy_note")}
+            </div>
+            <div className="sm:col-span-2">
+              <Field label={t("login.oidc_allowed")}>
+                <TextArea className="!min-h-16" value={f.oidcAllowed}
+                  placeholder={"me@corp.example"}
+                  onChange={(e) => put("oidcAllowed", e.target.value)} />
+              </Field>
+              <p className="mt-1 type-meta text-muted">
+                {t("login.oidc_allowed_help")}
+              </p>
+              {(!f.oidcAllowed.trim() || !f.oidcAdmin.trim()) && (
+                <Notice tone="warn" className="mt-2"
+                  icon={<TriangleAlert size={16} />}>
+                  {[!f.oidcAllowed.trim() && t("login.oidc_open_warn"),
+                    !f.oidcAdmin.trim() && t("login.oidc_noadmin_warn"),
+                  ].filter(Boolean).join(" ")}
+                </Notice>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </SettingsGroup>
+    {cfg.auth.mode !== "none" && (
+      <SettingsGroup padded footnote={t("login.sign_out_all_help")}>
+        <Button variant="danger-quiet" size="sm" onClick={signOutAll}>
+          {t("login.sign_out_all")}
+        </Button>
+      </SettingsGroup>
+    )}
+
+    <DemoHint className="mb-3" />
+    <DemoFieldset>
+    <SettingsGroup padded header={t("shared.section")}
+      footnote={t("shared.help")}>
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <Switch checked={f.sharedEnabled} className="justify-self-start"
+          label={t("shared.enabled")}
+          onChange={(on) => put("sharedEnabled", on)} />
+        <Field label={t("shared.budget")}>
+          <Input className="w-full" type="number" step="0.5" min="0"
+            value={f.sharedBudget} placeholder={t("budget.none")}
+            onChange={set("sharedBudget")} />
+        </Field>
+        {f.sharedEnabled && (<>
+          <Field label={t("Provider")}>
+            <Select className="w-full" value={f.sharedProvider}
+              onChange={set("sharedProvider")}>
+              <option value="anthropic">Anthropic API</option>
+              <option value="openai">OpenAI</option>
+              <option value="foundry">Microsoft Foundry</option>
+              <option value="ollama">
+                Ollama / local (OpenAI-compatible)
+              </option>
+            </Select>
+          </Field>
+          <Field label={t("Model")}>
+            <Input className="w-full" value={f.sharedModel}
+              onChange={set("sharedModel")} />
+          </Field>
+          {(f.sharedProvider === "foundry"
+            || f.sharedProvider === "ollama") && (
+            <div className="sm:col-span-2">
+              <Field label={t("endpoint.label")}>
+                <Input className="w-full" value={f.sharedEndpoint}
+                  onChange={set("sharedEndpoint")} />
+              </Field>
+            </div>
+          )}
+          <div className="sm:col-span-2">
+            <Field label={t("API key")}>
+              <Input className="w-full" type="password" value={f.sharedKey}
+                placeholder={cfg.shared_ai?.api_key_set
+                  ? t("(unchanged)") : t("required")}
+                onChange={set("sharedKey")} />
+            </Field>
+          </div>
+        </>)}
+      </div>
+    </SettingsGroup>
+    </DemoFieldset>
+
+    <SettingsGroup padded header={t("usage.section")}
+      footnote={t("usage.help")} className="min-w-0">
+      {!tenantStats && !tenantStatsErr && <Loading className="!p-3" />}
+      {tenantStatsErr && (
+        <div className="type-meta text-danger-fg">{tenantStatsErr}</div>
+      )}
+      {tenantStats && (
+        <div className="overflow-x-auto rounded-card border border-line">
+          <table className="w-full min-w-[560px] table-fixed type-meta">
+            <thead>
+              <tr className="border-b border-line text-left text-muted">
+                <th className="w-[26%] px-2 py-1.5 font-medium">
+                  {t("usage.user")}</th>
+                <th className="w-[16%] px-2 py-1.5 font-medium">
+                  {t("usage.mails")}</th>
+                <th className="w-[14%] px-2 py-1.5 font-medium">
+                  {t("usage.cleaned")}</th>
+                <th className="w-[18%] px-2 py-1.5 font-medium">
+                  {t("usage.ai_month")}</th>
+                <th className="w-[13%] px-2 py-1.5 font-medium">
+                  {t("usage.last_scan")}</th>
+                <th className="w-[13%] px-2 py-1.5 font-medium">
+                  {t("usage.disk")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tenantStats.map((u) => (
+                <tr key={u.id} className="border-b border-line
+                  last:border-0 align-top">
+                  <td className="truncate px-2 py-1.5"
+                    title={t("tenant.row_tip", { id: u.id,
+                      accounts: u.accounts, scans: u.scans,
+                      rules: u.rules, verdicts: u.verdicts })}>
+                    {u.is_admin_workspace && (
+                      <Star size={14}
+                        className="mr-1 inline align-text-bottom" />
+                    )}
+                    {u.label || u.id}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {u.mails.toLocaleString()}
+                    <span className="text-muted">
+                      {" "}· {fmtSize(u.size)}</span>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {u.actions_month.trash.toLocaleString()}
+                    {(u.actions_month.purged_bytes ?? 0) > 0 && (
+                      <span className="text-muted">
+                        {" "}· {fmtSize(u.actions_month.purged_bytes ?? 0)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {fmtUsd(u.ai.month_cost)}
+                    <span className="text-muted">
+                      {u.ai.budget_usd
+                        ? ` / ${fmtUsd(u.ai.budget_usd)}` : ""}
+                      {u.ai.source === "shared"
+                        ? ` (${t("usage.shared")})` : ""}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {fmtAgo(u.last_scan_ts) || "-"}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {fmtSize(u.disk_bytes)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SettingsGroup>
+  </>);
+
+  const backupBody = (
+    <SettingsGroup padded footnote={t("backup.help")}>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary"
+          onClick={() => downloadFile("/api/export_config")}
+          title={t("export.tip")}>{t("Export")}</Button>
+        <Button variant="secondary"
+          onClick={() => importInput.current?.click()}>
+          {t("Import…")}
+        </Button>
+        <input ref={importInput} type="file" accept="application/json"
+          className="hidden" onChange={importBackup} />
+      </div>
+    </SettingsGroup>
+  );
+
+  const bodies: Record<SettingsSection, ReactNode> = {
+    account: accountBody, general: generalBody,
+    notifications: notificationsBody, protected: protectedBody,
+    categories: categoriesBody, filed: filedBody, digest: digestBody,
+    autoscan: autoscanBody, ai: aiBody, signin: signinBody,
+    backup: backupBody,
+  };
+
+  /* ------------------------------ section column ---------------------------- */
+
+  const searchField = (
+    <div className="relative mb-3">
+      <Search size={16} aria-hidden className="pointer-events-none absolute
+        left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+      <Input type="search" className="w-full pl-8" value={q}
+        aria-label={t("settings.search")} placeholder={t("settings.search")}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && hits[0]) void pick(hits[0].d.id);
+          else if (e.key === "Enter" && acctHits[0]) void pick("account", acctHits[0]);
+        }} />
+    </div>
+  );
+  const noMatch = !!query && !hits.length && !acctHits.length
+    && !accountRows && (
+    <p className="px-1 type-meta text-muted">
+      {t("settings.no_match", { q: q.trim() })}
+    </p>
+  );
+  const rowsHint = (rows: string[]) => rows.length
+    ? rows.slice(0, 2).join(" · ") : undefined;
+
+  /** One entry of the wide section column. */
+  const navItem = (key: string, icon: ReactNode, label: string, opts: {
+    current: boolean; value?: string; sub?: string; onClick: () => void;
+    trailing?: ReactNode;
+  }) => (
+    <button key={key} type="button" onClick={opts.onClick}
+      aria-current={opts.current ? "page" : undefined}
+      className={`flex min-h-9 w-full items-center gap-2.5 rounded-control
+        px-2.5 text-left type-body transition-colors coarse:min-h-11
+        ${opts.current ? "bg-accent-tint font-medium text-accent"
+          : "text-body hover:bg-chip"}`}>
+      <span aria-hidden className="contents">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {opts.sub && (
+          <span className="block truncate type-meta font-normal text-muted">
+            {opts.sub}
+          </span>
+        )}
+      </span>
+      {opts.value && (
+        <span className="type-meta tabular-nums text-muted">{opts.value}</span>
+      )}
+      {opts.trailing}
+    </button>
+  );
+  const tile = (d: SecDef) => <IconTile tone={d.tone}>{d.icon}</IconTile>;
+  const heading = (label: string) => (
+    <div className="px-2.5 pb-1 pt-4 type-caption font-semibold uppercase
+      text-muted">{label}</div>
+  );
+
+  const sectionColumn = (
+    <nav aria-label={t("Settings")} className="flex w-65 shrink-0 flex-col
+      gap-0.5 overflow-y-auto border-r border-line p-3">
+      {searchField}
+      {query ? (<>
+        {accountRows && acctHits.map((n) => navItem(`a-${n}`,
+          <AccountAvatar name={n} />, n, {
+            current: open === "account" && editAcct === n,
+            onClick: () => void pick("account", n) }))}
+        {hits.map(({ d, rows }) => navItem(d.id, tile(d), d.label, {
+          current: open === d.id, sub: rowsHint(rows),
+          onClick: () => void pick(d.id) }))}
+        {noMatch}
+      </>) : (<>
+        {heading(t("settings.group.accounts"))}
+        {acctNames.map((n) => navItem(`a-${n}`, <AccountAvatar name={n} />, n, {
+          current: open === "account" && editAcct === n,
+          trailing: <StatusDot status={statusOf(cfg.accounts[n])} />,
+          onClick: () => void pick("account", n) }))}
+        <button type="button" onClick={() => void newAccount()}
+          disabled={demo} title={demo ? demoHint() : undefined}
+          className="flex min-h-9 w-full items-center gap-2.5 rounded-control
+            px-2.5 text-left type-body text-accent transition-colors
+            enabled:hover:bg-chip disabled:cursor-not-allowed
+            disabled:text-faint coarse:min-h-11">
+          <Plus size={16} aria-hidden />
+          {t("account.add")}
+        </button>
+        {groups.map((g) => (
+          <div key={g.key} className="flex flex-col gap-0.5">
+            {heading(g.label!)}
+            {g.ids.map((id) => navItem(id, tile(defs[id]), defs[id].label, {
+              current: open === id, value: defs[id].value,
+              onClick: () => void pick(id) }))}
+          </div>
+        ))}
+      </>)}
+    </nav>
+  );
+
+  /** The phone root list: account rows, then one grouped list per group. */
+  const rootList = (<>
+    {searchField}
+    {query ? (<>
+      {(accountRows ? acctHits : []).length > 0 && (
+        <SettingsGroup>
+          {acctHits.map((n) => (
+            <SettingsRow key={n} label={n}
+              icon={<AccountAvatar name={n} size="md" />}
+              onClick={() => void pick("account", n)} />
+          ))}
+        </SettingsGroup>
+      )}
+      {hits.length > 0 && (
+        <SettingsGroup>
+          {hits.map(({ d, rows }) => (
+            <SettingsRow key={d.id} label={d.label} sub={rowsHint(rows)}
+              icon={tile(d)} onClick={() => void pick(d.id)} />
+          ))}
+        </SettingsGroup>
+      )}
+      {noMatch}
+    </>) : (<>
+      <SettingsGroup>
+        {acctNames.map((n) => (
+          <SettingsRow key={n} label={n}
+            sub={`${cfg.accounts[n].user} · ${
+              t(`settings.status.${statusOf(cfg.accounts[n])}`)}`}
+            icon={<AccountAvatar name={n} size="md" />}
+            onClick={() => void pick("account", n)} />
+        ))}
+        <SettingsRow label={<span className="text-accent">
+          {t("account.add")}</span>} disabled={demo}
+          icon={<IconTile tone="accent"><Plus size={16} /></IconTile>}
+          onClick={() => void newAccount()} />
+      </SettingsGroup>
+      {groups.map((g) => (
+        <SettingsGroup key={g.key}>
+          {g.ids.map((id) => (
+            <SettingsRow key={id} label={defs[id].label}
+              value={defs[id].value} icon={tile(defs[id])}
+              onClick={() => void pick(id)} />
+          ))}
+        </SettingsGroup>
+      ))}
+    </>)}
+  </>);
+
+  const title = open === "account" ? editAcct : open ? defs[open].label : "";
+  const content = open && (
+    <div key={open === "account" ? `account-${editAcct}` : open}>
+      {bodies[open]}
+    </div>
+  );
+
+  const saveBar = dirty && (
+    <SaveBar summary={summary.text} saving={saving} onRevert={revert}
+      onSave={() => void save()} />
+  );
+
+  if (wide) {
+    return (
+      <div className="flex min-h-0 flex-1">
+        {sectionColumn}
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-5 pb-28 pt-5">
+            <h1 className="mb-4 type-title2">{title}</h1>
+            {content}
+          </div>
+        </div>
+        {saveBar}
+      </div>
+    );
+  }
+  return (
+    <div className="pb-4">
+      {open ? (<>
+        <button type="button" onClick={() => onSection(null)}
+          className="-ml-1 mb-1 inline-flex min-h-11 items-center gap-0.5
+            rounded-control pr-2 type-body text-accent">
+          <ChevronLeft size={18} aria-hidden />
+          {t("Settings")}
+        </button>
+        <h1 className="mb-4 type-largetitle">{title}</h1>
+        {content}
+      </>) : (<>
+        <h1 className="mb-3 type-largetitle">{t("Settings")}</h1>
+        {rootList}
+      </>)}
+      {saveBar}
+    </div>
+  );
+}
+
+/** The floating capsule while edits are staged: what changed, Revert, Save.
+ *  Publishes its height like the selection bar (toasts and the tab bar make
+ *  room). */
+function SaveBar({ summary, saving, onRevert, onSave }: {
+  summary: string; saving: boolean; onRevert: () => void; onSave: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useBulkBarHeight(ref, true);
+  return (
+    <div ref={ref} role="region" aria-label={t("settings.unsaved")}
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-(--z-bulkbar)
+        px-2 md:px-5 lg:left-126"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}>
+      <div className="pointer-events-auto mx-auto flex w-fit max-w-full
+        items-center gap-2 rounded-card border bar-glass py-1.5 pl-4 pr-1.5
+        sm:rounded-full
+        shadow-bar">
+        <span aria-hidden className="size-2 shrink-0 rounded-full
+          bg-accent" />
+        <span role="status" className="min-w-0 type-meta max-sm:leading-tight sm:truncate md:type-body">
+          {summary}
+        </span>
+        <Button variant="secondary" size="sm" onClick={onRevert}>
+          {t("settings.revert")}
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={saving}>{t("Save")}</Button>
+      </div>
+    </div>
+  );
+}

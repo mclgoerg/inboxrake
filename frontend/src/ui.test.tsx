@@ -949,8 +949,8 @@ test("appearance: System follows the OS live, a pick overrides and persists", ()
   const stop = watchSystemTheme();
   render(<AppearanceControl />);
   expect(getAppearance()).toBe("system");
-  expect(screen.getByRole("tab", { name: "System" })
-    .getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("radio", { name: "System" })
+    .getAttribute("aria-checked")).toBe("true");
   applyTheme("system");
   expect(currentTheme()).toBe("dark");
   os.flip(true);
@@ -961,15 +961,15 @@ test("appearance: System follows the OS live, a pick overrides and persists", ()
     'meta[name="apple-mobile-web-app-status-bar-style"]')!
     .getAttribute("content")).toBe("default");
 
-  fireEvent.click(screen.getByRole("tab", { name: "Dark" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   expect(localStorage.getItem("pmc_theme")).toBe("dark");
   expect(currentTheme()).toBe("dark");
-  expect(screen.getByRole("tab", { name: "Dark" })
-    .getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("radio", { name: "Dark" })
+    .getAttribute("aria-checked")).toBe("true");
   os.flip(false); os.flip(true);                 // a pick ignores the OS
   expect(currentTheme()).toBe("dark");
 
-  fireEvent.click(screen.getByRole("tab", { name: "System" }));
+  fireEvent.click(screen.getByRole("radio", { name: "System" }));
   expect(localStorage.getItem("pmc_theme")).toBeNull();
   expect(currentTheme()).toBe("light");
   stop();

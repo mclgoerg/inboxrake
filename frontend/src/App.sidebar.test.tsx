@@ -248,7 +248,7 @@ test("the phone top bar is sticky and turns glass once the page scrolls",
   expect(head.className).toContain("bar-glass");
 });
 
-test("tool items open as pages beside the sidebar; Settings stays a modal",
+test("tool items open as pages beside the sidebar; Settings is a page too",
   async () => {
   mount();
   const nav = within(await side());
@@ -266,7 +266,15 @@ test("tool items open as pages beside the sidebar; Settings stays a modal",
   fireEvent.keyDown(document.body, { key: "Escape" });
   expect(window.location.hash).toBe("#/search");
   fireEvent.click(nav.getByRole("button", { name: "Settings" }));
-  expect(await screen.findByRole("dialog")).toBeTruthy();
+  // Settings: its own route, a section column beside the form (the first
+  // section open), no dialog, the gear marked current
+  expect(await screen.findByRole("heading", { level: 1, name: "General" }))
+    .toBeTruthy();
+  expect(window.location.hash).toBe("#/settings");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(nav.getByRole("button", { name: "Settings" })
+    .getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("navigation", { name: "Settings" })).toBeTruthy();
 });
 
 test("a tool page survives a reload and Back/forward; leaving refreshes",

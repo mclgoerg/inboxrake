@@ -8,8 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
-import { DEFAULT_PAGE, isTabPage, isToolPage, TOOL_TAB, useNav, useSidebar, type Page,
-  type ToolPage } from "./nav";
+import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
+  useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
@@ -23,7 +23,7 @@ import { SortControl } from "./components/SortControl";
 import { RulesModal } from "./components/RulesModal";
 import { AllMailsView } from "./components/AllMailsView";
 import { SearchPanel } from "./components/SearchPanel";
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsPage, type SettingsControl } from "./components/SettingsPage";
 import { Welcome } from "./components/Welcome";
 import { Wizard, WIZARD_RESUME_KEY, type WizardStep } from "./components/Wizard";
 import { SpaceMapPanel } from "./components/SpaceMapPanel";
@@ -113,7 +113,22 @@ export default function App() {
   const wide = useSidebar();
   const compactSelect = useMediaQuery("(width < 80rem)");
   const phone = useMediaQuery("(width < 48rem)");
-  const [navPage, setPage] = useNav();
+  // Settings with unsaved edits asks before the page is left (sidebar, tab
+  // bar, browser Back): the page registers itself here while it is open.
+  const settingsCtl = useRef<SettingsControl | null>(null);
+  const navGuard = useRef<((to: Page) => boolean) | null>(null);
+  const [navPage, setPage] = useNav(undefined, navGuard);
+  navGuard.current = (to) => {
+    const c = settingsCtl.current;
+    if (!c?.dirty()) return true;
+    void c.confirmLeave().then((ok) => { if (ok) setPage(to); });
+    return false;
+  };
+  const settingsRoute = useSettingsRoute();
+  // Where Settings was opened from (Esc / Back return there), and whether
+  // the open section was pushed on top of the root list (phone drill-down).
+  const settingsFrom = useRef<Page | null>(null);
+  const settingsPushed = useRef(false);
   // The Clean up / Insights tab pages only exist below 1024 px (the sidebar
   // holds the same items): from there their routes show the default page.
   // Tools are pages from 1024 px and modals below; the page behind a tool
@@ -174,7 +189,6 @@ export default function App() {
   const [editingPreset, setEditingPreset] = useState<FilterPreset | null>(
     null);
   const [editQuery, setEditQuery] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // First-run / "Add account" wizard (components/Wizard.tsx).
   // Coming back from the OAuth consent redirect it starts out resumed (the
   // marker is validated against the config once that has loaded).
@@ -217,7 +231,11 @@ export default function App() {
   // A tool open as a page in the content column (>= 1024).
   const routed = wide && shownTool !== null;
   // Pages that replace the sender list / toolbar.
-  const bare = toolPage || routed;
+  // Settings is a page of its own (every width): it replaces the sender list.
+  const settingsPage = navPage === "settings";
+  const bare = toolPage || routed || settingsPage;
+  // The content column is one full-height page (tool pages, Settings >= 1024).
+  const fullPage = routed || (settingsPage && wide);
   const [undoOpen, setUndoOpen] = useState(false);
   const [moveDest, setMoveDest] = useState("");
   // The "Limit to…" editor swapped into the capsule (Done closes it).
@@ -828,7 +846,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.groups_rev]);
   useEffect(() => { prevGroups.current = groups; });
-  const anyModal = (!!detail && !splitPane) || searchOpen || settingsOpen || rulesOpen
+  const anyModal = (!!detail && !splitPane) || searchOpen || rulesOpen
     || !!wizard
     || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
@@ -1813,6 +1831,14 @@ export default function App() {
     // Against the URL's page: on `#/cleanup` at >= 1024 the sidebar's
     // Senders only rewrites the URL (the shown page is Senders already).
     if (p === navPage) return;
+    const ctl = settingsCtl.current;
+    if (navPage === "settings" && ctl?.dirty()) {
+      void ctl.confirmLeave().then((ok) => { if (ok) leavePage(p); });
+      return;
+    }
+    leavePage(p);
+  };
+  const leavePage = (p: typeof page) => {
     if (p !== page) {
       pageByApp.current = true;
       setSelectMode(false);
@@ -1838,8 +1864,23 @@ export default function App() {
     wrapped: () => setWrappedOpen(true),
     trackers: () => setTrackersOpen(true),
     activity: () => setAuditOpen(true),
-    settings: () => setSettingsOpen(true),
+    settings: () => {
+      if (navPage !== "settings") settingsFrom.current = navPage;
+      goPage("settings");
+    },
   })[tool]();
+  /** Esc / Back from Settings: where it was opened from. */
+  const closeSettings = () => goPage(settingsFrom.current ?? DEFAULT_PAGE);
+  const openSettingsSection = (s: Parameters<typeof gotoSettings>[0],
+    acct?: string | null, push = false) => {
+    if (s === null && settingsPushed.current) {
+      settingsPushed.current = false;
+      window.history.back();
+      return;
+    }
+    settingsPushed.current = push;
+    gotoSettings(s, acct, push);
+  };
   // Closing a tool: back to the start page (Triage: to the list its changes
   // show up in), or drop its modal.
   const closeTool = (modal: () => void, to: Page = DEFAULT_PAGE) => {
@@ -1933,7 +1974,7 @@ export default function App() {
       ))}
       </MenuGroup>
       <MenuDivider />
-      <MenuItem onClick={() => setSettingsOpen(true)}>
+      <MenuItem onClick={() => openTool("settings")}>
         <SettingsIcon size={16} className="mr-1 inline align-text-bottom" />
         {t("Settings")}
       </MenuItem>
@@ -2221,7 +2262,7 @@ export default function App() {
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
     )}
-    <div className={routed
+    <div className={fullPage
       // A tool page: the column's full height, the panel scrolls inside.
       ? "flex h-dvh min-w-0 flex-col"
       : `mx-auto max-w-6xl p-3 xl:max-w-360 pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+0.75rem)]
@@ -2230,7 +2271,7 @@ export default function App() {
           it was scanned), Search all mail, Scan and the account menu. The
           tab bar at the bottom replaces the Tools menu and the Junk / Trash
           links. */}
-      {!wide && <header ref={setTopEl}
+      {!wide && !settingsPage && <header ref={setTopEl}
         className={`sticky top-0 z-(--z-bulkbar) -mx-3 mb-2 flex items-center
           gap-1 border-b px-3 sm:-mx-5 sm:px-5 md:mb-4
           ${scrolled ? "bar-glass" : "border-transparent bg-surface"}`}>
@@ -2733,11 +2774,15 @@ export default function App() {
       )}
       {wizardEl}
       {!wide && <TabBar page={page} onPage={goPage} />}
-      {settingsOpen && cfg && (
-        <SettingsModal
+      {settingsPage && cfg && (
+        <SettingsPage
           cfg={cfg}
           account={account}
-          onClose={() => setSettingsOpen(false)}
+          section={settingsRoute.section}
+          routeAccount={settingsRoute.account}
+          onSection={openSettingsSection}
+          controlRef={settingsCtl}
+          onClose={closeSettings}
           onSaved={setCfg}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
           onAccountsChanged={(next, name) => {
