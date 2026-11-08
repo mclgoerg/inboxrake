@@ -348,7 +348,16 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     return [...wildcards, ...explicit];
   };
 
+  // A save in flight: Save (bar and leave prompt) waits for it.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  // Set once the page is about to be replaced by a full navigation (OAuth
+  // consent): the browser's "Leave site?" prompt would be false then.
+  const leaving = useRef(false);
   const save = async (extra: Record<string, unknown> = {}) => {
+    if (savingRef.current) return null;
+    savingRef.current = true;
+    setSaving(true);
     try {
       const excluded = excludedList();
       const [digestHour, digestMinute] = f.digestTime.split(":").map(Number);
@@ -422,6 +431,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     } catch (e: any) {
       note(t("err.generic", { msg: e.message ?? e }), true);
       return null;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -474,7 +486,11 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   // A reload / tab close with staged edits asks first.
   useEffect(() => {
     if (!dirty) return;
-    const on = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    const on = (e: BeforeUnloadEvent) => {
+      if (leaving.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
     window.addEventListener("beforeunload", on);
     return () => window.removeEventListener("beforeunload", on);
   }, [dirty]);
@@ -574,6 +590,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const connectOauth = async () => {
     const next = await save();
     if (!next) return;
+    leaving.current = true;
     window.location.href = `/api/oauth/imap/login?account=` +
       `${encodeURIComponent(editAcct)}&provider=${oauthProvider}`;
   };
@@ -1077,7 +1094,13 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       <SettingsRow label={t("Appearance")}><AppearanceControl /></SettingsRow>
       <SettingsRow label={t("Language")}>
         <PopupSelect name={t("Language")} value={getLang()}
-          onChange={(v) => { setLang(v as Lang); window.location.reload(); }}
+          // The language applies with a reload: staged edits would be lost,
+          // so they are saved or discarded first (the leave prompt).
+          onChange={(v) => { void (async () => {
+            if (v === getLang() || !await resolveUnsaved()) return;
+            setLang(v as Lang);
+            window.location.reload();
+          })(); }}
           options={[{ value: "en", label: "English" },
             { value: "de", label: "Deutsch" }]} />
       </SettingsRow>
@@ -1712,7 +1735,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const saveBar = dirty && (
-    <SaveBar summary={summary.text} onRevert={revert}
+    <SaveBar summary={summary.text} saving={saving} onRevert={revert}
       onSave={() => void save()} />
   );
 
@@ -1753,8 +1776,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 /** The floating capsule while edits are staged: what changed, Revert, Save.
  *  Publishes its height like the selection bar (toasts and the tab bar make
  *  room). */
-function SaveBar({ summary, onRevert, onSave }: {
-  summary: string; onRevert: () => void; onSave: () => void;
+function SaveBar({ summary, saving, onRevert, onSave }: {
+  summary: string; saving: boolean; onRevert: () => void; onSave: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useBulkBarHeight(ref, true);
@@ -1764,17 +1787,18 @@ function SaveBar({ summary, onRevert, onSave }: {
         px-2 md:px-5 lg:left-126"
       style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}>
       <div className="pointer-events-auto mx-auto flex w-fit max-w-full
-        items-center gap-2 rounded-full border bar-glass py-1.5 pl-4 pr-1.5
+        items-center gap-2 rounded-card border bar-glass py-1.5 pl-4 pr-1.5
+        sm:rounded-full
         shadow-bar">
         <span aria-hidden className="size-2 shrink-0 rounded-full
           bg-accent" />
-        <span role="status" className="min-w-0 truncate type-meta md:type-body">
+        <span role="status" className="min-w-0 type-meta max-sm:leading-tight sm:truncate md:type-body">
           {summary}
         </span>
-        <Button variant="secondary" onClick={onRevert}>
+        <Button variant="secondary" size="sm" onClick={onRevert}>
           {t("settings.revert")}
         </Button>
-        <Button onClick={onSave}>{t("Save")}</Button>
+        <Button size="sm" onClick={onSave} disabled={saving}>{t("Save")}</Button>
       </div>
     </div>
   );

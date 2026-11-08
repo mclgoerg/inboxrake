@@ -13,6 +13,7 @@ const testDigestCalls: string[] = [];
 const roleCalls: unknown[][] = [];
 const oauthDisconnectCalls: string[] = [];
 let foldersResult: unknown = null;   // null: picker stays loading
+let saveResult: Promise<unknown> | null = null;   // null: a save never answers
 let testDigestResult: { sent: boolean; demo: boolean } =
   { sent: true, demo: false };
 const signOutAllCalls: number[] = [];
@@ -32,7 +33,7 @@ vi.mock("./api", () => ({
     },
     saveConfig: (body: any) => {
       saveCalls.push(body);
-      return new Promise(() => {});              // response irrelevant here
+      return saveResult ?? new Promise(() => {});   // response mostly irrelevant
     },
     testDigest: (account: string) => {
       testDigestCalls.push(account);
@@ -1029,7 +1030,11 @@ test("switching back and forth then Save never sends disconnect and keeps " +
   expect(JSON.stringify(saveCalls[0])).not.toContain("disconnect");
   expect(lastSave().auth).toBe("password");
   expect(lastSave().oauth).toBeUndefined();
+  cleanup();
   saveCalls.length = 0;
+  render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth" }))}
+    account="default" />);
+  fireEvent.click(signinTab("App password"));
   fireEvent.click(signinTab("OAuth"));
   // back on the saved method the form equals what is saved: nothing to save
   // until something else is edited
@@ -1112,3 +1117,49 @@ test("the client-secret placeholder is 'optional' for Outlook and " +
   fireEvent.click(screen.getByRole("tab", { name: "OAuth" }));
   expect(secret()).toBe("required");
 });
+
+test("Save waits for the request in flight: no double submit", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={cfg} account="default" />);
+  fireEvent.change(hostInput(), { target: { value: "imap.edited.example" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
+    .disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls).toHaveLength(1);
+});
+
+test("OAuth Connect saves, then leaves without the browser's 'Leave site?' prompt",
+  async () => {
+    saveCalls.length = 0;
+    saveResult = Promise.resolve(cfg);
+    try {
+      render(<Settings cfg={gmailCfg(oauthAcct({ auth: "oauth",
+        oauth: { provider: "google", client_id: "", client_secret_set: false,
+          connected: false } }))} account="default" />);
+      fireEvent.change(screen.getByLabelText("Client ID"),
+        { target: { value: "new-id" } });
+      const stay = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(stay);
+      expect(stay.defaultPrevented).toBe(true);       // dirty: asks on reload
+      fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+      await waitFor(() => expect(saveCalls).toHaveLength(1));
+      await new Promise((r) => setTimeout(r, 20));
+      const go = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(go);
+      expect(go.defaultPrevented).toBe(false);        // the redirect is ours
+    } finally {
+      saveResult = null;
+    }
+  });
+
+test("changing the language with unsaved edits asks first (the switch reloads)",
+  async () => {
+    renderWithDialogs({ section: "general" });
+    fireEvent.click(screen.getByRole("switch", { name: "Search inside mail text" }));
+    popupPick(screen.getByRole("button", { name: /^Language/ }), "Deutsch");
+    expect((await findDialog()).textContent).toContain("Save your changes?");
+    await cancelDialog();
+    await expectNoDialog();
+    expect(localStorage.getItem("pmc_lang")).not.toBe("de");
+  });

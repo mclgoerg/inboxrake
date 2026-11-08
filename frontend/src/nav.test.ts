@@ -83,6 +83,7 @@ test("a guard can keep the page when the hash leaves it (Back / Forward)", () =>
   });
   expect(asked).toEqual(["senders"]);
   expect(result.current[0]).toBe("settings");
+  expect(window.location.hash).toBe("#/settings/ai");   // the URL is put back
   // moving within the page is not leaving it
   act(() => {
     window.location.hash = "#/settings/general";

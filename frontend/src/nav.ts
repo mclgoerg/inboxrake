@@ -112,16 +112,19 @@ export function useNav(initial: Page = DEFAULT_PAGE,
   const [page, setPageState] = useState<Page>(read);
   const shown = useRef(page);
   shown.current = page;
+  // The URL of the last page state we accepted: where a vetoed change returns.
+  const kept = useRef(window.location.hash);
   useEffect(() => {
     const on = () => {
       const next = read();
       if (next !== shown.current && guard?.current
           && !guard.current(next)) {
-        // Step back onto the page the guard keeps; the hashchange this causes
-        // finds the same page and does nothing.
-        window.history.go(1);
+        // Put the kept page's URL back on top of the history (Back and Forward
+        // alike; pushState fires no hashchange).
+        window.history.pushState(null, "", kept.current);
         return;
       }
+      kept.current = window.location.hash;
       setPageState(next);
     };
     window.addEventListener("hashchange", on);
@@ -139,6 +142,7 @@ export function useNav(initial: Page = DEFAULT_PAGE,
   }, [wide, page]);
   const setPage = useCallback((p: Page) => {
     setPageState(p);
+    kept.current = hashOf(p);
     if (parseHash(window.location.hash) !== p)
       window.location.hash = hashOf(p);
   }, []);
