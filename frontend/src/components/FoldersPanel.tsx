@@ -607,13 +607,15 @@ function JunkSenderRow({ g, known, blocked, canBlock, busy, selecting, checked,
               <Tag tone="keep" className="self-center">{t("fp.blocked")}</Tag>
             ) : canBlock && (
               <Button size="sm" variant="secondary" disabled={busy}
-                aria-label={act(t("fp.block"))} onClick={onBlock}>
+                aria-label={act(t("fp.block"))} title={t("fp.block")}
+                onClick={onBlock}>
                 <Ban size={14} className="inline align-text-bottom sm:mr-1" />
                 <span className="sr-only sm:not-sr-only">{t("fp.block")}</span>
               </Button>
             )}
             <Button size="sm" variant="secondary" disabled={busy}
-              aria-label={act(t("Trash"))} onClick={onTrash}>
+              aria-label={act(t("Trash"))} title={t("Trash")}
+              onClick={onTrash}>
               <Trash2 size={14} className="inline align-text-bottom sm:mr-1" />
               <span className="sr-only sm:not-sr-only">{t("Trash")}</span>
             </Button>

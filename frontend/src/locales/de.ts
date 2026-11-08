@@ -424,6 +424,7 @@ export const DE: Record<string, string> = {
   "(no subject)": "(kein Betreff)",
   "No scan yet - hit “Scan”.": "Noch kein Scan - auf „Scannen“ klicken.",
   "Scanning…": "Scanne…",
+  "Inbox": "Posteingang",
   "Moving…": "Verschiebe…",
   "Restoring…": "Stelle wieder her…",
   "trash.counting": "Zähle…",

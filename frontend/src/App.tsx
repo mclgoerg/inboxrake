@@ -2134,7 +2134,10 @@ export default function App() {
   const scanFolder = scanning ? progressFolder(state?.progress ?? "") : null;
   const scanLine = !scanProgress ? t("Scanning…")
     : scanFolder ? t("scan.progress_folder", {
-      folder: scanFolder.toUpperCase() === "INBOX" ? t("Inbox") : scanFolder,
+      // INBOX is the one folder name the protocol fixes; a nested path
+      // shows its last segment (the full path is the subline's title)
+      folder: scanFolder.toUpperCase() === "INBOX" ? t("Inbox")
+        : scanFolder.split("/").pop() || scanFolder,
       done: scanProgress.done, total: scanProgress.total })
     : t("scan.progress",
       { done: scanProgress.done, total: scanProgress.total });
@@ -2425,7 +2428,8 @@ export default function App() {
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
           {!toolPage && !scrolled && (scanning || !!scannedAgo) && (
-            <div className="type-meta text-muted">
+            <div className="truncate type-meta text-muted"
+              title={scanning && scanFolder ? scanFolder : undefined}>
               {scanning ? scanLine : t("scan.age", { ago: scannedAgo })}
             </div>
           )}
