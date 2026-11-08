@@ -21,6 +21,7 @@
   --color-chiph: #3a3632;
   --color-chiptext: #d9d2c6;
   --color-segment-on: #4a4540;    /* selected pill of a Segmented control */
+  --color-knob: #ffffff;          /* thumb of a Switch (white in both themes) */
 
   /* Semantic pairs (bg / fg), dark values; light overrides below. Raw
      palette classes (emerald/amber/rose/...) are never used in components. */
@@ -181,6 +182,7 @@ html[data-theme="light"] {
   --color-chiph: #e5e2de;
   --color-chiptext: #3d3833;
   --color-segment-on: #ffffff;
+  --color-knob: #ffffff;
   --color-safe-bg: rgb(20 107 58 / 0.11);
   --color-safe-fg: #146b3a;
   --color-review-bg: rgb(143 76 0 / 0.11);
@@ -336,4 +338,31 @@ body {
    finishes within a blink never flashes a spinner. */
 .pmc-loading {
   animation: pmc-fade 0.25s ease 0.15s both;
+}
+
+/* Appearance thumbnails (Settings > General): fixed mini windows that show a
+   theme whatever theme is applied now, so they use their own literal colours.
+   Light / dark: a sidebar strip, two text lines and an accent button. */
+.appearance-thumb { position: relative; overflow: hidden; display: block; }
+.appearance-thumb-system {
+  background: linear-gradient(90deg, #f3f1ee 50%, #232120 50%);
+}
+.appearance-thumb-light, .appearance-thumb-dark { background: #faf9f7; }
+.appearance-thumb-dark { background: #232120; }
+.appearance-thumb-light::before, .appearance-thumb-dark::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 28%;
+  background: #e4e1dc;
+}
+.appearance-thumb-dark::before { background: #181716; }
+.appearance-thumb-light::after, .appearance-thumb-dark::after {
+  content: ""; position: absolute; left: 38%; right: 10%; top: 22%;
+  height: 22%; border-radius: 2px;
+  background: linear-gradient(#d3cfc9 0 0) 0 0 / 100% 3px no-repeat,
+    linear-gradient(#d3cfc9 0 0) 0 100% / 70% 3px no-repeat,
+    linear-gradient(#d98d2b 0 0) 0 260% / 40% 5px no-repeat;
+}
+.appearance-thumb-dark::after {
+  background: linear-gradient(#4a4540 0 0) 0 0 / 100% 3px no-repeat,
+    linear-gradient(#4a4540 0 0) 0 100% / 70% 3px no-repeat,
+    linear-gradient(#d98d2b 0 0) 0 260% / 40% 5px no-repeat;
 }

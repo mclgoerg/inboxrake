@@ -44,6 +44,7 @@ vi.mock("./api", () => ({
       top_hosts: [], mode: "local", secret_key_set: true, scanned: true,
       estimate_full: {}, job: { status: "idle" } }),
     mails: () => Promise.resolve({ items: [], total: 0 }),
+    wrapped: () => new Promise(() => {}),
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
@@ -165,7 +166,8 @@ test("Triage ignores keys meant for a dialog opened over it", async () => {
   window.location.hash = "#/triage";
   mount();
   await screen.findByText("Card 1 of 3");
-  fireEvent.click(within(await side()).getByRole("button", { name: "Settings" }));
+  fireEvent.click(within(await side()).getByRole("button",
+    { name: "Your year in mail" }));
   await screen.findByRole("dialog");
   fireEvent.keyDown(document.body, { key: "ArrowRight" });
   fireEvent.keyDown(document.body, { key: "ArrowLeft" });

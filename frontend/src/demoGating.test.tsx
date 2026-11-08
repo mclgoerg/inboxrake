@@ -16,7 +16,8 @@ vi.mock("./api", () => ({
   fmtUsd: (n: number) => `$${n.toFixed(2)}`,
 }));
 
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsPage } from "./components/SettingsPage";
+import type { SettingsSection } from "./nav";
 import { Wizard } from "./components/Wizard";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { setDemo } from "./demoMode";
@@ -46,21 +47,29 @@ const cfg = {
 
 afterEach(() => { cleanup(); setDemo(false); setLang("en"); });
 
-const settings = () => render(<ToastProvider><DialogProvider>
-  <SettingsModal cfg={cfg} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />
-</DialogProvider></ToastProvider>);
+/** One section of the page (null = the root list), as the route would open it. */
+const settingsWith = (c: Config, section: SettingsSection | null = "account") =>
+  render(<ToastProvider><DialogProvider>
+    <SettingsPage cfg={c} account="default" section={section}
+      onSection={() => {}} onClose={() => {}} onSaved={() => {}}
+      onAccountsChanged={() => {}} />
+  </DialogProvider></ToastProvider>);
+const settings = (section: SettingsSection | null = "account") =>
+  settingsWith(cfg, section);
 const HINT = "Not available in the demo.";
 const btn = (name: string) =>
   screen.getByRole("button", { name }) as HTMLButtonElement;
 
 test("settings: add account, digest and AI key are disabled with the hint", () => {
   setDemo(true);
-  settings();
+  settings(null);
   expect(btn("Add account").disabled).toBe(true);
+  cleanup();
+  settings("digest");
   expect(btn("Send test digest").disabled).toBe(true);
   expect(screen.getAllByText(HINT).length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  cleanup();
+  settings("ai");
   expect(screen.getByLabelText("API key").matches(":disabled"))
     .toBe(true);
   expect(screen.getByLabelText("Model").matches(":disabled"))
@@ -70,17 +79,15 @@ test("settings: add account, digest and AI key are disabled with the hint", () =
 
 test("settings: shared AI key and SSO login are disabled in the demo", () => {
   setDemo(true);
-  settings();
-  fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+  settings("signin");
   const sso = screen.getByRole("option", { name: /SSO/ }) as HTMLOptionElement;
   expect(sso.disabled).toBe(true);
   expect(sso.textContent).toContain(HINT);
-  expect(screen.getByRole("checkbox", { name: "Share this key with all users" })
+  expect(screen.getByRole("switch", { name: "Share this key with all users" })
     .matches(":disabled")).toBe(true);
   cleanup();
   setDemo(false);
-  settings();
-  fireEvent.click(screen.getByRole("tab", { name: /Server/ }));
+  settings("signin");
   expect((screen.getByRole("option", { name: /SSO/ }) as HTMLOptionElement)
     .disabled).toBe(false);
   expect(document.querySelector("fieldset")).toBeNull();
@@ -89,27 +96,34 @@ test("settings: shared AI key and SSO login are disabled in the demo", () => {
 test("settings: the hint is translated", () => {
   setDemo(true);
   setLang("de");
-  settings();
+  settings("digest");
   expect(screen.getAllByText("In der Demo nicht verfügbar.").length)
     .toBeGreaterThan(0);
 });
 
+// useId() differs per mount: the markup is compared without those ids.
+const html = (r: { container: HTMLElement }) =>
+  r.container.innerHTML.replace(/_r_\w+_/g, "_r_");
+
 test("settings: identical render when the demo flag is off", () => {
-  const off = settings().container.innerHTML;
+  const off = html(settings("digest"));
   // no wrapper elements of any kind are added outside the demo
   expect(document.querySelector("fieldset")).toBeNull();
   cleanup();
   setDemo(true);
-  const on = settings().container.innerHTML;
+  const on = html(settings("digest"));
   expect(on).not.toBe(off);
   cleanup();
   setDemo(false);
-  expect(settings().container.innerHTML).toBe(off);
+  expect(html(settings("digest"))).toBe(off);
   expect(document.querySelector("fieldset")).toBeNull();
   expect(screen.queryByText(HINT)).toBeNull();
-  expect(btn("Add account").disabled).toBe(false);
   expect(btn("Send test digest").disabled).toBe(false);
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  cleanup();
+  settings(null);
+  expect(btn("Add account").disabled).toBe(false);
+  cleanup();
+  settings("ai");
   expect(screen.getByLabelText("API key").matches(":disabled"))
     .toBe(false);
   expect(screen.queryByText(HINT)).toBeNull();
@@ -150,11 +164,6 @@ const oauthCfg = (over: object = {}, connected = false) => ({
   accounts: { default: { ...oauthAcct,
     oauth: { ...oauthAcct.oauth, connected }, auth: "oauth", ...over } },
 }) as unknown as Config;
-const settingsWith = (c: Config) => render(<ToastProvider><DialogProvider>
-  <SettingsModal cfg={c} account="default" onClose={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />
-</DialogProvider></ToastProvider>);
-
 test("settings: OAuth connect (device and redirect) and disconnect are disabled",
   () => {
   setDemo(true);

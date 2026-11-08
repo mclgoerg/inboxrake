@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { hashOf, isTabPage, parseHash, useNav } from "./nav";
+import { hashOf, isTabPage, parseHash, parseSettingsRoute, settingsHash, useNav,
+  type Page } from "./nav";
 
 beforeEach(() => { window.location.hash = ""; });
 afterEach(() => { window.location.hash = ""; });
@@ -49,4 +50,49 @@ test("Back to an empty hash returns to the start page", () => {
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
   expect(result.current[0]).toBe("overview");
+});
+
+test("Settings routes carry a section and, for accounts, the account name", () => {
+  expect(parseHash("#/settings")).toBe("settings");
+  expect(parseHash("#/settings/ai")).toBe("settings");
+  expect(parseSettingsRoute("#/settings")).toEqual({ section: null, account: null });
+  expect(parseSettingsRoute("#/settings/ai")).toEqual({ section: "ai", account: null });
+  expect(parseSettingsRoute("#/settings/account/my%20mail"))
+    .toEqual({ section: "account", account: "my mail" });
+  // unknown sections and other pages are no section; a stray account is dropped
+  expect(parseSettingsRoute("#/settings/nope").section).toBeNull();
+  expect(parseSettingsRoute("#/senders").section).toBeNull();
+  expect(parseSettingsRoute("#/settings/ai/x").account).toBeNull();
+  expect(parseSettingsRoute("#/settings/account/%E0%A4%A").account).toBeNull();
+  expect(settingsHash()).toBe("#/settings");
+  expect(settingsHash("general")).toBe("#/settings/general");
+  expect(settingsHash("account", "my mail")).toBe("#/settings/account/my%20mail");
+  expect(settingsHash("ai", "ignored")).toBe("#/settings/ai");
+});
+
+test("a guard can keep the page when the hash leaves it (Back / Forward)", () => {
+  window.location.hash = "#/settings/ai";
+  let allow = false;
+  const asked: Page[] = [];
+  const guard = { current: (to: Page) => { asked.push(to); return allow; } };
+  const { result } = renderHook(() => useNav("overview", guard));
+  expect(result.current[0]).toBe("settings");
+  act(() => {
+    window.location.hash = "#/senders";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  expect(asked).toEqual(["senders"]);
+  expect(result.current[0]).toBe("settings");
+  // moving within the page is not leaving it
+  act(() => {
+    window.location.hash = "#/settings/general";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  expect(asked).toEqual(["senders"]);
+  allow = true;
+  act(() => {
+    window.location.hash = "#/senders";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  expect(result.current[0]).toBe("senders");
 });
