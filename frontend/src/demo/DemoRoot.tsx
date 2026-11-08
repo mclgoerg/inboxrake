@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import App from "../App";
 import { DemoBar } from "./DemoBar";
 import { DemoBoot } from "./DemoBoot";
-import { DemoTip, tipSeen } from "./DemoTip";
+import { DemoTip, markSeen, tipSeen } from "./DemoTip";
 import type { DemoRuntime } from "./runtime";
 
 /** Boot screen until the backend is up, then the demo bar, the one-time tip
@@ -16,7 +16,8 @@ export function DemoRoot({ runtime }: { runtime: DemoRuntime }) {
   }
   return (
     <>
-      <DemoBar onReset={() => runtime.start()} onTips={() => setTip(true)} />
+      <DemoBar onReset={() => runtime.start()} onTips={() => setTip(true)}
+        onAsk={() => { if (tip) { markSeen(); setTip(false); } }} />
       <DemoTip open={tip} onClose={() => setTip(false)} />
       <App />
     </>

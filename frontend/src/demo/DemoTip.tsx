@@ -10,7 +10,7 @@ const SEEN = "pmc_demo_tip";
 export const tipSeen = (): boolean => {
   try { return localStorage.getItem(SEEN) === "1"; } catch { return true; }
 };
-const markSeen = () => {
+export const markSeen = () => {
   try { localStorage.setItem(SEEN, "1"); } catch { /* private mode: shown again */ }
 };
 
@@ -59,8 +59,18 @@ export function DemoTip({ open, onClose }: {
       e.preventDefault();
       close();
     };
+    // A press outside the popover closes it (the bar's own "Things to try"
+    // is its toggle, so it is left to its click).
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest("[data-demo-tip], [data-demo-try]")) return;
+      close();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, wide]);
   if (!open) return null;

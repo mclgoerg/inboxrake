@@ -108,3 +108,40 @@ test("German tip", () => {
     .toBeTruthy();
   expect(screen.getByRole("button", { name: "Verstanden" })).toBeTruthy();
 });
+
+test("a press outside the popover closes it; one inside does not", () => {
+  ready();
+  const tip = () => screen.queryByRole("dialog", { name: "Three things to try" });
+  fireEvent.pointerDown(screen.getByText("Three things to try"));
+  expect(tip()).toBeTruthy();
+  fireEvent.pointerDown(document.body);
+  expect(tip()).toBeNull();
+  expect(localStorage.getItem(SEEN)).toBe("1");
+});
+
+test("the bar's Things to try is not an outside press (it only opens)", () => {
+  localStorage.setItem(SEEN, "1");
+  ready();
+  const btn = screen.getByRole("button", { name: "Things to try" });
+  fireEvent.pointerDown(btn);
+  fireEvent.click(btn);
+  expect(screen.getByRole("dialog", { name: "Three things to try" })).toBeTruthy();
+});
+
+test("Reset closes the tip first: never two dialogs", async () => {
+  ready();
+  fireEvent.click(screen.getByRole("button", { name: "Reset demo" }));
+  await screen.findByText("Reset the demo?");
+  expect(screen.queryByRole("dialog", { name: "Three things to try" })).toBeNull();
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+});
+
+test("on a phone the bar reopens a dismissed tip as a sheet", () => {
+  vi.stubGlobal("matchMedia", mql(false));
+  localStorage.setItem(SEEN, "1");
+  ready();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Things to try" }));
+  expect(screen.getByRole("dialog", { name: "Three things to try" })
+    .getAttribute("data-size")).toBe("sm");
+});

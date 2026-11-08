@@ -12,8 +12,10 @@ const HIT = "relative after:absolute after:-inset-1 after:content-['']";
 /** The strip above the app and its sidebar while it runs on the in-browser
  *  backend. Fixed at the top; `html[data-demo]` (index.css) moves the body and
  *  the sidebar below it (`--demo-bar-h`), so nothing sits behind it. */
-export function DemoBar({ onReset, onTips }: {
+export function DemoBar({ onReset, onTips, onAsk }: {
   onReset: () => void; onTips: () => void;
+  /** Reset is about to ask: whatever else is open closes first. */
+  onAsk: () => void;
 }) {
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -21,6 +23,7 @@ export function DemoBar({ onReset, onTips }: {
     return () => { delete root.dataset.demo; };
   }, []);
   const reset = async () => {
+    onAsk();
     if (await confirmDialog({
       title: t("demo.reset.title"), body: t("demo.reset.body"),
       confirmLabel: t("demo.reset") })) onReset();
@@ -40,17 +43,20 @@ export function DemoBar({ onReset, onTips }: {
           <span className="sm:hidden">{t("demo.bar.text_short")}</span>
         </span>
         <span className="flex-1" />
-        <button type="button" onClick={onTips}
+        {/* Icon-only on phones (the word stays for screen readers). */}
+        <button type="button" onClick={onTips} data-demo-try
           className={`${HIT} inline-flex cursor-pointer items-center gap-1.5
-            rounded-full px-1 hover:text-accenth max-sm:hidden`}>
-          <Lightbulb size={14} aria-hidden />{t("demo.bar.try")}
+            rounded-full px-1 hover:text-accenth max-sm:after:-inset-x-2.5 max-sm:after:-inset-y-4`}>
+          <Lightbulb size={14} aria-hidden />
+          <span className="max-sm:sr-only">{t("demo.bar.try")}</span>
         </button>
+        {/* Icon-only on phones, where the German word would squeeze the note. */}
         <button type="button" onClick={reset} aria-label={t("demo.reset")}
           className={`${HIT} inline-flex h-5.5 shrink-0 cursor-pointer
-            items-center gap-1.5 rounded-full px-3 ring-1 ring-inset
-            ring-accent hover:bg-accent-tint sm:h-6.5`}>
-          <RotateCcw size={14} aria-hidden className="max-sm:hidden" />
-          {t("demo.bar.reset")}
+            items-center gap-1.5 rounded-full px-3 max-sm:px-2 ring-1 ring-inset
+            ring-accent hover:bg-accent-tint max-sm:after:-inset-x-2 max-sm:after:-inset-y-4 sm:h-6.5`}>
+          <RotateCcw size={14} aria-hidden />
+          <span className="max-sm:sr-only">{t("demo.bar.reset")}</span>
         </button>
         <a href={INSTALL_URL} target="_blank" rel="noopener noreferrer"
           className={`${HIT} inline-flex shrink-0 items-center gap-1 text-body

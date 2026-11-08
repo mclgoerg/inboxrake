@@ -2977,7 +2977,7 @@ export const DE: Record<string, string> = {
   "demo.retry": "Erneut versuchen",
   "demo.bar.pill": "DEMO",
   "demo.bar.text": "Erfundene Postfächer - deine Änderungen bleiben in diesem Tab.",
-  "demo.bar.text_short": "Änderungen bleiben in diesem Tab",
+  "demo.bar.text_short": "Nur in diesem Tab",
   "demo.bar.try": "Zum Ausprobieren",
   "demo.bar.reset": "Zurücksetzen",
   "demo.bar.install": "Selbst installieren",
