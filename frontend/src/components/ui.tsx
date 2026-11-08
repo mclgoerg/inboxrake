@@ -113,7 +113,8 @@ function usePopover() {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const n = e.target as Node;
+      if (!ref.current?.contains(n) && !pop.current?.contains(n)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       // preventDefault = "used": App and Modal ignore a handled Esc.
@@ -666,7 +667,9 @@ export function SectionLabel({ children, className = "" }: {
  * of the screen (a trigger that wrapped to the start of a row on a
  * phone). Closes
  * on outside click, Escape, or after any click inside (items just run
- * their onClick). Sits BELOW modals (z-modal). */
+ * their onClick). The popover is portalled to <body> (position: fixed), so a
+ * card's `overflow` never clips it; it sits above the modal that holds its
+ * trigger. */
 /** Where a menu popover of `width` goes relative to its trigger wrapper:
  *  right-aligned unless that leaves the left viewport edge (or `forceLeft`),
  *  then a horizontal `shift` that keeps it 8 px inside the viewport on both
@@ -715,24 +718,42 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
   | { variant?: ButtonVariant; icon?: false; label?: string }
 )) {
   const [open, setOpen] = useState(false);
-  const [alignLeft, setAlignLeft] = useState(false);
-  const [shift, setShift] = useState(0);
-  // Popover taller than the room between trigger and viewport edge: clamp.
-  const [maxH, setMaxH] = useState<number | undefined>();
+  // Fixed viewport position of the portalled popover (null until measured).
+  const [place, setPlace] = useState<{ top?: number; bottom?: number;
+    left: number; maxH?: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
-  // Measure right-aligned first, then flip if it overflows the viewport.
-  useLayoutEffect(() => {
-    if (!open) { setAlignLeft(false); setShift(0); setMaxH(undefined); return; }
-    const r = pop.current?.getBoundingClientRect();
+  // The popover lives in <body>, so no ancestor `overflow` (a rounded card)
+  // can clip it. Measure, then place it against the viewport: right-aligned
+  // unless that leaves the screen, 8 px clamp, flipped up/down to where the
+  // room is, height capped to that room.
+  const position = () => {
+    const el = pop.current;
     const wr = ref.current?.getBoundingClientRect();
-    if (!r || !wr || r.width <= 0) return;
-    const p = placeMenu(wr, r.width, window.innerWidth, align === "left");
-    setAlignLeft(p.left);
-    setShift(p.shift);
+    if (!el || !wr) return;
+    const w = el.offsetWidth;
+    const h = el.scrollHeight;
+    const p = placeMenu(wr, w, window.innerWidth, align === "left");
+    const left = (p.left ? wr.left : wr.right - w) + p.shift;
     // 8 px from the viewport edge, 4 px (mt-1) / 8 px (mb-2) off the trigger.
-    const room = up ? wr.top - 16 : window.innerHeight - wr.bottom - 12;
-    setMaxH(r.height > room ? Math.max(room, 96) : undefined);
+    const roomUp = wr.top - 16, roomDown = window.innerHeight - wr.bottom - 12;
+    const goUp = up ? !(h > roomUp && roomDown > roomUp)
+      : h > roomDown && roomUp > roomDown;
+    const room = goUp ? roomUp : roomDown;
+    const maxH = h > room ? Math.max(room, 96) : undefined;
+    setPlace(goUp
+      ? { bottom: window.innerHeight - wr.top + 8, left, maxH }
+      : { top: wr.bottom + 4, left, maxH });
+  };
+  useLayoutEffect(() => {
+    if (!open) { setPlace(null); return; }
+    position();
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
+    return () => {
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
+    };
   }, [open]);
   const focusTrigger = () =>
     ref.current?.querySelector<HTMLElement>(":scope > button")?.focus();
@@ -743,11 +764,15 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
     if (back) focusTrigger();
   };
   // Keyboard users land on the first item.
-  useEffect(() => { if (open) items()[0]?.focus(); }, [open]);
+  // (preventScroll: opening a menu never moves the page.)
+  useEffect(() => {
+    if (open) items()[0]?.focus({ preventScroll: true });
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const n = e.target as Node;
+      if (!ref.current?.contains(n) && !pop.current?.contains(n)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       // Stop it here (document, before window): a Modal around the menu
@@ -818,19 +843,18 @@ export function Menu({ trigger, label, variant, icon, up, triggerClass,
           {trigger}
         </button>
       )}
-      {open && (
+      {open && createPortal(
         <div ref={pop} role="menu" onKeyDown={onMenuKey}
-          style={{ ...(shift ? { transform: `translateX(${shift}px)` } : {}),
-            ...(maxH ? { maxHeight: maxH } : {}) }}
-          className={`absolute z-(--z-dropdown) min-w-52
-            ${maxH || scroll ? "overflow-y-auto" : ""} ${scroll ? "max-h-96" : ""}
-            ${up ? "bottom-full mb-2" : "top-full mt-1"}
+          style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
+            left: place?.left ?? 0, visibility: place ? "visible" : "hidden",
+            ...(place?.maxH ? { maxHeight: place.maxH } : {}) }}
+          className={`z-(--z-modal) min-w-52
+            ${place?.maxH || scroll ? "overflow-y-auto" : ""} ${scroll ? "max-h-96" : ""}
             max-w-[calc(100vw-1rem)] rounded-card border border-line bg-panel
-            p-1 shadow-popover ${alignLeft || align === "left" ? "left-0" : "right-0"}`}
+            p-1 shadow-popover`}
           onClick={() => close()}>
           {children}
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }

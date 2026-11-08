@@ -272,10 +272,9 @@ test("phone: the last saved filter's ... menu is not clipped, so Delete is "
   const more = within(sheet).getByRole("button", { name: "More for “Old news”" });
   fireEvent.click(more);
   const del = screen.getByRole("menuitem", { name: "Delete" });
-  // no ancestor up to the sheet clips overflow (the menu opens upwards)
-  for (let el: HTMLElement | null = del; el && el !== sheet; el = el.parentElement)
-    expect(el.className).not.toContain("overflow-clip");
-  expect(del.closest("[role=menu]")!.className).toContain("bottom-full");
+  // portalled out of the sheet: no ancestor can clip it
+  expect(sheet.contains(del)).toBe(false);
+  expect(del.closest("[role=menu]")!.parentElement).toBe(document.body);
   fireEvent.click(del);
   expect(p.onDelete).toHaveBeenCalledWith(saved[0]);
 });

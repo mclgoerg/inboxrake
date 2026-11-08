@@ -35,9 +35,17 @@ test("align=left pins the popover to the trigger's left edge", () => {
     triggerClass="w-full" trigger={<>👤</>}>
     <MenuItem>Do it</MenuItem>
   </Menu>);
+  const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+  rect.mockReturnValue({ left: 120, right: 320, width: 200, height: 80,
+    top: 0, bottom: 80, x: 120, y: 0, toJSON: () => ({}) });
+  const ow = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")
+    .mockReturnValue(100);
   fireEvent.click(screen.getByLabelText("Profile"));
-  expect(screen.getByRole("menu").className).toContain("left-0");
+  // left edge of the trigger, not right-aligned (320 - 100)
+  expect(screen.getByRole("menu").style.left).toBe("120px");
   expect(screen.getByLabelText("Profile").className).toContain("w-full");
+  rect.mockRestore();
+  ow.mockRestore();
 });
 
 test("menu opens, runs the action and closes again", () => {
@@ -93,23 +101,28 @@ test("menu flips to left-aligned when right-aligned would run off the " +
   const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
   rect.mockReturnValue({ left: -60, right: 140, width: 200, height: 80,
     top: 0, bottom: 80, x: -60, y: 0, toJSON: () => ({}) });
+  const ow = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")
+    .mockReturnValue(200);
   renderMenu(() => {});
   fireEvent.click(screen.getByLabelText("Profile"));
-  const popover = screen.getByText("Do it").closest("div.absolute")!;
-  expect(popover.className).toContain("left-0");
-  expect(popover.className).not.toContain("right-0");
+  // would start at x=-60: left-aligned and clamped 8 px inside the viewport
+  expect(screen.getByRole("menu").style.left).toBe("8px");
   rect.mockRestore();
+  ow.mockRestore();
 });
 
 test("menu stays right-aligned when it fits", () => {
   const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
   rect.mockReturnValue({ left: 120, right: 320, width: 200, height: 80,
     top: 0, bottom: 80, x: 120, y: 0, toJSON: () => ({}) });
+  const ow = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")
+    .mockReturnValue(200);
   renderMenu(() => {});
   fireEvent.click(screen.getByLabelText("Profile"));
-  const popover = screen.getByText("Do it").closest("div.absolute")!;
-  expect(popover.className).toContain("right-0");
+  // right edge of the menu = right edge of the trigger (320 - 200)
+  expect(screen.getByRole("menu").style.left).toBe("120px");
   rect.mockRestore();
+  ow.mockRestore();
 });
 
 // jsdom can't hit-test, so pin the stacking layers at class level: the
@@ -117,8 +130,9 @@ test("menu stays right-aligned when it fits", () => {
 test("menu popover uses the dropdown layer", () => {
   renderMenu(vi.fn());
   fireEvent.click(screen.getByLabelText("Profile"));
-  const pop = screen.getByText("Do it").closest("div.absolute")!;
-  expect(pop.className).toContain("z-(--z-dropdown)");
+  const pop = screen.getByRole("menu");
+  // portalled and above the modal that may hold its trigger
+  expect(pop.className).toContain("z-(--z-modal)");
 });
 
 test("z-index scale is strictly ordered sticky < bulkbar < dropdown < modal < toast", async () => {
@@ -1163,13 +1177,17 @@ test("BarButton is icon-only on phones: the label stays as accessible name",
 });
 
 test("Menu `up` opens above its trigger", () => {
+  const rect = vi.spyOn(Element.prototype, "getBoundingClientRect")
+    .mockReturnValue({ left: 10, right: 50, width: 40, top: 500, bottom: 540,
+      height: 40, x: 10, y: 500, toJSON: () => ({}) });
   render(<Menu variant="secondary" up trigger="More"><MenuItem>One</MenuItem></Menu>);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  expect(screen.getByRole("menu").className).toContain("bottom-full");
+  expect(screen.getByRole("menu").style.bottom).not.toBe("");
   cleanup();
   render(<Menu variant="secondary" trigger="More"><MenuItem>One</MenuItem></Menu>);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  expect(screen.getByRole("menu").className).toContain("top-full");
+  expect(screen.getByRole("menu").style.top).not.toBe("");
+  rect.mockRestore();
 });
 
 test("BulkBar moves focus into a swapped-in picker and back on close", () => {
@@ -1437,13 +1455,12 @@ test("placeMenu keeps a popover inside the viewport on both sides", () => {
 
 test("a Menu that overflows after flipping is shifted into the viewport", () => {
   const rect = (l: number, w: number) => ({ left: l, right: l + w, width: w,
-    top: 0, bottom: 0, height: 0, x: l, y: 0, toJSON: () => ({}) }) as DOMRect;
+    top: 100, bottom: 140, height: 40, x: l, y: 100, toJSON: () => ({}) }) as DOMRect;
   const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(() => rect(260, 40));
+  const ow = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")
     .mockImplementation(function (this: HTMLElement) {
-      // A 298 px popover beside a trigger ending at x=300: no room on the
-      // left, and left-aligned it would run past the 360 px viewport.
-      return this.getAttribute("role") === "menu" ? rect(2, 298)
-        : rect(260, 40);
+      return this.getAttribute("role") === "menu" ? 298 : 0;
     });
   vi.stubGlobal("innerWidth", 360);
   render(<Menu label="Filter" trigger={<>F</>}>
@@ -1451,12 +1468,69 @@ test("a Menu that overflows after flipping is shifted into the viewport", () => 
   </Menu>);
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
   const pop = screen.getByRole("menu");
-  expect(pop.className).toContain("left-0");
-  const shift = Number(/translateX\((-?[\d.]+)px\)/.exec(
-    pop.style.transform)?.[1]);
-  expect(260 + shift + 298).toBeLessThanOrEqual(352);
+  const left = parseFloat(pop.style.left);
+  expect(left).toBeGreaterThanOrEqual(8);
+  expect(left + 298).toBeLessThanOrEqual(352);
   spy.mockRestore();
+  ow.mockRestore();
   vi.unstubAllGlobals();
+});
+
+describe("Menu portal", () => {
+  test("renders outside an overflow-hidden card, keyboard + focus return",
+    () => {
+      render(<div data-testid="card" className="overflow-hidden">
+        <Menu label="Lang" trigger={<>L</>}>
+          <MenuItem>English</MenuItem><MenuItem>Deutsch</MenuItem>
+        </Menu>
+      </div>);
+      const trigger = screen.getByRole("button", { name: "Lang" });
+      fireEvent.click(trigger);
+      const pop = screen.getByRole("menu");
+      expect(screen.getByTestId("card").contains(pop)).toBe(false);
+      expect(pop.parentElement).toBe(document.body);
+      expect(pop.style.position).toBe("fixed");
+      expect(document.activeElement).toBe(
+        screen.getByRole("menuitem", { name: "English" }));
+      fireEvent.keyDown(screen.getByRole("menuitem", { name: "English" }),
+        { key: "ArrowDown" });
+      expect(document.activeElement).toBe(
+        screen.getByRole("menuitem", { name: "Deutsch" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+  test("a click inside the portalled popover is not an outside click", () => {
+    const pick = vi.fn();
+    render(<Menu label="Lang" trigger={<>L</>}>
+      <MenuItem onClick={pick}>Deutsch</MenuItem></Menu>);
+    fireEvent.click(screen.getByRole("button", { name: "Lang" }));
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Deutsch" }));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deutsch" }));
+    expect(pick).toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Lang" }));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  test("`up` menus anchor to the trigger's top edge", () => {
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ left: 10, right: 50, width: 40, top: 700,
+        bottom: 740, height: 40, x: 10, y: 700, toJSON: () => ({}) }) as DOMRect);
+    const ow = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(200);
+    render(<Menu up label="More" trigger={<>M</>}>
+      <MenuItem>A</MenuItem></Menu>);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const pop = screen.getByRole("menu");
+    expect(pop.style.bottom).not.toBe("");
+    expect(pop.style.top).toBe("");
+    spy.mockRestore();
+    ow.mockRestore();
+  });
 });
 
 describe("PopupSelect", () => {
