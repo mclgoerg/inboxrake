@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
-/* V8: below 1024 px every overlay owns one history entry, so Back closes the
-   top-most one and nothing is left behind when it closes another way. jsdom
+/* V8: every overlay (modal, sheet, dialog, in-panel reader) owns one history
+   entry, so Back closes the top-most one and nothing is left behind when it
+   closes another way; pages (tool pages, the split pane) own none. jsdom
    runs history traversals as tasks, so each Back is awaited with `settle()`. */
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { afterBackSettles, backStackBusy, resetBackStack } from "./backStack";
-import { Modal, PageSlot, useBackLayer } from "./components/ui";
+import { afterBackSettles, backStackBusy, disposeBackStack, resetBackStack } from "./backStack";
+import { Modal, PageScope, PageSlot, useBackLayer } from "./components/ui";
 
 let wide = false;
 let pushes: ReturnType<typeof vi.spyOn>;
@@ -177,13 +178,68 @@ test("a close that refuses (a discard prompt) keeps the modal and gets its entry
   expect(onLayer()).toBe(false);
 });
 
-test("from 1024 px nothing changes: no entry, Back does not close the dialog", async () => {
+test("an overlay gets an entry at every width: a modal at 1024-1279 and a dialog over a tool page", async () => {
   wide = true;
   render(<Host />);
   open("open a");
   await settle();
-  expect(has("Tool")).toBe(true);
+  expect(layerPushes()).toBe(1);
+  await back();
+  expect(has("Tool")).toBe(false);
+  cleanup();
+  // a tool PAGE (slot) is a route, not an overlay; a dialog over it is one
+  render(<PageSlot page parent="Clean up">
+    <Modal label="Page" full onClose={() => {}}>
+      <Modal size="sm" label="Confirm" onClose={() => {}}><p>x</p></Modal>
+    </Modal>
+  </PageSlot>);
+  await settle();
+  expect(layerPushes()).toBe(2);   // only the dialog
+});
+
+test("a reader on a page (PageScope: tool page, split pane) has no entry; in an overlay it has one", async () => {
+  function Reader() {
+    useBackLayer(true, () => {});
+    return <p>reader</p>;
+  }
+  wide = true;
+  render(<PageScope><Reader /></PageScope>);
+  await settle();
   expect(layerPushes()).toBe(0);
+  cleanup();
+  render(<Modal label="M" full onClose={() => {}}><Reader /></Modal>);
+  await settle();
+  expect(layerPushes()).toBe(2);
+});
+
+test("Forward after Back closes nothing and steps back off the dead entry", async () => {
+  render(<Host nested />);
+  open("open a");
+  await settle();
+  open("open b");
+  await settle();
+  await back();                       // the reader closes
+  expect(has("Reader")).toBe(false);
+  act(() => { window.history.forward(); });
+  await settle();
+  expect(has("Tool")).toBe(true);     // not closed by the Forward
+  expect(has("Reader")).toBe(false);  // and nothing reopened
+  expect(onLayer()).toBe(true);       // sitting on the tool's own entry again
+  await back();
+  expect(has("Tool")).toBe(false);
+  expect(onLayer()).toBe(false);      // no dead Back left
+});
+
+test("Forward after closing the only overlay leaves no dead Back", async () => {
+  render(<Host />);
+  open("open a");
+  await settle();
+  await back();
+  expect(has("Tool")).toBe(false);
+  act(() => { window.history.forward(); });
+  await settle();
+  expect(has("Tool")).toBe(false);
+  expect(onLayer()).toBe(false);
 });
 
 test("a routed tool (deep link) and a page have no entry of their own", async () => {
@@ -236,19 +292,6 @@ test("a page change waits for the pop and the overlay's entry is gone, not burie
   await back();
   expect(window.location.hash).toBe("#/overview");
 });
-
-test("an entry left over from before a reload is stepped off", async () => {
-  window.location.hash = "#/senders";
-  window.history.pushState({ irkLayer: "l-old" }, "");
-  render(<Host />);
-  open("open a");
-  await settle();
-  expect((window.history.state as Record<string, unknown>).irkLayer)
-    .not.toBe("l-old");
-  await back();
-  expect(has("Tool")).toBe(false);
-});
-
 test("an in-panel reader (useBackLayer) closes on Back; closing it itself pops the entry", async () => {
   function Panel() {
     const [reading, setReading] = useState(false);
@@ -272,4 +315,37 @@ test("an in-panel reader (useBackLayer) closes on Back; closing it itself pops t
   expect(screen.queryByText("the mail")).toBeNull();
   expect(onLayer()).toBe(false);
   expect(layerPushes()).toBe(2);
+});
+
+/** A fresh copy of the module, as after a reload: history kept, memory gone. */
+async function reloaded() {
+  disposeBackStack();            // this copy is "gone with the old page"
+  vi.resetModules();
+  return await import("./backStack");
+}
+
+test("reload: leftover layer entries are stepped off until none is current", async () => {
+  window.location.hash = "#/senders";
+  window.history.pushState({ irkLayer: "x1.1" }, "");
+  window.history.pushState({ irkLayer: "x1.2" }, "");
+  await reloaded();
+  await settle();
+  expect(onLayer()).toBe(false);
+  expect(window.location.hash).toBe("#/senders");
+});
+
+test("reload: a new layer never matches an old entry, so its first Back works", async () => {
+  window.location.hash = "#/senders";
+  window.history.pushState({ irkLayer: "l1" }, "");   // what the old load called its first
+  const fresh = await reloaded();
+  await settle();
+  const close = vi.fn();
+  const off = fresh.registerBackLayer(close);
+  await settle(); await new Promise((r) => setTimeout(r, 20));
+  expect(onLayer()).toBe(true);
+  act(() => { window.history.back(); });
+  await new Promise((r) => setTimeout(r, 40));
+  expect(close).toHaveBeenCalledTimes(1);
+  off();
+  fresh.disposeBackStack();
 });

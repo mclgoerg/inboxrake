@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { useSidebar } from "./components/ui";
+import { useMediaQuery } from "./components/ui";
 import { afterBackSettles } from "./backStack";
-
-export { SIDEBAR_QUERY, SIDEBAR_W, useSidebar } from "./components/ui";
 
 /** Tools that open as a page beside the sidebar (from 1024 px; below it they
  *  stay modals). */
@@ -254,3 +252,10 @@ export function useScrollPerPage(routeKey: string): void {
     return stop;
   }, [routeKey]);
 }
+
+/** From here the sidebar is the navigation (Tailwind `lg`); below it the
+ *  top bar and the bottom tab bar are. */
+export const SIDEBAR_QUERY = "(min-width: 1024px)";
+export const SIDEBAR_W = 244;
+
+export const useSidebar = () => useMediaQuery(SIDEBAR_QUERY);

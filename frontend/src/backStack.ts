@@ -19,6 +19,10 @@ const MARK = "irkLayer";
 
 interface Layer { key: string; close: () => void }
 
+// Keys are unique per page load: the entries of an earlier load (a reload
+// keeps the history) must never match a layer of this one.
+const LOAD = Math.random().toString(36).slice(2, 8);
+
 const layers: Layer[] = [];
 let entries: string[] = [];
 let seq = 0;
@@ -28,7 +32,6 @@ let watchdog: ReturnType<typeof setTimeout> | undefined;
 let echoTimer: ReturnType<typeof setTimeout> | undefined;
 let queued: (() => void)[] = [];
 let scheduled = false;
-let listening = false;
 
 const stateKey = (s: unknown): string | undefined =>
   (s as Record<string, string> | null)?.[MARK];
@@ -79,6 +82,16 @@ function schedule(): void {
   queueMicrotask(() => { scheduled = false; reconcile(); });
 }
 
+/** Steps back off an entry that belongs to no open layer (Forward onto a
+ *  layer that already closed, a leftover of an earlier page load): the stack
+ *  and the history agree again, and nothing is closed or re-run. */
+function stepOff(): void {
+  busy = true;
+  watchdog = setTimeout(() => { watchdog = undefined; busy = false; reconcile(); },
+    WATCHDOG_MS);
+  window.history.back();
+}
+
 function onPop(e: PopStateEvent): void {
   clearTimeout(watchdog);
   watchdog = undefined;
@@ -87,6 +100,7 @@ function onPop(e: PopStateEvent): void {
   clearTimeout(echoTimer);
   awaiting = false;
   const landed = stateKey(e.state);
+  if (landed && !entries.includes(landed)) { stepOff(); return; }
   const depth = landed ? entries.indexOf(landed) + 1 : 0;
   const gone = entries.slice(depth).reverse();
   entries = entries.slice(0, depth);
@@ -101,24 +115,10 @@ function onPop(e: PopStateEvent): void {
   else reconcile();
 }
 
-/** An entry left over from before a reload belongs to no layer: step off it. */
-function dropStale(): void {
-  if (stateKey(window.history.state) && !entries.length) {
-    busy = true;
-    watchdog = setTimeout(() => { busy = false; reconcile(); }, WATCHDOG_MS);
-    window.history.back();
-  }
-}
-
 /** Opens a layer: one history entry until the returned function is called.
  *  `close` is what Back does (the owner's own close path). */
 export function registerBackLayer(close: () => void): () => void {
-  if (!listening) {
-    listening = true;
-    window.addEventListener("popstate", onPop);
-    dropStale();
-  }
-  const layer: Layer = { key: `l${++seq}`, close };
+  const layer: Layer = { key: `${LOAD}.${++seq}`, close };
   layers.push(layer);
   schedule();
   return () => {
@@ -166,6 +166,11 @@ export function resetBackStack(): void {
   watchdog = undefined;
 }
 
+/** Stops listening (tests that load a second copy of the module). */
+export function disposeBackStack(): void {
+  window.removeEventListener("popstate", onPop);
+}
+
 /** True while a pop of ours is on its way (tests await it). */
 export const backStackBusy = (): boolean => busy || awaiting;
 
@@ -178,4 +183,11 @@ export function useLayer(active: boolean, close: () => void): void {
     if (!active) return;
     return registerBackLayer(() => latest.current());
   }, [active]);
+}
+
+// From the first load: leftovers of an earlier load (the history survives a
+// reload, our layers do not) are stepped off one by one until none is current.
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", onPop);
+  if (stateKey(window.history.state)) stepOff();
 }

@@ -597,7 +597,7 @@ type Presentation = "modal" | "slot" | "page" | "tool" | "screen";
 const PresentationContext = createContext<Presentation>("modal");
 /** Name of the page a full-screen tool goes back to (set by `PageSlot`). */
 const ScreenParentContext = createContext<string | null>(null);
-/** Whether the next top-level `Modal` owns a history entry (`useBackLayer`):
+/** Whether the next top-level `Modal` owns a history entry (`useLayer`):
  *  false for a tool that IS a route below 1024 px (a deep link, a resize) -
  *  its own route entry is what Back leaves. Reset to true inside every Modal,
  *  so dialogs and readers opened from it stay layers. */
@@ -1517,9 +1517,9 @@ export function Modal({ children, onClose, full = false, size, label,
   children: ReactNode; onClose: () => void; full?: boolean;
   size?: "sm" | "md" | "lg"; label?: string;
   labelledBy?: string; describedBy?: string;
-  /** Below 1024 px the open modal owns a history entry, so Back closes it
-   *  (`useBackLayer`). False for one that is not opened by the user (the
-   *  first-run wizard is the whole screen). */
+  /** The open modal owns a history entry, so Back closes it (`useLayer`;
+   *  not a tool page, which is a route). False for one that is not opened by
+   *  the user (the first-run wizard is the whole screen). */
   backLayer?: boolean;
   /** A full-screen page with a back target (a tool page always is): in an
    *  installed app a drag from the left edge calls `onClose` (`useEdgeBack`). */
@@ -1545,7 +1545,7 @@ export function Modal({ children, onClose, full = false, size, label,
   closeRef.current = onClose;
   // Back closes the modal on top (a page has no overlay to close).
   const entry = useContext(BackEntryContext);
-  useBackLayer(!slot && backLayer && entry, () => closeRef.current());
+  useLayer(!slot && backLayer && entry, () => closeRef.current());
   // Edge swipe back, only for the modal on top (a confirm over it wins).
   useEdgeBack(dialog, () => closeRef.current(),
     !slot && sz !== "sm" && (tool || edgeBack),
@@ -1662,7 +1662,9 @@ export function Modal({ children, onClose, full = false, size, label,
           <PresentationContext.Provider
             value={slot ? "page" : tool ? "screen" : "modal"}>
             <BackEntryContext.Provider value={true}>
-              {children}
+              <PageScopeContext.Provider value={slot}>
+                {children}
+              </PageScopeContext.Provider>
             </BackEntryContext.Provider>
           </PresentationContext.Provider>
         </div>
@@ -1833,21 +1835,26 @@ export function useMediaQuery(query: string): boolean {
   return match;
 }
 
-/** From here the sidebar is the navigation (Tailwind `lg`); below it the
- *  top bar and the bottom tab bar are. */
-export const SIDEBAR_QUERY = "(min-width: 1024px)";
-export const SIDEBAR_W = 244;
+/** True for content that sits on a page (a tool page, the split pane), false
+ *  inside an overlay (every `Modal`; its children reset it). */
+const PageScopeContext = createContext(false);
 
-export const useSidebar = () => useMediaQuery(SIDEBAR_QUERY);
+/** Marks its content as part of a page: readers inside it are not overlays,
+ *  so they own no history entry (`useBackLayer`). */
+export function PageScope({ children }: { children: ReactNode }) {
+  return <PageScopeContext.Provider value={true}>
+    {children}</PageScopeContext.Provider>;
+}
 
-/** An overlay that Back closes (V8): below 1024 px, while `active`, it owns
- *  one history entry, so browser Back, Safari's back swipe, Android's system
- *  Back and the installed app's edge swipe call `close` and land on the page
- *  underneath; closing it any other way pops the entry again. From 1024 px
- *  (pages and the sidebar) nothing changes. See `backStack.ts`. */
+/** An in-panel reader (a mail, a thread) that Back closes (V8): while
+ *  `active` inside an overlay it owns one history entry, so browser Back,
+ *  Safari's back swipe, Android's system Back and the installed app's edge
+ *  swipe call `close` and land on what is underneath; closing it any other way
+ *  pops the entry again. On a page (`PageScope`) nothing changes. `Modal`
+ *  does this for itself, at every width. See `backStack.ts`. */
 export function useBackLayer(active: boolean, close: () => void): void {
-  const wide = useSidebar();
-  useLayer(active && !wide, close);
+  const onPage = useContext(PageScopeContext);
+  useLayer(active && !onPage, close);
 }
 
 /** Dismissible inline notice (replaces the one-off banners). `tone="danger"`

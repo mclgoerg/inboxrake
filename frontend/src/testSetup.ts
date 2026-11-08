@@ -1,6 +1,5 @@
 import { configure } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
-import { backStackBusy, resetBackStack } from "./backStack";
 
 // findBy*/waitFor give up after 1 s by default. Mounting the whole App (the
 // first render in a file also pays the module warm-up) took longer than that
@@ -19,6 +18,8 @@ if (typeof window !== "undefined")
   window.addEventListener("popstate", (e) => {
     if (strays > 0) { strays--; e.stopImmediatePropagation(); }
   });
+// (imported only now: the module listens to popstate from its first load)
+const { backStackBusy, resetBackStack } = await import("./backStack");
 const hashTo = (hash: string) => {
   const was = window.location.href;
   window.location.hash = hash;

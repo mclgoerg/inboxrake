@@ -24,6 +24,7 @@ vi.mock("./api", () => ({
       text: "body" }),
     rules: () => Promise.resolve({ cap: 500, rules: [] }),
     scan: () => Promise.resolve({ ok: true }),
+    wrapped: () => Promise.reject(new Error("no wrapped")),
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
@@ -83,10 +84,12 @@ const baseState = (): AppState => ({
 } as unknown as AppState);
 
 Element.prototype.scrollIntoView = () => {};
+let wide = false;
 beforeEach(() => {
+  wide = false;
   // a phone: nothing matches, in particular not the 1024 px sidebar query
   vi.stubGlobal("matchMedia", (q: string) => ({
-    matches: false, media: q, addEventListener: () => {},
+    get matches() { return wide && q.includes("1024"); }, media: q, addEventListener: () => {},
     removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
   }));
 });
@@ -229,4 +232,42 @@ test("a dialog over a routed tool still takes the first Back", async () => {
   await waitFor(() => expect(screen.queryByText("Discard 1 decision?")).toBeNull());
   expect(screen.getByRole("dialog", { name: "Triage" })).toBeTruthy();
   expect(window.location.hash).toBe("#/triage");
+});
+
+test("Forward after Back (cancelling a discard prompt) neither closes the tool nor reopens the prompt", async () => {
+  await mount();
+  openTool("Clean up", /^Triage/);
+  const dlg = await screen.findByRole("dialog", { name: "Triage" });
+  await settle();
+  fireEvent.click(within(dlg).getByRole("button", { name: /Trash/ }));
+  fireEvent.click(within(dlg).getByRole("button", { name: "Back to Clean up" }));
+  await findDialog();
+  await settle();
+  await back();                                  // Back = Cancel
+  await waitFor(() => expect(screen.queryByText("Discard 1 decision?")).toBeNull());
+  act(() => { window.history.forward(); });
+  await settle();
+  expect(screen.queryByText("Discard 1 decision?")).toBeNull();
+  expect(screen.getByRole("dialog", { name: "Triage" })).toBeTruthy();
+  await back();                                  // the tool's own Back still asks
+  await findDialog();
+  await pressDialog("Discard");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Triage" })).toBeNull());
+  await settle();
+  expect(onLayer()).toBe(false);
+});
+
+test("from 1024 px a dialog over a tool page is closed by Back; the page stays", async () => {
+  wide = true;
+  await mount("#/triage");
+  await screen.findByText("Card 1 of 2");
+  fireEvent.click(within(await screen.findByRole("navigation", { name: "Main navigation" }))
+    .getByRole("button", { name: "Your year in mail" }));
+  await screen.findByRole("dialog");
+  await settle();
+  expect(onLayer()).toBe(true);
+  await back();
+  expect(dialogs()).toHaveLength(0);
+  expect(window.location.hash).toBe("#/triage");
+  expect(screen.getByText("Card 1 of 2")).toBeTruthy();
 });
