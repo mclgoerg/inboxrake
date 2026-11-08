@@ -84,6 +84,7 @@ const ERROR_CODES: Record<string, string> = {
   labels_bad_tags: "labels.err.bad_tags",
   labels_full: "labels.err.full",
   labels_unscanned: "labels.err.unscanned",
+  labels_scan_running: "labels.err.scan_running",
   labels_unknown_sender: "labels.err.unknown_sender",
   // special-folder choices (backend/mailops.py)
   role_not_candidate: "folder.err.not_candidate",

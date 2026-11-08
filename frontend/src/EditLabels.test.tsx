@@ -63,6 +63,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the sheet", () => {
+  it("is portaled to <body>, not rendered inside the pane it was opened from",
+    async () => {
+      const { container } = mount();
+      await ready();
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.body.querySelector(':scope > div [role="dialog"]'))
+        .toBeTruthy();
+    });
+
   it("shows the verdict (none picked while automatic), what the AI said, the "
     + "categories and suggestions", async () => {
     mount();

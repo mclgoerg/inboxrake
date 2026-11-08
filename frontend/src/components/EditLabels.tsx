@@ -1,5 +1,6 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api";
 import { t } from "../i18n";
 import { FILE_KINDS, filedKindName } from "../smart";
@@ -151,7 +152,9 @@ export function EditLabels({ senderKey, sender, categories, onFile, onReset,
   );
   const suggestions = (info?.suggestions ?? []).filter((s) => !tags.includes(s));
 
-  return (
+  // Portaled to <body>: the detail pane (>= 1280 px) is a side column, and a
+  // dialog inside it would dim and trap only that column.
+  return createPortal(
     <Modal size="sm" labelledBy={titleId} onClose={onClose}>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
@@ -287,6 +290,6 @@ export function EditLabels({ senderKey, sender, categories, onFile, onReset,
           {t("labels.done")}
         </Button>
       </div>
-    </Modal>
-  );
+    </Modal>,
+    document.body);
 }

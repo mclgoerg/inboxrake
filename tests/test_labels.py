@@ -249,6 +249,17 @@ def test_api_refusals_are_stable_codes(mailbox):
     assert ls.load_account(accountsmod.default_name()) == {}
 
 
+def test_api_says_so_while_a_scan_is_running(mailbox):
+    with acc().lock:
+        mailops.STATE["status"] = "scanning"
+    r = put(key=BIG, verdict="keep")
+    assert r.status_code == 409 and r.json()["detail"] == ls.SCAN_RUNNING
+    assert ls.load_account(accountsmod.default_name()) == {}
+    with acc().lock:
+        mailops.STATE["status"] = "done"
+    assert put(key=BIG, verdict="keep").status_code == 200
+
+
 def test_api_refuses_before_the_first_scan(monkeypatch):
     r = put(key=BIG, verdict="keep")
     assert r.status_code == 409 and r.json()["detail"] == ls.UNSCANNED
@@ -611,11 +622,12 @@ def test_the_ai_payload_still_carries_no_verdict_of_the_user(ai):
 
 def test_the_users_tags_never_reach_the_ai_review_payload(ai):
     """Nothing new leaves the server: the payload carries the automatic tags
-    exactly as before - on a Sender row, a Smart row and a domain row."""
+    exactly as before - on every kind of row (Sender, Smart, domain, subject,
+    thread), including rows that only MERGE the user's tags."""
     def payload_tags() -> dict[tuple[str, str], list[str]]:
         out = {}
         ai.calls.clear()
-        for grouping in ("sender", "smart", "domain"):
+        for grouping in ("sender", "smart", "domain", "subject", "thread"):
             mailops.clear_ai_marks()
             verdictstore.clear()
             aihelper._run_ai(grouping)
@@ -631,6 +643,7 @@ def test_the_users_tags_never_reach_the_ai_review_payload(ai):
     put(key=BIG, tags=["secret-tag", "another words"])
     put(key=DUO1, tags=["secret-tag"])
     assert "secret-tag" in shown()[BIG]["tags"]                # shown to you
+    assert "secret-tag" in shown("smart")[f"s:{BIG}"]["tags"]
     after = payload_tags()
     assert "secret-tag" not in str(after)
     assert "another words" not in str(after)

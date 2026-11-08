@@ -30,6 +30,8 @@ BASE_SUGGESTIONS = ("newsletter", "automated")
 
 def _sender_rec(acc, addr: str) -> dict | None:
     with acc.lock:
+        if acc.state["status"] == "scanning":
+            raise LabelError(ls.SCAN_RUNNING)    # the rows are being rebuilt
         if acc.state["status"] != "done":
             raise LabelError(ls.UNSCANNED)
         rec = acc.state["groups"]["sender"].get(addr)

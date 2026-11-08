@@ -51,6 +51,7 @@ BAD_VERDICT = "labels_bad_verdict"
 BAD_TAGS = "labels_bad_tags"
 FULL = "labels_full"
 UNSCANNED = "labels_unscanned"
+SCAN_RUNNING = "labels_scan_running"
 UNKNOWN = "labels_unknown_sender"
 
 

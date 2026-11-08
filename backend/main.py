@@ -1018,8 +1018,8 @@ def post_knowledge_remove_unused():
 # Refusals are stable codes (labelstore.*) - never a message naming a sender.
 
 def _label_refusal(exc: labelstore.LabelError) -> HTTPException:
-    return HTTPException(409 if exc.code == labelstore.UNSCANNED else 400,
-                         exc.code)
+    busy = exc.code in (labelstore.UNSCANNED, labelstore.SCAN_RUNNING)
+    return HTTPException(409 if busy else 400, exc.code)
 
 
 @app.get("/api/labels")
