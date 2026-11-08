@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* Space map through the app: Insights -> Space map -> tick -> Done lands on the
+/* Space map through the app: Insights -> Space map -> tick -> Review in Senders lands on the
  * Sender tab with exactly those senders selected; the bulk bar's Trash then
  * confirms with their counts (and Cancel leaves everything alone). */
 
@@ -123,7 +123,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-test("Done: Sender tab, exactly the non-protected senders selected, Trash "
+test("Review: Sender tab, exactly the non-protected senders selected, Trash "
   + "confirms their counts", async () => {
   const senders = Object.fromEntries([
     mk("a@big.example", 6e8, 30), mk("b@big.example", 2e8, 12),
@@ -135,13 +135,13 @@ test("Done: Sender tab, exactly the non-protected senders selected, Trash "
   await screen.findByPlaceholderText("Search or filter…");
   await waitFor(() => expect(screen.getAllByText("a@big.example").length)
     .toBeGreaterThan(0));
-  // start on another grouping: Done must bring the list back to Sender
+  // start on another grouping: Review must bring the list back to Sender
   fireEvent.click(screen.getByRole("tab", { name: "Subject" }));
   await openMapTool();
   const map = await screen.findByTestId("space-map");
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Select" }));
   fireEvent.click(within(map).getByRole("button", { name: /^big\.example/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
 
   await waitFor(() => expect(screen.queryByTestId("space-map")).toBeNull());
   expect(screen.getByRole("tab", { name: "Sender" })
@@ -156,7 +156,7 @@ test("Done: Sender tab, exactly the non-protected senders selected, Trash "
   expect(deleteGroups).not.toHaveBeenCalled();
 });
 
-test("Done replaces a selection made in another tab", async () => {
+test("Review replaces a selection made in another tab", async () => {
   await boot();
   fireEvent.click(screen.getByRole("tab", { name: "Subject" }));
   fireEvent.click(screen.getByRole("tab", { name: "Sender" }));
@@ -164,28 +164,28 @@ test("Done replaces a selection made in another tab", async () => {
   fireEvent.click((await screen.findAllByRole("checkbox"))[1]);
   const map = await openMap();
   tickDomain(map, /^other\.example/);
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
   await waitFor(() => expect(screen.getByText(/^1 group · 99 mails · 858\.3 MB$/)).toBeTruthy());
 });
 
-test("Done clears an active filter and says so", async () => {
+test("Review clears an active filter and says so", async () => {
   await boot();
   fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
     { target: { value: "big" } });
   const map = await openMap();
   tickDomain(map, /^other\.example/);
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
   expect(await screen.findByText("Filter cleared to show your selection."))
     .toBeTruthy();
   expect((screen.getByPlaceholderText("Search or filter…") as HTMLInputElement)
     .value).toBe("");
 });
 
-test("Done without a filter shows no such notice", async () => {
+test("Review without a filter shows no such notice", async () => {
   await boot();
   const map = await openMap();
   tickDomain(map, /^other\.example/);
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
   await waitFor(() => expect(screen.queryByTestId("space-map")).toBeNull());
   expect(screen.queryByText("Filter cleared to show your selection.")).toBeNull();
 });

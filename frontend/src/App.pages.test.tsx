@@ -321,7 +321,7 @@ test("Space map -> select senders lands on Senders with the selection",
   const map = await screen.findByTestId("space-map");
   fireEvent.click(screen.getByRole("button", { name: "Select" }));
   fireEvent.click(within(map).getAllByRole("button")[0]);
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
   await waitFor(() => expect(window.location.hash).toBe("#/senders"));
   expect(screen.queryByTestId("space-map")).toBeNull();
   expect(await screen.findByRole("region", { name: "Selection actions" }))

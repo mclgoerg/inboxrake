@@ -2320,7 +2320,8 @@ export default function App() {
     {toolShown("space") && state && (
       <SpaceMapPanel key={account} groups={state.groups.sender}
         onClose={() => closeTool(() => setSpaceOpen(false))}
-        onDone={selectSenders} />
+        onDone={selectSenders}
+        onShow={(query) => { setSpaceOpen(false); openSendersFiltered(query); }} />
     )}
     {toolShown("triage") && state && (
       <TriagePanel key={account} groups={groups} grouping={mode} onApply={applyTriage}
