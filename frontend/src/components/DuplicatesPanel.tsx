@@ -69,6 +69,17 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
 
   const sets = lists?.identical ?? [];
 
+  // New lists from the server: a ticked mail that is no longer listed (moved,
+  // hidden, a set that changed) drops out of the "Review each" selection.
+  const applyLists = (l: Lists) => {
+    setLists(l);
+    const listed = new Set<string>();
+    KINDS.forEach((k) => l[k].forEach((s) => s.mails.forEach((m) =>
+      listed.add(mailKey(m)))));
+    setSel((prev) => prev.size === 0 || [...prev].every((k) => listed.has(k))
+      ? prev : new Set([...prev].filter((k) => listed.has(k))));
+  };
+
   useEffect(() => {
     if (!working) return;
     let alive = true;
@@ -83,7 +94,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
         }
         const next = await loadAll();
         if (!alive) return;
-        setLists(next);
+        applyLists(next);
         setSel(new Set());
         setNote(state.delete.error ? t("err.generic", { msg: state.delete.error }) : "");
         setWorking(false);
@@ -101,7 +112,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   useEffect(() => {
     let alive = true;
     loadAll()
-      .then((l) => alive && setLists(l))
+      .then((l) => alive && applyLists(l))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => { alive = false; };
   }, []);
@@ -111,7 +122,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   useEffect(() => {
     if (firstKey.current) { firstKey.current = false; return; }
     let alive = true;
-    loadAll().then((l) => alive && setLists(l)).catch(() => {});
+    loadAll().then((l) => alive && applyLists(l)).catch(() => {});
     return () => { alive = false; };
   }, [reloadKey]);
 
@@ -163,11 +174,13 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
 
   const trashSelected = async () => {
     if (!lists || sel.size === 0 || working) return;
-    if (!await confirmTrashMails(sel.size)) return;
+    // exactly what is listed AND ticked: that is what the confirm counts
     const items: [string, number][] = [];
     KINDS.forEach((k) => lists[k].forEach((s) => s.mails.forEach((m) => {
       if (sel.has(mailKey(m))) items.push([m.folder, m.uid]);
     })));
+    if (items.length === 0) return;
+    if (!await confirmTrashMails(items.length)) return;
     await trashItems(items);
   };
 
@@ -176,12 +189,17 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   // the page updates and the confirm names the new count.
   const removeCopies = async () => {
     if (working || plan.items.length === 0) return;
-    let now = plan;
+    // No fresh answer, no move: the backend does not know which copy is the
+    // newest of a set, nor which sets the user chose to keep.
+    let now: ReturnType<typeof planOf>;
     try {
       const fresh = await loadAll();
-      setLists(fresh);
+      applyLists(fresh);
       now = planOf(fresh.identical);
-    } catch { /* keep the shown plan: the backend still guards every mail */ }
+    } catch (e: any) {
+      setNote(t("err.generic", { msg: e.message ?? e }));
+      return;
+    }
     if (now.items.length === 0) { setNote(t("dups.gone")); return; }
     if (!await confirmTrashMails(now.items.length)) return;
     await trashItems(itemsOf(now.items));
@@ -196,7 +214,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   };
 
   const refresh = async () => {
-    try { setLists(await loadAll()); }
+    try { applyLists(await loadAll()); }
     catch (e: any) { setNote(t("err.generic", { msg: e.message ?? e })); }
   };
 

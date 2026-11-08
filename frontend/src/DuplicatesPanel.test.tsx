@@ -182,6 +182,39 @@ test("the selection is re-read right before the confirm and names the fresh coun
       [["Archive", 2]], "trash"));
   });
 
+test("if the re-read before the confirm fails, nothing is confirmed or moved",
+  async () => {
+    duplicates.mockResolvedValueOnce([ident()]).mockRejectedValue(new Error("offline"));
+    duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    await screen.findByText(/Error: offline/);
+    await expectNoDialog();
+    expect(deleteMessages).not.toHaveBeenCalled();
+  });
+
+test("a reload drops ticked mails that are no longer listed, and the confirm "
+  + "names what really moves", async () => {
+  duplicates.mockResolvedValueOnce([ident()]).mockResolvedValue([
+    dset("<inv@x.example>", [mk(3), mk(2, "Archive")])]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
+  deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+  const ui = (key: string) => <ToastProvider><DialogProvider>
+    <DuplicatesPanel onClose={() => {}} onDeleted={() => {}} reloadKey={key} />
+  </DialogProvider></ToastProvider>;
+  const { rerender } = render(ui("1"));
+  fireEvent.click(await screen.findByRole("button", { name: "Review each" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
+  await screen.findByRole("button", { name: "Trash selected (2)" });
+  rerender(ui("2"));
+  fireEvent.click(await screen.findByRole("button", { name: "Trash selected (1)" }));
+  const dlg = await findDialog();
+  expect(dlg.textContent).toContain("1 selected mail");
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+    [["Archive", 2]], "trash"));
+});
+
 test("when the fresh data has nothing left to remove, no confirm opens",
   async () => {
     duplicates.mockResolvedValueOnce([ident()]).mockResolvedValue([]);
