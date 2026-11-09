@@ -344,3 +344,18 @@ test("a confirm that outlives an account switch moves nothing", async () => {
   await new Promise((r) => setTimeout(r, 50));
   expect(deleteMessages).not.toHaveBeenCalled();
 });
+
+test.each(["grid", "list"])("clicking the round check selects the file once "
+  + "(%s)", async (layout) => {
+  localStorage.setItem("pmc_atts_view", layout);
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  const box = await screen.findByLabelText("Select beach.jpg");
+  // a real click lands on the check's label, which reaches the card too
+  fireEvent.click(box.closest("label")!);
+  expect(screen.getByText("1 mail · 2 MB")).toBeTruthy();
+  expect((box as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(box.closest("label")!);
+  expect(screen.queryByText("1 mail · 2 MB")).toBeNull();
+});

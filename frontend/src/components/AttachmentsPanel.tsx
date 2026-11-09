@@ -1,6 +1,6 @@
 import { Copy, Eye, File, FileArchive, FileText, Film, Image as ImageIcon,
   LayoutGrid, List, Music, Paperclip, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmtSize, mailKey } from "../api";
 import { nowMs } from "../clock";
@@ -165,12 +165,12 @@ export function AttachmentsPanel({ state, onClose, onDeleted, isStale }: {
   };
 
   const fileSel = (f: FileTile) => f.mails.every((m) => sel.has(mailKey(m)));
-  const toggle = (f: FileTile) => {
-    const next = new Set(sel);
-    const on = fileSel(f);
+  const toggle = (f: FileTile) => setSel((cur) => {
+    const next = new Set(cur);
+    const on = f.mails.every((m) => cur.has(mailKey(m)));
     for (const m of f.mails) on ? next.delete(mailKey(m)) : next.add(mailKey(m));
-    setSel(next);
-  };
+    return next;
+  });
 
   // Only mails of rendered tiles can be acted on.
   const chosen = (mails ?? []).filter((m) =>
@@ -421,6 +421,11 @@ export function AttachmentsPanel({ state, onClose, onDeleted, isStale }: {
 function FileItem({ f, list, on, onToggle }: {
   f: FileTile; list: boolean; on: boolean; onToggle: () => void;
 }) {
+  // A click on the round check reaches the card AND (through its label) the
+  // input: only the input's own change may toggle then, or it toggles twice.
+  const onCard = (e: MouseEvent<HTMLElement>) => {
+    if (!(e.target as HTMLElement).closest("label")) onToggle();
+  };
   const k = KIND[f.kind];
   const m = f.mails[0];
   const label = t("atts.select_file", { name: f.name });
@@ -435,7 +440,7 @@ function FileItem({ f, list, on, onToggle }: {
   const ext = (f.ext || "file").toUpperCase();
   if (list) {
     return (
-      <li onClick={onToggle}
+      <li onClick={onCard}
         className={`flex cursor-pointer items-center gap-3 px-3 py-2
           ${on ? "bg-accent-tint" : "hover:bg-chip"}`}>
         <Checkbox round checked={on} onChange={onToggle} aria-label={label}
@@ -455,7 +460,7 @@ function FileItem({ f, list, on, onToggle }: {
     );
   }
   return (
-    <li onClick={onToggle} title={`${subject} · ${f.name}`}
+    <li onClick={onCard} title={`${subject} · ${f.name}`}
       className={`relative cursor-pointer rounded-card border bg-panel p-2
         ${on ? "border-accent" : "border-line hover:bg-chip"}`}>
       <div className={`relative grid h-20 place-items-center rounded-control

@@ -451,7 +451,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
           actions={readerActions} backLabel={t("Duplicates")} />
       ) : (
         <>
-          {(review || note) && (
+          {(note || (review && (chosen.length > 0
+            || (active === "identical" && sets.length > 0)))) && (
             <Toolbar>
               {review && active === "identical" && sets.length > 0 && (
                 <Button variant="secondary" disabled={working}

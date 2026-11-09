@@ -769,3 +769,31 @@ test("a double click on Remove N copies opens one confirm, not two",
     // the second click queued nothing behind the first confirm
     await expectNoDialog();
   });
+
+test("a double click on Trash selected opens one confirm, not two", async () => {
+  identicalWorld();
+  deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
+  show();
+  await screen.findByText("keep · newest");
+  fireEvent.click(screen.getByRole("button", { name: "Review each" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
+  const btn = screen.getByRole("button", { name: "Trash selected (2)" });
+  fireEvent.click(btn);
+  fireEvent.click(btn);
+  await findDialog();
+  await pressDialog(/Move to Trash \(2\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledTimes(1));
+  await expectNoDialog();
+});
+
+test("review mode on a tab with nothing to tick shows no empty toolbar strip",
+  async () => {
+  possibleDuplicates.mockResolvedValue([possSet()]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
+  const { container } = show();
+  fireEvent.click(await screen.findByRole("button", { name: "Review each" }));
+  await screen.findByRole("button", { name: "Done" });
+  expect(container.ownerDocument.querySelector(".border-b.border-line.flex-wrap")).toBeNull();
+  fireEvent.click(screen.getAllByRole("checkbox", { name: /Offer/ })[0]);
+  expect(screen.getByRole("button", { name: "Trash selected (1)" })).toBeTruthy();
+});
