@@ -867,8 +867,7 @@ def connect(im: dict, account_name: str | None = None) -> imaplib.IMAP4:
             except RuntimeError as exc:
                 # the provider's refusal (raw response text) is for the log;
                 # the user is told to reconnect
-                log.warning("OAuth token refresh refused for %r: %s",
-                            account_name, exc, exc_info=exc)
+                log.warning("OAuth token refresh refused", exc_info=exc)
                 raise RuntimeError(coded(OAUTH_RECONNECT)) from exc
             if fresh is not oauth and account_name:
                 cfgmod.save_oauth(account_name, fresh)
