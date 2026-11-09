@@ -1,0 +1,7 @@
+---
+// Starlight's phone "On this page" bar, except on Features: its area chips
+// at the top of the page do that job there.
+import Default from "@astrojs/starlight/components/MobileTableOfContents.astro";
+const hide = Astro.locals.starlightRoute.entry.id === "features";
+---
+{!hide && <Default {...Astro.props}><slot /></Default>}

@@ -47,9 +47,15 @@ surfaces, system fonts, no external requests), light/dark by
 `../docs/screenshots/` (the demo captures, see the image contract in
 `scripts/screenshots.mjs`) and turned into responsive webp by `Shot.astro`.
 
-The docs theme is `src/styles/inboxrake.css` (Starlight accent = caramel,
-light + dark); `src/components/SocialIcons.astro` adds the "Try the demo"
-button to the docs header under the same `INBOXRAKE_DEMO_LIVE` switch.
+The docs theme is `src/styles/inboxrake.css`: Starlight's variables are
+mapped onto the app's tokens (`--ir-*`, caramel accent, warm surfaces, light
++ dark, system fonts). Starlight components are overridden in
+`src/components/` - `Header` (logo + version, search, Home, GitHub, theme
+switch, "Try the demo" under the same `INBOXRAKE_DEMO_LIVE` switch),
+`Sidebar` (two groups, one icon per page, the areas of Features as
+sub-items), `MobileMenuFooter`, `PageTitle` (breadcrumb), `ThemeSelect` (one
+round light/dark button); icons are inlined Lucide paths (`icons.mjs`).
+Code blocks use Expressive Code with one warm dark theme in both modes.
 
 The **Try the demo** button is a build-time switch: it is only emitted when
 `INBOXRAKE_DEMO_LIVE=1` is set for the build (off by default, so no dead
@@ -69,5 +75,16 @@ requires it to be installed for `markdown.remarkPlugins` to run.
 - Link pages as `other.md#anchor` and repository files as `../path` - the
   plugin in `plugins/docs-links.mjs` turns them into site URLs and GitHub
   links.
-- A new page also needs an entry in the `sidebar` of `astro.config.mjs`.
+- A new page also needs an entry in the `sidebar` of `astro.config.mjs` (and an
+  icon in `Sidebar.astro`).
+- GitHub alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
+  `[!CAUTION]`) render as calm cards on the site (red tint for warning and
+  caution) and natively on GitHub.
+- The first paragraph of a page is styled as its lead.
+- `features.md` is written as plain Markdown with light inline HTML that the
+  site CSS turns into cards: one `##` per area, then
+  `<div class="area">` holding the area's phone screenshot (first), then
+  each feature as `###` + `<small class="where">where in the app</small>` +
+  text, closed by `</div>`; the chips at the top are the
+  `<nav class="area-chips">` list. A new area needs an icon in `inboxrake.css`.
 - Invented `.example` data only (see CONTRIBUTING.md, "Privacy").

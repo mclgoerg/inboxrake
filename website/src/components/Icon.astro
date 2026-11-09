@@ -1,0 +1,10 @@
+---
+// Inline Lucide icon (see icons.mjs); the GitHub mark is filled, the rest are stroke icons.
+import { BODY, GITHUB_MARK } from "./icons.mjs";
+const { name, size = 16, class: cls } = Astro.props;
+---
+{name === "github" ? (
+  <svg class:list={["i", cls]} width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d={GITHUB_MARK} /></svg>
+) : (
+  <svg class:list={["i", cls]} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={BODY[name]} />
+)}
