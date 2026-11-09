@@ -183,7 +183,7 @@ test("also move to Trash: the app's trash path runs after the unsubscribe",
   // the same call every group trash makes (not forced: protected groups
   // were never offered)
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledWith("sender",
-    [KEY], "trash", "", false, null, null));
+    [KEY], "trash", "", false, null, null, [KEY]));
   expect(await screen.findByText(
     "Moved their 12 mails to Trash - you can undo it.")).toBeTruthy();
 });

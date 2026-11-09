@@ -5,7 +5,6 @@ export const DE: Record<string, string> = {
   "ferr.action_cancelled": "Die Aktion wurde abgebrochen; eingereihte Mails wurden nicht verschoben.",
   "confirm.empty_trash_protection": "Auch Mails geschützter Absender und angeheftete Mails im Papierkorb werden endgültig gelöscht.",
   "smart.first_use": "Smart fasst kleine Absender nach Unternehmen oder Art zusammen; große Absender behalten eigene Zeilen. Öffne eine Gruppe und prüfe ihre Absender vor dem Aufräumen.",
-  "demo.first_steps": "Öffne einen Absender, verschiebe seine Mails in den Papierkorb und stelle sie mit Rückgängig wieder her. Zurücksetzen beginnt mit denselben erfundenen Postfächern neu.",
   "confirm.b_space": "Das Verschieben in den Papierkorb gibt erst nach dem endgültigen Löschen Speicher auf dem Server frei.",
   "notice.rule_queued": "Regel \"{name}\": {queued} Mails eingereiht. Der Abschluss wird im Aktionsfortschritt angezeigt.",
   "ferr.protected_sender_selected": "Einige ausgewählte Mails gehören zu einem geschützten Absender. Hebe dessen Schutz in der Gruppe auf, bevor du diese Mails verschiebst.",
@@ -310,7 +309,7 @@ export const DE: Record<string, string> = {
   "tracker.sender_meta_one": "1 von {of} Mails mit Tracking",
   "tracker.n_senders": "{n} Absender",
   "tracker.n_senders_one": "1 Absender",
-  "tracker.tag_pixel": "Öffnen",
+  "tracker.tag_pixel": "Öffnungen",
   "tracker.tag_click": "Klicks",
   "tracker.pick": "Mails von {name} anzeigen",
   "tracker.nothing_found":
@@ -957,6 +956,17 @@ export const DE: Record<string, string> = {
   "fp.older_invalid": "Bitte eine ganze Zahl von Tagen von 1 bis 36500 eingeben.",
   "fp.older_btn": "Mails zählen",
   "fp.empty_junk": "Spam leeren · {n}",
+  "fp.ambiguous":
+    "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c in Frage: "
+    + "{folders} - w\u00e4hle einen aus. Bis dahin kannst du Mails "
+    + "verschieben, aber nicht endg\u00fcltig l\u00f6schen.",
+  "fp.ambiguous_both":
+    "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c ({folders}) "
+    + "und als dein Ordner \u201e{role2}\u201c ({folders2}) in Frage - w\u00e4hle "
+    + "jeweils einen aus. Bis dahin kannst du Mails verschieben, aber nicht "
+    + "endg\u00fcltig l\u00f6schen.",
+  "fp.ambiguous_choose": "Ordner w\u00e4hlen",
+  "fp.ambiguous_hint": "W\u00e4hle zuerst deinen Ordner, um endg\u00fcltig zu l\u00f6schen.",
   "fp.empty_trash": "Papierkorb leeren · {n}",
   "fp.size_in_mails": "in {n} Mails",
   "fp.size_in_mails_one": "in 1 Mail",
@@ -1194,6 +1204,7 @@ export const DE: Record<string, string> = {
   "reader.copy_failed": "Adresse konnte nicht kopiert werden",
   "reader.mail": "Mail",
   "reader.target": "Diese Mail",
+  "reader.load_failed": "Die Konversation ließ sich nicht laden - Papierkorb, Anheften und Verschieben sind aus.",
   "reader.pick_single": "Öffne genau eine Mail, um sie zu bearbeiten.",
   "reader.sent_locked": "Deine eigene gesendete Mail kann hier nicht geändert werden.",
   "reader.unsub_in_mail": "In dieser Mail: {method}",
@@ -1983,6 +1994,9 @@ export const DE: Record<string, string> = {
   "detail.block": "Blockieren",
   "folder.title": "{n} Mails verschieben",
   "folder.title_one": "1 Mail verschieben",
+  "folder.restore_title": "{n} Mails wiederherstellen",
+  "folder.restore_title_one": "1 Mail wiederherstellen",
+  "folder.restore_btn": "Wiederherstellen",
   "folder.find": "Ordner suchen",
   "folder.suggested": "Vorschläge",
   "folder.all": "Alle Ordner",
@@ -2502,7 +2516,7 @@ export const DE: Record<string, string> = {
   "know.keep_b_account":
     "Die Antworten des Kontos, das du gerade ansiehst, werden behalten; andere Konten behalten ihre, bis du sie dort behältst.",
   "know.upload_b_rest":
-    "Alles andere in einem vollständigen Backup wird hier ignoriert (der Import unter Allgemein stellt das wieder her).",
+    "Alles andere in einem vollständigen Backup wird hier ignoriert (der Import unter Einstellungen > Sicherung stellt das wieder her).",
   "know.download_tip":
     "Diese Liste als Datei herunterladen. Sie listet Absenderadressen und Notizen – halte sie privat.",
   // -- Fehler der Ordner-Funktionen (Backend-Codes, siehe api.ts ERROR_CODES)
@@ -2944,19 +2958,22 @@ export const DE: Record<string, string> = {
   "wrapped.names_shown": "Absendernamen sind im Bild sichtbar.",
   "wrapped.local_only": "Es wird auf diesem Gerät erstellt; nichts wird hochgeladen.",
   "wrapped.footer": "Inboxrake",
-  "demo.boot.title": "Deine Demo wird gerade zusammengeharkt …",
+  "demo.boot.title": "Die Demo startet",
   "demo.boot.download": "Demo-Engine wird heruntergeladen",
   "demo.boot.mb": "{done} von {total} MB",
   "demo.boot.python": "Python wird gestartet",
   "demo.boot.libraries": "Bibliotheken werden geladen",
   "demo.boot.seed": "Demo-Postfächer werden gefüllt",
-  "demo.boot.ready": "Fertig",
   "demo.boot.done": "Erledigt",
   "demo.boot.privacy":
     "Alles läuft in deinem Browser. Kein Postfach, kein Konto, nichts wird "
     + "irgendwohin gesendet.",
   "demo.boot.hint":
-    "Am besten am Computer - auf dem Handy kann das 30-50 Sekunden dauern.",
+    "Auf dem Handy kann der erste Start bis zu einer Minute dauern.",
+  "demo.boot.try": "Währenddessen zum Ausprobieren",
+  "demo.boot.try1": "Öffne einen Absender und sieh dir seine Mails an",
+  "demo.boot.try2": "Verschiebe sie in den Papierkorb - und mach es dann rückgängig",
+  "demo.boot.try3": "Entferne doppelte Kopien mit einem Tipp",
   "demo.fail.title": "Die Demo konnte nicht starten.",
   "demo.fail.unsupported":
     "Dieser Browser kann die Demo nicht ausführen (sie braucht WebAssembly "
@@ -2967,7 +2984,18 @@ export const DE: Record<string, string> = {
     + "weiter gewartet. Prüfe deine Verbindung und versuche es erneut.",
   "demo.fail.error": "Beim Starten der Demo ist etwas schiefgelaufen.",
   "demo.retry": "Erneut versuchen",
-  "demo.banner": "Demo - deine Änderungen gelten nur in diesem Tab",
+  "demo.bar.pill": "DEMO",
+  "demo.bar.text": "Erfundene Postfächer - deine Änderungen bleiben in diesem Tab.",
+  "demo.bar.text_short": "Nur in diesem Tab",
+  "demo.bar.try": "Zum Ausprobieren",
+  "demo.bar.reset": "Zurücksetzen",
+  "demo.bar.install": "Selbst installieren",
+  "demo.tip.title": "Drei Dinge zum Ausprobieren",
+  "demo.tip.1": "Öffne **ACME Store** unter Absender",
+  "demo.tip.2": "**Verschiebe seine Mails in den Papierkorb**",
+  "demo.tip.3": "Tippe auf **Rückgängig** - sie sind wieder da",
+  "demo.tip.show": "Zeig's mir",
+  "demo.tip.got": "Verstanden",
   "demo.reset": "Demo zurücksetzen",
   "demo.reset.title": "Demo zurücksetzen?",
   "demo.reset.body":

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { noteAccountSwitch } from "./accountGuard";
 import { setDemo } from "./demoMode";
 import { setLang } from "./i18n";
 import { findPicker, pickFolder } from "./folderPickerTestUtil";
@@ -671,6 +672,56 @@ describe("DetailPanel", () => {
       expect((checkbox(0) as HTMLInputElement).checked).toBe(false);
     });
 
+    describe("the AI rating loop ends with the panel / account", () => {
+      const batch = { verdicts: [["INBOX", 1, "keep"]], note: "n",
+        reviewed: 1, remaining: 5, total: 6,
+        usage: { input_tokens: 0, output_tokens: 0 } };
+      const start = async () => {
+        let release!: (v: unknown) => void;
+        aiGroup.mockReturnValueOnce(new Promise((r) => { release = r; }));
+        const view = renderPanel([mkMail(1), mkMail(2), mkMail(3)],
+          { aiEnabled: true });
+        await waitFor(() => screen.getByText("Mail 1"));
+        fireEvent.click(await screen.findByLabelText("More"));
+        fireEvent.click(screen.getByText("AI rate mails"));
+        await waitFor(() => expect(aiGroup).toHaveBeenCalledTimes(1));
+        return { view, release };
+      };
+
+      it("closing the panel sends no further batch", async () => {
+        const { view, release } = await start();
+        aiGroup.mockResolvedValue({ ...batch, reviewed: 0 });   // would end a loop that went on
+        view.unmount();
+        release(batch);
+        await new Promise((r) => setTimeout(r, 30));
+        expect(aiGroup).toHaveBeenCalledTimes(1);
+      });
+
+      it("an account switch sends no further batch to the new account",
+        async () => {
+        const { release } = await start();
+        aiGroup.mockResolvedValue({ ...batch, reviewed: 0 });   // would end a loop that went on
+        noteAccountSwitch();
+        release(batch);
+        await new Promise((r) => setTimeout(r, 30));
+        expect(aiGroup).toHaveBeenCalledTimes(1);
+      });
+
+      it("nor does the smaller retry after a failed batch", async () => {
+        let fail!: (e: Error) => void;
+        aiGroup.mockReturnValueOnce(new Promise((_, rej) => { fail = rej; }));
+        renderPanel([mkMail(1), mkMail(2)], { aiEnabled: true });
+        await waitFor(() => screen.getByText("Mail 1"));
+        fireEvent.click(await screen.findByLabelText("More"));
+        fireEvent.click(screen.getByText("AI rate mails"));
+        await waitFor(() => expect(aiGroup).toHaveBeenCalledTimes(1));
+        noteAccountSwitch();
+        fail(new Error("timeout"));
+        await new Promise((r) => setTimeout(r, 30));
+        expect(aiGroup).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it("explicitly trashing ONE pinned mail asks first and sends force",
       async () => {
       renderPanel([mkMail(1, { pinned: true }), mkMail(2)]);
@@ -801,6 +852,33 @@ describe("DetailPanel", () => {
     await screen.findByText("2 mails");
     fireEvent.click(screen.getByRole("button", { name: "Sender" }));
     await screen.findByText("Mail 1");          // back on the group's list
+  });
+
+  it("trashing another sender's card of a conversation does not close a "
+    + "one-mail group", async () => {
+    const other = mkMail(9, { subject: "Elsewhere", addr: "o@y.example" });
+    thread.mockResolvedValue({ key: "k", label: "Plan", notes: [],
+      mails: [mkMail(1), other] });
+    const onClose = vi.fn();
+    const onEmptied = vi.fn();
+    renderPanel([mkMail(1)], { grouping: "thread", onClose, onEmptied });
+    await waitFor(() => screen.getByText("Mail 1"));
+    fireEvent.click(await screen.findByLabelText("More"));
+    fireEvent.click(screen.getByText("Read conversation"));
+    await screen.findByText("2 mails");
+    // open the other sender's card alone: it is the toolbar's target
+    const cards = document.querySelectorAll(
+      "[aria-expanded]:not([aria-haspopup])");
+    fireEvent.click(cards[1]);          // the other sender's card
+    fireEvent.click(cards[0]);          // collapse the opened mail
+    fireEvent.click(await screen.findByRole("button",
+      { name: "Trash this mail" }));
+    await findDialog();
+    await pressDialog("Move to Trash (1)");
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+      [["INBOX", 9]], "trash", "", false));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onEmptied).not.toHaveBeenCalled();
   });
 
   it("a sender group has no 'Read conversation' entry", async () => {

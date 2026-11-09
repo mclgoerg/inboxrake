@@ -103,18 +103,24 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     // groups_rev: a scan finished or a delete/restore patched the index.
   }, [fetchKey, state.groups_rev, state.account]);
 
+  const latestKey = useRef(fetchKey);
+  latestKey.current = fetchKey;
   const loadMore = async () => {
+    const startKey = fetchKey;
     setMore(true);
     try {
       const r = await api.mails({ offset: mails.length, limit: PAGE,
         sort: sortK, dir, q: dq });
+      // A newer filter / sort replaced the list meanwhile: this page belongs
+      // to the old one.
+      if (latestKey.current !== startKey) { setMore(false); return; }
       const have = new Set(mails.map(mailKey));
       const next = [...mails, ...r.mails.filter((m) => !have.has(mailKey(m)))];
       loaded.current = { key: fetchKey, count: next.length };
       setMails(next);
       setTotal(r.total);
     } catch (e: any) {
-      setError(String(e.message ?? e));
+      if (latestKey.current === startKey) setError(String(e.message ?? e));
     }
     setMore(false);
   };
@@ -151,7 +157,9 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
   // `chosen` is the ticked mails (the bar) or the one mail of a row swipe:
   // both take the same pinned-mail warning, confirm and background job.
   // Resolves true when the job was queued (the reader closes after that).
-  const actOn = async (chosen: Mail[], action: string, dest = "") => {
+  // `single`: the reader's one mail - only it leaves the selection.
+  const actOn = async (chosen: Mail[], action: string, dest = "",
+      single = false) => {
     if (!chosen.length) return false;
     const verb = actionVerb(action, dest);
     const plan = await planMailAction(chosen, action, verb);
@@ -172,7 +180,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
         setMails((cur) => cur.filter((m) => !keys.has(mailKey(m))));
         setTotal((n) => Math.max(0, n - keys.size));
       }
-      setSel(new Set());
+      setSel(single ? (cur) => new Set([...cur].filter((k) => !keys.has(k)))
+        : new Set());
       // Short-lived: the result toast (App) follows when the job ends.
       toast.show(t("note.background", { verb }), { duration: 3000 });
       onChanged();
@@ -188,10 +197,18 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
 
   // The reader's toolbar: the same confirm / pinned flow as the bar, and the
   // reader closes once the mail is on its way out.
+  // (`view` is a snapshot: the pin state is read live from the list)
+  const liveOf = (m: Mail) => mails.find((x) => mailKey(x) === mailKey(m)) ?? m;
   const readerActions: ReaderActions = {
-    trash: async (m) => { if (await actOn([m], "trash")) setView(null); },
-    move: async (m, dest) => { if (await actOn([m], "move", dest)) setView(null); },
-    pin: (m, pinned) => togglePin(m, pinned),
+    trash: async (m) => {
+      if (await actOn([liveOf(m)], "trash", "", true)) setView(null);
+    },
+    move: async (m, dest) => {
+      const ok = await actOn([liveOf(m)], "move", dest, true);
+      if (ok) setView(null);
+      return ok;
+    },
+    pin: (m, pinned) => togglePin(liveOf(m), pinned),
   };
 
   const onAction = (v: string) => {

@@ -8,9 +8,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { noteAccountSwitch } from "./accountGuard";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
-import { cancelDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog }
+  from "./dialogTestUtils";
 import { popupPick } from "./toolTestUtils";
 import { setLang } from "./i18n";
 import { DE } from "./locales/de";
@@ -129,6 +131,34 @@ test("the confirm button is the danger tone and names verb + count",
       { name: "Delete permanently (2)" });
     expect(btn.className).toContain("bg-danger");
     expect(btn.textContent).toContain("permanently");
+  });
+
+test("switching account while the count loads shows no confirm and deletes nothing",
+  async () => {
+    let release!: (v: unknown) => void;
+    purgePreview.mockReturnValue(new Promise((r) => { release = r; }));
+    panel("junk");
+    await screen.findByText("win@lottery.example");
+    await pick("Select win@lottery.example");
+    await pickDelete();
+    await waitFor(() => expect(purgePreview).toHaveBeenCalled());
+    noteAccountSwitch();
+    release(preview());
+    await expectNoDialog();
+    expect(purge).not.toHaveBeenCalled();
+  });
+
+test("switching account while the confirm is open: confirming deletes nothing",
+  async () => {
+    panel("junk");
+    await screen.findByText("win@lottery.example");
+    await pick("Select win@lottery.example");
+    await pickDelete();
+    await findDialog();
+    noteAccountSwitch();
+    await pressDialog("Delete permanently (2)");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(purge).not.toHaveBeenCalled();
   });
 
 test("Cancel deletes nothing", async () => {

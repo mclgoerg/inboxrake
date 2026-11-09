@@ -1,17 +1,20 @@
-import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, Undo2,
-  UserCheck } from "lucide-react";
+import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, TriangleAlert,
+  Undo2, UserCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
-import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp }
+import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
+  UndoIdent }
   from "../types";
+import { FolderPicker } from "./FolderPicker";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { TrashCard } from "./TrashCard";
 import { Avatar, Button, Checkbox, confirmDialog, EmptyState, IconTile, Input,
-  Loading, MailRow, Modal, PanelHeader, promptDialog, PopupSelect, Segmented,
+  Loading, MailRow, Modal, Notice, PanelHeader, promptDialog, PopupSelect, Segmented,
   Spinner, Tag, Toolbar, useMediaQuery, useToast } from "./ui";
 
 type Grouping = "sender" | "mails";
@@ -32,7 +35,8 @@ const TALL = "max-sm:min-h-11 max-sm:coarse:min-h-11";
  *  the server first, confirmed with the counts, and sent back as the counted
  *  UIDVALIDITY + exact UIDs. */
 export function FoldersPanel({ state, initialRole = "trash", onClose,
-  onChanged, onEmptyTrash, onUndo, onProtect, onBlock, blockedSenders }: {
+  onChanged, onEmptyTrash, onUndo, onProtect, onBlock, blockedSenders,
+  onChooseFolder }: {
   state: AppState;
   /** The folder this page shows; follows the route when it changes. */
   initialRole?: FolderRole;
@@ -42,7 +46,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
    *  live total this panel just listed; resolves true once emptied. */
   onEmptyTrash: (listing: TrashResp) => Promise<boolean>;
   /** Undo the recorded move (the App's confirmed undo). */
-  onUndo: (entry: { ts: number; label: string; count: number }) => void;
+  onUndo: (entry: UndoIdent) => void | Promise<void>;
   /** Protect these senders (the App's one-tap protect). */
   onProtect: (addrs: string[]) => Promise<boolean>;
   /** Block one sender address (the App's confirmed Block); resolves true
@@ -50,6 +54,9 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   onBlock?: (addr: string) => Promise<boolean>;
   /** Addresses that already have a block rule (shown as "Blocked"). */
   blockedSenders?: ReadonlySet<string>;
+  /** Open the account's folder setting (where the ambiguous role is
+   *  chosen); without it the notice has no button. */
+  onChooseFolder?: (role: FolderRole) => void;
 }) {
   const toast = useToast();
   const wide = useMediaQuery("(min-width: 640px)");   // phones: own full row
@@ -69,6 +76,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(false);   // the folder picker
 
   // Only the newest request may land (switching Junk | Trash quickly).
   const req = useRef(0);
@@ -145,6 +153,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     for (const u of uids) all ? next.delete(u) : next.add(u);
     setSel(next);
   };
+  useEffect(() => { if (!sel.size) setRestoring(false); }, [sel.size]);
   const endSelect = () => { setSelecting(false); setSel(new Set()); };
 
   const dropped = (uids: Set<number>, n: number) => {
@@ -167,9 +176,22 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     setSel(new Set());
   };
 
+  // The page's toast is the result: the backend's notice of the same move
+  // (shown while the rescan runs) would otherwise stay above the app until
+  // dismissed. The "..._rescan" variants ask the user to act and stay.
+  const clearMoveNotice = () => {
+    api.clearNotice(["junk_rescued", "trash_restored"]).catch(() => {});
+  };
+
+  // The undone mails are back in this folder: the listing re-reads it
+  const undoMove = async (entry: UndoIdent) => {
+    await onUndo(entry);
+    load();
+  };
+
   const restore = async (dest: string, uids: number[] = [...sel],
-                         toRow = false) => {
-    if (!list || !dest || uids.length === 0) return;
+                         toRow = false): Promise<boolean> => {
+    if (!list || !dest || uids.length === 0) return false;
     setBusy(true);
     setNote("");
     try {
@@ -179,13 +201,17 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       if (toRow) toast.show(msg, { variant: "success" });
       else setNote(msg);
       dropped(new Set(uids), r.restored);
+      clearMoveNotice();
       onChanged();
+      setBusy(false);
+      return true;
     } catch (e: any) {
       const msg = t("err.generic", { msg: e.message ?? e });
       if (toRow) toast.show(msg, { variant: "error" });
       else setNote(msg);
     }
     setBusy(false);
+    return false;
   };
 
   // Junk -> Inbox ("Not junk", the primary action) or -> Trash. Both are
@@ -214,7 +240,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       }
       dropped(new Set(uids), r.moved);
       const undo = r.undo ? { label: t("Undo"),
-        onClick: () => onUndo(r.undo!) } : undefined;
+        onClick: () => undoMove(r.undo!) } : undefined;
       if (action === "not_junk") {
         toast.show(t("fp.not_junk_done", { n: r.moved }), {
           variant: "success", action: undo, duration: 12000,
@@ -227,6 +253,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         toast.show(t("toast.moved_trash", { n: r.moved }),
           { variant: "success", action: undo });
       }
+      clearMoveNotice();
       onChanged();
       setBusy(false);
       return true;
@@ -242,12 +269,15 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // counts -> the delete of exactly the counted UIDs. Nothing happens
   // without the confirm.
   const purge = async (select: PurgeSelect) => {
+    // The count and the confirm are about the account shown when it started.
+    const switched = accountGuard();
     setBusy(true);
     setNote("");
     try {
       const folder = role === "junk" ? t("Junk") : t("Trash");
       const c = await api.purgePreview(role, select);
       setBusy(false);
+      if (switched()) return;
       if (c.count === 0) {
         const skipped = [
           c.skipped_protected > 0
@@ -277,6 +307,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
           : "fp.purge_body_trash"),
         bullets, tone: "danger",
         confirmLabel: t("fp.purge_btn", { n: c.count }) })) return;
+      if (switched()) return;
       setBusy(true);
       // role + folder + uv + UIDs: exactly what the count read
       const r = await api.purge(c.role, c.uids, c.uv, c.folder,
@@ -288,7 +319,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         toast.show(t("fp.purge_unverified", { n: r.unverified }), {
           variant: "error", duration: 0,
           action: r.undo ? { label: t("Undo"),
-            onClick: () => onUndo(r.undo!) } : undefined });
+            onClick: () => undoMove(r.undo!) } : undefined });
       }
       if (r.deleted > 0) {
         toast.show(t(skipped ? "fp.purged_skipped" : "fp.purged",
@@ -345,6 +376,13 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   };
 
   const junk = role === "junk";
+  // Several folders could be this role (or, on Junk, the Trash a permanent
+  // delete goes through): saying so now beats failing after the click
+  const unclear = list?.ambiguous ?? [];
+  const blocked = unclear.length > 0;
+  // what the disabled delete buttons point at: a visible reason beside them
+  // (the notice above scrolls away on a phone)
+  const describedBy = blocked ? "fp-ambiguous-reason" : undefined;
   // The reader's Trash on a Junk mail: the same move (and protected-sender
   // confirm) as the row's Trash. Trash has nothing to move a mail to.
   const readerActions: ReaderActions | undefined = junk ? {
@@ -384,6 +422,27 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         <>
           <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto
             px-4 pb-4 pt-3">
+            {blocked && (
+              <Notice tone="warn" className="mb-3"
+                icon={<TriangleAlert size={16} />}>
+                <div id="fp-ambiguous">
+                  {unclear.length > 1
+                    ? t("fp.ambiguous_both", {
+                      role: t(`role.${unclear[0].role}`),
+                      folders: unclear[0].choices.join(", "),
+                      role2: t(`role.${unclear[1].role}`),
+                      folders2: unclear[1].choices.join(", ") })
+                    : t("fp.ambiguous", { role: t(`role.${unclear[0].role}`),
+                      folders: unclear[0].choices.join(", ") })}
+                </div>
+                {onChooseFolder && (
+                  <Button size="sm" variant="secondary" className="mt-2"
+                    onClick={() => onChooseFolder(role)}>
+                    {t("fp.ambiguous_choose")}
+                  </Button>
+                )}
+              </Notice>
+            )}
             {!junk && (
               <TrashCard list={list} rules={state.rules ?? []}
                 onChanged={onChanged} />
@@ -436,13 +495,13 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                 )}
                 {sel.size > 0 && !junk && (
                   <>
-                    <PopupSelect<string> disabled={busy}
+                    <Button variant="secondary" disabled={busy}
+                      className={rowBtn} aria-haspopup="dialog"
+                      onClick={() => setRestoring(true)}>
+                      {`${t("trash.restore_to")} (${sel.size})`}
+                    </Button>
+                    <PopupSelect<string> disabled={busy || blocked}
                       triggerClass={TALL}
-                      placeholder={`${t("trash.restore_to")} (${sel.size})`}
-                      onChange={(dest) => restore(dest)}
-                      options={(state.folders_raw ?? []).map((f, i) => ({
-                        value: f, label: state.folders[i] ?? f }))} />
-                    <PopupSelect<string> disabled={busy} triggerClass={TALL}
                       placeholder={t("fp.action")}
                       onChange={() => purgeSelection()}
                       options={[{ value: "delete",
@@ -463,11 +522,22 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       }}
                       options={[
                         { value: "trash", label: t("fp.to_trash") },
-                        { value: "delete", label: t("fp.delete_permanently") },
+                        { value: "delete", label: t("fp.delete_permanently"),
+                          disabled: blocked },
                       ]} />
                   </>
                 )}
               </Toolbar>
+            )}
+            {restoring && sel.size > 0 && (
+              // (Trash itself is no place to restore to)
+              <FolderPicker count={sel.size} account={state.account} restore
+                folders={(state.folders_raw ?? []).filter((f) =>
+                  f !== list?.folder)}
+                labels={(state.folders_raw ?? []).flatMap((f, i) =>
+                  f === list?.folder ? [] : [state.folders[i] ?? f])}
+                onPick={(dest) => restore(dest)}
+                onClose={() => setRestoring(false)} />
             )}
             {busy && <div className="mb-2"><Spinner /></div>}
             {note && <p className="mb-2 type-meta text-muted">{note}</p>}
@@ -545,17 +615,26 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             <div className="grid grid-cols-2 gap-2 border-t border-line px-4
               py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
               sm:flex sm:justify-end">
-              <Button variant="secondary" disabled={busy} className={rowBtn}
+              {blocked && (
+                <p id="fp-ambiguous-reason" className="col-span-2 type-meta
+                  text-muted sm:mr-auto sm:self-center">
+                  {t("fp.ambiguous_hint")}
+                </p>
+              )}
+              <Button variant="secondary" disabled={busy || blocked}
+                className={rowBtn} aria-describedby={describedBy}
                 onClick={() => void purgeOlder()}>
                 {t("fp.older")}
               </Button>
               {junk ? (
-                <Button variant="danger-tint" disabled={busy} className={rowBtn}
+                <Button variant="danger-tint" disabled={busy || blocked}
+                  className={rowBtn} aria-describedby={describedBy}
                   onClick={() => void purge({ everything: true })}>
                   {t("fp.empty_junk", { n: list.total })}
                 </Button>
               ) : (
-                <Button variant="danger-tint" disabled={busy} className={rowBtn}
+                <Button variant="danger-tint" disabled={busy || blocked}
+                  className={rowBtn} aria-describedby={describedBy}
                   onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>

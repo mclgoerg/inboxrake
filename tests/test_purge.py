@@ -479,6 +479,27 @@ def test_ambiguous_unconfirmed_role_refuses_before_any_command(monkeypatch,
     assert fake.mailbox == before
 
 
+def test_the_listing_names_an_ambiguous_role_up_front(monkeypatch):
+    fake = _env(monkeypatch, junk=_mails([3]), trash=_mails([8]))
+    fake.mailbox["Junk Email"] = _mails([4])
+    fake.uv["Junk Email"] = 1
+    junk = mailops.role_list("junk")
+    assert junk["ambiguous"] == [
+        {"role": "junk", "choices": ["Junk Email", "Spam"]}]
+    assert mailops.role_list("trash")["ambiguous"] == []
+    # Junk's permanent delete also needs a clear Trash; Trash's listing
+    # does not care about a second Junk
+    fake.mailbox["Deleted Items"] = _mails([5])
+    fake.uv["Deleted Items"] = 1
+    assert [a["role"] for a in mailops.role_list("junk")["ambiguous"]] \
+        == ["junk", "trash"]
+    assert [a["role"] for a in mailops.role_list("trash")["ambiguous"]] \
+        == ["trash"]
+    _confirm("junk", "Spam")
+    assert [a["role"] for a in mailops.role_list("junk")["ambiguous"]] \
+        == ["trash"]
+
+
 def test_a_confirmed_override_unlocks_the_purge_on_that_folder(monkeypatch):
     fake = _env(monkeypatch, trash=_mails([3]))
     fake.mailbox["Deleted Items"] = _mails([4])
@@ -1258,8 +1279,8 @@ def test_stopped_after_the_move_returns_the_undo_entry(monkeypatch):
     res = mailops.purge_mails("junk", c["uids"], c["uv"], **_at(c))
     assert res["unverified"] == 3
     last = mailops.UNDO_LOG[-1]
-    assert res["undo"] == {"ts": last["ts"], "label": last["label"],
-                           "count": 3}
+    assert res["undo"] == {"id": last["id"], "ts": last["ts"],
+                           "label": last["label"], "count": 3}
     ok, _ = _purge("trash", everything=True)
     assert ok["undo"] is None
 

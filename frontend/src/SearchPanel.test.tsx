@@ -15,11 +15,17 @@ import type { Group, SearchResp } from "./types";
 
 const search = vi.fn();
 const deleteMessages = vi.fn();
+const threadOf = vi.fn();
+let threaded: { count: number } | null = null;     // the opened mail's thread
 
 vi.mock("./api", () => ({
   api: { search: (...a: unknown[]) => search(...a),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
-      subject: "s", text: "body text" }),
+      subject: "s", text: "body text", thread: threaded }),
+    thread: (...a: unknown[]) => threadOf(...a),
+    messages: (items: [string, number][]) => Promise.resolve({
+      messages: items.map(([folder, uid]) => ({ folder, uid, from: "x",
+        to: "", date: "d", subject: "s", text: `text ${uid}` })) }),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
   fmtSize: () => "1 KB",
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
@@ -31,6 +37,8 @@ afterEach(() => {
   vi.useRealTimers();
   search.mockReset();
   deleteMessages.mockReset();
+  threadOf.mockReset();
+  threaded = null;
   setLang("en");
 });
 
@@ -347,4 +355,61 @@ test("the reader's Trash drops only that mail from the selection", async () => {
   await pressDialog(/Move to Trash \(1\)/);
   await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
   expect(screen.getByRole("button", { name: "Trash selected (2)" })).toBeTruthy();
+});
+
+test("Trash selected with one pick names that mail's subject", async () => {
+  search.mockResolvedValue({ notes: [], mails: [mail(1), mail(2)] });
+  withDialogs(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByLabelText("Select Parcel 2"));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+  expect((await findDialog()).textContent).toContain('"Parcel 2"');
+  await cancelDialog();
+});
+
+test("the reader's Trash on a conversation card outside the results trashes "
+  + "that mail (not an empty list)", async () => {
+  search.mockResolvedValue({ mails: [mail(1)], notes: [] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  threaded = { count: 2 };
+  threadOf.mockResolvedValue({ key: "k", label: "Plan", notes: [],
+    mails: [mail(1), mail(9, { subject: "Elsewhere" })] });
+  withDialogs(<SearchPanel bodySearch onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(subject("Parcel 1")[0]);
+  await screen.findByText("body text");
+  fireEvent.click(screen.getByRole("button", { name: "Read conversation" }));
+  await screen.findByText("2 mails");
+  const cards = document.querySelectorAll(
+    "[aria-expanded]:not([aria-haspopup])");
+  fireEvent.click(cards[1]);                 // the card outside the results
+  fireEvent.click(cards[0]);
+  fireEvent.click(await screen.findByRole("button", { name: "Trash this mail" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 9]]));
+  await waitFor(() => expect(screen.queryByText("text 9")).toBeNull());
+  expect(subject("Parcel 1")).toHaveLength(1);   // the results are untouched
+});
+
+test("a search that finished while the trash confirm was open is not "
+  + "overwritten by the old results", async () => {
+  search.mockResolvedValue({ mails: [mail(1), mail(2)], notes: [] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  withDialogs(<SearchPanel bodySearch onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByLabelText("Select Parcel 1"));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+  await findDialog();
+  // a newer search lands behind the confirm
+  search.mockResolvedValue({ mails: [mail(5, { subject: "Newer 5" })], notes: [] });
+  type("newer");
+  await waitFor(() => expect(subject("Newer 5")).toHaveLength(1));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalled());
+  expect(subject("Newer 5")).toHaveLength(1);
+  expect(subject("Parcel 2")).toHaveLength(0);
 });

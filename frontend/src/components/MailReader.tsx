@@ -8,16 +8,18 @@ import { Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, FileText,
   FolderInput, HardDrive, Inbox, MailMinus, MessagesSquare, MousePointerClick,
   MoreHorizontal, Paperclip, Pin, ShieldCheck, Trash2, User,
   type LucideIcon } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState,
+import { createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode } from "react";
 import { api, fmtSize, mailKey } from "../api";
 import { getLang, t } from "../i18n";
+import { useEdgeBack } from "../gestures";
 import { fmtDate } from "../lib";
 import { nowDate } from "../clock";
 import { isForward, splitQuoted } from "../quoted";
 import type { Mail, MessageDetail, UnsubVia } from "../types";
 import { FolderPicker } from "./FolderPicker";
-import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, Spinner, Tag,
+import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, modalCount, Spinner,
+  Tag,
   useMediaQuery, useOptionalToast } from "./ui";
 
 /* ------------------------------ app seams ------------------------------- */
@@ -60,7 +62,7 @@ export interface ReaderActions {
    *  close the reader. */
   trash?: (m: Mail) => unknown;
   /** Move this mail to a folder (confirm, undo as in the opener). */
-  move?: (m: Mail, dest: string) => unknown;
+  move?: (m: Mail, dest: string) => Promise<boolean>;
   /** Set the pin; resolves false when it failed. Without it the reader
    *  calls the pin endpoint itself. */
   pin?: (m: Mail, pinned: boolean) => unknown;
@@ -285,7 +287,7 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
       {picking && canMove && (
         <FolderPicker count={1} folders={host.folders.map((f) => f.value)}
           labels={host.folders.map((f) => f.label)} account={host.account}
-          onPick={(dest) => actions!.move!(mail, dest) as Promise<void>}
+          onPick={(dest) => actions!.move!(mail, dest)}
           onClose={() => setPicking(false)} />
       )}
     </div>
@@ -307,6 +309,13 @@ export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
   children: ReactNode;
 }) {
   const wide = useMediaQuery("(min-width: 768px)");
+  // The installed app's edge swipe closes THIS reader (the back link's path),
+  // not the tool or sender modal it sits in; a dialog opened over it (a
+  // confirm) keeps it from swiping away.
+  const frame = useRef<HTMLDivElement>(null);
+  const modals = useRef(Infinity);
+  useEffect(() => { modals.current = modalCount(); }, []);
+  useEdgeBack(frame, onBack, true, () => modalCount() <= modals.current);
   const idx = nav ? nav.list.findIndex((m) =>
     mailKey(m) === mailKey(navFrom ?? mail)) : -1;
   const arrows = !!nav && idx >= 0 && nav.list.length > 1;
@@ -317,7 +326,7 @@ export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
       onToggleHeaders={onToggleHeaders} onBack={onBack} locked={locked} />
   );
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={frame} className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b
         border-line px-3 py-1">
         <button type="button" onClick={onBack}

@@ -5,7 +5,6 @@ export const EN: Record<string, string> = {
   "ferr.action_cancelled": "The action was cancelled; queued mails were not moved.",
   "confirm.empty_trash_protection": "Protected senders and pinned mails in Trash will also be permanently deleted.",
   "smart.first_use": "Smart pools small senders by company or type, while large senders keep their own rows. Open a pile to review its senders before cleaning it up.",
-  "demo.first_steps": "Try opening a sender, moving its mails to Trash, then restoring them with Undo. Reset starts over with the same made-up mailboxes.",
   "confirm.b_space": "Moving to Trash does not free server space until the mails are permanently deleted.",
   "notice.rule_queued": "Rule \"{name}\": {queued} mails queued. Completion is shown in the action progress.",
   "ferr.protected_sender_selected": "Some selected mails belong to a protected sender. Unprotect that sender in its group before moving these mails.",
@@ -1225,6 +1224,15 @@ export const EN: Record<string, string> = {
   "fp.older_invalid": "Enter a whole number of days from 1 to 36500.",
   "fp.older_btn": "Count mails",
   "fp.empty_junk": "Empty Junk · {n}",
+  "fp.ambiguous":
+    "More than one folder could be your {role} folder: {folders} - choose "
+    + "one. Until then you can move mail, but not delete it permanently.",
+  "fp.ambiguous_both":
+    "More than one folder could be your {role} folder ({folders}) and your "
+    + "{role2} folder ({folders2}) - choose one of each. Until then you can "
+    + "move mail, but not delete it permanently.",
+  "fp.ambiguous_choose": "Choose folder",
+  "fp.ambiguous_hint": "Choose your folder first to delete permanently.",
   "fp.empty_trash": "Empty Trash · {n}",
   "fp.size_in_mails": "in {n} mails",
   "fp.size_in_mails_one": "in 1 mail",
@@ -1451,6 +1459,7 @@ export const EN: Record<string, string> = {
   "reader.copy_failed": "Could not copy the address",
   "reader.mail": "Mail",
   "reader.target": "This mail",
+  "reader.load_failed": "The conversation did not load - Trash, Pin and Move are off.",
   "reader.pick_single": "Open one mail to act on it.",
   "reader.sent_locked": "Your own sent mail cannot be changed here.",
   "reader.unsub_in_mail": "In this mail: {method}",
@@ -1781,6 +1790,9 @@ export const EN: Record<string, string> = {
   "detail.block": "Block",
   "folder.title": "Move {n} mails",
   "folder.title_one": "Move 1 mail",
+  "folder.restore_title": "Restore {n} mails",
+  "folder.restore_title_one": "Restore 1 mail",
+  "folder.restore_btn": "Restore",
   "folder.find": "Find a folder",
   "folder.suggested": "Suggested",
   "folder.all": "All folders",
@@ -2282,7 +2294,7 @@ export const EN: Record<string, string> = {
   "know.keep_b_account":
     "The answers of the account you are looking at are kept; other accounts keep theirs until you keep them there.",
   "know.upload_b_rest":
-    "Anything else in a full backup is ignored here (Import in General restores that).",
+    "Anything else in a full backup is ignored here (Import under Settings > Backup & restore restores that).",
   "know.download_tip":
     "Download this list as a file. It lists sender addresses and notes - keep it private.",
   // -- errors of the folder features (backend codes, see api.ts ERROR_CODES)
@@ -2684,19 +2696,22 @@ export const EN: Record<string, string> = {
   "wrapped.names_shown": "Sender names are visible in the image.",
   "wrapped.local_only": "It is created on this device; nothing is uploaded.",
   "wrapped.footer": "Inboxrake",
-  "demo.boot.title": "Getting your demo ready to rake it",
+  "demo.boot.title": "Starting the demo",
   "demo.boot.download": "Downloading the demo engine",
   "demo.boot.mb": "{done} of {total} MB",
   "demo.boot.python": "Starting Python",
   "demo.boot.libraries": "Loading libraries",
   "demo.boot.seed": "Filling the demo mailboxes",
-  "demo.boot.ready": "Ready",
   "demo.boot.done": "Done",
   "demo.boot.privacy":
     "Everything runs in your browser. No mailbox, no account, nothing is "
     + "sent anywhere.",
   "demo.boot.hint":
-    "Best on a computer - on a phone this can take 30-50 seconds.",
+    "On a phone the first start can take up to a minute.",
+  "demo.boot.try": "While it loads - things to try",
+  "demo.boot.try1": "Open a sender and look at its mails",
+  "demo.boot.try2": "Move them to Trash - then Undo",
+  "demo.boot.try3": "Remove duplicate copies in one tap",
   "demo.fail.title": "The demo could not start.",
   "demo.fail.unsupported":
     "This browser can't run the demo (it needs WebAssembly and module web "
@@ -2706,7 +2721,18 @@ export const EN: Record<string, string> = {
     + "Check your connection and try again.",
   "demo.fail.error": "Something went wrong while starting the demo.",
   "demo.retry": "Try again",
-  "demo.banner": "Demo - your changes live only in this tab",
+  "demo.bar.pill": "DEMO",
+  "demo.bar.text": "Made-up mailboxes - your changes stay in this tab.",
+  "demo.bar.text_short": "changes stay in this tab",
+  "demo.bar.try": "Things to try",
+  "demo.bar.reset": "Reset",
+  "demo.bar.install": "Install your own",
+  "demo.tip.title": "Three things to try",
+  "demo.tip.1": "Open **ACME Store** in Senders",
+  "demo.tip.2": "**Move its mails to Trash**",
+  "demo.tip.3": "Press **Undo** - they come back",
+  "demo.tip.show": "Show me",
+  "demo.tip.got": "Got it",
   "demo.reset": "Reset demo",
   "demo.reset.title": "Reset the demo?",
   "demo.reset.body":

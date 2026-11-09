@@ -1,0 +1,94 @@
+---
+// The docs sidebar like the app's: side colour, one icon per page, two
+// groups, the open page as an accent pill. On Features the open page lists
+// its areas (the page's h2s) below it. On phones it starts with a search
+// field that opens Starlight's search, and ends with the menu footer.
+import MobileMenuFooter from "virtual:starlight/components/MobileMenuFooter";
+import SidebarPersister from "@astrojs/starlight/components/SidebarPersister.astro";
+import Icon from "./Icon.astro";
+
+const { sidebar, toc } = Astro.locals.starlightRoute;
+// Keyed by the last path segment of the page URL ("" = the Introduction).
+const ICONS: Record<string, string> = {
+  "": "book-open", install: "download", configuration: "sliders-horizontal", providers: "plug",
+  filters: "filter", features: "sparkles", security: "shield-check", faq: "circle-help",
+};
+const keyOf = (href: string) => href.replace(/\/+$/, "").split("/").pop() ?? "";
+const areas = (toc?.items ?? []).filter((i) => i.slug !== "_top");
+---
+<button type="button" class="menu-search" data-ir-search hidden>
+  <Icon name="search" size={15} />Search the docs
+</button>
+<SidebarPersister>
+  {sidebar.map((group) => group.type === "group" && (
+    <section>
+      <h2 class="group">{group.label}</h2>
+      <ul>
+        {group.entries.map((e) => e.type === "link" && (
+          <li>
+            <a href={e.href} aria-current={e.isCurrent ? "page" : undefined}>
+              <Icon name={ICONS[keyOf(e.href)] ?? "book-open"} size={16} />{e.label}
+            </a>
+            {e.isCurrent && keyOf(e.href) === "features" && areas.length > 0 && (
+              <ul class="sub" data-ir-areas>
+                {areas.map((a) => <li><a href={`#${a.slug}`}>{a.text}</a></li>)}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
+</SidebarPersister>
+<div class="md:sl-hidden"><MobileMenuFooter /></div>
+<script>
+  // Phone menu: the search field opens Starlight's search dialog.
+  const field = document.querySelector<HTMLButtonElement>("[data-ir-search]");
+  const open = document.querySelector<HTMLButtonElement>("button[data-open-modal]");
+  if (field && open) {
+    field.hidden = false;
+    field.addEventListener("click", (e) => { e.stopPropagation(); open.click(); });
+  }
+  // Mark the area that the page's own "On this page" list shows as current.
+  const sub = document.querySelector("[data-ir-areas]");
+  const toc = document.querySelector("starlight-toc");
+  if (sub && toc) {
+    const sync = () => {
+      const cur = toc.querySelector('a[aria-current="true"]')?.getAttribute("href");
+      sub.querySelectorAll("a").forEach((a) =>
+        a.getAttribute("href") === cur ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current"),
+      );
+    };
+    new MutationObserver(sync).observe(toc, { subtree: true, attributes: true, attributeFilter: ["aria-current"] });
+    sync();
+  }
+</script>
+<style>
+  .menu-search {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 2.75rem; margin-bottom: 0.5rem;
+    padding: 0 0.75rem; border: 0; border-radius: 12px; background: var(--ir-panel2); color: var(--ir-muted);
+    font: inherit; font-size: 0.95rem; cursor: pointer;
+  }
+  @media (min-width: 50rem) { .menu-search { display: none; } }
+  section + section { margin-top: 0.75rem; }
+  .group {
+    margin: 0; padding: 0.75rem 0.65rem 0.4rem; color: var(--ir-muted);
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li > a {
+    display: flex; align-items: center; gap: 0.65rem; min-height: 2.75rem; padding: 0 0.65rem;
+    border-radius: 10px; color: var(--sl-color-white); font-size: 1rem; font-weight: 500; text-decoration: none;
+  }
+  li > a :global(.i) { color: var(--ir-accent); }
+  li > a:hover { background: var(--ir-panel2); }
+  li > a[aria-current="page"] { background: var(--ir-tint); color: var(--ir-accent-on-tint); font-weight: 650; }
+  .sub { padding: 0.15rem 0 0.35rem 2rem; }
+  .sub li > a { min-height: 2.75rem; font-size: 0.9rem; color: var(--ir-muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 2.75rem; }
+  /* same weight as the others, so the active area never changes the row's width */
+  .sub li > a[aria-current="true"] { color: var(--ir-accent-on-tint); background: transparent; }
+  @media (min-width: 50rem) {
+    li > a { min-height: 2.25rem; font-size: 0.92rem; }
+    .sub li > a { min-height: 1.9rem; line-height: 1.9rem; font-size: 0.85rem; }
+  }
+</style>

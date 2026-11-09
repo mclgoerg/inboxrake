@@ -10,7 +10,7 @@ can read your mail metadata and reconfigure the IMAP host or AI endpoint
 
 - keep the port on localhost, or behind a reverse proxy with its own
   authentication (Traefik + tinyauth/Authelia, ...), or
-- turn on the built-in login in Settings -> Server -> Login: a
+- turn on the built-in login in Settings -> Sign-in & users: a
   **password** (scrypt-hashed, session cookie), or **SSO via any OpenID
   Connect provider** (Pocket ID, Authentik, Keycloak, ...). Register the app
   at the provider with the callback URL `https://your-host/api/oidc/callback`,
@@ -58,7 +58,7 @@ could then fake `X-Forwarded-For`. When a proxy fronts Inboxrake, keep
 - **Password mode** slows down repeated wrong passwords per client.
 - **Sessions.** Changing the password, the login method, the allowed users,
   the admin or the identity provider (also via `.env` + restart) signs every
-  browser out, as does Settings -> Server -> *Sign out all sessions*. Logging
+  browser out, as does Settings -> Sign-in & users -> *Sign out all sessions*. Logging
   out only clears that browser's cookie.
 - **SSO and `email_verified`.** An identity returning an email must also return
   `email_verified: true`. Missing, false or malformed verification is refused.
@@ -108,7 +108,7 @@ client ID, if you run one, is `INBOXRAKE_MS_CLIENT_ID` (see
   purge rule only acts after you have reviewed a report run, then runs on
   its schedule within its age limit and per-run cap. Rules start in report
   mode too.
-- **Protected senders and pinned mails:** rules and the Folders-panel
+- **Protected senders and pinned mails:** rules and the Trash and Junk page
   purges always skip them. Moving a protected group, or a single pinned
   mail, to Trash asks for an extra confirmation. Individual-message moves
   refuse protected senders until they are unprotected in their group. **Empty Trash empties

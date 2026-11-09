@@ -1,0 +1,59 @@
+---
+// Only the 404 page uses Starlight's hero (it has no content entry): a title,
+// a search field and the places a lost reader most likely wants.
+import Icon from "./Icon.astro";
+import { BASE } from "../../site.config.mjs";
+import { DEMO_LIVE } from "../../landing/site.mjs";
+
+const links = [
+  { href: `${BASE}/`, icon: "book-open", title: "Docs start", text: "Install, configure, use." },
+  { href: `${BASE}/faq/`, icon: "circle-help", title: "FAQ", text: "Short answers first." },
+  ...(DEMO_LIVE ? [{ href: "/demo/", icon: "play", title: "Try the demo", text: "Runs right in your browser." }] : []),
+];
+---
+<div class="nf">
+  {/* "_top" is Starlight's PAGE_TITLE_ID */}
+  <h1 id="_top" data-page-title>Page not found</h1>
+  <p class="lead">Check the URL, or search the docs.</p>
+  <button type="button" class="field" data-ir-search hidden><Icon name="search" size={16} />Search the docs</button>
+  <ul>
+    {links.map((l) => (
+      <li>
+        <a href={l.href}>
+          <span class="tile"><Icon name={l.icon} size={20} /></span>
+          <span><strong>{l.title}</strong><small>{l.text}</small></span>
+        </a>
+      </li>
+    ))}
+  </ul>
+</div>
+<script>
+  // the header's search opens Starlight's dialog; this field opens it too
+  const field = document.querySelector<HTMLButtonElement>("[data-ir-search]");
+  const open = document.querySelector<HTMLButtonElement>("button[data-open-modal]");
+  if (field && open) {
+    field.hidden = false;
+    // stopPropagation: the same click would otherwise reach Starlight's "click outside closes the dialog" handler
+    field.addEventListener("click", (e) => { e.stopPropagation(); open.click(); });
+  }
+</script>
+<style>
+  .nf { display: grid; gap: 1.25rem; justify-items: start; padding-top: 1.5rem; }
+  h1 { color: var(--sl-color-white); font-size: clamp(2rem, 5vw, 2.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+  .lead { margin: 0; color: var(--ir-muted); font-size: 1.15rem; line-height: 1.55; }
+  .field {
+    display: flex; align-items: center; gap: 0.6rem; width: 100%; max-width: 26rem; min-height: 2.75rem; padding: 0 0.9rem;
+    border: 0; border-radius: 12px; background: var(--ir-panel2); color: var(--ir-muted); font: inherit; font-size: 0.95rem; cursor: pointer;
+  }
+  .field:hover { color: var(--ir-body); }
+  ul { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.9rem; width: 100%; }
+  li { margin: 0; }
+  a {
+    display: flex; align-items: center; gap: 0.9rem; min-height: 4.25rem; padding: 0.8rem 1rem; border-radius: 16px;
+    background: var(--ir-panel); box-shadow: 0 0 0 1px var(--ir-line); color: var(--ir-muted); text-decoration: none;
+  }
+  a:hover { box-shadow: 0 0 0 1px var(--ir-accent); }
+  .tile { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: 12px; background: var(--ir-tint); color: var(--ir-accent); }
+  strong { display: block; color: var(--ir-body); font-size: 1rem; }
+  small { display: block; font-size: 0.85rem; line-height: 1.4; }
+</style>

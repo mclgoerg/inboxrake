@@ -1,0 +1,27 @@
+name: Feature request
+description: An idea for something Inboxrake should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Please keep examples made up (`news@shop.example`), never from your real mailbox.
+        [Features](https://inboxrake.com/docs/features/) lists what Inboxrake can do today.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or situation, in your own words.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could Inboxrake help?
+      description: What you imagine - a button, a filter, a rule, a page, ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?

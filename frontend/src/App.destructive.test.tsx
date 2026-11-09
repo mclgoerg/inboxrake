@@ -2,6 +2,7 @@
 /* Destructive flows that confirm through in-app dialogs: Empty Trash from
  * both entry points (profile menu + Trash panel), AI consent, restore. */
 
+import { noteAccountSwitch } from "./accountGuard";
 import { openTool } from "./toolTestUtils";
 import { barAction } from "./barTestUtil";
 import { cleanup, fireEvent, render, screen, waitFor } from
@@ -198,6 +199,19 @@ test("the Trash panel footer offers the same Empty Trash confirm",
   await pressDialog("Delete permanently (5)");
   await waitFor(() => expect(emptyTrash).toHaveBeenCalledOnce());
   expect(emptyTrash).toHaveBeenCalledWith({ uv: 1, max_uid: 40 });
+});
+
+test("an account switch while the Empty Trash confirm is open deletes nothing",
+  async () => {
+  await mount();
+  fireEvent.click(await openTrashPanel());
+  await findDialog();
+  // App.switchAccount's one call; the confirm names the OLD account's count
+  // and listing marker, which mean nothing in the new one
+  noteAccountSwitch();
+  await pressDialog("Delete permanently (5)");
+  await new Promise((r) => setTimeout(r, 50));
+  expect(emptyTrash).not.toHaveBeenCalled();
 });
 
 test("cancelling Empty Trash in the Trash panel deletes nothing",

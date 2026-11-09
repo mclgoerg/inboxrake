@@ -2,6 +2,7 @@ import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
   FolderInput, MessagesSquare, MoreHorizontal, Pencil, Pin, PinOff, Shield,
   Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { accountGuard } from "../accountGuard";
 import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
 import { openUnsubPage } from "../unsub";
@@ -141,6 +142,15 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const [sieveAction, setSieveAction] = useState<SieveAction>("fileinto");
   const [sieveFolder, setSieveFolder] = useState("Archive");
   const cancelAi = useRef(false);
+  // The AI rating loop sends mail to the provider batch by batch: it must
+  // not go on once the panel is gone (closed, another sender opened,
+  // account switched - the next batch would name this group's key in the
+  // wrong account).
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   // Phone: Sort becomes an icon menu (Unsubscribe stays a visible button).
   const phone = useMediaQuery("(width < 40rem)");
 
@@ -211,7 +221,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   };
 
   const aiSelect = async () => {
+    const switched = accountGuard();
     if (!mails || !await ensureAiAck()) return;
+    if (!alive.current || switched()) return;
     setBusy(true);
     cancelAi.current = false;
     // With an active selection, rate ONLY those mails (and afterward narrow
@@ -235,7 +247,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       // timeouts (Safari kills fetches around 60s). Rated batches are
       // cached server-side, so a failed run resumes where it stopped.
       for (;;) {
-        if (cancelAi.current) break;
+        if (cancelAi.current || !alive.current || switched()) break;
         const uids = scope
           ? pool(current).filter((m) => !m.ai)
               .map((m) => [m.folder, m.uid] as [string, number])
@@ -246,6 +258,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
           r = await api.aiGroup(grouping, group.key, 0, 50, uids);
         } catch {
           // retry smaller
+          if (!alive.current || switched()) break;
           r = await api.aiGroup(grouping, group.key, 0, 25, uids);
         }
         if (r.reviewed === 0) break;
@@ -260,6 +273,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         setNote(t("note.ai_progress", { done, total }));
         if (r.remaining === 0) break;
       }
+      if (!alive.current || switched()) return;
       const safe = pool(current)
         .filter((m) => m.ai === "delete_safe" && !m.pinned);
       setSel(new Set(safe.map(mailKey)));
@@ -324,25 +338,27 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   };
 
   const act = (action: string, dest = "") => {
-    if (!mails || sel.size === 0) return Promise.resolve();
+    if (!mails || sel.size === 0) return Promise.resolve(false);
     return actOn(mails.filter((m) => sel.has(mailKey(m))), action, dest);
   };
 
   // `chosen` is the checked mails, or the single mail open in the reader
   // ("Trash this mail") - both go through the same confirm/pinned flow.
   const actOn = async (chosen: Mail[], action: string, dest = "",
-      single = false) => {
-    if (!mails) return;
+      single = false): Promise<boolean> => {
+    if (!mails) return false;
     const verb = actionVerb(action, dest);
     const plan = await planMailAction(chosen, action, verb);
-    if (plan.kind === "cancelled") return;
+    if (plan.kind === "cancelled") return false;
     if (plan.kind === "all_pinned") {
       setNote(t("toast.all_pinned"));
-      return;
+      return false;
     }
     const { acting, force } = plan;
     const actingKeys = new Set(acting.map(mailKey));
-    const wholeGroup = acting.length === mails.length
+    // (the acted mails can be another sender's card of a conversation: it
+    // takes every mail of THIS group to empty it, not just as many)
+    const wholeGroup = mails.every((m) => actingKeys.has(mailKey(m)))
       && action !== "mark_read";
     try {
       const items = acting.map((m) => [m.folder, m.uid] as [string, number]);
@@ -351,7 +367,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         // The group will be empty - go straight back to the overview.
         onDeleted();
         (onEmptied ?? onClose)();
-        return;
+        return true;
       }
       if (action !== "mark_read") {
         setMails(mails.filter((m) => !actingKeys.has(mailKey(m))));
@@ -373,8 +389,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       } else setSel(new Set());
       setNote(t("note.background", { verb }));
       onDeleted();
+      return true;
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
+      return false;
     }
   };
 

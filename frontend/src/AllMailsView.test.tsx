@@ -277,6 +277,21 @@ test("reader Move: the bar's move call for that one mail", async () => {
     .toHaveBeenCalledWith([["INBOX", 1]], "move", "Archive", false));
 });
 
+test("reader Move: a declined confirm does not make the folder a recent one",
+  async () => {
+  mails.mockResolvedValue(resp([mk(1)], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Move this mail to a folder" }));
+  await pickFolder("Archive");
+  await findDialog();
+  await cancelDialog();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(deleteMessages).not.toHaveBeenCalled();
+  expect(Object.keys(localStorage).filter((k) =>
+    k.startsWith("pmc_move_recent"))).toEqual([]);
+});
+
 test("reader Pin: the pin call, and the list row follows", async () => {
   mails.mockResolvedValue(resp([mk(1)], 1));
   renderView();
@@ -284,6 +299,54 @@ test("reader Pin: the pin call, and the list row follows", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Pin" }));
   await waitFor(() => expect(pin).toHaveBeenCalledWith("INBOX", 1, true));
   await screen.findByRole("button", { name: "Unpin" });
+});
+
+test("reader Trash after a Pin: the pinned warning applies (the reader's "
+  + "snapshot is not what is acted on)", async () => {
+  mails.mockResolvedValue(resp([mk(1)], 1));
+  renderView();
+  await openMail(1);
+  fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+  await screen.findByRole("button", { name: "Unpin" });
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  expect((await findDialog()).textContent).toMatch(/protected mail "Subject 1"/);
+  await pressDialog("Move to Trash anyway");
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 1]], "trash", "", true));
+});
+
+test("reader Trash on one mail keeps the other ticked mails ticked",
+  async () => {
+  mails.mockResolvedValue(resp([mk(1), mk(2), mk(3)], 3));
+  renderView();
+  await screen.findByText("Subject 1");
+  fireEvent.click(tick(1));
+  fireEvent.click(tick(3));
+  fireEvent.click(screen.getByText("Subject 2"));
+  await screen.findByRole("button", { name: "Trash this mail" });
+  fireEvent.click(screen.getByRole("button", { name: "Trash this mail" }));
+  await pressDialog("Move to Trash (1)");
+  await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
+  expect(screen.getByText("2 selected")).toBeTruthy();
+});
+
+test("a slow Load more does not overwrite the list of a newer filter",
+  async () => {
+  mails.mockResolvedValueOnce(resp([mk(1), mk(2)], 4));
+  renderView();
+  await screen.findByText("Subject 1");
+  let finish: (r: MailsResp) => void = () => {};
+  mails.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+  fireEvent.click(screen.getByText("Load 2 more"));
+  mails.mockResolvedValue(resp([mk(7)], 1));
+  fireEvent.change(screen.getByPlaceholderText(/filter/i),
+    { target: { value: "seven" } });
+  await screen.findByText("Subject 7");
+  finish({ ...resp([mk(3), mk(4)], 4), offset: 2 });
+  await new Promise((r) => setTimeout(r, 30));
+  expect(screen.queryByText("Subject 3")).toBeNull();
+  expect(screen.queryByText("Subject 1")).toBeNull();
+  expect(screen.getByText("1 of 1 mails")).toBeTruthy();
 });
 
 test("reader previous / next walk the loaded list", async () => {

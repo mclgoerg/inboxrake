@@ -9,6 +9,7 @@ import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { afterBackSettles } from "./backStack";
+import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -44,6 +45,7 @@ import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterM
 import { SelectMatches } from "./components/SelectMatches";
 import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
+import { focusSpecialFolders } from "./components/FolderSettings";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
@@ -67,7 +69,7 @@ import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
   KnowledgeStored,
-  StatusMsg, TrashResp, FolderRole } from "./types";
+  StatusMsg, TrashResp, FolderRole, UndoIdent } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -96,12 +98,20 @@ const sortValue = (g: Group, k: SortKey): number | string => {
 };
 
 const RESTORE_NOTICES = ["restored", "restored_rescan"];
+// Set by the Junk / Trash pages' moves while the rescan runs; their own
+// toast is the result, so the banner stays out (the "..._rescan" ones tell
+// the user to act and stay).
+const ROLE_MOVE_NOTICES = ["junk_rescued", "trash_restored"];
 const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
   u.id ?? `${u.ts}|${u.count}|${u.label}`;
 
 const actionVerb = (a: string): string =>
   ({ trash: t("Move to Trash"), archive: t("Archive"), move: t("Move"),
      mark_read: t("Mark as read"), move_contents: t("Move") } as Record<string, string>)[a] ?? a;
+
+/** The account generation (bumped by switchAccount): a flow that awaits
+ *  compares it before it sends. The one counter lives in accountGuard. */
+const accountGeneration = { get current(): number { return accountEpoch(); } };
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -188,7 +198,8 @@ export default function App() {
     localStorage.setItem("pmc_sort_k", sortK);
     localStorage.setItem("pmc_sort_dir", String(sortDir));
   }, [sortK, sortDir]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // What was ticked; `selected` (below) is the part of it still on screen.
+  const [picked, setSelected] = useState<Set<string>>(new Set());
   // Select mode ("Select" / "Done" button): checkboxes on every row. It ends
   // wherever the selection is reset with the view (account, grouping, page).
   const [selectMode, setSelectMode] = useState(false);
@@ -257,13 +268,6 @@ export default function App() {
   const [moveDest, setMoveDest] = useState("");
   // The "Limit to…" editor swapped into the capsule (Done closes it).
   const [limitOpen, setLimitOpen] = useState(false);
-  // The folder picker must never be a dead end: clearing the selection
-  // (the bar disappearing entirely) also resets it, so re-selecting
-  // something always starts back at the plain Action… control instead of
-  // reopening mid-move with no way back short of reloading.
-  useEffect(() => {
-    if (!selected.size) { setMoveDest(""); setLimitOpen(false); }
-  }, [selected.size]);
   // Retention restriction for bulk group actions: act on everything beyond
   // a keep-window instead of the whole group (mutually exclusive variants).
   const [retention, setRetention] =
@@ -300,7 +304,6 @@ export default function App() {
 
   const fetching = useRef(false);   // one full-state fetch at a time
   const stateRef = useRef<AppState | null>(null);
-  const accountGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
     clearTimeout(timer.current);
@@ -345,7 +348,7 @@ export default function App() {
   }, [cfg]);
 
   const switchAccount = (name: string) => {
-    accountGeneration.current++;
+    noteAccountSwitch();
     fetching.current = false;
     clearTimeout(timer.current);
     localStorage.setItem("pmc_account", name);
@@ -600,6 +603,25 @@ export default function App() {
     });
   }, [allGroups, members, filter, sortK, sortDir]);
 
+  // A selection only covers what is visible: a filter or search that hides a
+  // ticked group takes it out of every action and count (and out of the
+  // selection itself, so it does not come back ticked with the filter off).
+  const selected = useMemo(() => {
+    const visible = new Set(groups.map((g) => g.key));
+    const kept = [...picked].filter((k) => visible.has(k));
+    return kept.length === picked.size ? picked : new Set(kept);
+  }, [picked, groups]);
+  useEffect(() => {
+    if (selected !== picked) setSelected(selected);
+  }, [selected, picked]);
+  // The folder picker must never be a dead end: clearing the selection
+  // (the bar disappearing entirely) also resets it, so re-selecting
+  // something always starts back at the plain Action… control instead of
+  // reopening mid-move with no way back short of reloading.
+  useEffect(() => {
+    if (!selected.size) { setMoveDest(""); setLimitOpen(false); }
+  }, [selected.size]);
+
   // "Select all N matches": the groups the active filter matches that can be
   // selected (protected ones stay out), across all pages.
   const matchKeys = useMemo(() => filter.trim()
@@ -660,8 +682,7 @@ export default function App() {
     return counts.reduce((a, b) => a + b, 0);
   };
 
-  // Count over ALL groups of the mode, not the filtered view - actions apply
-  // to every selected key, including ones a filter is hiding. Without
+  // Count over the selected (visible) groups. Without
   // retention this is instant (just a sum already in `state`). With
   // retention active, the real count needs a fetch - rather than flash
   // the naive total and then correct it (confusing to watch), selCount
@@ -1059,12 +1080,12 @@ export default function App() {
 
   // Undo of a move the Folders panel made (it toasts by itself): by identity,
   // after a refresh when the list has not caught up yet.
-  const undoEntry = async (e: { ts: number; count: number; label: string }) => {
+  const undoEntry = async (e: UndoIdent) => {
     const find = () => stateRef.current?.undo
       .findIndex((u) => undoId(u) === undoId(e)) ?? -1;
     if (find() < 0) await refresh();
     const i = find();
-    if (i >= 0) undo(i, false);
+    if (i >= 0) await undo(i, false);
   };
 
   // Shared by the profile menu and the Trash panel; resolves whether the
@@ -1080,11 +1101,15 @@ export default function App() {
       refresh();      // the cached count was stale
       return false;
     }
+    const switched = accountGuard();
     if (!await confirmDialog({ title: t("confirm.empty_trash_title"),
       body: t("confirm.empty_trash_body", { n }),
       bullets: [t("confirm.empty_trash_protection")],
       tone: "danger",
       confirmLabel: t("confirm.empty_trash_btn", { n }) })) return false;
+    // the confirm names this account's count and listing marker: after a
+    // switch they mean nothing in the new one
+    if (switched()) return false;
     setPending(t("Emptying Trash…"));
     let ok = true;
     try {
@@ -1242,7 +1267,8 @@ export default function App() {
       keepLatest: number | null = null,
       olderThanDays: number | null = null,
       noun: "groups" | "senders" = "groups",
-      confirmed = false): Promise<boolean> => {
+      confirmed = false,
+      onlyAddrs: string[] | null = null): Promise<boolean> => {
     const generation = accountGeneration.current;
     let force = false;
     let effective = keys;
@@ -1298,8 +1324,9 @@ export default function App() {
       return false;
     try {
       if (generation !== accountGeneration.current) return false;
+      const only: [string[]?] = onlyAddrs ? [onlyAddrs] : [];
       const r = await api.deleteGroups(grouping, effective, action, dest,
-        force, keepLatest, olderThanDays);
+        force, keepLatest, olderThanDays, ...only);
       lastQueued.current = r?.queued ?? null;
       if (generation !== accountGeneration.current) return false;
       if (seenJobs.current) seenJobs.current.d = "running";   // see effect
@@ -1406,9 +1433,13 @@ export default function App() {
   // Triage's bulk job, after its own single confirm: the sheet only follows
   // the run and lists the outcome per sender. Resolves whether it was queued
   // without an error.
-  const runUnsubscribe = async (keys: string[]): Promise<boolean> => {
+  const runUnsubscribe = async (keys: string[],
+      generation = accountGeneration.current): Promise<boolean> => {
+    // the keys belong to the account the deck was dealt in
+    if (generation !== accountGeneration.current) return false;
     try {
       const r = await api.unsubscribeBulk(mode, keys);
+      if (generation !== accountGeneration.current) return false;
       if (r.queued && r.run != null) {
         if (seenJobs.current) seenJobs.current.u = "running";
         setUnsubSheet({ kind: "run", run: r.run,
@@ -1458,9 +1489,14 @@ export default function App() {
       ...(pins ? [t("confirm.b_pinned_kept", { n: pins })] : []),
       ...(moves ? [t("triage.c_undo")] : []),
     ];
+    // The decisions belong to the account the deck was dealt in: a switch
+    // during the confirm or between the steps stops the rest (each step is
+    // sent to whichever account is active when it starts).
+    const generation = accountGeneration.current;
     if (!await confirmDialog({ title: t("triage.confirm_title"), bullets,
       tone: moves ? "danger" : "primary",
       confirmLabel: t("triage.apply_btn") })) return false;
+    if (generation !== accountGeneration.current) return false;
     // Once a step has run, a later failure still ends the deck (the error
     // is toasted): a second Apply must not resend what already happened.
     let ran = false;
@@ -1470,9 +1506,10 @@ export default function App() {
       ran = true;
     }
     if (unsub.length) {
-      if (!await runUnsubscribe(unsub)) return ran;
+      if (!await runUnsubscribe(unsub, generation)) return ran;
       ran = true;
     }
+    if (generation !== accountGeneration.current) return ran;
     if (moves && !await act(trash, "trash", "", null, null, true)) return ran;
     setSelected(new Set());
     return true;
@@ -1673,23 +1710,24 @@ export default function App() {
         return;
       }
       if (flat || bare || !groups.length) return;
+      // (a filter can shrink the list under the focused row)
+      const focused = groups[focusIdx] as Group | undefined;
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         move(Math.min(focusRef.current + 1, groups.length - 1));
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         move(Math.max(focusRef.current - 1, 0));
-      } else if (e.key === "x" && focusIdx >= 0) {
-        const key = groups[focusIdx].key;
+      } else if (e.key === "x" && focused) {
         const next = new Set(selected);
-        next.has(key) ? next.delete(key) : next.add(key);
+        next.has(focused.key) ? next.delete(focused.key) : next.add(focused.key);
         setSelected(next);
-      } else if ((e.key === "Enter" || e.key === "o") && focusIdx >= 0) {
-        openGroup(groups[focusIdx], true);
+      } else if ((e.key === "Enter" || e.key === "o") && focused) {
+        openGroup(focused, true);
       } else if (e.key === "#") {
         if (selected.size) act([...selected], "trash", "", ...retentionParams());
-        else if (focusIdx >= 0)
-          act([groups[focusIdx].key], "trash", "", ...retentionParams());
+        else if (focused)
+          act([focused.key], "trash", "", ...retentionParams());
       }
     };
     window.addEventListener("keydown", handler);
@@ -1868,9 +1906,10 @@ export default function App() {
   const renderDetail = (variant: "modal" | "pane") => detail
     && state?.groups[mode]?.[detail.key] && (
     <DetailPanel
-      // The pane swaps groups in place: remount so selection, filters and an
-      // open message never leak from one group into the next.
-      key={variant === "pane" ? detail.key : undefined}
+      // The detail swaps groups in place (the pane, or "Open sender" from a
+      // conversation's reader): remount so selection, filters and an open
+      // message never leak from one group - or grouping - into the next.
+      key={`${mode}:${detail.key}`}
       variant={variant}
       // A list selection brings the bulk bar: the pane's own destructive
       // group actions step aside so two red scopes never stack.
@@ -2349,6 +2388,8 @@ export default function App() {
         onProtect={protectSenders}
         onBlock={blockAddress}
         blockedSenders={blockedAddrs}
+        onChooseFolder={(r) => void fixAccount(account)
+          .then(() => focusSpecialFolders(r))}
       />
     )}
     {toolShown("duplicates") && (
@@ -2443,7 +2484,7 @@ export default function App() {
     )}
     <div className={fullPage
       // A tool page: the column's full height, the panel scrolls inside.
-      ? "flex h-dvh min-w-0 flex-col"
+      ? "flex h-app min-w-0 flex-col"
       : `mx-auto max-w-6xl p-3 xl:max-w-360 pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+0.75rem)]
       sm:p-5 sm:pb-[calc(var(--bulkbar-h,0px)+var(--tabbar-h,0px)+1.25rem)]`}>
       {/* Below 1024: the phone / tablet top bar - large page title (+ when
@@ -2805,8 +2846,8 @@ export default function App() {
         )}
       </div>}
       {state?.notice && state.notice.key !== "cached_verdicts"
-        && state.notice.key !== "restored"
-        && state.notice.key !== "restored_rescan" && (
+        && !RESTORE_NOTICES.includes(state.notice.key)
+        && !ROLE_MOVE_NOTICES.includes(state.notice.key) && (
         <Notice className={routed ? "mx-3 mt-3" : "mb-2"} icon={<Info size={14} />}
           onClose={dismissNotice}>
           {t(`notice.${state.notice.key}`, noticeParams(state.notice.params))}
@@ -2909,7 +2950,7 @@ export default function App() {
           <div className="min-w-0">
             {/* Sticky to the top of the scroll container (body); usePaneHeight
                 sizes it to the room below the toolbar. */}
-            <div ref={setPaneEl} className="sticky top-0 h-dvh">
+            <div ref={setPaneEl} className="sticky top-0 h-app">
               {renderDetail("pane")}
             </div>
           </div>
@@ -2947,13 +2988,13 @@ export default function App() {
       {unsubSheet && state && (
         <UnsubscribeSheet key={account} request={unsubSheet}
           groups={state.groups.sender} unsub={state.unsub} demo={demo}
-          onTrash={async (grouping, keys) => {
+          onTrash={async (grouping, keys, addrs) => {
           // The sheet belongs to the account it was opened in.
           if (sheetGeneration !== accountGeneration.current) return null;
           lastQueued.current = null;
           const ok = await actOn(grouping,
             stateRef.current?.groups?.[grouping] ?? {}, keys, "trash", "",
-            null, null, "groups", true);
+            null, null, "groups", true, addrs);
           if (ok && grouping === mode) {
             setSelected((s) => new Set([...s].filter((k) => !keys.includes(k))));
           }

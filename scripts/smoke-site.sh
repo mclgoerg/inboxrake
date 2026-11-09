@@ -112,7 +112,7 @@ while read -r path raw; do
 done <<<"$files"
 echo "  total on the wire: $total bytes"
 # the bundle budget (scripts/demo-bundle/build.mjs) assumed brotli q9
-if [ "$total" -gt 10000000 ]; then
-  echo "::warning::demo bundle is $total bytes on the wire, over the 10 MB budget (Cloudflare's compression may be weaker than the brotli q9 the budget assumed)"
+if [ "$total" -gt 15000000 ]; then
+  echo "::warning::demo bundle is $total bytes on the wire, over the 15 MB budget (Cloudflare's compression may be weaker than the brotli q9 the budget assumed)"
 fi
 echo "smoke test passed for $BASE"

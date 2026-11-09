@@ -661,6 +661,14 @@ def cancel_requested(target: str, acc=None) -> bool:
     return (acc or accounts.get()).cancel[target]
 
 
+def _undo_ident(entry: dict) -> dict:
+    """What a mutating call returns so the UI's Undo toast can find the entry
+    in `state.undo` (it matches by `id`; the others are the fallback)."""
+    return {"ts": entry["ts"], "label": entry["label"],
+            "count": entry["count"],
+            **({"id": entry["id"]} if entry.get("id") else {})}
+
+
 def _undo_summaries(acc) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
@@ -675,9 +683,14 @@ def _undo_summaries(acc) -> list[dict]:
 
 
 def clear_ai_marks() -> None:
-    """Drop in-memory AI marks of EVERY account (verdict cache cleared)."""
+    """Drop in-memory AI marks of the CURRENT TENANT's accounts (its verdict
+    cache was cleared). Another tenant's accounts are left alone: the labels
+    and protected list applied below are this tenant's."""
     plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    tid = tenants.current().id
     for acc in accounts.all_instantiated():
+        if acc.tenant.id != tid:
+            continue
         with acc.lock:
             for recs in acc.state["groups"].values():
                 for rec in recs.values():
@@ -3191,8 +3204,15 @@ def delete_groups(grouping: str, keys: list[str],
                   action: str = "trash", dest: str = "",
                   force: bool = False, keep_latest: int | None = None,
                   older_than_days: int | None = None, acc=None,
-                  actor: str = "user", completion: dict | None = None) -> dict:
+                  actor: str = "user", completion: dict | None = None,
+                  only_addrs: list[str] | None = None) -> dict:
+    """Queue `action` for the mails of the given groups. `only_addrs` limits
+    it to mails from those sender addresses: a caller that decided on a group
+    because it held only those senders (the unsubscribe sheet's "also move
+    to Trash") is not acting on a mail from anyone else that joined the
+    group since."""
     acc = acc or accounts.get()
+    only = {a.lower() for a in only_addrs} if only_addrs is not None else None
     if keep_latest is not None and older_than_days is not None:
         raise ValueError(
             "keep_latest and older_than_days are mutually exclusive")
@@ -3234,6 +3254,10 @@ def delete_groups(grouping: str, keys: list[str],
                 held = keep.get(folder, set())
                 pin = pins.get(folder, set())
                 remainder = set(uids) - held - pin
+                if only is not None:
+                    remainder = {u for u in remainder
+                                 if (m := acc.index.get(ikey(folder, u)))
+                                 and m["addr"].lower() in only}
                 skipped_pinned += len((set(uids) & pin) - held)
                 if remainder:
                     by_folder.setdefault(folder, set()).update(remainder)
@@ -4438,9 +4462,18 @@ def role_list(role: str, limit: int = 1000, acc=None) -> dict:
     acc = acc or accounts.get()
     conn = connect(cfgmod.account_imap(acc.name), acc.name)
     try:
-        folder = folder_roles(conn, acc).get(role)
+        found = resolve_roles(conn, acc)
+        acc.folder_roles.update(found["roles"])
+        folder = found["roles"].get(role)
         if not folder:
             raise RuntimeError(coded(ROLE_MISSING, role=role))
+        # the roles a permanent delete from this page would refuse (Junk also
+        # needs a clear Trash): the page names them up front
+        ambiguous = [
+            {"role": r, "choices": [decode_mutf7(n)
+                                    for n in found["ambiguous"][r]]}
+            for r in dict.fromkeys((role, "trash")) if r in found["ambiguous"]
+            and (r == role or role == "junk")]
         uv, messages = refresh_role_index(conn, role, folder, acc)
     finally:
         try:
@@ -4455,6 +4488,7 @@ def role_list(role: str, limit: int = 1000, acc=None) -> dict:
     return {"folder": folder, "uv": uv,
             "total": len(messages),
             "max_uid": max((m["uid"] for m in messages), default=0),
+            "ambiguous": ambiguous,
             "senders": role_senders(messages),
             "mails": [{"uid": m["uid"], "folder": folder, "date": m["date"],
                        "ts": m["ts"], "subject": m["subject"],
@@ -4568,8 +4602,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
     log.info("%s: %d mails -> %r", action, len(moved), decode_mutf7(dest))
     with acc.lock:
         last = acc.undo_log[-1] if moved and acc.undo_log else None
-        undo = ({"ts": last["ts"], "label": last["label"],
-                 "count": last["count"]} if last else None)
+        undo = _undo_ident(last) if last else None
     return {"moved": len(moved), "rescan": rescan, "undo": undo,
             "senders": sorted({known[u]["addr"] for u in moved})}
 
@@ -4785,8 +4818,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
                     "items": items, "in": target, "copies": copies})
                 del acc.undo_log[:-UNDO_MAX]
                 acc.state["undo"] = _undo_summaries(acc)
-                undo = {"ts": acc.undo_log[-1]["ts"], "label": label,
-                        "count": len(items)}
+                undo = _undo_ident(acc.undo_log[-1])
             if role == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += moved
         log.info("moved %d mails from a look-alike %s folder", moved, role)
@@ -5503,8 +5535,7 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
                          audit_id=audit_id)
             last = acc.undo_log[-1] if acc.undo_log else None
             if last and last["label"] == stranded_label:
-                res["undo"] = {"ts": last["ts"], "label": last["label"],
-                               "count": last["count"]}
+                res["undo"] = _undo_ident(last)
     if led.deleted:
         statsmod.record_action("purge", led.deleted, led.freed, acc.name)
     if stranded:

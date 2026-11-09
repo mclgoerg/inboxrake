@@ -128,7 +128,7 @@ const POP_W = 380;   // popover width (px), as in the mockup
  *  a move rule for it - never armed (report mode) - after the move went
  *  through. */
 export function FolderPicker({ count, folders, labels = [], account, onPick,
-  onClose, rule, onOpenRules }: {
+  onClose, rule, onOpenRules, restore = false }: {
   count: number;
   folders: string[];
   /** Readable names, parallel to `folders`. */
@@ -138,6 +138,8 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
   onClose: () => void;
   rule?: MoveRuleTarget;
   onOpenRules?: () => void;
+  /** Wording for putting mails back (Trash -> a folder): "Restore N mails". */
+  restore?: boolean;
 }) {
   const wide = useSidebar();
   const toast = useOptionalToast();
@@ -194,10 +196,13 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     const dest = chosen;
     const target = rule && always ? rule : null;
     const destName = byRaw.get(dest)?.path ?? dest;
-    rememberRecent(account, dest);
     onClose();
+    // A folder counts as used only once the move went through (a declined
+    // confirm or a failure does not return true).
     Promise.resolve(onPick(dest)).then(async (ok) => {
-      if (ok === false || !target) return;
+      if (ok !== true) return;
+      rememberRecent(account, dest);
+      if (!target) return;
       try {
         await api.createRule({
           name: t("folder.rule_name", { label: target.label, dest: destName }),
@@ -258,9 +263,22 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
           stops[e.shiftKey ? stops.length - 1 : 0].focus();
         }
       }
+      // The popover is modal in effect (an outside press closes it): the
+      // app's list shortcuts (x, #, Enter...) must not act on the group
+      // behind it while it is open - whatever has focus (a click on its
+      // title leaves it on <body>). Only Tab from outside is left to the
+      // dialog behind.
+      if (e.key !== "Tab" || pop.current?.contains(e.target as Node))
+        e.stopPropagation();
     };
+    // An outside press only closes the popover: the click that follows it must
+    // not also hit whatever lay underneath (same idea as the swipe-row tap).
     const onDoc = (e: MouseEvent) => {
-      if (!pop.current?.contains(e.target as Node)) close();
+      if (pop.current?.contains(e.target as Node)) return;
+      const eat = (c: Event) => { c.stopPropagation(); c.preventDefault(); };
+      document.addEventListener("click", eat, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener("click", eat, true), 600);
+      close();
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDoc);
@@ -317,7 +335,9 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
   const nameOf = (n: FolderNode) =>
     n.depth === 0 && n.name.toUpperCase() === "INBOX" ? t("Inbox") : n.name;
 
-  const title = t("folder.title", { n: count });
+  const title = t(restore ? "folder.restore_title" : "folder.title",
+    { n: count });
+  const action = t(restore ? "folder.restore_btn" : "Move");
   const body = (
     <div onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col">
       <div className="px-4 pb-2">
@@ -395,7 +415,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
             <Button variant="plain" onClick={close}>{t("Cancel")}</Button>
             <h2 className="min-w-0 text-center type-heading">{title}</h2>
             <Button variant="plain" disabled={chosen === null}
-              onClick={commit}>{t("Move")}</Button>
+              onClick={commit}>{action}</Button>
           </div>
           {body}
         </div>
@@ -412,7 +432,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
       <div className="flex items-center justify-between gap-2 px-4 pb-3">
         <h2 className="min-w-0 truncate type-heading">{title}</h2>
         <Button size="sm" disabled={chosen === null} onClick={commit}>
-          {t("Move")}
+          {action}
         </Button>
       </div>
       {body}

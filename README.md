@@ -6,14 +6,23 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14997/badge)](https://www.bestpractices.dev/projects/14997)
 [![License: MIT](https://img.shields.io/github/license/mclgoerg/inboxrake)](LICENSE)
 
-Inboxrake is a self-hosted web app that rakes an IMAP mailbox into tidy
-piles: it scans everything, groups mails by sender, subject or thread with
-counts and sizes, and lets you trash, unsubscribe from or block whole
-groups at once. Optional AI review (Anthropic, OpenAI, Claude on Microsoft
-Foundry, or local models via Ollama, LM Studio or vLLM) suggests what is
-safe to delete.
+**Rake your mailbox into tidy piles.** Inboxrake is a self-hosted web app
+that scans an IMAP mailbox, groups every mail by sender, subject or thread
+with counts and sizes, and lets you trash, unsubscribe from or block whole
+groups at once - with a preview first and Undo after.
+**[Try the demo](https://inboxrake.com/demo/)** - it runs in your browser.
+Optional AI review (Anthropic, OpenAI, Claude on Microsoft Foundry, or local
+models via Ollama, LM Studio or vLLM) suggests what is safe to delete.
 
 **[Website](https://inboxrake.com)** · **[Documentation](https://inboxrake.com/docs/)** · **[Try it in your browser](https://inboxrake.com/demo/)**
+
+<p>
+<img src="docs/screenshots/desktop-overview-light.png" width="660" alt="The Overview start page on a desktop (light theme): storage, last week, next steps and what fills the inbox, with the sidebar">
+<img src="docs/screenshots/phone-senders-dark.png" width="220" alt="The Senders page on a phone (dark theme): senders with mail counts, sizes and AI verdicts, tab bar at the bottom">
+</p>
+
+Overview (light) and Senders on a phone (dark) - the screenshots come from the
+demo below.
 
 **Nothing is deleted without asking.** Moves to Trash normally offer Undo
 (the last 10 actions until restart). If the server cannot identify the moved
@@ -21,8 +30,6 @@ copies safely, restore them manually from Trash. **Permanent deletion** in Trash
 cannot be undone:
 the manual "delete permanently" actions confirm with exact counts, and
 opt-in purge rules only act after you have reviewed a report run.
-
-![The group list (dark theme): the Senders page with the sidebar, mail counts, sizes and AI verdicts](docs/screenshots/groups-dark.png)
 
 ## Quick start
 
@@ -82,21 +89,24 @@ docker run --rm -p 127.0.0.1:8765:8765 -v "$PWD":/repo \
 Add `--empty` to see the welcome screen and first-run setup instead (in the
 setup any mail server name works and the password `demo` signs in).
 
-**In action** - click a filter together, select the matches, confirm the
+**In action** - pick a quick filter, select the matches, confirm the
 move to Trash (with the count spelled out), undo from the result toast, open
-a group beside the list:
+a sender beside the list:
 
-![Build a filter, select, move to Trash with confirmation and Undo, open a group in the split pane](docs/screenshots/demo.gif)
+![Filter the senders, select the matches, move them to Trash with a confirmation, Undo, open a sender beside the list](docs/screenshots/demo.gif)
 
 <details>
-<summary>More screenshots - overview, split pane, drill-down, statistics, phone, light theme</summary>
+<summary>More screenshots - senders, space map, phone views, reader, year in mail</summary>
 
-![The Overview start page: storage, what could go, suggestions and the biggest senders](docs/screenshots/overview.png)
-![A group open in the side pane next to the group list](docs/screenshots/split-pane.png)
-![Group drill-down as a dialog on a mid-size screen, with the Block sender and Move to Trash actions](docs/screenshots/detail.png)
-![Statistics panel: totals, mails per month and year, categories](docs/screenshots/stats.png)
-![Phone layout: group list, a group's mails, and the bottom-sheet confirmation before moving to Trash](docs/screenshots/mobile.png)
-![The group list in the light theme](docs/screenshots/groups-light.png)
+![Senders with a sender open beside the list: labels, Block / Protect / Move, mails and the Move to Trash button (dark theme)](docs/screenshots/desktop-senders-dark.png)
+![The space map: which domains take the space, sized by engagement (dark theme)](docs/screenshots/desktop-space-map-dark.png)
+![Phone layout: the Senders list, a sender's details and the bottom-sheet confirmation before moving to Trash](docs/screenshots/mobile.png)
+
+<img src="docs/screenshots/phone-overview-light.png" width="200" alt="The Overview on a phone (light theme)">
+<img src="docs/screenshots/phone-duplicates-dark.png" width="200" alt="Duplicates on a phone: remove identical copies or review each set (dark theme)">
+<img src="docs/screenshots/phone-reader-dark.png" width="200" alt="A mail open in the reader on a phone, plain text with a tracking-pixel notice (dark theme)">
+<img src="docs/screenshots/phone-trackers-dark.png" width="200" alt="Trackers on a phone: who tracks your opens and clicks (dark theme)">
+<img src="docs/screenshots/phone-year-dark.png" width="200" alt="Your year in mail, the first card of the story on a phone (dark theme)">
 
 </details>
 
@@ -136,7 +146,7 @@ mailbox uses more while it runs). Images are published for amd64 and
 arm64 (e.g. Raspberry Pi 4/5).
 
 **Backup and uninstall?** Everything lives in the `/data` volume; Settings
--> General has a backup export (it leaves out all passwords, tokens and API keys - you
+-> Backup & restore has a settings export (it leaves out all passwords, tokens and API keys - you
 re-enter them after a restore). Stop the
 container and delete the volume to remove it. Your mailbox is never
 modified by installing or removing Inboxrake.
@@ -183,13 +193,14 @@ security; you add user and password.
 
 ## Features
 
-Five views (Sender, Smart pools of small senders, Subject, Thread, a flat
-list), an Overview start page with cleanup suggestions, a drill-down reader
-with no remote content, a Filter menu and filter builder, optional AI review
-and a "describe a filter" box, swipe triage, rules and a scheduler, one-click
-and bulk unsubscribe with a watchdog, protected senders and mails, a
-Trash/Junk browser, space map, statistics, audit log, multiple strictly
-separate accounts, system/light/dark appearance, phone layout, English and
+An Overview start page with cleanup suggestions, five views (Sender, Smart
+pools of small senders, Subject, Thread, all mails), a sender detail and a
+mail reader that loads no remote content, a Filter menu and filter builder,
+optional AI review and a "describe a filter" box, Triage, Duplicates,
+Attachments, rules and a scheduler, one-click and bulk unsubscribe with a
+watchdog, protected senders and mails, a Trash/Junk browser, trackers, space
+map, statistics, "Your year in mail", audit log, multiple strictly separate
+accounts, system/light/dark appearance, phone layout, English and
 German. Everything is listed in **[docs/features.md](docs/features.md)**.
 
 ## Security & multi-user

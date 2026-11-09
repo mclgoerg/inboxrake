@@ -1,0 +1,154 @@
+/* Start page, FAQ and the 404 page (on top of inboxrake.css). The Markdown
+   stays plain (docs/index.md, docs/faq.md read fine on GitHub); these rules
+   turn its lists into cards and its <details> into expandable cards.
+   Icons are Lucide (ISC licence) as masks, so they take the accent colour of
+   either theme. */
+:root {
+  --ir-i-download: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M12%2015V3'%20/%3E%3Cpath%20d='M21%2015v4a2%202%200%200%201-2%202H5a2%202%200%200%201-2-2v-4'%20/%3E%3Cpath%20d='m7%2010%205%205%205-5'%20/%3E%3C/svg%3E");
+  --ir-i-plug: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M12%2022v-5'%20/%3E%3Cpath%20d='M15%208V2'%20/%3E%3Cpath%20d='M17%208a1%201%200%200%201%201%201v4a4%204%200%200%201-4%204h-4a4%204%200%200%201-4-4V9a1%201%200%200%201%201-1z'%20/%3E%3Cpath%20d='M9%208V2'%20/%3E%3C/svg%3E");
+  --ir-i-sliders-horizontal: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M10%205H3'%20/%3E%3Cpath%20d='M12%2019H3'%20/%3E%3Cpath%20d='M14%203v4'%20/%3E%3Cpath%20d='M16%2017v4'%20/%3E%3Cpath%20d='M21%2012h-9'%20/%3E%3Cpath%20d='M21%2019h-5'%20/%3E%3Cpath%20d='M21%205h-7'%20/%3E%3Cpath%20d='M8%2010v4'%20/%3E%3Cpath%20d='M8%2012H3'%20/%3E%3C/svg%3E");
+  --ir-i-sparkles: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M11.017%202.814a1%201%200%200%201%201.966%200l1.051%205.558a2%202%200%200%200%201.594%201.594l5.558%201.051a1%201%200%200%201%200%201.966l-5.558%201.051a2%202%200%200%200-1.594%201.594l-1.051%205.558a1%201%200%200%201-1.966%200l-1.051-5.558a2%202%200%200%200-1.594-1.594l-5.558-1.051a1%201%200%200%201%200-1.966l5.558-1.051a2%202%200%200%200%201.594-1.594z'%20/%3E%3Cpath%20d='M20%202v4'%20/%3E%3Cpath%20d='M22%204h-4'%20/%3E%3Ccircle%20cx='4'%20cy='20'%20r='2'%20/%3E%3C/svg%3E");
+  --ir-i-filter: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M10%2020a1%201%200%200%200%20.553.895l2%201A1%201%200%200%200%2014%2021v-7a2%202%200%200%201%20.517-1.341L21.74%204.67A1%201%200%200%200%2021%203H3a1%201%200%200%200-.742%201.67l7.225%207.989A2%202%200%200%201%2010%2014z'%20/%3E%3C/svg%3E");
+  --ir-i-circle-help: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='12'%20cy='12'%20r='10'%20/%3E%3Cpath%20d='M9.09%209a3%203%200%200%201%205.83%201c0%202-3%203-3%203'%20/%3E%3Cpath%20d='M12%2017h.01'%20/%3E%3C/svg%3E");
+  --ir-i-list-checks: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M13%205h8'%20/%3E%3Cpath%20d='M13%2012h8'%20/%3E%3Cpath%20d='M13%2019h8'%20/%3E%3Cpath%20d='m3%2017%202%202%204-4'%20/%3E%3Cpath%20d='m3%207%202%202%204-4'%20/%3E%3C/svg%3E");
+  --ir-i-undo-2: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M9%2014%204%209l5-5'%20/%3E%20%3Cpath%20d='M4%209h10.5a5.5%205.5%200%200%201%205.5%205.5a5.5%205.5%200%200%201-5.5%205.5H11'%20/%3E%3C/svg%3E");
+  --ir-i-scan-eye: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M3%207V5a2%202%200%200%201%202-2h2'%20/%3E%20%3Cpath%20d='M17%203h2a2%202%200%200%201%202%202v2'%20/%3E%20%3Cpath%20d='M21%2017v2a2%202%200%200%201-2%202h-2'%20/%3E%20%3Cpath%20d='M7%2021H5a2%202%200%200%201-2-2v-2'%20/%3E%20%3Ccircle%20cx='12'%20cy='12'%20r='1'%20/%3E%20%3Cpath%20d='M18.944%2012.33a1%201%200%200%200%200-.66%207.5%207.5%200%200%200-13.888%200%201%201%200%200%200%200%20.66%207.5%207.5%200%200%200%2013.888%200'%20/%3E%3C/svg%3E");
+  --ir-i-shield-check: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M20%2013c0%205-3.5%207.5-7.66%208.95a1%201%200%200%201-.67-.01C7.5%2020.5%204%2018%204%2013V6a1%201%200%200%201%201-1c2%200%204.5-1.2%206.24-2.72a1.17%201.17%200%200%201%201.52%200C14.51%203.81%2017%205%2019%205a1%201%200%200%201%201%201z'%20/%3E%3Cpath%20d='m9%2012%202%202%204-4'%20/%3E%3C/svg%3E");
+  --ir-i-play: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M5%205a2%202%200%200%201%203.008-1.728l11.997%206.998a2%202%200%200%201%20.003%203.458l-12%207A2%202%200%200%201%205%2019z'%20/%3E%3C/svg%3E");
+  --ir-i-chevron-right: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m9%2018%206-6-6-6'%20/%3E%3C/svg%3E");
+  --ir-i-chevron-down: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'%20/%3E%3C/svg%3E");
+  --ir-i-arrow-right: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M5%2012h14'%20/%3E%3Cpath%20d='m12%205%207%207-7%207'%20/%3E%3C/svg%3E");
+}
+
+/* ---- start page ---- */
+/* "Try it before you install" (only built while the demo is live, see
+   plugins/docs-links.mjs): a tinted strip with a button */
+.sl-markdown-content .demo-banner {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  column-gap: 1rem; margin: 1.5rem 0; padding: 1.1rem 1.25rem; border-radius: 18px; background: var(--ir-tint);
+}
+.sl-markdown-content .demo-banner::before {
+  content: ""; grid-row: 1 / span 2; width: 1.35rem; height: 1.35rem; background: var(--ir-accent);
+  -webkit-mask: var(--ir-i-play) center / contain no-repeat; mask: var(--ir-i-play) center / contain no-repeat;
+}
+.sl-markdown-content .demo-banner p { margin: 0; }
+.sl-markdown-content .demo-banner p:nth-child(1) { grid-column: 2; font-size: 1.05rem; color: var(--ir-body); }
+.sl-markdown-content .demo-banner p:nth-child(2) { grid-column: 2; font-size: 0.93rem; color: var(--ir-muted); line-height: 1.45; }
+.sl-markdown-content .demo-banner p:nth-child(3) { grid-column: 3; grid-row: 1 / span 2; }
+.sl-markdown-content .demo-banner a {
+  display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.5rem; padding: 0 1.1rem; border-radius: 999px;
+  background: var(--ir-accent); color: var(--ir-on-accent); font-size: 0.92rem; font-weight: 650; text-decoration: none; white-space: nowrap;
+}
+.sl-markdown-content .demo-banner a:hover { background: var(--ir-accenth); color: var(--ir-on-accent); }
+.sl-markdown-content .demo-banner a::after {
+  content: ""; width: 1rem; height: 1rem; background: currentColor;
+  -webkit-mask: var(--ir-i-arrow-right) center / contain no-repeat; mask: var(--ir-i-arrow-right) center / contain no-repeat;
+}
+
+/* the pointer line under the safety promises */
+.sl-markdown-content .cards--small + p { margin-top: 1rem; color: var(--ir-muted); font-size: 0.92rem; }
+
+/* the lists inside <div class="cards"> are cards; the whole card is the link */
+.sl-markdown-content .cards ul { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; margin: 0; padding: 0; }
+.sl-markdown-content .cards { margin-top: 0.9rem; }
+.sl-markdown-content .cards li {
+  --ir-i: none; position: relative; margin: 0; padding: 4.5rem 1.15rem 1.15rem; border-radius: 18px;
+  background: var(--ir-panel); box-shadow: 0 0 0 1px var(--ir-line); color: var(--ir-muted); font-size: 0.9rem; line-height: 1.5;
+}
+.sl-markdown-content .cards li::before, .sl-markdown-content .cards li::after {
+  content: ""; position: absolute; left: 1.15rem; top: 1.15rem; width: 2.5rem; height: 2.5rem; border-radius: 12px;
+}
+.sl-markdown-content .cards li::before { background: var(--ir-tint); }
+.sl-markdown-content .cards li::after {
+  background: var(--ir-accent); border-radius: 0; -webkit-mask: var(--ir-i) center / 1.25rem no-repeat; mask: var(--ir-i) center / 1.25rem no-repeat;
+}
+.sl-markdown-content .cards li br { display: none; }
+.sl-markdown-content .cards li strong { display: block; margin-bottom: 0.15rem; color: var(--ir-body); font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+.sl-markdown-content .cards li strong a { color: inherit; text-decoration: none; font-weight: inherit; }
+.sl-markdown-content .cards li strong a::after { content: ""; position: absolute; inset: 0; border-radius: 18px; }
+.sl-markdown-content .cards li:has(a:hover) { box-shadow: 0 0 0 1px var(--ir-accent); }
+.sl-markdown-content .cards li:has(a:focus-visible) { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+.sl-markdown-content .cards li strong a:focus-visible { outline: 0; }
+.sl-markdown-content .cards li code { font-size: 0.85em; }
+.sl-markdown-content .cards li:has(a[href$="/install/"]) { --ir-i: var(--ir-i-download); }
+.sl-markdown-content .cards li:has(a[href$="/providers/"]) { --ir-i: var(--ir-i-plug); }
+.sl-markdown-content .cards li:has(a[href$="/configuration/"]) { --ir-i: var(--ir-i-sliders-horizontal); }
+.sl-markdown-content .cards li:has(a[href$="/features/"]) { --ir-i: var(--ir-i-sparkles); }
+.sl-markdown-content .cards li:has(a[href$="/filters/"]) { --ir-i: var(--ir-i-filter); }
+.sl-markdown-content .cards li:has(a[href$="/faq/"]) { --ir-i: var(--ir-i-circle-help); }
+/* the four safety promises: smaller, no link */
+.sl-markdown-content .cards--small ul { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.sl-markdown-content .cards--small li { padding: 3.75rem 0.95rem 0.95rem; font-size: 0.84rem; }
+.sl-markdown-content .cards--small li::before, .sl-markdown-content .cards--small li::after { left: 0.95rem; top: 0.95rem; width: 2.1rem; height: 2.1rem; }
+.sl-markdown-content .cards--small li::after { -webkit-mask-size: 1.05rem; mask-size: 1.05rem; }
+.sl-markdown-content .cards--small li strong { font-size: 0.98rem; }
+.sl-markdown-content .cards--small li:nth-child(1) { --ir-i: var(--ir-i-list-checks); }
+.sl-markdown-content .cards--small li:nth-child(2) { --ir-i: var(--ir-i-undo-2); }
+.sl-markdown-content .cards--small li:nth-child(3) { --ir-i: var(--ir-i-scan-eye); }
+.sl-markdown-content .cards--small li:nth-child(4) { --ir-i: var(--ir-i-shield-check); }
+@media (max-width: 62rem) { .sl-markdown-content .cards--small ul { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* phones: the cards become list rows (icon, title + line, chevron) */
+@media (max-width: 49.99rem) {
+  .sl-markdown-content .demo-banner { grid-template-columns: auto minmax(0, 1fr); padding: 0.85rem 3rem 0.85rem 1rem; margin: 1.1rem 0; }
+  .sl-markdown-content .demo-banner p:nth-child(3) { position: static; }
+  /* the whole strip is the link; its text stays for screen readers */
+  .sl-markdown-content .demo-banner a {
+    position: absolute; inset: 0; min-height: 0; padding: 0; border-radius: 18px; background: transparent; font-size: 0; gap: 0;
+  }
+  .sl-markdown-content .demo-banner a:hover { background: transparent; }
+  .sl-markdown-content .demo-banner a:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  .sl-markdown-content .demo-banner a::after {
+    position: absolute; right: 1rem; top: 50%; width: 1.15rem; height: 1.15rem; margin-top: -0.575rem; background: var(--ir-muted);
+    -webkit-mask-image: var(--ir-i-chevron-right); mask-image: var(--ir-i-chevron-right);
+  }
+  .sl-markdown-content .cards ul, .sl-markdown-content .cards--small ul { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+  .sl-markdown-content .cards li, .sl-markdown-content .cards--small li {
+    min-height: 4.25rem; padding: 0.8rem 2.9rem 0.8rem 4.1rem; border-radius: 16px; font-size: 0.86rem; line-height: 1.4;
+  }
+  .sl-markdown-content .cards li::before, .sl-markdown-content .cards li::after,
+  .sl-markdown-content .cards--small li::before, .sl-markdown-content .cards--small li::after {
+    left: 0.8rem; top: 50%; width: 2.5rem; height: 2.5rem; margin-top: -1.25rem;
+  }
+  .sl-markdown-content .cards--small li::after { -webkit-mask-size: 1.25rem; mask-size: 1.25rem; }
+  .sl-markdown-content .cards li strong, .sl-markdown-content .cards--small li strong { font-size: 1rem; }
+  .sl-markdown-content .cards li strong:has(a)::after {
+    content: ""; position: absolute; right: 0.95rem; top: 50%; width: 1.15rem; height: 1.15rem; margin-top: -0.575rem; background: var(--ir-muted);
+    -webkit-mask: var(--ir-i-chevron-right) center / contain no-repeat; mask: var(--ir-i-chevron-right) center / contain no-repeat;
+  }
+}
+
+/* ---- FAQ: questions as expandable cards (<details>, no script needed) ---- */
+.sl-markdown-content:has(.faq-q) h2 {
+  margin: 1.9rem 0 0.6rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ir-muted);
+}
+.sl-markdown-content .faq-q {
+  margin: 0 0 0.6rem; padding: 0; border: 0; border-radius: 16px; background: var(--ir-panel); box-shadow: 0 0 0 1px var(--ir-line);
+  scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+}
+.sl-markdown-content .faq-q:hover { box-shadow: 0 0 0 1px var(--ir-muted); }
+/* the closed card: the question, with its short answer under it */
+.sl-markdown-content .faq-q summary {
+  display: block; position: relative; min-height: 3.25rem; margin: 0; padding: 0.8rem 3rem 0.8rem 1.1rem;
+  list-style: none; cursor: pointer; border-radius: 16px; font-weight: 400;
+}
+.sl-markdown-content .faq-q summary::before { display: none; }
+.sl-markdown-content .faq-q summary::-webkit-details-marker { display: none; }
+.sl-markdown-content .faq-q summary:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+.sl-markdown-content .faq-q summary::after {
+  content: ""; position: absolute; right: 1.05rem; top: 1.05rem; width: 1.15rem; height: 1.15rem; background: var(--ir-muted);
+  -webkit-mask: var(--ir-i-chevron-down) center / contain no-repeat; mask: var(--ir-i-chevron-down) center / contain no-repeat; transition: transform 0.15s;
+}
+.sl-markdown-content .faq-q[open] summary::after { transform: rotate(180deg); }
+.sl-markdown-content .faq-q h3 {
+  margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.4;
+  scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+}
+.sl-markdown-content .faq-short { display: block; margin-top: 0.15rem; color: var(--ir-muted); font-size: 0.9rem; line-height: 1.45; }
+.sl-markdown-content .faq-q[open] .faq-short { display: none; }
+.sl-markdown-content .faq-q > :not(summary) { margin: 0 1.1rem; color: var(--ir-muted); font-size: 0.93rem; line-height: 1.6; }
+.sl-markdown-content .faq-q > :not(summary) + :not(summary) { margin-top: 0.7rem; }
+.sl-markdown-content .faq-q > :not(summary) strong { color: var(--ir-body); }
+.sl-markdown-content .faq-q[open] { padding-bottom: 1.1rem; }
+.sl-markdown-content .faq-q > :last-child { margin-bottom: 0; }
+.sl-markdown-content .faq-q[open] summary { margin: 0; padding-bottom: 0.5rem; }

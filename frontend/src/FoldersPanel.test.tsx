@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
+import { findPicker, pickFolder } from "./folderPickerTestUtil";
 import { popupOptions, popupPick } from "./toolTestUtils";
 import { findDialog, pressDialog, cancelDialog, expectNoDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
@@ -17,6 +18,7 @@ import type { AppState } from "./types";
 const trashRestore = vi.fn();
 const folderMove = vi.fn();
 const foldersPanel = vi.fn();
+const clearNotice = vi.fn().mockResolvedValue({ ok: true });
 const fmtSize = vi.fn((_b: number) => "1 KB");
 
 vi.mock("./api", () => ({
@@ -24,6 +26,8 @@ vi.mock("./api", () => ({
     foldersPanel: (role: string) => foldersPanel(role),
     folderMove: (...a: unknown[]) => folderMove(...a),
     trashRestore: (...a: unknown[]) => trashRestore(...a),
+    clearNotice: (...a: unknown[]) => clearNotice(...a),
+    folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     purgePreview: vi.fn().mockResolvedValue({ count: 0, size: 0 }),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
       subject: "s", text: "body text" }),
@@ -36,7 +40,8 @@ vi.mock("./api", () => ({
 let total = 1;
 let emptyList = false;
 const state = {
-  folders: ["INBOX"], folders_raw: ["INBOX"],
+  account: "proton",
+  folders: ["INBOX", "Trash"], folders_raw: ["INBOX", "Trash"],
   // bob replied to us: a known sender in Junk
   groups: { sender: { "bob@friends.example": {
     key: "bob@friends.example", replied: true } } },
@@ -81,6 +86,7 @@ afterEach(() => {
   folderMove.mockReset();
   foldersPanel.mockReset();
   trashRestore.mockReset();
+  clearNotice.mockClear();
   total = 1;
   emptyList = false;
   setLang("en");
@@ -105,7 +111,8 @@ async function restoreOne() {
   panel();
   await selectMode();
   fireEvent.click(await screen.findByRole("checkbox"));
-  popupPick(screen.getByRole("button", { name: /Restore to/ }), "INBOX");
+  fireEvent.click(screen.getByRole("button", { name: /Restore to/ }));
+  await pickFolder("Inbox");
 }
 
 test("restore with a started rescan says the views update by themselves",
@@ -114,6 +121,14 @@ test("restore with a started rescan says the views update by themselves",
     await restoreOne();
     await waitFor(() => expect(screen.getByText(
       "Restored 1 mail - the views update automatically.")).toBeTruthy());
+  });
+
+test("a Trash restore drops its banner notice (the toast is the result)",
+  async () => {
+    trashRestore.mockResolvedValue({ restored: 1, rescan: true });
+    await restoreOne();
+    await waitFor(() => expect(clearNotice).toHaveBeenCalledWith(
+      ["junk_rescued", "trash_restored"]));
   });
 
 test("restore while the server is busy still asks for a manual rescan",
@@ -331,7 +346,7 @@ test("selecting a sender selects all of its mails; actions only with a selection
 test("Not junk (Select mode) moves the exact UIDs, toasts with Undo and Protect sender",
   async () => {
     const onChanged = vi.fn();
-    const undo = { ts: 9, label: "1 mail from Junk", count: 1 };
+    const undo = { id: "1a2b", ts: 9, label: "1 mail from Junk", count: 1 };
     folderMove.mockResolvedValue({ moved: 1, rescan: true,
       senders: ["bob@friends.example"], undo });
     panel({ initialRole: "junk", onChanged });
@@ -356,7 +371,11 @@ test("Not junk (Select mode) moves the exact UIDs, toasts with Undo and Protect 
     fireEvent.click(screen.getByRole("button",
       { name: "Not junk: bob@friends.example" }));
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    // the whole identity, id included: the App finds the entry in
+    // state.undo by it
     expect(onUndo).toHaveBeenCalledWith(undo);
+    // Not junk drops the "Moved N mails" banner notice of the same move
+    expect(clearNotice).toHaveBeenCalledWith(["junk_rescued", "trash_restored"]);
   });
 
 test("Move to Trash from Junk; protected mails ask before a forced retry",
@@ -411,6 +430,22 @@ test("phone layout: the select actions are >= 44px targets",
   });
 
 
+test("Restore to… is the folder picker, and Trash itself is not offered",
+  async () => {
+    trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+    panel();
+    await selectMode();
+    fireEvent.click(await screen.findByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Restore to/ }));
+    const dlg = await findPicker();
+    const names = within(dlg).getAllByRole("button").map((b) => b.textContent);
+    expect(names.some((n) => /^Inbox/.test(n ?? ""))).toBe(true);
+    expect(names.some((n) => /^Trash\d*$/.test(n ?? ""))).toBe(false);
+    // it is a restore, not a move
+    expect(within(dlg).getByRole("button", { name: "Restore" })).toBeTruthy();
+    expect(within(dlg).queryByRole("button", { name: "Move" })).toBeNull();
+  });
+
 /* -------------------- selection only ever covers what you see ------------- */
 
 test("a selection hidden by a search is not acted on (Restore to…)",
@@ -436,8 +471,8 @@ test("a selection hidden by a search is not acted on (Restore to…)",
     fireEvent.change(screen.getByPlaceholderText("Search subject or sender"),
       { target: { value: "cancelled" } });
     // only the visible one counts and is sent
-    popupPick(screen.getByRole("button", { name: /Restore to… \(1\)/ }),
-      "INBOX");
+    fireEvent.click(screen.getByRole("button", { name: /Restore to… \(1\)/ }));
+    await pickFolder("Inbox");
     await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([30],
       "INBOX", 1));
     // clearing the search does not bring the hidden tick back
@@ -557,4 +592,89 @@ test("Junk: the reader's Trash is the row's move (protected confirm included) "
   fireEvent.click(await screen.findByText("Deleted elsewhere"));
   await screen.findByText("body text");
   expect(screen.queryByRole("button", { name: "Trash this mail" })).toBeNull();
+});
+
+
+/* ------------- two folders could be the role: said before any click ------- */
+
+test("an ambiguous Junk role is named up front, deletes are disabled, moves stay",
+  async () => {
+    foldersPanel.mockResolvedValue({ ...junkListing(),
+      ambiguous: [{ role: "junk", choices: ["Spam", "Junk Email"] }] });
+    const choose = vi.fn();
+    panel({ initialRole: "junk", onChooseFolder: choose });
+    const notice = (await screen.findByText(/Spam, Junk Email/))
+      .closest("[role=status]") as HTMLElement;
+    expect(notice.textContent).toContain("choose one");
+    fireEvent.click(within(notice).getByRole("button",
+      { name: "Choose folder" }));
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: /Empty Junk/ }) as
+      HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Delete older than…" }) as
+      HTMLButtonElement).disabled).toBe(true);
+    // the reversible moves are untouched
+    expect((screen.getAllByRole("button", { name: /Not junk/ })[0] as
+      HTMLButtonElement).disabled).toBe(false);
+    await selectMode();
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /^Action/ }));
+    const del = within(screen.getByRole("menu")).getByRole("menuitemradio",
+      { name: "Delete permanently…" }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+  });
+
+test("a clear role shows no notice and keeps the delete buttons live",
+  async () => {
+    foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [] });
+    panel({ initialRole: "junk" });
+    await screen.findByRole("button", { name: /Empty Junk/ });
+    expect(screen.queryByText(/could be your/)).toBeNull();
+    expect((screen.getByRole("button", { name: /Empty Junk/ }) as
+      HTMLButtonElement).disabled).toBe(false);
+  });
+
+test("after a toast Undo the page re-reads its folder", async () => {
+  folderMove.mockResolvedValue({ moved: 1, rescan: true, senders: [],
+    undo: { id: "u1", ts: 9, label: "1 mail from Junk", count: 1 } });
+  const undone = vi.fn().mockResolvedValue(undefined);
+  panel({ initialRole: "junk", onUndo: undone });
+  await screen.findByText("bob@friends.example");
+  fireEvent.click(screen.getByRole("button",
+    { name: "Not junk: bob@friends.example" }));
+  const before = foldersPanel.mock.calls.length;
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(foldersPanel.mock.calls.length).toBe(before + 1));
+  expect(undone).toHaveBeenCalledTimes(1);
+});
+
+test("Choose folder names the page's own role", async () => {
+  foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [
+    { role: "junk", choices: ["Spam", "Junk Email"] },
+    { role: "trash", choices: ["Trash", "Deleted Items"] }] });
+  const choose = vi.fn();
+  panel({ initialRole: "junk", onChooseFolder: choose });
+  fireEvent.click(await screen.findByRole("button", { name: "Choose folder" }));
+  expect(choose).toHaveBeenCalledWith("junk");
+});
+
+test("two ambiguous roles get one combined notice with one button, and a "
+  + "visible reason beside the disabled buttons", async () => {
+  foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [
+    { role: "junk", choices: ["Spam", "Junk Email"] },
+    { role: "trash", choices: ["Trash", "Deleted Items"] }] });
+  const choose = vi.fn();
+  panel({ initialRole: "junk", onChooseFolder: choose });
+  const notice = (await screen.findByText(/Spam, Junk Email/))
+    .closest("[role=status]") as HTMLElement;
+  expect(notice.textContent).toContain("Trash, Deleted Items");
+  expect(notice.textContent).toContain("choose one of each");
+  expect(within(notice).getAllByRole("button", { name: "Choose folder" }))
+    .toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "Choose folder" }))
+    .toHaveLength(1);
+  const reason = screen.getByText("Choose your folder first to delete permanently.");
+  const empty = screen.getByRole("button", { name: /Empty Junk/ });
+  expect(empty.getAttribute("aria-describedby")).toBe(reason.id);
+  expect(empty.getAttribute("title")).toBeNull();
 });

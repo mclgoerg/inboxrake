@@ -161,6 +161,24 @@
   --z-toast: 60;
 }
 
+/* The in-browser demo (frontend/src/demo) puts a bar above the app and the
+   sidebar: it sets html[data-demo], which opens `--demo-bar-h` (the bar and
+   the status-bar safe area it covers) at the top of the body. In the real
+   app both stay 0 / the plain safe area and nothing moves. */
+:root {
+  --demo-bar-h: 0px;
+  --safe-top: env(safe-area-inset-top);
+}
+html[data-demo] {
+  --demo-bar-h: calc(30px + env(safe-area-inset-top));
+  --safe-top: 0px;
+}
+@media (width >= 40rem) {
+  html[data-demo] { --demo-bar-h: calc(34px + env(safe-area-inset-top)); }
+}
+/* The viewport below the demo bar (full height of a column or pane). */
+@utility h-app { height: calc(100dvh - var(--demo-bar-h)); }
+
 html {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -233,8 +251,8 @@ html[data-theme="light"] {
 body::before {
   content: "";
   position: fixed;
-  inset: 0 0 auto;
-  height: calc(env(safe-area-inset-top) + 8px);
+  inset: var(--demo-bar-h) 0 auto;
+  height: calc(var(--safe-top) + 8px);
   background: var(--color-surface);
   z-index: var(--z-sticky);
   pointer-events: none;
@@ -250,7 +268,7 @@ body {
      percentage height is resolved against the initial containing block,
      which an installed iOS PWA can keep at its pre-rotation size. */
   position: fixed;
-  inset: 0;
+  inset: var(--demo-bar-h) 0 0;
   overflow: auto;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
@@ -263,7 +281,7 @@ body {
      status bar and the first line of content reads as intentional
      design and hides any residual edge artifact instead of sitting
      content flush against the system chrome. */
-  padding: calc(env(safe-area-inset-top) + 8px) env(safe-area-inset-right)
+  padding: calc(var(--safe-top) + 8px) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 

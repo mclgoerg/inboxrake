@@ -1,15 +1,18 @@
 import { Copy, Eye, File, FileArchive, FileText, Film, Image as ImageIcon,
   LayoutGrid, List, Music, Paperclip, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { api, fmtSize, mailKey } from "../api";
+import { nowMs } from "../clock";
 import { t } from "../i18n";
 import { confirmTrashMails } from "../mailActions";
 import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { BarButton, BulkBar, Button, Checkbox, EmptyState, Loading, Modal,
-  PanelHeader, PopupSelect, Segmented, ShortDate, Spinner } from "./ui";
+  PanelHeader, PopupSelect, Segmented, ShortDate, Spinner, useOptionalToast }
+  from "./ui";
 
 /** Look of each kind of file: icon + the token pair of its tile and its bar
  *  segment (colour is never the only signal - every use also prints the
@@ -59,6 +62,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
+  const toast = useOptionalToast();
   const [kind, setKind] = useState<AttKind | "all">("all");
   const [age, setAge] = useState(0);
   const [repeatsOnly, setRepeatsOnly] = useState(false);
@@ -130,7 +134,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   }, [mails]);
 
   const visible = useMemo(() => {
-    const cutoff = age ? Date.now() / 1000 - age * 365 * 86400 : 0;
+    const cutoff = age ? nowMs() / 1000 - age * 365 * 86400 : 0;
     return tiles.filter((f) =>
       (kind === "all" || f.kind === kind)
       && (!repeatsOnly || f.mails.length > 1)
@@ -138,18 +142,22 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       && (!cutoff || Math.max(...f.mails.map((m) => m.ts || 0)) < cutoff));
   }, [tiles, kind, age, repeatsOnly]);
 
-  // Filters change what is listed: start from the top again, and drop any
-  // selected mail that no visible tile stands for (nothing hidden is ever
-  // selected).
+  // What is on screen is one page of the visible tiles ("Show more" grows
+  // it). A selection only covers rendered tiles: a filter change starts from
+  // the top again and drops every selected mail that no rendered tile stands
+  // for (nothing hidden, not even behind "Show more", is ever selected).
+  const page = useMemo(() => visible.slice(0, shown), [visible, shown]);
+  const pageKeys = useMemo(() => new Set(
+    page.flatMap((f) => f.mails.map(mailKey))), [page]);
   const visibleKeys = useMemo(() => new Set(
     visible.flatMap((f) => f.mails.map(mailKey))), [visible]);
+  useEffect(() => { setShown(PAGE); }, [visibleKeys]);
   useEffect(() => {
-    setShown(PAGE);
     setSel((s) => {
-      const keep = [...s].filter((k) => visibleKeys.has(k));
+      const keep = [...s].filter((k) => pageKeys.has(k));
       return keep.length === s.size ? s : new Set(keep);
     });
-  }, [visibleKeys]);
+  }, [pageKeys]);
 
   const setLayoutKeep = (v: "grid" | "list") => {
     setLayout(v);
@@ -157,23 +165,29 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   };
 
   const fileSel = (f: FileTile) => f.mails.every((m) => sel.has(mailKey(m)));
-  const toggle = (f: FileTile) => {
-    const next = new Set(sel);
-    const on = fileSel(f);
+  const toggle = (f: FileTile) => setSel((cur) => {
+    const next = new Set(cur);
+    const on = f.mails.every((m) => cur.has(mailKey(m)));
     for (const m of f.mails) on ? next.delete(mailKey(m)) : next.add(mailKey(m));
-    setSel(next);
-  };
+    return next;
+  });
 
-  // Only mails of visible tiles can be acted on.
+  // Only mails of rendered tiles can be acted on.
   const chosen = (mails ?? []).filter((m) =>
-    sel.has(mailKey(m)) && visibleKeys.has(mailKey(m)));
+    sel.has(mailKey(m)) && pageKeys.has(mailKey(m)));
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
   // Resolves true when the mails are on their way to Trash.
-  const trashMails = async (go: AttMail[], subject?: string):
+  // (`go` can be a conversation card outside the list, from the reader)
+  const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
     if (!mails || go.length === 0) return false;
-    if (!await confirmTrashMails(go.length, subject)) return false;
+    const switched = accountGuard();
+    if (!await confirmTrashMails(go.length,
+      subject ?? (go.length === 1 ? go[0].subject ?? "" : undefined)))
+      return false;
+    // the confirm can outlive this page: mail ids belong to one account
+    if (switched()) return false;
     try {
       const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items, "trash");
@@ -184,7 +198,10 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       onDeleted();
       return true;
     } catch (e: any) {
-      setNote(t("err.generic", { msg: e.message ?? e }));
+      const msg = t("err.generic", { msg: e.message ?? e });
+      setNote(msg);
+      // (the note sits behind an open reader)
+      if (view) toast?.show(msg, { variant: "error" });
       return false;
     }
   };
@@ -192,8 +209,8 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   // The reader's Trash: the same confirm and call for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
-      const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m));
-      if (one && await trashMails([one], one.subject)) setView(null);
+      const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m)) ?? m;
+      if (await trashMails([one], one.subject)) setView(null);
     },
   };
 
@@ -205,7 +222,6 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const total = summary?.total ?? 0;
   const kinds = summary?.kinds ?? [];
   const repeats = summary?.repeats;
-  const page = visible.slice(0, shown);
 
   return (
     <Modal onClose={onClose} size="lg" full={!!view || running || !emptyPanel}>
@@ -410,6 +426,11 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
 function FileItem({ f, list, on, onToggle }: {
   f: FileTile; list: boolean; on: boolean; onToggle: () => void;
 }) {
+  // A click on the round check reaches the card AND (through its label) the
+  // input: only the input's own change may toggle then, or it toggles twice.
+  const onCard = (e: MouseEvent<HTMLElement>) => {
+    if (!(e.target as HTMLElement).closest("label")) onToggle();
+  };
   const k = KIND[f.kind];
   const m = f.mails[0];
   const label = t("atts.select_file", { name: f.name });
@@ -424,7 +445,7 @@ function FileItem({ f, list, on, onToggle }: {
   const ext = (f.ext || "file").toUpperCase();
   if (list) {
     return (
-      <li onClick={onToggle}
+      <li onClick={onCard}
         className={`flex cursor-pointer items-center gap-3 px-3 py-2
           ${on ? "bg-accent-tint" : "hover:bg-chip"}`}>
         <Checkbox round checked={on} onChange={onToggle} aria-label={label}
@@ -444,7 +465,7 @@ function FileItem({ f, list, on, onToggle }: {
     );
   }
   return (
-    <li onClick={onToggle} title={`${subject} · ${f.name}`}
+    <li onClick={onCard} title={`${subject} · ${f.name}`}
       className={`relative cursor-pointer rounded-card border bg-panel p-2
         ${on ? "border-accent" : "border-line hover:bg-chip"}`}>
       <div className={`relative grid h-20 place-items-center rounded-control

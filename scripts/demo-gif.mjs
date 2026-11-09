@@ -1,6 +1,7 @@
-/* README demo GIF: the main workflow in nine frames - Overview, Senders list,
- * filter builder, a condition added, filtered list, Select mode + selection,
- * confirm, result toast with Undo, group in the split pane - assembled with ffmpeg at 1280 px wide.
+/* README demo GIF: the main workflow in ten frames - Overview, Senders list,
+ * Filter menu, the AI-safe groups filtered, Select + selection bar, confirm
+ * sheet, result toast with Undo, the mails back after Undo, a sender open in
+ * the split pane - assembled with ffmpeg at 1200 px wide.
  *
  * Same demo setup as screenshots.mjs (see its header for the demo
  * container). This script really trashes mails in the demo, so use a FRESH
@@ -15,8 +16,8 @@
  *       && cp out/demo.gif /repo/docs/screenshots/ \
  *       && chown $(id -u):$(id -g) /repo/docs/screenshots/demo.gif"
  *
- * Frames are captured at 1280x800 with deviceScaleFactor 2 and scaled down
- * to 1280 px wide by ffmpeg (crisper text than a 1x capture). Optional
+ * Frames are captured at 1280x800 with deviceScaleFactor 2 (dark theme) and
+ * scaled down by ffmpeg (crisper text than a 1x capture). Optional
  * OUT=<dir> overrides the output folder.
  */
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
@@ -34,10 +35,10 @@ mkdirSync(FRAMES, { recursive: true });
 
 const browser = await launch();
 const page = await open(browser, BASE, {
-  width: 1280, height: 800, scale: 2, route: "overview",
+  width: 1280, height: 800, scale: 2, route: "overview", theme: "dark",
 });
 await dismissNotice(page);
-await waitText(page, /Biggest senders/);
+await waitText(page, /Next steps|What fills/);
 await settle(page);
 
 let n = 0;
@@ -55,42 +56,23 @@ await page.waitForSelector("[data-gidx]", { timeout: 30000 });
 await settle(page);
 await shot("2 Senders list");
 
-await click(page, "button", "Build a filter - click conditions together");
-await byRole(page, "button", "Done");
-await shot("3 filter builder");
+await click(page, "button", "Filter");
+await byRole(page, "menuitemradio", /^AI-safe groups/);
+await shot("3 Filter menu");
 
-// The builder's "Category" row (newsletter is preselected): its Add button.
-const addCategory = await page.evaluateHandle(() => {
-  const isAdd = (b) => b.textContent.trim() === "Add";
-  let row = [...document.querySelectorAll("select")]
-    .find((sel) => [...sel.options].some((o) => o.value === "newsletter"));
-  while (row && ![...row.querySelectorAll("button")].some(isAdd))
-    row = row.parentElement;
-  return [...row.querySelectorAll("button")].find(isAdd);
-});
-await addCategory.asElement().click();
-await page.waitForFunction(
-  (ph) => document.querySelector(`input[placeholder="${ph}"]`)
-    ?.value.includes("newsletter"), { timeout: 10000 }, "Search or filter…");
+// A quick filter narrows the list; "Select all N matches" ticks the lot.
+await click(page, "menuitemradio", /^AI-safe groups/);
 await settle(page);
-await shot("4 condition added, list filtered");
-
-await click(page, "button", "Done");
-await settle(page);
-await shot("5 filtered list");
-
-// Select mode shows the checkboxes; the header one ticks every group in the
-// filtered list and brings up the selection capsule.
-await click(page, "button", "Select");
-await page.click('thead input[type="checkbox"]');
+await shot("4 filtered list");
+await click(page, "button", /^Select all \d+ matches$/);
 const trash = await byRole(page, "button", /^Trash \d+$/);
 await settle(page);
-await shot("6 selection bar");
+await shot("5 selection bar");
 
 await trash.click();
 await byRole(page, "dialog", /Trash/);
 await settle(page);
-await shot("7 confirm dialog");
+await shot("6 confirm sheet");
 
 const confirm = await byRole(page, "button", /^Move to Trash \(\d+\)$/);
 await confirm.click();
@@ -101,18 +83,28 @@ await byRole(page, "button", "Undo");
 await click(page, "button", "Clear filter");
 await settle(page);
 await sleep(900);                        // let the toast finish sliding in
-await shot("8 result toast with undo");
+await shot("7 result toast with undo");
 
-await click(page, "button", "Dismiss");  // keep the toast off the pane footer
-await openGroup(page, "PayBank");       // beside the list (>= 1280 px)
-await shot("9 group in the split pane");
+// The toast's Undo is the last one in the DOM (the header also has an
+// "Undo" history menu).
+await page.evaluate(() => [...document.querySelectorAll("button")]
+  .filter((b) => b.textContent.trim() === "Undo").at(-1).click());
+await waitText(page, /Undone|Restored|Moved back|back to/i);
+await settle(page);
+await sleep(900);
+await shot("8 undone - the mails are back");
+
+await click(page, "button", "Dismiss").catch(() => {});  // keep the toast off the pane footer
+await click(page, "button", "Done");     // leave Select mode
+await openGroup(page, "ACME Store");    // beside the list (>= 1280 px)
+await shot("9 sender in the split pane");
 await browser.close();
 
-// ffmpeg: ~1.2 s per frame, a palette tuned to the frames, 1280 px wide.
+// ffmpeg: ~1.4 s per frame, a palette tuned to the frames, 1200 px wide.
 const frames = readdirSync(FRAMES).length;
 execFileSync("ffmpeg", [
-  "-y", "-v", "error", "-framerate", "1/1.2", "-i", `${FRAMES}/f%02d.png`,
-  "-vf", "scale=1280:-1:flags=lanczos,split[a][b];"
+  "-y", "-v", "error", "-framerate", "1/1.4", "-i", `${FRAMES}/f%02d.png`,
+  "-vf", "scale=1200:-1:flags=lanczos,split[a][b];"
     + "[a]palettegen=max_colors=256:stats_mode=diff[p];"
     + "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
   "-loop", "0", `${OUT}/demo.gif`,

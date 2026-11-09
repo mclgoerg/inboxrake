@@ -152,7 +152,11 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
   /** The app's trash path for these group keys of `grouping` (confirmed by
    *  this sheet). Resolves the number of mails queued to move, null when
    *  nothing was (declined, refused, another account by now). */
-  onTrash: (grouping: Grouping, keys: string[]) => Promise<number | null>;
+  /** `addrs`: the senders the groups were judged to hold; the server moves
+   *  only their mails, so a mail that joined a group since the preview
+   *  (subject / thread grouping) is left alone. */
+  onTrash: (grouping: Grouping, keys: string[], addrs: string[])
+    => Promise<number | null>;
   /** The persisted unsubscribe state changed (refresh the lists). */
   onChanged: () => void;
   /** The id of the bulk run this sheet follows (the app then leaves the
@@ -235,7 +239,8 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
       return;
     }
     const moved = await onTrash(request.grouping,
-      groupsToTrash.map((g) => g.key));
+      groupsToTrash.map((g) => g.key),
+      [...new Set(groupsToTrash.flatMap((g) => g.addrs))]);
     if (!alive.current) return;
     setTrashNote(moved ? t("unsub.trashed", { n: moved })
       : t("unsub.trash_failed"));

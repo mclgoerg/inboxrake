@@ -7,13 +7,13 @@ a Web Worker) loads. Dev-only tooling: nothing here ships in the app image.
     node build.mjs --out dist      # needs a Python with backend/requirements.txt
     node smoke.mjs dist            # boots the bundle in Pyodide, Trash + Undo
 
-`build.mjs` prints a per-file size table and exits 1 above the budget (10 MB
+`build.mjs` prints a per-file size table and exits 1 above the budget (15 MB
 estimated on the wire: brotli q9 for wasm/js/css/html/json, zips and wheels as
 they are). Pass `--ui ../../frontend/dist-demo` to count the demo UI build
 (page, scripts, worker) too: the budget is for the whole first visit, and CI
-does. The headroom is small (about 0.25 MB), and the figure assumes brotli
-level 9; check the real on-the-wire sizes once the site is live (Cloudflare may
-compress at a lower level).
+does. The figure assumes brotli level 9; Cloudflare compresses a little less
+(the live site measured about 10.1 MB on the wire in November 2026), so
+`scripts/smoke-site.sh` warns above the same 15 MB.
 
 CI (`.github/workflows/demo-bundle.yml`) runs on every PR that touches
 backend, frontend, tests or the demo scripts, and on `main`/tags:

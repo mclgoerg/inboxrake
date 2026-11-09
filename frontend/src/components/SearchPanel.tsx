@@ -10,7 +10,7 @@ import type { Group, Mail, SearchNote } from "../types";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
-  Segmented, Select, Spinner } from "./ui";
+  Segmented, Select, Spinner, useOptionalToast } from "./ui";
 
 const RECENT_KEY = "pmc_recent_searches";
 const RECENT_MAX = 8;
@@ -92,6 +92,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<Mail | null>(null);
+  const toast = useOptionalToast();
   const [when, setWhen] = useState<When>("any");
   const [folder, setFolder] = useState("");
   const [recent, setRecent] = useState<string[]>(loadRecent);
@@ -209,31 +210,42 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     return { ...p, s: hit.length, n };
   }).filter((p) => p.s > 0), [groups]);
 
-  // Resolves true when the mails are on their way to Trash.
-  const trashKeys = async (go: Set<string>, subject?: string):
+  // Resolves true when the mails are on their way to Trash. `go` is what is
+  // acted on: ticked results, or the one mail open in the reader - which can
+  // be a conversation card outside the results.
+  const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
-    if (!res || go.size === 0) return false;
-    if (!await confirmTrashMails(go.size, subject)) return false;
+    if (!res || go.length === 0) return false;
+    // (one mail: its subject is named, not "1 mail")
+    if (!await confirmTrashMails(go.length, subject
+      ?? (go.length === 1 ? go[0].subject ?? "" : undefined))) return false;
     try {
-      const items = mails.filter((m) => go.has(mailKey(m)))
-        .map((m) => [m.folder, m.uid] as [string, number]);
+      const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items);
-      setRes({ ...res, mails: res.mails.filter((m) => !go.has(mailKey(m))) });
+      const gone = new Set(go.map(mailKey));
+      // (against the CURRENT results: a search that finished while the
+      // confirm was open must not be overwritten by the old one)
+      setRes((cur) => cur && { ...cur,
+        mails: cur.mails.filter((m) => !gone.has(mailKey(m))) });
       // only the mails that went; other ticks stay (the reader trashes ONE)
-      setSel((cur) => new Set([...cur].filter((k) => !go.has(k))));
+      setSel((cur) => new Set([...cur].filter((k) => !gone.has(k))));
       setNote(t("note.background", { verb: t("Move to Trash") }));
       onDeleted();
       return true;
     } catch (e: any) {
-      setNote(t("err.generic", { msg: e.message ?? e }));
+      const msg = t("err.generic", { msg: e.message ?? e });
+      setNote(msg);
+      // (the note sits behind an open reader)
+      if (view) toast?.show(msg, { variant: "error" });
       return false;
     }
   };
-  const trashSelected = () => trashKeys(new Set(picked));
+  const trashSelected = () => trashMails(
+    mails.filter((m) => picked.includes(mailKey(m))));
   // The reader's Trash: the same confirm and call for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
-      if (await trashKeys(new Set([mailKey(m)]), m.subject)) setView(null);
+      if (await trashMails([m], m.subject)) setView(null);
     },
   };
 

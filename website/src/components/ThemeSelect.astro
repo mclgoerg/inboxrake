@@ -1,0 +1,36 @@
+---
+// Light / dark switch as one round icon button (replaces Starlight's select).
+// Starlight's inline ThemeProvider has already put the stored or system
+// theme on <html data-theme> before this runs; a click stores the opposite.
+import Icon from "./Icon.astro";
+---
+<ir-theme-toggle>
+  <button type="button" aria-label="Switch between light and dark theme">
+    <Icon name="sun" size={18} class="to-light" />
+    <Icon name="moon" size={18} class="to-dark" />
+  </button>
+</ir-theme-toggle>
+<style>
+  button {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2.75rem; height: 2.75rem; padding: 0;
+    border: 0; border-radius: 12px; background: transparent;
+    color: var(--sl-color-white); cursor: pointer;
+  }
+  button:hover { background: var(--ir-tint); color: var(--ir-accent); }
+  :global(:root[data-theme="dark"]) .to-light { display: none; }
+  :global(:root[data-theme="light"]) .to-dark { display: none; }
+</style>
+<script>
+  class IrThemeToggle extends HTMLElement {
+    constructor() {
+      super();
+      this.querySelector("button")?.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem("starlight-theme", next); } catch {}
+      });
+    }
+  }
+  customElements.define("ir-theme-toggle", IrThemeToggle);
+</script>

@@ -159,6 +159,26 @@ test("server notes are shown and a failed conversation load is reported",
     await screen.findByText("boom");
   });
 
+test("the toolbar acts on nothing while the conversation loads or failed",
+  async () => {
+    const trash = vi.fn().mockResolvedValue(true);
+    thread.mockReturnValue(new Promise(() => {}));            // still loading
+    const { unmount } = render(<ThreadView mail={a2} initial={bodyOf("x")}
+      onBack={() => {}} actions={{ trash }} />);
+    const btn = () => screen.getByRole("button", { name: "Trash this mail" });
+    expect((btn() as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+    thread.mockReset();
+    thread.mockRejectedValue(new Error("boom"));              // failed
+    render(<ThreadView mail={a2} initial={bodyOf("x")} onBack={() => {}}
+      actions={{ trash }} />);
+    await screen.findByText("boom");
+    expect((btn() as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/did not load - Trash, Pin and Move are off/))
+      .toBeTruthy();
+    expect(trash).not.toHaveBeenCalled();
+  });
+
 test("back returns to the caller", async () => {
   thread.mockResolvedValue(conv());
   const onBack = vi.fn();

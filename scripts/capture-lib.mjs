@@ -32,7 +32,8 @@ export async function open(browser, base, {
     { waitUntil: "networkidle2" });
   if (route === "senders")
     await page.waitForSelector("[data-gidx]", { timeout: 30000 });
-  else await page.waitForSelector("h1, h2", { timeout: 30000 });
+  else await page.waitForFunction(
+    () => document.body.innerText.trim().length > 200, { timeout: 30000 });
   await settle(page);
   return page;
 }
