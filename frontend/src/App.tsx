@@ -1071,7 +1071,7 @@ export default function App() {
       .findIndex((u) => undoId(u) === undoId(e)) ?? -1;
     if (find() < 0) await refresh();
     const i = find();
-    if (i >= 0) undo(i, false);
+    if (i >= 0) await undo(i, false);
   };
 
   // Shared by the profile menu and the Trash panel; resolves whether the
@@ -2368,7 +2368,8 @@ export default function App() {
         onProtect={protectSenders}
         onBlock={blockAddress}
         blockedSenders={blockedAddrs}
-        onChooseFolder={() => void fixAccount(account).then(focusSpecialFolders)}
+        onChooseFolder={(r) => void fixAccount(account)
+          .then(() => focusSpecialFolders(r))}
       />
     )}
     {toolShown("duplicates") && (

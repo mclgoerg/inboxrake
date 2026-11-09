@@ -614,6 +614,30 @@ test("a clear role shows no notice and keeps the delete buttons live",
       HTMLButtonElement).disabled).toBe(false);
   });
 
+test("after a toast Undo the page re-reads its folder", async () => {
+  folderMove.mockResolvedValue({ moved: 1, rescan: true, senders: [],
+    undo: { id: "u1", ts: 9, label: "1 mail from Junk", count: 1 } });
+  const undone = vi.fn().mockResolvedValue(undefined);
+  panel({ initialRole: "junk", onUndo: undone });
+  await screen.findByText("bob@friends.example");
+  fireEvent.click(screen.getByRole("button",
+    { name: "Not junk: bob@friends.example" }));
+  const before = foldersPanel.mock.calls.length;
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(foldersPanel.mock.calls.length).toBe(before + 1));
+  expect(undone).toHaveBeenCalledTimes(1);
+});
+
+test("Choose folder names the page's own role", async () => {
+  foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [
+    { role: "junk", choices: ["Spam", "Junk Email"] },
+    { role: "trash", choices: ["Trash", "Deleted Items"] }] });
+  const choose = vi.fn();
+  panel({ initialRole: "junk", onChooseFolder: choose });
+  fireEvent.click(await screen.findByRole("button", { name: "Choose folder" }));
+  expect(choose).toHaveBeenCalledWith("junk");
+});
+
 test("two ambiguous roles get one combined notice with one button, and a "
   + "visible reason beside the disabled buttons", async () => {
   foldersPanel.mockResolvedValue({ ...junkListing(), ambiguous: [

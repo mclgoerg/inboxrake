@@ -170,6 +170,18 @@ test("\"Choose folder\" scrolls to the special folders and focuses the chooser",
     expect(scroll).toHaveBeenCalledTimes(1);
   });
 
+test("with two unresolved roles the requested one gets the focus", async () => {
+  Element.prototype.scrollIntoView = vi.fn();
+  const two = ambiguous();
+  two.special!.push(special("junk", "Spam", { source: "name", ambiguous: true,
+    choices: [{ raw: "Spam", name: "Spam", count: 2 },
+      { raw: "Junk Email", name: "Junk Email", count: 1 }] }));
+  focusSpecialFolders("junk");
+  mount(two);
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole(
+    "button", { name: /Which folder is your Junk folder\?/ })));
+});
+
 test("choosing a candidate saves it and reloads the list", async () => {
   setRole.mockResolvedValue({ role: "trash", folder: "Trash",
     source: "override" });

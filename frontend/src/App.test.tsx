@@ -51,6 +51,7 @@ vi.mock("./api", () => ({
   setAccount: () => {},
   withAccount: (p: string) => p,
   fmtSize: (b: number) => `${b} B`,
+  noticeParams: (p: Record<string, unknown>) => p,
   fmtUsd: (c: number) => `$${c}`,
   mailKey: (m: { folder: string; uid: number }) => `${m.folder} ${m.uid}`,
 }));
@@ -231,6 +232,20 @@ test("single account: the sheet shows its card and Add account; Appearance " +
   expect(localStorage.getItem("pmc_theme")).toBe("dark");
   localStorage.removeItem("pmc_theme");
 });
+
+test("a Junk / Trash move's notice stays out of the banner; others show",
+  async () => {
+    cfg = singleCfg;
+    state = { ...baseState, notice: { key: "scan_cancelled", params: {} } };
+    const { unmount } = render(<ToastProvider><DialogProvider><App />
+    </DialogProvider></ToastProvider>);
+    expect(await screen.findByText("Scan cancelled.")).toBeTruthy();
+    unmount();
+    state = { ...baseState, notice: { key: "junk_rescued", params: { n: 2 } } };
+    render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+    await waitFor(() => expect(screen.getByLabelText(/^Account:/)).toBeTruthy());
+    expect(screen.queryByText(/from Junk to your inbox/)).toBeNull();
+  });
 
 test("the top bar has a single account control (the avatar), no pill strip",
   async () => {

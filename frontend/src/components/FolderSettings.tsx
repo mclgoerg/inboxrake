@@ -26,8 +26,11 @@ const roleName = (role: string) => t(`role.${role}`);
 const FOCUS_EVENT = "irk-focus-special-folders";
 const FOCUS_TTL_MS = 15000;
 let focusAsked = 0;
-export function focusSpecialFolders(): void {
+let focusRole = "";
+/** `role`: the one to put the focus on first (the page's own). */
+export function focusSpecialFolders(role = ""): void {
   focusAsked = Date.now();
+  focusRole = role;
   window.dispatchEvent(new Event(FOCUS_EVENT));
 }
 
@@ -125,7 +128,9 @@ export function FolderSettings({ account, data, included, setIncluded,
       focusAsked = 0;
       el.scrollIntoView({ block: "start" });
       // the chooser of the role that needs a pick, else the block itself
-      el.querySelector<HTMLElement>("[data-ambiguous] button")?.focus();
+      (el.querySelector<HTMLElement>(
+        `[data-role="${focusRole}"][data-ambiguous] button`)
+        ?? el.querySelector<HTMLElement>("[data-ambiguous] button"))?.focus();
     };
     serve();                                   // asked before this mounted
     window.addEventListener(FOCUS_EVENT, serve);

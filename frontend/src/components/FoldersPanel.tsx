@@ -45,7 +45,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
    *  live total this panel just listed; resolves true once emptied. */
   onEmptyTrash: (listing: TrashResp) => Promise<boolean>;
   /** Undo the recorded move (the App's confirmed undo). */
-  onUndo: (entry: UndoIdent) => void;
+  onUndo: (entry: UndoIdent) => void | Promise<void>;
   /** Protect these senders (the App's one-tap protect). */
   onProtect: (addrs: string[]) => Promise<boolean>;
   /** Block one sender address (the App's confirmed Block); resolves true
@@ -55,7 +55,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   blockedSenders?: ReadonlySet<string>;
   /** Open the account's folder setting (where the ambiguous role is
    *  chosen); without it the notice has no button. */
-  onChooseFolder?: () => void;
+  onChooseFolder?: (role: FolderRole) => void;
 }) {
   const toast = useToast();
   const wide = useMediaQuery("(min-width: 640px)");   // phones: own full row
@@ -180,6 +180,12 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     api.clearNotice(["junk_rescued", "trash_restored"]).catch(() => {});
   };
 
+  // The undone mails are back in this folder: the listing re-reads it
+  const undoMove = async (entry: UndoIdent) => {
+    await onUndo(entry);
+    load();
+  };
+
   const restore = async (dest: string, uids: number[] = [...sel],
                          toRow = false) => {
     if (!list || !dest || uids.length === 0) return;
@@ -228,7 +234,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       }
       dropped(new Set(uids), r.moved);
       const undo = r.undo ? { label: t("Undo"),
-        onClick: () => onUndo(r.undo!) } : undefined;
+        onClick: () => undoMove(r.undo!) } : undefined;
       if (action === "not_junk") {
         toast.show(t("fp.not_junk_done", { n: r.moved }), {
           variant: "success", action: undo, duration: 12000,
@@ -307,7 +313,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         toast.show(t("fp.purge_unverified", { n: r.unverified }), {
           variant: "error", duration: 0,
           action: r.undo ? { label: t("Undo"),
-            onClick: () => onUndo(r.undo!) } : undefined });
+            onClick: () => undoMove(r.undo!) } : undefined });
       }
       if (r.deleted > 0) {
         toast.show(t(skipped ? "fp.purged_skipped" : "fp.purged",
@@ -425,7 +431,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                 </div>
                 {onChooseFolder && (
                   <Button size="sm" variant="secondary" className="mt-2"
-                    onClick={onChooseFolder}>
+                    onClick={() => onChooseFolder(role)}>
                     {t("fp.ambiguous_choose")}
                   </Button>
                 )}
@@ -608,13 +614,13 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
               {junk ? (
                 <Button variant="danger-tint" disabled={busy || blocked}
                   className={rowBtn} aria-describedby={describedBy}
-                    onClick={() => void purge({ everything: true })}>
+                  onClick={() => void purge({ everything: true })}>
                   {t("fp.empty_junk", { n: list.total })}
                 </Button>
               ) : (
                 <Button variant="danger-tint" disabled={busy || blocked}
                   className={rowBtn} aria-describedby={describedBy}
-                    onClick={async () => {
+                  onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>
                   {t("fp.empty_trash", { n: list.total })}
