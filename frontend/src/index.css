@@ -285,6 +285,22 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+/* iOS WebKit clips a position:fixed element inside a scrolling fixed box
+   to that box (WebKit bug 263955) - the demo bar sits above body's box, so
+   iOS Safari did not draw it at all. There body keeps the whole viewport
+   and reserves the bar in its top padding instead: content, sticky headers
+   and the strip below stay exactly where they are elsewhere. */
+@supports (-webkit-touch-callout: none) {
+  html[data-demo] body {
+    top: 0;
+    padding-top: calc(var(--demo-bar-h) + var(--safe-top) + 8px);
+  }
+  html[data-demo] body::before {
+    top: 0;
+    height: calc(var(--demo-bar-h) + var(--safe-top) + 8px);
+  }
+}
+
 /* iOS Safari zooms the page in when a text field with a font-size under
    16px is focused, and (in the installed PWA) leaves it zoomed and
    scrolled after the keyboard closes - taps then land away from where
