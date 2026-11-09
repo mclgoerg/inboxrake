@@ -1,5 +1,6 @@
 import { CircleCheck, CircleMinus, Copy, Lock, Pin, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { api, mailKey } from "../api";
 import { fmtAgo, fmtSize } from "../lib";
 import { t } from "../i18n";
@@ -46,8 +47,7 @@ const planOf = (sets: DupSet[]) => {
  *  the manual selection mode, and a Compare sheet for versions and possible
  *  double-sends, which are never pre-marked. "Keep all" hides a set you
  *  checked (remembered per account, restorable). */
-export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
-  isStale }: {
+export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   onClose: () => void;
   onDeleted: () => void;
   /** When the scan the lists come from finished (epoch seconds). */
@@ -55,10 +55,6 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
   /** The lists are fetched again whenever this changes (a new scan, an Undo
    *  elsewhere in the app): the page may stay open while the index moves. */
   reloadKey?: string | number;
-  /** True once the account this page was opened for is no longer the active
-   *  one: mail ids belong to one account, so an action that awaited (a
-   *  re-fetch, a confirm that outlives the page) must then send nothing. */
-  isStale?: () => boolean;
 }) {
   const [lists, setLists] = useState<Lists | null>(null);
   const [error, setError] = useState("");
@@ -72,7 +68,6 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
   const toast = useOptionalToast();
   const keptToast = useRef<number | null>(null);
   const wide = useMediaQuery("(min-width: 640px)");
-  const stale = () => !!isStale?.();
   // One confirm at a time: a double click must not queue two.
   const busy = useRef(false);
 
@@ -190,8 +185,11 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
   // Every way of removing mails ends here: the existing move-to-Trash call
   // (the backend refuses pinned / protected mails, records the audit entry
   // and the undo), then the same background-job polling as before.
-  const trashItems = async (items: [string, number][]) => {
-    if (stale()) return;
+  // `switched`: the account guard its action took before its first await -
+  // mail ids belong to one account, so after a switch nothing is sent.
+  const trashItems = async (items: [string, number][],
+      switched: () => boolean) => {
+    if (switched()) return;
     try {
       await api.deleteMessages(items, "trash");
       setWorking(true);
@@ -207,10 +205,11 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
     // exactly what is listed on this tab AND ticked: that is what the
     // confirm counts
     busy.current = true;
+    const switched = accountGuard();
     try {
       if (!await confirmTrashMails(chosen.length,
         chosen.length === 1 ? chosen[0].subject ?? "" : undefined)) return;
-      await trashItems(itemsOf(chosen));
+      await trashItems(itemsOf(chosen), switched);
     } finally { busy.current = false; }
   };
 
@@ -220,33 +219,35 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
   const removeCopies = async () => {
     if (working || busy.current || plan.items.length === 0) return;
     busy.current = true;
+    const switched = accountGuard();
     try {
       // No fresh answer, no move: the backend does not know which copy is
       // the newest of a set, nor which sets the user chose to keep.
       let now: ReturnType<typeof planOf>;
       try {
         const fresh = await loadAll();
-        if (stale()) return;
+        if (switched()) return;
         applyLists(fresh);
         now = planOf(fresh.identical);
       } catch (e: any) {
-        if (stale()) return;
+        if (switched()) return;
         setNote(t("err.generic", { msg: e.message ?? e }));
         return;
       }
       if (now.items.length === 0) { setNote(t("dups.gone")); return; }
       if (!await confirmTrashMails(now.items.length,
         now.items.length === 1 ? now.items[0].subject ?? "" : undefined)) return;
-      await trashItems(itemsOf(now.items));
+      await trashItems(itemsOf(now.items), switched);
     } finally { busy.current = false; }
   };
 
   // The reader's Trash: the same confirm and move for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
+      const switched = accountGuard();
       if (working || !await confirmTrashMails(1, m.subject)) return;
       setView(null);
-      await trashItems([[m.folder, m.uid]]);
+      await trashItems([[m.folder, m.uid]], switched);
     },
     // the lists carry each copy's pin (it locks the copy): refresh them
     pinned: () => { void loadAll().then(applyLists).catch(() => {}); },
@@ -254,11 +255,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey,
 
   const trashOlder = async (s: DupSet) => {
     if (working) return;
+    const switched = accountGuard();
     const items = itemsOf(s.mails.slice(1));
     if (!await confirmTrashMails(items.length,
       items.length === 1 ? s.mails[1].subject ?? "" : undefined)) return;
     setCompare(null);
-    await trashItems(items);
+    await trashItems(items, switched);
   };
 
   const refresh = async () => {

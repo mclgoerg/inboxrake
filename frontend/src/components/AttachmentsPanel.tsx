@@ -2,6 +2,7 @@ import { Copy, Eye, File, FileArchive, FileText, Film, Image as ImageIcon,
   LayoutGrid, List, Music, Paperclip, Trash2 } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { api, fmtSize, mailKey } from "../api";
 import { nowMs } from "../clock";
 import { t } from "../i18n";
@@ -50,13 +51,10 @@ const AGES = [0, 1, 2, 5];
  *  files by kind (bar), repeats, and one tile per file. IMAP cannot strip
  *  single attachments, so selecting a file selects its MAIL(S) and the
  *  action moves the whole mail to Trash (reversible, as everywhere). */
-export function AttachmentsPanel({ state, onClose, onDeleted, isStale }: {
+export function AttachmentsPanel({ state, onClose, onDeleted }: {
   state: AppState;
   onClose: () => void;
   onDeleted: () => void;
-  /** True once the account this page was opened for is no longer the active
-   *  one: a confirm that outlives the page must then send nothing. */
-  isStale?: () => boolean;
 }) {
   const [mails, setMails] = useState<AttMail[] | null>(null);
   const [summary, setSummary] = useState<AttSummary | null>(null);
@@ -181,11 +179,12 @@ export function AttachmentsPanel({ state, onClose, onDeleted, isStale }: {
   const trashMails = async (go: AttMail[], subject?: string):
       Promise<boolean> => {
     if (!mails || go.length === 0) return false;
+    const switched = accountGuard();
     if (!await confirmTrashMails(go.length,
       subject ?? (go.length === 1 ? go[0].subject ?? "" : undefined)))
       return false;
     // the confirm can outlive this page: mail ids belong to one account
-    if (isStale?.()) return false;
+    if (switched()) return false;
     try {
       const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items, "trash");

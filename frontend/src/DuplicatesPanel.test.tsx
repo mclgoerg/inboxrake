@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { noteAccountSwitch } from "./accountGuard";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
@@ -70,11 +71,8 @@ const verSet = () => dset("<rep@z.example>",
 const summaryOf = (over = {}) => ({ sets: 0, wasted: 0, versions: 0,
   possible: 0, dismissed: 0, ...over });
 
-let switched = false;   // the account changed under the open page
-
 const show = (props = {}) => render(<ToastProvider><DialogProvider>
-  <DuplicatesPanel onClose={() => {}} onDeleted={() => {}}
-    isStale={() => switched} {...props} />
+  <DuplicatesPanel onClose={() => {}} onDeleted={() => {}} {...props} />
 </DialogProvider></ToastProvider>);
 
 beforeEach(() => {
@@ -92,7 +90,6 @@ afterEach(() => {
   [duplicates, possibleDuplicates, duplicateVersions, duplicatesSummary,
     deleteMessages, dismissDuplicates, restoreDuplicates, jobState]
     .forEach((f) => f.mockReset());
-  switched = false;
   setLang("en");
 });
 
@@ -736,7 +733,7 @@ test("Remove N copies: an account switch during the re-read moves nothing",
     let release!: (v: unknown) => void;
     duplicates.mockReturnValueOnce(new Promise((r) => { release = r; }));
     fireEvent.click(btn);
-    switched = true;
+    noteAccountSwitch();
     release([ident()]);
     await expectNoDialog();
     expect(deleteMessages).not.toHaveBeenCalled();
@@ -749,7 +746,7 @@ test("Remove N copies: an account switch while the confirm is open moves "
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
   await findDialog();
-  switched = true;
+  noteAccountSwitch();
   await pressDialog(/Move to Trash \(2\)/);
   await new Promise((r) => setTimeout(r, 50));
   expect(deleteMessages).not.toHaveBeenCalled();

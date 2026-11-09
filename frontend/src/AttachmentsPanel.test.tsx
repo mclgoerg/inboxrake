@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { noteAccountSwitch } from "./accountGuard";
 import { setClockShift } from "./clock";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
@@ -16,7 +17,6 @@ import type { AppState } from "./types";
 const attachments = vi.fn();
 const deleteMessages = vi.fn();
 const summary = vi.fn();
-let switched = false;   // the account changed under the open page
 
 vi.mock("./api", () => ({
   api: { attachments: () => attachments(),
@@ -55,7 +55,7 @@ const state = (status: string) => ({ status: "done",
 
 const show = (status = "done") => render(<DialogProvider>
   <AttachmentsPanel state={state(status)} onClose={() => {}}
-    onDeleted={() => {}} isStale={() => switched} />
+    onDeleted={() => {}} />
 </DialogProvider>);
 
 // two mails carry scan.pdf (one tile "in 2 mails"), one carries a photo
@@ -69,7 +69,6 @@ afterEach(() => {
   deleteMessages.mockReset();
   summary.mockReset();
   localStorage.clear();
-  switched = false;
   setClockShift(0);
   setLang("en");
 });
@@ -339,7 +338,7 @@ test("a confirm that outlives an account switch moves nothing", async () => {
   fireEvent.click(await screen.findByLabelText("Select beach.jpg"));
   fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
   await findDialog();
-  switched = true;
+  noteAccountSwitch();
   await pressDialog(/Move to Trash \(1\)/);
   await new Promise((r) => setTimeout(r, 50));
   expect(deleteMessages).not.toHaveBeenCalled();

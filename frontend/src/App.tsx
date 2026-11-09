@@ -9,7 +9,7 @@ import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { afterBackSettles } from "./backStack";
-import { noteAccountSwitch } from "./accountGuard";
+import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -108,6 +108,10 @@ const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
 const actionVerb = (a: string): string =>
   ({ trash: t("Move to Trash"), archive: t("Archive"), move: t("Move"),
      mark_read: t("Mark as read"), move_contents: t("Move") } as Record<string, string>)[a] ?? a;
+
+/** The account generation (bumped by switchAccount): a flow that awaits
+ *  compares it before it sends. The one counter lives in accountGuard. */
+const accountGeneration = { get current(): number { return accountEpoch(); } };
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -306,7 +310,6 @@ export default function App() {
 
   const fetching = useRef(false);   // one full-state fetch at a time
   const stateRef = useRef<AppState | null>(null);
-  const accountGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
     clearTimeout(timer.current);
@@ -351,7 +354,6 @@ export default function App() {
   }, [cfg]);
 
   const switchAccount = (name: string) => {
-    accountGeneration.current++;
     noteAccountSwitch();
     fetching.current = false;
     clearTimeout(timer.current);
@@ -468,8 +470,6 @@ export default function App() {
   useUnsubscribeOpener(setUnsubSheet);
   // The account generation the open sheet was rendered in (see its onTrash).
   const sheetGeneration = accountGeneration.current;
-  // Same for the tool pages: mail ids they hold belong to one account.
-  const toolStale = () => sheetGeneration !== accountGeneration.current;
   useEffect(() => {
     if (!state) { seenJobs.current = null; return; }
     const prev = seenJobs.current;
@@ -1089,11 +1089,15 @@ export default function App() {
       refresh();      // the cached count was stale
       return false;
     }
+    const switched = accountGuard();
     if (!await confirmDialog({ title: t("confirm.empty_trash_title"),
       body: t("confirm.empty_trash_body", { n }),
       bullets: [t("confirm.empty_trash_protection")],
       tone: "danger",
       confirmLabel: t("confirm.empty_trash_btn", { n }) })) return false;
+    // the confirm names this account's count and listing marker: after a
+    // switch they mean nothing in the new one
+    if (switched()) return false;
     setPending(t("Emptying Trash…"));
     let ok = true;
     try {
@@ -2378,7 +2382,7 @@ export default function App() {
       <DuplicatesPanel key={account} scannedTs={state?.scanned_ts}
         reloadKey={`${state?.scanned_ts ?? 0}:${undoRev}`}
         onClose={() => closeTool(() => { setDupsOpen(false); refresh(); })}
-        onDeleted={refresh} isStale={toolStale}
+        onDeleted={refresh}
       />
     )}
     {toolShown("trackers") && (
@@ -2406,7 +2410,7 @@ export default function App() {
       <AttachmentsPanel key={account}
         state={state}
         onClose={() => closeTool(() => { setAttsOpen(false); refresh(); })}
-        onDeleted={refresh} isStale={toolStale}
+        onDeleted={refresh}
       />
     )}
     {toolShown("rules") && state && (
