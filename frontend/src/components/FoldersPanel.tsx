@@ -531,7 +531,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             )}
             {restoring && sel.size > 0 && (
               // (Trash itself is no place to restore to)
-              <FolderPicker count={sel.size} account={state.account}
+              <FolderPicker count={sel.size} account={state.account} restore
                 folders={(state.folders_raw ?? []).filter((f) =>
                   f !== list?.folder)}
                 labels={(state.folders_raw ?? []).flatMap((f, i) =>

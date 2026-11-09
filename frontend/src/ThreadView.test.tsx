@@ -174,6 +174,8 @@ test("the toolbar acts on nothing while the conversation loads or failed",
       actions={{ trash }} />);
     await screen.findByText("boom");
     expect((btn() as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/did not load - Trash, Pin and Move are off/))
+      .toBeTruthy();
     expect(trash).not.toHaveBeenCalled();
   });
 

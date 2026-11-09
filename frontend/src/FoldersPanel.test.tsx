@@ -441,6 +441,9 @@ test("Restore to… is the folder picker, and Trash itself is not offered",
     const names = within(dlg).getAllByRole("button").map((b) => b.textContent);
     expect(names.some((n) => /^Inbox/.test(n ?? ""))).toBe(true);
     expect(names.some((n) => /^Trash\d*$/.test(n ?? ""))).toBe(false);
+    // it is a restore, not a move
+    expect(within(dlg).getByRole("button", { name: "Restore" })).toBeTruthy();
+    expect(within(dlg).queryByRole("button", { name: "Move" })).toBeNull();
   });
 
 /* -------------------- selection only ever covers what you see ------------- */

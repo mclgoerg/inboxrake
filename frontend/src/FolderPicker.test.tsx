@@ -301,6 +301,8 @@ describe("FolderPicker", () => {
         firstRow.focus();
         for (const key of ["x", "#", "Enter", "j"]) {
           fireEvent.keyDown(firstRow, { key });
+          // a click on the title / padding leaves focus on <body>
+          fireEvent.keyDown(document.body, { key });
         }
         expect(behind).not.toHaveBeenCalled();
       } finally { window.removeEventListener("keydown", behind); }
