@@ -1227,8 +1227,12 @@ export const EN: Record<string, string> = {
   "fp.ambiguous":
     "More than one folder could be your {role} folder: {folders} - choose "
     + "one. Until then you can move mail, but not delete it permanently.",
+  "fp.ambiguous_both":
+    "More than one folder could be your {role} folder ({folders}) and your "
+    + "{role2} folder ({folders2}) - choose one of each. Until then you can "
+    + "move mail, but not delete it permanently.",
   "fp.ambiguous_choose": "Choose folder",
-  "fp.ambiguous_hint": "Choose the folder first - see the notice at the top",
+  "fp.ambiguous_hint": "Choose your folder first to delete permanently.",
   "fp.empty_trash": "Empty Trash · {n}",
   "fp.size_in_mails": "in {n} mails",
   "fp.size_in_mails_one": "in 1 mail",
@@ -2286,7 +2290,7 @@ export const EN: Record<string, string> = {
   "know.keep_b_account":
     "The answers of the account you are looking at are kept; other accounts keep theirs until you keep them there.",
   "know.upload_b_rest":
-    "Anything else in a full backup is ignored here (Import in General restores that).",
+    "Anything else in a full backup is ignored here (Import under Settings > Backup & restore restores that).",
   "know.download_tip":
     "Download this list as a file. It lists sender addresses and notes - keep it private.",
   // -- errors of the folder features (backend codes, see api.ts ERROR_CODES)

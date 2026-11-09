@@ -960,8 +960,13 @@ export const DE: Record<string, string> = {
     "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c in Frage: "
     + "{folders} - w\u00e4hle einen aus. Bis dahin kannst du Mails "
     + "verschieben, aber nicht endg\u00fcltig l\u00f6schen.",
+  "fp.ambiguous_both":
+    "Mehr als ein Ordner kommt als dein Ordner \u201e{role}\u201c ({folders}) "
+    + "und als dein Ordner \u201e{role2}\u201c ({folders2}) in Frage - w\u00e4hle "
+    + "jeweils einen aus. Bis dahin kannst du Mails verschieben, aber nicht "
+    + "endg\u00fcltig l\u00f6schen.",
   "fp.ambiguous_choose": "Ordner w\u00e4hlen",
-  "fp.ambiguous_hint": "W\u00e4hle zuerst den Ordner - siehe Hinweis oben",
+  "fp.ambiguous_hint": "W\u00e4hle zuerst deinen Ordner, um endg\u00fcltig zu l\u00f6schen.",
   "fp.empty_trash": "Papierkorb leeren · {n}",
   "fp.size_in_mails": "in {n} Mails",
   "fp.size_in_mails_one": "in 1 Mail",
@@ -2507,7 +2512,7 @@ export const DE: Record<string, string> = {
   "know.keep_b_account":
     "Die Antworten des Kontos, das du gerade ansiehst, werden behalten; andere Konten behalten ihre, bis du sie dort behältst.",
   "know.upload_b_rest":
-    "Alles andere in einem vollständigen Backup wird hier ignoriert (der Import unter Allgemein stellt das wieder her).",
+    "Alles andere in einem vollständigen Backup wird hier ignoriert (der Import unter Einstellungen > Sicherung stellt das wieder her).",
   "know.download_tip":
     "Diese Liste als Datei herunterladen. Sie listet Absenderadressen und Notizen – halte sie privat.",
   // -- Fehler der Ordner-Funktionen (Backend-Codes, siehe api.ts ERROR_CODES)
