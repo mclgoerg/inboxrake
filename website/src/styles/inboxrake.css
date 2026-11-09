@@ -15,6 +15,7 @@
   --ir-tint: rgb(217 141 43 / 0.16);
   --ir-body: #f4f0ea;
   --ir-muted: #a19b93;
+  --ir-accent-on-tint: #d98d2b;
   --ir-danger: #ff7b70;
   --ir-danger-tint: rgb(255 123 112 / 0.12);
   --ir-code-bg: #121110;
@@ -59,6 +60,7 @@
   --ir-tint: rgb(148 87 10 / 0.1);
   --ir-body: #1f1c19;
   --ir-muted: #6e6862;
+  --ir-accent-on-tint: #7f4a07; /* accent text on the tint (active pill) needs the darker caramel: 4.5:1 */
   --ir-danger: #b3261c;
   --ir-danger-tint: rgb(179 38 28 / 0.08);
   --ir-code-bg: #1d1b19;
@@ -119,6 +121,7 @@ site-search kbd { background: var(--ir-bg); box-shadow: 0 0 0 1px var(--ir-line)
   border-radius: 14px; box-shadow: 0 0 0 1px var(--ir-line); background: var(--ir-panel); font-size: 0.93rem;
 }
 .sl-markdown-content :is(th, td) { padding: 0.65rem 1rem; border: 0; border-top: 1px solid var(--ir-line); }
+.sl-markdown-content :is(th, td):first-child { min-width: 6.5rem; }
 .sl-markdown-content thead th, .sl-markdown-content tr:first-child th { border-top: 0; }
 .sl-markdown-content thead tr { background: var(--ir-panel2); }
 .sl-markdown-content th { color: var(--ir-muted); font-size: 0.8rem; font-weight: 650; }

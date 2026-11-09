@@ -10,7 +10,7 @@ tableOfContents:
 
 Everything Inboxrake can do, by area. Each area starts with a screen from the app; the features follow, each with where to find it.
 
-The [README](../README.md) has the short version; [install.md](install.md) covers running it and [security.md](security.md) the login, multi-user and secrets options.
+The [README](../README.md) has the short version; [Install](install.md) covers running it and [Security & privacy](security.md) the login, multi-user and secrets options.
 
 <nav class="area-chips" aria-label="Areas">
 
