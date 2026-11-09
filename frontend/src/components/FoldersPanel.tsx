@@ -1,6 +1,7 @@
 import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, TriangleAlert,
   Undo2, UserCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
 import { getLang, t } from "../i18n";
@@ -246,12 +247,15 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // counts -> the delete of exactly the counted UIDs. Nothing happens
   // without the confirm.
   const purge = async (select: PurgeSelect) => {
+    // The count and the confirm are about the account shown when it started.
+    const switched = accountGuard();
     setBusy(true);
     setNote("");
     try {
       const folder = role === "junk" ? t("Junk") : t("Trash");
       const c = await api.purgePreview(role, select);
       setBusy(false);
+      if (switched()) return;
       if (c.count === 0) {
         const skipped = [
           c.skipped_protected > 0
@@ -281,6 +285,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
           : "fp.purge_body_trash"),
         bullets, tone: "danger",
         confirmLabel: t("fp.purge_btn", { n: c.count }) })) return;
+      if (switched()) return;
       setBusy(true);
       // role + folder + uv + UIDs: exactly what the count read
       const r = await api.purge(c.role, c.uids, c.uv, c.folder,

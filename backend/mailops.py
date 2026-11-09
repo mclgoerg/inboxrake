@@ -3196,8 +3196,15 @@ def delete_groups(grouping: str, keys: list[str],
                   action: str = "trash", dest: str = "",
                   force: bool = False, keep_latest: int | None = None,
                   older_than_days: int | None = None, acc=None,
-                  actor: str = "user", completion: dict | None = None) -> dict:
+                  actor: str = "user", completion: dict | None = None,
+                  only_addrs: list[str] | None = None) -> dict:
+    """Queue `action` for the mails of the given groups. `only_addrs` limits
+    it to mails from those sender addresses: a caller that decided on a group
+    because it held only those senders (the unsubscribe sheet's "also move
+    to Trash") is not acting on a mail from anyone else that joined the
+    group since."""
     acc = acc or accounts.get()
+    only = {a.lower() for a in only_addrs} if only_addrs is not None else None
     if keep_latest is not None and older_than_days is not None:
         raise ValueError(
             "keep_latest and older_than_days are mutually exclusive")
@@ -3239,6 +3246,10 @@ def delete_groups(grouping: str, keys: list[str],
                 held = keep.get(folder, set())
                 pin = pins.get(folder, set())
                 remainder = set(uids) - held - pin
+                if only is not None:
+                    remainder = {u for u in remainder
+                                 if (m := acc.index.get(ikey(folder, u)))
+                                 and m["addr"].lower() in only}
                 skipped_pinned += len((set(uids) & pin) - held)
                 if remainder:
                     by_folder.setdefault(folder, set()).update(remainder)

@@ -643,6 +643,7 @@ class DeleteBody(BaseModel):
     force: bool = False            # trash protected groups anyway
     keep_latest: int | None = Field(None, ge=1)       # keep N newest mails
     older_than_days: int | None = Field(None, ge=1)   # act only past N days
+    only_addrs: list[str] | None = None   # act only on mails from these senders
 
 
 class DeleteMessagesBody(BaseModel):
@@ -833,7 +834,7 @@ def post_delete(body: DeleteBody, account: str | None = Query(None)):
         return mailops.delete_groups(body.grouping, body.keys,
                                      body.action, body.dest, body.force,
                                      body.keep_latest, body.older_than_days,
-                                     acc=acc)
+                                     acc=acc, only_addrs=body.only_addrs)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:

@@ -9,6 +9,7 @@ import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { afterBackSettles } from "./backStack";
+import { noteAccountSwitch } from "./accountGuard";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -346,6 +347,7 @@ export default function App() {
 
   const switchAccount = (name: string) => {
     accountGeneration.current++;
+    noteAccountSwitch();
     fetching.current = false;
     clearTimeout(timer.current);
     localStorage.setItem("pmc_account", name);
@@ -1242,7 +1244,8 @@ export default function App() {
       keepLatest: number | null = null,
       olderThanDays: number | null = null,
       noun: "groups" | "senders" = "groups",
-      confirmed = false): Promise<boolean> => {
+      confirmed = false,
+      onlyAddrs: string[] | null = null): Promise<boolean> => {
     const generation = accountGeneration.current;
     let force = false;
     let effective = keys;
@@ -1298,8 +1301,9 @@ export default function App() {
       return false;
     try {
       if (generation !== accountGeneration.current) return false;
+      const only: [string[]?] = onlyAddrs ? [onlyAddrs] : [];
       const r = await api.deleteGroups(grouping, effective, action, dest,
-        force, keepLatest, olderThanDays);
+        force, keepLatest, olderThanDays, ...only);
       lastQueued.current = r?.queued ?? null;
       if (generation !== accountGeneration.current) return false;
       if (seenJobs.current) seenJobs.current.d = "running";   // see effect
@@ -1406,9 +1410,13 @@ export default function App() {
   // Triage's bulk job, after its own single confirm: the sheet only follows
   // the run and lists the outcome per sender. Resolves whether it was queued
   // without an error.
-  const runUnsubscribe = async (keys: string[]): Promise<boolean> => {
+  const runUnsubscribe = async (keys: string[],
+      generation = accountGeneration.current): Promise<boolean> => {
+    // the keys belong to the account the deck was dealt in
+    if (generation !== accountGeneration.current) return false;
     try {
       const r = await api.unsubscribeBulk(mode, keys);
+      if (generation !== accountGeneration.current) return false;
       if (r.queued && r.run != null) {
         if (seenJobs.current) seenJobs.current.u = "running";
         setUnsubSheet({ kind: "run", run: r.run,
@@ -1458,9 +1466,14 @@ export default function App() {
       ...(pins ? [t("confirm.b_pinned_kept", { n: pins })] : []),
       ...(moves ? [t("triage.c_undo")] : []),
     ];
+    // The decisions belong to the account the deck was dealt in: a switch
+    // during the confirm or between the steps stops the rest (each step is
+    // sent to whichever account is active when it starts).
+    const generation = accountGeneration.current;
     if (!await confirmDialog({ title: t("triage.confirm_title"), bullets,
       tone: moves ? "danger" : "primary",
       confirmLabel: t("triage.apply_btn") })) return false;
+    if (generation !== accountGeneration.current) return false;
     // Once a step has run, a later failure still ends the deck (the error
     // is toasted): a second Apply must not resend what already happened.
     let ran = false;
@@ -1470,9 +1483,10 @@ export default function App() {
       ran = true;
     }
     if (unsub.length) {
-      if (!await runUnsubscribe(unsub)) return ran;
+      if (!await runUnsubscribe(unsub, generation)) return ran;
       ran = true;
     }
+    if (generation !== accountGeneration.current) return ran;
     if (moves && !await act(trash, "trash", "", null, null, true)) return ran;
     setSelected(new Set());
     return true;
@@ -2948,13 +2962,13 @@ export default function App() {
       {unsubSheet && state && (
         <UnsubscribeSheet key={account} request={unsubSheet}
           groups={state.groups.sender} unsub={state.unsub} demo={demo}
-          onTrash={async (grouping, keys) => {
+          onTrash={async (grouping, keys, addrs) => {
           // The sheet belongs to the account it was opened in.
           if (sheetGeneration !== accountGeneration.current) return null;
           lastQueued.current = null;
           const ok = await actOn(grouping,
             stateRef.current?.groups?.[grouping] ?? {}, keys, "trash", "",
-            null, null, "groups", true);
+            null, null, "groups", true, addrs);
           if (ok && grouping === mode) {
             setSelected((s) => new Set([...s].filter((k) => !keys.includes(k))));
           }

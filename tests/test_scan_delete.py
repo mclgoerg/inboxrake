@@ -82,6 +82,37 @@ def test_delete_group_and_undo(bridge):
     assert notice["params"]["restored"] == 3 and notice["params"]["of"] == 3
 
 
+def test_only_addrs_leaves_another_senders_mail_in_the_group(bridge):
+    """A group the caller judged "only these senders" (the unsubscribe
+    sheet's "also move to Trash") can gain a mail from someone else before
+    the move happens: only the named senders' mails go."""
+    bridge.mailbox["INBOX"].append(
+        make_msg(30, frm='"DHL Kundenservice" <service@dhl.example>',
+                 subject="Ihre Anfrage", size=1500, seen=True))
+    scan(bridge)
+    assert mailops.STATE["groups"]["domain"]["dhl.example"]["count"] == 4
+    r = mailops.delete_groups("domain", ["dhl.example"],
+                              only_addrs=["noreply@dhl.example"])
+    assert r["queued"] == 3
+    d = wait_delete_done()
+    assert d["moved"] == 3 and not d["error"]
+    assert [m["uid"] for m in bridge.mailbox["INBOX"]
+            if "service@dhl.example" in m["from"]] == [30]
+    assert len(bridge.mailbox["Trash"]) == 3
+
+
+def test_only_addrs_matching_nothing_queues_nothing(bridge):
+    scan(bridge)
+    try:
+        mailops.delete_groups("domain", ["dhl.example"],
+                              only_addrs=["someone@else.example"])
+    except RuntimeError as exc:
+        assert "no known groups" in str(exc)
+    else:
+        raise AssertionError("nothing should have been queued")
+    assert bridge.mailbox["Trash"] == []
+
+
 def test_undo_while_busy_asks_for_manual_rescan(bridge):
     scan(bridge)
     mailops.delete_groups("sender", ["noreply@dhl.example"])
