@@ -854,6 +854,33 @@ describe("DetailPanel", () => {
     await screen.findByText("Mail 1");          // back on the group's list
   });
 
+  it("trashing another sender's card of a conversation does not close a "
+    + "one-mail group", async () => {
+    const other = mkMail(9, { subject: "Elsewhere", addr: "o@y.example" });
+    thread.mockResolvedValue({ key: "k", label: "Plan", notes: [],
+      mails: [mkMail(1), other] });
+    const onClose = vi.fn();
+    const onEmptied = vi.fn();
+    renderPanel([mkMail(1)], { grouping: "thread", onClose, onEmptied });
+    await waitFor(() => screen.getByText("Mail 1"));
+    fireEvent.click(await screen.findByLabelText("More"));
+    fireEvent.click(screen.getByText("Read conversation"));
+    await screen.findByText("2 mails");
+    // open the other sender's card alone: it is the toolbar's target
+    const cards = document.querySelectorAll(
+      "[aria-expanded]:not([aria-haspopup])");
+    fireEvent.click(cards[1]);          // the other sender's card
+    fireEvent.click(cards[0]);          // collapse the opened mail
+    fireEvent.click(await screen.findByRole("button",
+      { name: "Trash this mail" }));
+    await findDialog();
+    await pressDialog("Move to Trash (1)");
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+      [["INBOX", 9]], "trash", "", false));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onEmptied).not.toHaveBeenCalled();
+  });
+
   it("a sender group has no 'Read conversation' entry", async () => {
     renderPanel([mkMail(1)]);
     await waitFor(() => screen.getByText("Mail 1"));

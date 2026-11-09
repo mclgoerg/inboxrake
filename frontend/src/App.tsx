@@ -198,7 +198,8 @@ export default function App() {
     localStorage.setItem("pmc_sort_k", sortK);
     localStorage.setItem("pmc_sort_dir", String(sortDir));
   }, [sortK, sortDir]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // What was ticked; `selected` (below) is the part of it still on screen.
+  const [picked, setSelected] = useState<Set<string>>(new Set());
   // Select mode ("Select" / "Done" button): checkboxes on every row. It ends
   // wherever the selection is reset with the view (account, grouping, page).
   const [selectMode, setSelectMode] = useState(false);
@@ -267,13 +268,6 @@ export default function App() {
   const [moveDest, setMoveDest] = useState("");
   // The "Limit to…" editor swapped into the capsule (Done closes it).
   const [limitOpen, setLimitOpen] = useState(false);
-  // The folder picker must never be a dead end: clearing the selection
-  // (the bar disappearing entirely) also resets it, so re-selecting
-  // something always starts back at the plain Action… control instead of
-  // reopening mid-move with no way back short of reloading.
-  useEffect(() => {
-    if (!selected.size) { setMoveDest(""); setLimitOpen(false); }
-  }, [selected.size]);
   // Retention restriction for bulk group actions: act on everything beyond
   // a keep-window instead of the whole group (mutually exclusive variants).
   const [retention, setRetention] =
@@ -609,6 +603,25 @@ export default function App() {
     });
   }, [allGroups, members, filter, sortK, sortDir]);
 
+  // A selection only covers what is visible: a filter or search that hides a
+  // ticked group takes it out of every action and count (and out of the
+  // selection itself, so it does not come back ticked with the filter off).
+  const selected = useMemo(() => {
+    const visible = new Set(groups.map((g) => g.key));
+    const kept = [...picked].filter((k) => visible.has(k));
+    return kept.length === picked.size ? picked : new Set(kept);
+  }, [picked, groups]);
+  useEffect(() => {
+    if (selected !== picked) setSelected(selected);
+  }, [selected, picked]);
+  // The folder picker must never be a dead end: clearing the selection
+  // (the bar disappearing entirely) also resets it, so re-selecting
+  // something always starts back at the plain Action… control instead of
+  // reopening mid-move with no way back short of reloading.
+  useEffect(() => {
+    if (!selected.size) { setMoveDest(""); setLimitOpen(false); }
+  }, [selected.size]);
+
   // "Select all N matches": the groups the active filter matches that can be
   // selected (protected ones stay out), across all pages.
   const matchKeys = useMemo(() => filter.trim()
@@ -669,8 +682,7 @@ export default function App() {
     return counts.reduce((a, b) => a + b, 0);
   };
 
-  // Count over ALL groups of the mode, not the filtered view - actions apply
-  // to every selected key, including ones a filter is hiding. Without
+  // Count over the selected (visible) groups. Without
   // retention this is instant (just a sum already in `state`). With
   // retention active, the real count needs a fetch - rather than flash
   // the naive total and then correct it (confusing to watch), selCount
@@ -1698,23 +1710,24 @@ export default function App() {
         return;
       }
       if (flat || bare || !groups.length) return;
+      // (a filter can shrink the list under the focused row)
+      const focused = groups[focusIdx] as Group | undefined;
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         move(Math.min(focusRef.current + 1, groups.length - 1));
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         move(Math.max(focusRef.current - 1, 0));
-      } else if (e.key === "x" && focusIdx >= 0) {
-        const key = groups[focusIdx].key;
+      } else if (e.key === "x" && focused) {
         const next = new Set(selected);
-        next.has(key) ? next.delete(key) : next.add(key);
+        next.has(focused.key) ? next.delete(focused.key) : next.add(focused.key);
         setSelected(next);
-      } else if ((e.key === "Enter" || e.key === "o") && focusIdx >= 0) {
-        openGroup(groups[focusIdx], true);
+      } else if ((e.key === "Enter" || e.key === "o") && focused) {
+        openGroup(focused, true);
       } else if (e.key === "#") {
         if (selected.size) act([...selected], "trash", "", ...retentionParams());
-        else if (focusIdx >= 0)
-          act([groups[focusIdx].key], "trash", "", ...retentionParams());
+        else if (focused)
+          act([focused.key], "trash", "", ...retentionParams());
       }
     };
     window.addEventListener("keydown", handler);
@@ -1893,9 +1906,10 @@ export default function App() {
   const renderDetail = (variant: "modal" | "pane") => detail
     && state?.groups[mode]?.[detail.key] && (
     <DetailPanel
-      // The pane swaps groups in place: remount so selection, filters and an
-      // open message never leak from one group into the next.
-      key={variant === "pane" ? detail.key : undefined}
+      // The detail swaps groups in place (the pane, or "Open sender" from a
+      // conversation's reader): remount so selection, filters and an open
+      // message never leak from one group - or grouping - into the next.
+      key={`${mode}:${detail.key}`}
       variant={variant}
       // A list selection brings the bulk bar: the pane's own destructive
       // group actions step aside so two red scopes never stack.

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { useEdgeBack } from "./gestures";
 import { Modal, PageSlot } from "./components/ui";
+import { ReaderFrame } from "./components/MailReader";
 
 const WIDTH = 390;
 let standalone = true;
@@ -191,4 +192,32 @@ test("the latest back handler is the one called", () => {
   drag(screen.getByTestId("page"), [8, 120, 300]);
   expect(first).not.toHaveBeenCalled();
   expect(second).toHaveBeenCalledTimes(1);
+});
+
+test("a reader inside a tool: the swipe closes the reader, not the tool "
+  + "(and not while a dialog covers the reader)", () => {
+  const onClose = vi.fn();
+  const onBack = vi.fn();
+  const mail = { uid: 1, folder: "INBOX", date: "2025-01-01", ts: 0,
+    subject: "Hello", addr: "a@x.example", size: 1, seen: true, ai: null };
+  const pin = { can: false, on: false, toggle: () => {} };
+  const reader = (open: boolean, extra: React.ReactNode = null) => (
+    <PageSlot page={false} parent="Clean up">
+      <Modal label="Tool" onClose={onClose}>
+        {open && <ReaderFrame mail={mail} pin={pin} onBack={onBack}>
+          <p>body</p>
+        </ReaderFrame>}
+      </Modal>
+      {extra}
+    </PageSlot>);
+  const { rerender } = render(reader(false));
+  rerender(reader(true));                    // opened from the tool
+  drag(dlg(), [8, 120, 300]);
+  expect(onBack).toHaveBeenCalledTimes(1);
+  expect(onClose).not.toHaveBeenCalled();
+  onBack.mockClear();
+  rerender(reader(true, <Modal size="sm" label="Confirm" onClose={() => {}}>
+    <p>sure?</p></Modal>));
+  drag(dlg("Confirm"), [8, 120, 300]);
+  expect(onBack).not.toHaveBeenCalled();
 });

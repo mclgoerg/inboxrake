@@ -290,6 +290,21 @@ describe("FolderPicker", () => {
       fireEvent.click(b);
       expect(hit).not.toHaveBeenCalled();
     });
+    it("keys typed in it never reach the app's list shortcuts behind it",
+      async () => {
+      const behind = vi.fn();
+      window.addEventListener("keydown", behind);
+      try {
+        mount();
+        const dlg = await findPicker();
+        const firstRow = dlg.querySelector<HTMLElement>("[data-folder-row]")!;
+        firstRow.focus();
+        for (const key of ["x", "#", "Enter", "j"]) {
+          fireEvent.keyDown(firstRow, { key });
+        }
+        expect(behind).not.toHaveBeenCalled();
+      } finally { window.removeEventListener("keydown", behind); }
+    });
     it("Tab wraps inside the popover", async () => {
       mount();
       const dlg = await findPicker();

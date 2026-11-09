@@ -356,7 +356,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     }
     const { acting, force } = plan;
     const actingKeys = new Set(acting.map(mailKey));
-    const wholeGroup = acting.length === mails.length
+    // (the acted mails can be another sender's card of a conversation: it
+    // takes every mail of THIS group to empty it, not just as many)
+    const wholeGroup = mails.every((m) => actingKeys.has(mailKey(m)))
       && action !== "mark_read";
     try {
       const items = acting.map((m) => [m.folder, m.uid] as [string, number]);

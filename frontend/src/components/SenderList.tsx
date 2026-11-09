@@ -97,7 +97,13 @@ export function SenderList({ senders, folders, pick, onAct, onProtect, onInspect
     [senders, query, sortBy]);
   const byKey = useMemo(
     () => new Map(senders.map((g) => [g.key, g])), [senders]);
-  const keys = useMemo(() => [...sel].filter((k) => byKey.has(k)), [sel, byKey]);
+  // The ticked senders that are on screen: a search that hides a ticked one
+  // takes it out of every action and count (a selection only covers what is
+  // visible).
+  const keys = useMemo(() => {
+    const visible = new Set(shown.map((g) => g.key));
+    return [...sel].filter((k) => visible.has(k));
+  }, [sel, shown]);
   const mails = keys.reduce((n, k) => n + (byKey.get(k)?.count ?? 0), 0);
   // One ticked sender: the picker may also offer a rule for it.
   const moveTarget = keys.length === 1

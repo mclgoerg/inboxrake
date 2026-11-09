@@ -261,6 +261,10 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
           stops[e.shiftKey ? stops.length - 1 : 0].focus();
         }
       }
+      // The popover is modal in effect (an outside press closes it): the
+      // app's list shortcuts (x, #, Enter...) must not act on the group
+      // behind it while it is open.
+      if (pop.current?.contains(e.target as Node)) e.stopPropagation();
     };
     // An outside press only closes the popover: the click that follows it must
     // not also hit whatever lay underneath (same idea as the swipe-row tap).
