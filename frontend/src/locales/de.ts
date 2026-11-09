@@ -2709,6 +2709,9 @@ export const DE: Record<string, string> = {
   "ferr.scan_failed":
     "Der Scan ist unerwartet fehlgeschlagen – versuche es erneut; wenn es "
     + "weiter scheitert, sieh im Server-Log nach.",
+  "ferr.internal_error":
+    "Auf dem Server ist etwas schiefgegangen – versuche es erneut; wenn es "
+    + "weiter passiert, sieh im Server-Log nach.",
   "undo.from_junk": "{n} Mails aus Spam",
   "undo.from_junk_one": "1 Mail aus Spam",
   "undo.from_trash": "{n} Mails aus dem Papierkorb",

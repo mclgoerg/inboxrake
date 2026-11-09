@@ -173,6 +173,8 @@ NOT_IMAP = "not_imap"
 CERT_FAILED = "cert_failed"
 CONNECT_FAILED = "connect_failed"
 SCAN_FAILED = "scan_failed"
+# any other unexpected server error of an API call (the log has the detail)
+INTERNAL_ERROR = "internal_error"
 # the data folder (/data) cannot be written - see data_dir_problem()
 DATA_NOT_WRITABLE = "data_not_writable"
 # a move without MOVE/UIDPLUS found mail another client had flagged \Deleted
@@ -261,6 +263,7 @@ FOLDER_ERROR_CODES = frozenset({
     CERT_FAILED,
     CONNECT_FAILED,
     SCAN_FAILED,
+    INTERNAL_ERROR,
     DATA_NOT_WRITABLE})
 
 

@@ -163,6 +163,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'Could not connect to the server - check the settings and try again.',
     'scan_failed':
         'The scan failed unexpectedly - try again; if it keeps failing, check the server log.',
+    'internal_error':
+        'Something went wrong on the server - try again; if it keeps happening, check the server log.',
     'not_in_demo':
         'Not available in the demo.',
     'data_not_writable':

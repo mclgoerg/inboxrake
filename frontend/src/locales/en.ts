@@ -2449,6 +2449,9 @@ export const EN: Record<string, string> = {
   "ferr.scan_failed":
     "The scan failed unexpectedly - try again; if it keeps failing, check "
     + "the server log.",
+  "ferr.internal_error":
+    "Something went wrong on the server - try again; if it keeps happening, "
+    + "check the server log.",
   "undo.from_junk": "{n} mails from Junk",
   "undo.from_junk_one": "1 mail from Junk",
   "undo.from_trash": "{n} mails from Trash",

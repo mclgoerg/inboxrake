@@ -155,6 +155,7 @@ const ERROR_CODES: Record<string, string> = {
   cert_failed: "ferr.cert_failed",
   connect_failed: "ferr.connect_failed",
   scan_failed: "ferr.scan_failed",
+  internal_error: "ferr.internal_error",
   // a move on a server without MOVE/UIDPLUS refused (backend/mailops.py)
   move_foreign_deleted: "ferr.move_foreign_deleted",
   // the other unsubscribe failures (backend/unsub.py classify)

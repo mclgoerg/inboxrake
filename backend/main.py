@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import csv
 import hashlib
 import io
@@ -270,6 +271,7 @@ def _resolve_tenant(mode: str, auth_cfg: dict, sub: str) -> tenants.Tenant:
 @app.middleware("http")
 async def _auth(request: Request, call_next):
     tenants.activate(tenants.DEFAULT, "")     # per-request baseline
+    _request_line.set(f"{request.method} {request.url.path}")
 
     auth_cfg = cfgmod.load_server()["auth"]
     mode = auth_cfg["mode"]
@@ -701,6 +703,42 @@ def _acc(account: str | None = None):
         raise HTTPException(400, str(exc.args[0]))
 
 
+# "METHOD /path" of the request being served (no query string: it can hold
+# folder names), for the server log of `_internal_error`
+_request_line: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_line", default="")
+
+
+def _internal_error(exc: Exception, acc=None) -> HTTPException:
+    """The 500 for an exception no handler expected. The full exception goes
+    to the server log with the request line; the client only gets a coded,
+    generic text (the UI words it) - never `TypeName: message`, which can
+    carry the shared AI endpoint, a provider's error text or a data path.
+    Kept as they are: a coded refusal, and a RuntimeError's own text (the
+    app's plain-English refusals, e.g. "unknown message"; the handlers show
+    it as a 409 where they catch it). With `acc` (a handler that talks to
+    that account's mail server) a well-known connection or sign-in failure
+    gets its own code (mailops.error_text); anything else is
+    `internal_error`."""
+    log = logging.getLogger("inboxrake.api")
+    line = _request_line.get() or "request"
+    if isinstance(exc, RuntimeError) or mailops.is_coded(str(exc)):
+        log.warning("%s refused: %s", line, exc)
+        return HTTPException(500, str(exc))
+    log.error("%s failed: %s: %s", line, type(exc).__name__, exc,
+              exc_info=exc)
+    if acc is not None:
+        try:
+            host = cfgmod.account_imap(acc.name)["host"]
+        except Exception:
+            host = ""
+        return HTTPException(500, mailops.error_text(
+            exc, host, mailops.INTERNAL_ERROR))
+    if demomod.denied(exc):
+        return HTTPException(500, mailops.coded(mailops.NOT_IN_DEMO))
+    return HTTPException(500, mailops.coded(mailops.INTERNAL_ERROR))
+
+
 @app.get("/api/state")
 def get_state(account: str | None = Query(None)):
     return mailops.public_state(_acc(account))
@@ -729,7 +767,7 @@ def get_message(folder: str = Query(...), uid: int = Query(...),
     try:
         return mailops.fetch_message(folder, uid, acc)
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class MessagesBody(BaseModel):
@@ -746,7 +784,7 @@ def post_messages(body: MessagesBody, account: str | None = Query(None)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class IndexBuildBody(BaseModel):
@@ -823,7 +861,7 @@ def get_thread(folder: str = Query(...), uid: int = Query(...),
     except RuntimeError as exc:
         raise HTTPException(404, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/delete")
@@ -840,7 +878,7 @@ def post_delete(body: DeleteBody, account: str | None = Query(None)):
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/delete_messages")
@@ -856,7 +894,7 @@ def post_delete_messages(body: DeleteMessagesBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class PinBody(BaseModel):
@@ -875,7 +913,7 @@ def post_pin(body: PinBody, account: str | None = Query(None)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class PinGroupBody(BaseModel):
@@ -895,7 +933,7 @@ def post_pin_group(body: PinGroupBody, account: str | None = Query(None)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/ai")
@@ -928,7 +966,7 @@ def post_ai_filter(body: AiFilterBody, account: str | None = Query(None)):
     except aifilter.FilterError as exc:
         raise HTTPException(400, exc.code)
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc)
 
 
 @app.get("/api/ai_sort/estimate")
@@ -1061,7 +1099,7 @@ def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
     except ValueError as exc:              # e.g. monthly budget reached
         raise HTTPException(400, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc)
 
 
 @app.post("/api/unsubscribe")
@@ -1093,7 +1131,7 @@ def post_unsubscribe_bulk(body: UnsubBulkBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/unsubscribe/preview")
@@ -1430,7 +1468,7 @@ def post_block(body: BlockBody, account: str | None = Query(None)):
         rule = rulesmod.update_rule(rule["id"], {"mode": "execute"})
     except Exception as exc:
         rulesmod.delete_rule(rule["id"])
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
     result: dict = {"rule": rule}
     if body.trash_existing:
         try:
@@ -1473,7 +1511,7 @@ def post_undo(body: UndoBody, account: str | None = Query(None)):
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class TrashRestoreBody(BaseModel):
@@ -1490,7 +1528,7 @@ def get_trash(account: str | None = Query(None)):
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/trash/restore")
@@ -1502,7 +1540,7 @@ def post_trash_restore(body: TrashRestoreBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class FolderMoveBody(BaseModel):
@@ -1526,7 +1564,7 @@ def get_folders_panel(role: str = Query("trash"),
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/folders_panel/move")
@@ -1543,7 +1581,7 @@ def post_folders_panel_move(body: FolderMoveBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class PurgePreviewBody(BaseModel):
@@ -1586,7 +1624,7 @@ def post_purge_preview(body: PurgePreviewBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/folders_panel/purge")
@@ -1604,7 +1642,7 @@ def post_purge(body: PurgeBody, account: str | None = Query(None)):
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class EmptyTrashBody(BaseModel):
@@ -1621,7 +1659,7 @@ def post_empty_trash(body: EmptyTrashBody,
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class RoleBody(BaseModel):
@@ -1640,7 +1678,7 @@ def post_folder_role(body: RoleBody, account: str | None = Query(None)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class LookalikeBody(BaseModel):
@@ -1660,7 +1698,7 @@ def get_lookalike(folder: str = Query(...), account: str | None = Query(None)):
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 @app.post("/api/folders/move_contents")
@@ -1672,7 +1710,7 @@ def post_move_lookalike(body: LookalikeBody,
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+        raise _internal_error(exc, acc)
 
 
 class CancelBody(BaseModel):
@@ -1826,7 +1864,7 @@ def get_search(q: str = Query(...),
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(500, f"{type(exc).__name__}: {exc}")
+            raise _internal_error(exc, acc)
     return {"mails": mailops.search_mails(q, acc=acc), "notes": []}
 
 
