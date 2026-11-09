@@ -1,5 +1,6 @@
 import { CircleCheck, CircleMinus, Copy, Lock, Pin, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { api, mailKey } from "../api";
 import { fmtAgo, fmtSize } from "../lib";
 import { t } from "../i18n";
@@ -67,6 +68,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   const toast = useOptionalToast();
   const keptToast = useRef<number | null>(null);
   const wide = useMediaQuery("(min-width: 640px)");
+  // One confirm at a time: a double click must not queue two.
+  const busy = useRef(false);
 
   const sets = lists?.identical ?? [];
 
@@ -142,6 +145,26 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   const plan = useMemo(() => planOf(sets), [sets]);
   const capped = !!lists?.sum && lists.sum.sets > sets.length;
 
+  // A selection only covers the tab on screen: ticks left on another tab
+  // are dropped when the tab changes, and every count and action below
+  // reads the ticked mails of the listed sets of THIS tab only.
+  const chosen = useMemo(() => {
+    const by = new Map<string, Mail>();
+    (lists?.[active] ?? []).forEach((s) => s.mails.forEach((m) => {
+      if (sel.has(mailKey(m))) by.set(mailKey(m), m);
+    }));
+    return [...by.values()];
+  }, [lists, active, sel]);
+  useEffect(() => {
+    setSel((prev) => {
+      const shown = new Set<string>();
+      (lists?.[active] ?? []).forEach((s) => s.mails.forEach((m) =>
+        shown.add(mailKey(m))));
+      return prev.size === 0 || [...prev].every((k) => shown.has(k))
+        ? prev : new Set([...prev].filter((k) => shown.has(k)));
+    });
+  }, [active]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggle = (k: string) => {
     if (working) return;
     const next = new Set(sel);
@@ -150,8 +173,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   };
 
   // Mails inside a set arrive newest-first: in every identical set select
-  // everything but [0] (and untick [0], so one copy always stays). Rows the
-  // user ticked in the other two sections keep their state.
+  // everything but [0] (and untick [0], so one copy always stays). Only the
+  // Identical tab offers it (the other two never pre-mark anything).
   const selectAllButNewest = () => {
     const next = new Set(sel);
     sets.forEach((s) => s.mails.forEach((m, i) =>
@@ -162,7 +185,11 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   // Every way of removing mails ends here: the existing move-to-Trash call
   // (the backend refuses pinned / protected mails, records the audit entry
   // and the undo), then the same background-job polling as before.
-  const trashItems = async (items: [string, number][]) => {
+  // `switched`: the account guard its action took before its first await -
+  // mail ids belong to one account, so after a switch nothing is sent.
+  const trashItems = async (items: [string, number][],
+      switched: () => boolean) => {
+    if (switched()) return;
     try {
       await api.deleteMessages(items, "trash");
       setWorking(true);
@@ -174,44 +201,53 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   };
 
   const trashSelected = async () => {
-    if (!lists || sel.size === 0 || working) return;
-    // exactly what is listed AND ticked: that is what the confirm counts
-    const items: [string, number][] = [];
-    KINDS.forEach((k) => lists[k].forEach((s) => s.mails.forEach((m) => {
-      if (sel.has(mailKey(m))) items.push([m.folder, m.uid]);
-    })));
-    if (items.length === 0) return;
-    if (!await confirmTrashMails(items.length)) return;
-    await trashItems(items);
+    if (!lists || chosen.length === 0 || working || busy.current) return;
+    // exactly what is listed on this tab AND ticked: that is what the
+    // confirm counts
+    busy.current = true;
+    const switched = accountGuard();
+    try {
+      if (!await confirmTrashMails(chosen.length,
+        chosen.length === 1 ? chosen[0].subject ?? "" : undefined)) return;
+      await trashItems(itemsOf(chosen), switched);
+    } finally { busy.current = false; }
   };
 
   // The selection is taken from the server's answer of this moment, not
   // from what the page showed when it was opened: if it changed meanwhile,
   // the page updates and the confirm names the new count.
   const removeCopies = async () => {
-    if (working || plan.items.length === 0) return;
-    // No fresh answer, no move: the backend does not know which copy is the
-    // newest of a set, nor which sets the user chose to keep.
-    let now: ReturnType<typeof planOf>;
+    if (working || busy.current || plan.items.length === 0) return;
+    busy.current = true;
+    const switched = accountGuard();
     try {
-      const fresh = await loadAll();
-      applyLists(fresh);
-      now = planOf(fresh.identical);
-    } catch (e: any) {
-      setNote(t("err.generic", { msg: e.message ?? e }));
-      return;
-    }
-    if (now.items.length === 0) { setNote(t("dups.gone")); return; }
-    if (!await confirmTrashMails(now.items.length)) return;
-    await trashItems(itemsOf(now.items));
+      // No fresh answer, no move: the backend does not know which copy is
+      // the newest of a set, nor which sets the user chose to keep.
+      let now: ReturnType<typeof planOf>;
+      try {
+        const fresh = await loadAll();
+        if (switched()) return;
+        applyLists(fresh);
+        now = planOf(fresh.identical);
+      } catch (e: any) {
+        if (switched()) return;
+        setNote(t("err.generic", { msg: e.message ?? e }));
+        return;
+      }
+      if (now.items.length === 0) { setNote(t("dups.gone")); return; }
+      if (!await confirmTrashMails(now.items.length,
+        now.items.length === 1 ? now.items[0].subject ?? "" : undefined)) return;
+      await trashItems(itemsOf(now.items), switched);
+    } finally { busy.current = false; }
   };
 
   // The reader's Trash: the same confirm and move for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
+      const switched = accountGuard();
       if (working || !await confirmTrashMails(1, m.subject)) return;
       setView(null);
-      await trashItems([[m.folder, m.uid]]);
+      await trashItems([[m.folder, m.uid]], switched);
     },
     // the lists carry each copy's pin (it locks the copy): refresh them
     pinned: () => { void loadAll().then(applyLists).catch(() => {}); },
@@ -219,10 +255,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
 
   const trashOlder = async (s: DupSet) => {
     if (working) return;
+    const switched = accountGuard();
     const items = itemsOf(s.mails.slice(1));
-    if (!await confirmTrashMails(items.length)) return;
+    if (!await confirmTrashMails(items.length,
+      items.length === 1 ? s.mails[1].subject ?? "" : undefined)) return;
     setCompare(null);
-    await trashItems(items);
+    await trashItems(items, switched);
   };
 
   const refresh = async () => {
@@ -415,18 +453,19 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
           actions={readerActions} backLabel={t("Duplicates")} />
       ) : (
         <>
-          {(review || note) && (
+          {(note || (review && (chosen.length > 0
+            || (active === "identical" && sets.length > 0)))) && (
             <Toolbar>
-              {review && sets.length > 0 && (
+              {review && active === "identical" && sets.length > 0 && (
                 <Button variant="secondary" disabled={working}
                   onClick={selectAllButNewest}>
                   {t("dups.keep_newest")}
                 </Button>
               )}
-              {review && sel.size > 0 && (
+              {review && chosen.length > 0 && (
                 <Button variant="danger" disabled={working}
                   onClick={trashSelected}>
-                  {t("Trash selected")} ({sel.size})
+                  {t("Trash selected")} ({chosen.length})
                 </Button>
               )}
               {note && <span className="type-meta text-muted">{note}</span>}

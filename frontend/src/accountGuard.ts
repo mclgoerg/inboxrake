@@ -14,6 +14,10 @@ let epoch = 0;
 /** Called once per account switch (App.switchAccount). */
 export const noteAccountSwitch = (): void => { epoch++; };
 
+/** The current epoch: App's `accountGeneration` reads it, so there is one
+ *  counter for the whole app. */
+export const accountEpoch = (): number => epoch;
+
 /** Take it before the first await: `const switched = accountGuard();`, then
  *  `if (switched()) return;` after each await and before every write. */
 export const accountGuard = (): (() => boolean) => {

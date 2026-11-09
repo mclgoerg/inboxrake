@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { noteAccountSwitch } from "./accountGuard";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
@@ -180,7 +181,7 @@ test("the selection is re-read right before the confirm and names the fresh coun
     show();
     fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
     const dlg = await findDialog();
-    expect(dlg.textContent).toContain("1 selected mail");
+    expect(dlg.textContent).toContain('"Invoice"');   // one mail: named
     expect(dlg.textContent).not.toContain("2 selected");
     await pressDialog(/Move to Trash \(1\)/);
     await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
@@ -214,7 +215,7 @@ test("a reload drops ticked mails that are no longer listed, and the confirm "
   rerender(ui("2"));
   fireEvent.click(await screen.findByRole("button", { name: "Trash selected (1)" }));
   const dlg = await findDialog();
-  expect(dlg.textContent).toContain("1 selected mail");
+  expect(dlg.textContent).toContain('"Invoice"');
   await pressDialog(/Move to Trash \(1\)/);
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
     [["Archive", 2]], "trash"));
@@ -335,14 +336,38 @@ test("Review each is the manual selection mode: select all but newest, tick "
   expect(screen.getAllByRole("checkbox", { name: /Invoice/ })).toHaveLength(3);
   fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
   expect(screen.getByRole("button", { name: "Trash selected (2)" })).toBeTruthy();
+  // ticks of another tab never come along: the Versions tab starts clean
   fireEvent.click(screen.getByRole("tab", { name: /Versions/ }));
+  expect(screen.queryByRole("button", { name: /Trash selected/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Select all but newest" })).toBeNull();
   fireEvent.click(screen.getAllByRole("checkbox", { name: /Report/ })[0]);
-  fireEvent.click(screen.getByRole("button", { name: "Trash selected (3)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
   const dlg = await findDialog();
-  expect(dlg.textContent).toContain("3 selected mails");
-  await pressDialog(/Move to Trash \(3\)/);
+  expect(dlg.textContent).toContain('"Report"');
+  await pressDialog(/Move to Trash \(1\)/);
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
-    [["Archive", 2], ["INBOX", 1], ["INBOX", 6]], "trash"));
+    [["INBOX", 6]], "trash"));
+});
+
+test("ticks and Keep newest on the Identical tab are not acted on from "
+  + "another tab", async () => {
+  identicalWorld();
+  duplicateVersions.mockResolvedValue([verSet()]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096,
+    versions: 1 }));
+  deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+  show();
+  await screen.findByText("keep · newest");
+  fireEvent.click(screen.getByRole("button", { name: "Review each" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
+  fireEvent.click(screen.getByRole("tab", { name: /Versions/ }));
+  expect(screen.queryByRole("button", { name: /Trash selected/ })).toBeNull();
+  fireEvent.click(screen.getAllByRole("checkbox", { name: /Report/ })[1]);
+  // the two identical copies ticked before are not part of it
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+    [["Archive", 5]], "trash"));
 });
 
 test("Done leaves review mode and clears the selection", async () => {
@@ -684,4 +709,88 @@ test("German wording", async () => {
   const cmp = within(await screen.findByRole("dialog", { name: "Vergleichen" }));
   expect(cmp.getByText("Neueste behalten, 1 in den Papierkorb")).toBeTruthy();
   expect(cmp.getByText("Die Mails sind verschieden - alle behalten")).toBeTruthy();
+});
+
+test("Keep the newest on a two-copy set names the one mail it moves",
+  async () => {
+    possibleDuplicates.mockResolvedValue([possSet([8, 7])]);
+    duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
+    deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+    show();
+    const cmp = within(await openCompare());
+    fireEvent.click(cmp.getByRole("button", { name: "Keep the newest, move 1 to Trash" }));
+    expect((await findDialog()).textContent).toContain('"Offer"');
+    await pressDialog(/Move to Trash \(1\)/);
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
+      [["INBOX", 7]], "trash"));
+  });
+
+test("Remove N copies: an account switch during the re-read moves nothing",
+  async () => {
+    identicalWorld();
+    show();
+    const btn = await screen.findByRole("button", { name: "Remove 2 copies" });
+    let release!: (v: unknown) => void;
+    duplicates.mockReturnValueOnce(new Promise((r) => { release = r; }));
+    fireEvent.click(btn);
+    noteAccountSwitch();
+    release([ident()]);
+    await expectNoDialog();
+    expect(deleteMessages).not.toHaveBeenCalled();
+  });
+
+test("Remove N copies: an account switch while the confirm is open moves "
+  + "nothing", async () => {
+  identicalWorld();
+  deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+  await findDialog();
+  noteAccountSwitch();
+  await pressDialog(/Move to Trash \(2\)/);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(deleteMessages).not.toHaveBeenCalled();
+});
+
+test("a double click on Remove N copies opens one confirm, not two",
+  async () => {
+    identicalWorld();
+    deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
+    show();
+    const btn = await screen.findByRole("button", { name: "Remove 2 copies" });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await findDialog();
+    await pressDialog(/Move to Trash \(2\)/);
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledTimes(1));
+    // the second click queued nothing behind the first confirm
+    await expectNoDialog();
+  });
+
+test("a double click on Trash selected opens one confirm, not two", async () => {
+  identicalWorld();
+  deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
+  show();
+  await screen.findByText("keep · newest");
+  fireEvent.click(screen.getByRole("button", { name: "Review each" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
+  const btn = screen.getByRole("button", { name: "Trash selected (2)" });
+  fireEvent.click(btn);
+  fireEvent.click(btn);
+  await findDialog();
+  await pressDialog(/Move to Trash \(2\)/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledTimes(1));
+  await expectNoDialog();
+});
+
+test("review mode on a tab with nothing to tick shows no empty toolbar strip",
+  async () => {
+  possibleDuplicates.mockResolvedValue([possSet()]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ possible: 1 }));
+  const { container } = show();
+  fireEvent.click(await screen.findByRole("button", { name: "Review each" }));
+  await screen.findByRole("button", { name: "Done" });
+  expect(container.ownerDocument.querySelector(".border-b.border-line.flex-wrap")).toBeNull();
+  fireEvent.click(screen.getAllByRole("checkbox", { name: /Offer/ })[0]);
+  expect(screen.getByRole("button", { name: "Trash selected (1)" })).toBeTruthy();
 });

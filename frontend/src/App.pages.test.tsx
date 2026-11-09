@@ -10,6 +10,9 @@ const stateCalls = { n: 0 };
 let state: any;
 let stateGate: Promise<void> | null = null;   // holds api.state() back
 let dupCalls = 0;
+let dupSets: unknown[] = [];
+const deleteMessages = vi.fn().mockResolvedValue({ ok: true, queued: 1 });
+const attachments = vi.fn();
 let auditCalls = 0;
 const aiFilter = vi.fn();
 const undoCall = vi.fn().mockResolvedValue({ restored: 1, of: 1, rescan: true });
@@ -34,7 +37,11 @@ vi.mock("./api", () => ({
     group: () => Promise.resolve([]),
     folders: () => Promise.resolve({ folders: [], wildcards: [] }),
     foldersPanel: () => Promise.resolve({ mails: [], total: 0, senders: [] }),
-    duplicates: () => { dupCalls++; return Promise.resolve([]); },
+    duplicates: () => { dupCalls++; return Promise.resolve(dupSets); },
+    deleteMessages: (...a: unknown[]) => deleteMessages(...a),
+    attachments: () => attachments(),
+    attachmentsSummary: () => Promise.resolve({ total: 0, mails: 0, kinds: [],
+      repeats: null }),
     duplicateVersions: () => Promise.resolve([]),
     possibleDuplicates: () => Promise.resolve([]),
     trackers: () => Promise.resolve({
@@ -122,10 +129,10 @@ const resize = (wide: boolean) => {
   isWide = wide;
   act(() => { listeners.forEach((f) => f()); });
 };
-const mount = (wide = true) => {
+const mount = (wide = true, patch: Partial<AppState> = {}) => {
   isWide = wide;
   stubMedia();
-  state = { ...baseState, scanned_ts: 1, junk_count: 4, trash_count: 7 };
+  state = { ...baseState, scanned_ts: 1, junk_count: 4, trash_count: 7, ...patch };
   localStorage.setItem("pmc_account", "proton");
   return render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
 };
@@ -138,7 +145,8 @@ const goto = (hash: string) => act(() => {
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); localStorage.clear();
   window.location.hash = ""; stateGate = null; listeners.clear();
-  dupCalls = 0; auditCalls = 0; aiFilter.mockReset(); undoCall.mockClear();
+  dupCalls = 0; auditCalls = 0; dupSets = [];
+  deleteMessages.mockClear(); attachments.mockReset(); aiFilter.mockReset(); undoCall.mockClear();
   (cfg as any).ai.available = false;
 });
 
@@ -202,6 +210,53 @@ test("switching account on a tool page starts the panel over", async () => {
     delete (cfg as any).accounts.work;
   }
 });
+
+// A confirm belongs to the whole app and outlives the page that asked: if the
+// account changed meanwhile, the old account's mail ids must not be sent.
+const copy = (uid: number, folder: string) => ({ uid, folder, subject: "Receipt",
+  date: "2026-01-02 10:30", ts: 1000 + uid, addr: "a@x.example", size: 2048,
+  seen: true, ai: null, msgid: "<r@x.example>", pinned: false });
+const switchToWork = async () => {
+  fireEvent.click(within(await side()).getByRole("button", { name: /proton/ }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: /work/ }));
+};
+const withWorkAccount = async (run: () => Promise<void>) => {
+  (cfg as any).accounts.work = { ...(cfg as any).accounts.proton,
+    user: "me@work.example" };
+  try { await run(); } finally { delete (cfg as any).accounts.work; }
+};
+
+test("an account switch while the Duplicates confirm is open moves nothing",
+  async () => withWorkAccount(async () => {
+  window.location.hash = "#/duplicates";
+  dupSets = [{ key: "<r@x.example>", wasted: 2048, locked: null,
+    mails: [copy(2, "INBOX"), copy(1, "Archive")] }];
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 1 copy" }));
+  await findDialog();
+  await switchToWork();
+  await pressDialog(/Move to Trash \(1\)/);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(deleteMessages).not.toHaveBeenCalled();
+}));
+
+test("an account switch while the Attachments confirm is open moves nothing",
+  async () => withWorkAccount(async () => {
+  window.location.hash = "#/attachments";
+  attachments.mockResolvedValue([{ uid: 1, folder: "INBOX", date: "2026-01-02",
+    ts: 1e9, subject: "Scan", addr: "a@x.example", size: 10, seen: false,
+    ai: null, att_size: 2e6,
+    atts: [{ name: "doc.pdf", size: 2e6, kind: "pdf", ext: "pdf", copies: 1 }] }]);
+  mount(true, { atts: { status: "done", progress: "", error: "", mails: 1,
+    size: 2e6 } } as Partial<AppState>);
+  fireEvent.click(await screen.findByLabelText("Select doc.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  await findDialog();
+  await switchToWork();
+  await pressDialog(/Move to Trash \(1\)/);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(deleteMessages).not.toHaveBeenCalled();
+}));
 
 test("a tool survives crossing 1024 px in both directions: Triage decisions",
   async () => {
