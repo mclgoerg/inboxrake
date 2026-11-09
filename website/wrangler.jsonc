@@ -13,5 +13,9 @@
   },
   // the apex domain must be a zone on this Cloudflare account; wrangler
   // creates the DNS record + certificate on the first deploy
-  "routes": [{ "pattern": "inboxrake.com", "custom_domain": true }]
+  "routes": [{ "pattern": "inboxrake.com", "custom_domain": true }],
+  // version preview URLs (<alias>-inboxrake-site.<subdomain>.workers.dev) for
+  // the "preview" run of deploy-site.yml; the site itself stays off workers.dev
+  // (workers_dev defaults to false because of the route above)
+  "preview_urls": true
 }
