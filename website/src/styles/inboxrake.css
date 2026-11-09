@@ -1,0 +1,55 @@
+/* The docs in the app's look (frontend/src/index.css): graphite surfaces and
+   a caramel accent in dark, warm white and a darker caramel in light, system
+   fonts (Starlight's default stack). Text pairs stay >= 4.5:1. */
+:root {
+  --sl-color-white: #f4f0ea;
+  --sl-color-gray-1: #e6e0d6;
+  --sl-color-gray-2: #c9c2b8;
+  --sl-color-gray-3: #a19b93;
+  --sl-color-gray-4: #7a746c;
+  --sl-color-gray-5: #36322d;
+  --sl-color-gray-6: #232120;
+  --sl-color-gray-7: #1e1c1a;
+  --sl-color-black: #181716;
+  --sl-color-accent-low: #3d2a12;
+  --sl-color-accent: #d98d2b;
+  --sl-color-accent-high: #e8a850;
+  --sl-color-bg-nav: var(--sl-color-gray-7);
+  --sl-color-bg-sidebar: var(--sl-color-gray-7);
+  --sl-color-hairline-light: #2c2a27;
+  --sl-color-hairline: #36322d;
+  --sl-color-hairline-shade: #1e1c1a;
+  --inboxrake-on-accent: #1b1206;
+}
+:root[data-theme="light"] {
+  --sl-color-white: #1f1c19;
+  --sl-color-gray-1: #2b2723;
+  --sl-color-gray-2: #3d3833;
+  --sl-color-gray-3: #5f5951;
+  --sl-color-gray-4: #8d877e;
+  --sl-color-gray-5: #cfc9c1;
+  --sl-color-gray-6: #ebe9e6;
+  --sl-color-gray-7: #f3f1ee;
+  --sl-color-black: #faf9f7;
+  --sl-color-accent-low: #f4eadc;
+  --sl-color-accent: #94570a;
+  --sl-color-accent-high: #6b3d05;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-hairline-light: #e4e1dc;
+  --sl-color-hairline: #e4e1dc;
+  --sl-color-hairline-shade: #eeece8;
+  --inboxrake-on-accent: #ffffff;
+}
+
+/* The current page: a soft caramel tint with accent text, like the app's
+   sidebar, instead of Starlight's solid fill. */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+}
+
+/* Mobile menu footer: GitHub icon, "Try the demo" and the theme select on one centre line. */
+.mobile-preferences { align-items: center; }

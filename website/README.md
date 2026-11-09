@@ -38,14 +38,22 @@ dry-run. It needs `CLOUDFLARE_API_TOKEN` and
 
 ## Landing page
 
-`landing/` is a second, plain Astro build (no framework, no client JS beyond
-a tiny theme check that reuses the docs site's light/dark choice). The page
-is `landing/src/pages/index.astro`; the hero screenshots are imported from
-`../docs/screenshots/` (change the two imports at the top to swap them).
+`landing/` is a second, plain Astro build (no framework; the only client JS
+is a tiny inline script for the install Copy button and the dots of the
+swipeable feature cards - the page works without it). The page is
+`landing/src/pages/index.astro`. Look: the app's tokens (caramel accent, warm
+surfaces, system fonts, no external requests), light/dark by
+`prefers-color-scheme`. The screenshots are imported from
+`../docs/screenshots/` (the demo captures, see the image contract in
+`scripts/screenshots.mjs`) and turned into responsive webp by `Shot.astro`.
+
+The docs theme is `src/styles/inboxrake.css` (Starlight accent = caramel,
+light + dark); `src/components/SocialIcons.astro` adds the "Try the demo"
+button to the docs header under the same `INBOXRAKE_DEMO_LIVE` switch.
 
 The **Try the demo** button is a build-time switch: it is only emitted when
 `INBOXRAKE_DEMO_LIVE=1` is set for the build (off by default, so no dead
-`/demo/` link ships). The deploy step flips it once the demo is live.
+`/demo/` link ships; the docs header button and the closing demo card follow it). The deploy step flips it once the demo is live.
 
 Serve `dist/` under `/docs/` (`BASE` in `site.config.mjs`, shared by the
 Astro config and the link plugin).
