@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
+import { findPicker, pickFolder } from "./folderPickerTestUtil";
 import { popupOptions, popupPick } from "./toolTestUtils";
 import { findDialog, pressDialog, cancelDialog, expectNoDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
@@ -26,6 +27,7 @@ vi.mock("./api", () => ({
     folderMove: (...a: unknown[]) => folderMove(...a),
     trashRestore: (...a: unknown[]) => trashRestore(...a),
     clearNotice: (...a: unknown[]) => clearNotice(...a),
+    folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     purgePreview: vi.fn().mockResolvedValue({ count: 0, size: 0 }),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
       subject: "s", text: "body text" }),
@@ -38,7 +40,8 @@ vi.mock("./api", () => ({
 let total = 1;
 let emptyList = false;
 const state = {
-  folders: ["INBOX"], folders_raw: ["INBOX"],
+  account: "proton",
+  folders: ["INBOX", "Trash"], folders_raw: ["INBOX", "Trash"],
   // bob replied to us: a known sender in Junk
   groups: { sender: { "bob@friends.example": {
     key: "bob@friends.example", replied: true } } },
@@ -108,7 +111,8 @@ async function restoreOne() {
   panel();
   await selectMode();
   fireEvent.click(await screen.findByRole("checkbox"));
-  popupPick(screen.getByRole("button", { name: /Restore to/ }), "INBOX");
+  fireEvent.click(screen.getByRole("button", { name: /Restore to/ }));
+  await pickFolder("Inbox");
 }
 
 test("restore with a started rescan says the views update by themselves",
@@ -426,6 +430,22 @@ test("phone layout: the select actions are >= 44px targets",
   });
 
 
+test("Restore to… is the folder picker, and Trash itself is not offered",
+  async () => {
+    trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+    panel();
+    await selectMode();
+    fireEvent.click(await screen.findByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Restore to/ }));
+    const dlg = await findPicker();
+    const names = within(dlg).getAllByRole("button").map((b) => b.textContent);
+    expect(names.some((n) => /^Inbox/.test(n ?? ""))).toBe(true);
+    expect(names.some((n) => /^Trash\d*$/.test(n ?? ""))).toBe(false);
+    // it is a restore, not a move
+    expect(within(dlg).getByRole("button", { name: "Restore" })).toBeTruthy();
+    expect(within(dlg).queryByRole("button", { name: "Move" })).toBeNull();
+  });
+
 /* -------------------- selection only ever covers what you see ------------- */
 
 test("a selection hidden by a search is not acted on (Restore to…)",
@@ -451,8 +471,8 @@ test("a selection hidden by a search is not acted on (Restore to…)",
     fireEvent.change(screen.getByPlaceholderText("Search subject or sender"),
       { target: { value: "cancelled" } });
     // only the visible one counts and is sent
-    popupPick(screen.getByRole("button", { name: /Restore to… \(1\)/ }),
-      "INBOX");
+    fireEvent.click(screen.getByRole("button", { name: /Restore to… \(1\)/ }));
+    await pickFolder("Inbox");
     await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([30],
       "INBOX", 1));
     // clearing the search does not bring the hidden tick back

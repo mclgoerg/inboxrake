@@ -9,6 +9,7 @@ import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
   UndoIdent }
   from "../types";
+import { FolderPicker } from "./FolderPicker";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { TrashCard } from "./TrashCard";
@@ -75,6 +76,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(false);   // the folder picker
 
   // Only the newest request may land (switching Junk | Trash quickly).
   const req = useRef(0);
@@ -151,6 +153,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     for (const u of uids) all ? next.delete(u) : next.add(u);
     setSel(next);
   };
+  useEffect(() => { if (!sel.size) setRestoring(false); }, [sel.size]);
   const endSelect = () => { setSelecting(false); setSel(new Set()); };
 
   const dropped = (uids: Set<number>, n: number) => {
@@ -187,8 +190,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   };
 
   const restore = async (dest: string, uids: number[] = [...sel],
-                         toRow = false) => {
-    if (!list || !dest || uids.length === 0) return;
+                         toRow = false): Promise<boolean> => {
+    if (!list || !dest || uids.length === 0) return false;
     setBusy(true);
     setNote("");
     try {
@@ -200,12 +203,15 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       dropped(new Set(uids), r.restored);
       clearMoveNotice();
       onChanged();
+      setBusy(false);
+      return true;
     } catch (e: any) {
       const msg = t("err.generic", { msg: e.message ?? e });
       if (toRow) toast.show(msg, { variant: "error" });
       else setNote(msg);
     }
     setBusy(false);
+    return false;
   };
 
   // Junk -> Inbox ("Not junk", the primary action) or -> Trash. Both are
@@ -489,12 +495,11 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                 )}
                 {sel.size > 0 && !junk && (
                   <>
-                    <PopupSelect<string> disabled={busy}
-                      triggerClass={TALL}
-                      placeholder={`${t("trash.restore_to")} (${sel.size})`}
-                      onChange={(dest) => restore(dest)}
-                      options={(state.folders_raw ?? []).map((f, i) => ({
-                        value: f, label: state.folders[i] ?? f }))} />
+                    <Button variant="secondary" disabled={busy}
+                      className={rowBtn} aria-haspopup="dialog"
+                      onClick={() => setRestoring(true)}>
+                      {`${t("trash.restore_to")} (${sel.size})`}
+                    </Button>
                     <PopupSelect<string> disabled={busy || blocked}
                       triggerClass={TALL}
                       placeholder={t("fp.action")}
@@ -523,6 +528,16 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                   </>
                 )}
               </Toolbar>
+            )}
+            {restoring && sel.size > 0 && (
+              // (Trash itself is no place to restore to)
+              <FolderPicker count={sel.size} account={state.account} restore
+                folders={(state.folders_raw ?? []).filter((f) =>
+                  f !== list?.folder)}
+                labels={(state.folders_raw ?? []).flatMap((f, i) =>
+                  f === list?.folder ? [] : [state.folders[i] ?? f])}
+                onPick={(dest) => restore(dest)}
+                onClose={() => setRestoring(false)} />
             )}
             {busy && <div className="mb-2"><Spinner /></div>}
             {note && <p className="mb-2 type-meta text-muted">{note}</p>}

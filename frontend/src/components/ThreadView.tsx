@@ -123,12 +123,15 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
     : targetBody && targetBody !== "loading" && !("error" in targetBody)
       ? targetBody : null;
   const ownPin = useReaderPin(target ?? mail, targetDetail, actions);
-  const lockHint = target === null ? t("reader.pick_single")
+  // While the conversation loads (or failed) the toolbar is off: the opened
+  // mail is not yet known to be the one on screen.
+  const lockHint = !conv ? (error ? t("reader.load_failed") : undefined)
+    : target === null ? t("reader.pick_single")
     : target.sent ? t("reader.sent_locked") : undefined;
 
   return (
     <ReaderFrame mail={target ?? mail} navFrom={mail} detail={targetDetail}
-      actions={actions} nav={nav} locked={lockHint !== undefined}
+      actions={actions} nav={nav} locked={!conv || lockHint !== undefined}
       lockHint={lockHint}
       pin={pin && targetKey === mailKey(mail) ? pin : ownPin}
       backLabel={backLabel} onBack={onBack}

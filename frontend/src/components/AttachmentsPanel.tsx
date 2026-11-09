@@ -11,7 +11,8 @@ import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { BarButton, BulkBar, Button, Checkbox, EmptyState, Loading, Modal,
-  PanelHeader, PopupSelect, Segmented, ShortDate, Spinner } from "./ui";
+  PanelHeader, PopupSelect, Segmented, ShortDate, Spinner, useOptionalToast }
+  from "./ui";
 
 /** Look of each kind of file: icon + the token pair of its tile and its bar
  *  segment (colour is never the only signal - every use also prints the
@@ -61,6 +62,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [view, setView] = useState<Mail | null>(null);
   const [note, setNote] = useState("");
+  const toast = useOptionalToast();
   const [kind, setKind] = useState<AttKind | "all">("all");
   const [age, setAge] = useState(0);
   const [repeatsOnly, setRepeatsOnly] = useState(false);
@@ -176,7 +178,8 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
   // Resolves true when the mails are on their way to Trash.
-  const trashMails = async (go: AttMail[], subject?: string):
+  // (`go` can be a conversation card outside the list, from the reader)
+  const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
     if (!mails || go.length === 0) return false;
     const switched = accountGuard();
@@ -195,7 +198,10 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       onDeleted();
       return true;
     } catch (e: any) {
-      setNote(t("err.generic", { msg: e.message ?? e }));
+      const msg = t("err.generic", { msg: e.message ?? e });
+      setNote(msg);
+      // (the note sits behind an open reader)
+      if (view) toast?.show(msg, { variant: "error" });
       return false;
     }
   };
@@ -203,8 +209,8 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   // The reader's Trash: the same confirm and call for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
-      const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m));
-      if (one && await trashMails([one], one.subject)) setView(null);
+      const one = (mails ?? []).find((x) => mailKey(x) === mailKey(m)) ?? m;
+      if (await trashMails([one], one.subject)) setView(null);
     },
   };
 

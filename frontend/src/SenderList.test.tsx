@@ -167,6 +167,19 @@ describe("acting on ticked senders", () => {
       await vi.waitFor(() => expect(screen.queryByText(/senders selected/)).toBeNull());
     });
 
+  it("a search that hides a ticked sender takes it out of the action and "
+    + "the count", async () => {
+    mount(trio);
+    fireEvent.click(row("a@x.example"));
+    fireEvent.click(row("c@z.example"));
+    fireEvent.change(screen.getByPlaceholderText("Search senders…"),
+      { target: { value: "z.example" } });
+    expect(screen.getByRole("button", { name: "Trash selected (1)" }))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+    expect(onAct).toHaveBeenCalledWith(["c@z.example"], "trash");
+  });
+
   it("a declined confirmation keeps the selection", async () => {
     onAct.mockResolvedValue(false);
     mount(trio);

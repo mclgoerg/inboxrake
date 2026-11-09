@@ -35,6 +35,9 @@ vi.mock("./components/MailList", () => ({
     <div><span data-testid="viewer">{mail.subject}</span>
       <span data-testid="nav">{nav?.list.length ?? 0}</span>
       {actions?.trash && <button onClick={() => actions.trash!(mail)}>reader trash</button>}
+      {actions?.trash && <button onClick={() => actions.trash!(
+        { uid: 99, folder: "INBOX", subject: "Elsewhere", size: 1 })}>
+        reader trash outside</button>}
     </div>,
 }));
 
@@ -217,6 +220,21 @@ test("the reader's Trash: the same confirm and call for the one mail; "
   await waitFor(() => expect(deleteMessages)
     .toHaveBeenCalledWith([["INBOX", 3]], "trash"));
   await waitFor(() => expect(screen.queryByTestId("viewer")).toBeNull());
+});
+
+test("the reader's Trash on a conversation card outside the list trashes "
+  + "that mail (it does nothing today)", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select beach.jpg"));
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  fireEvent.click(screen.getByText("reader trash outside"));
+  expect((await findDialog()).textContent).toContain('"Elsewhere"');
+  await pressDialog(/Move to Trash \(1\)/);
+  await waitFor(() => expect(deleteMessages)
+    .toHaveBeenCalledWith([["INBOX", 99]], "trash"));
 });
 
 test("Open needs exactly one mail; the subject stays visible in the list",
