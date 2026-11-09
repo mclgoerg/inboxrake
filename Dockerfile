@@ -9,16 +9,19 @@ RUN npm run build
 # Stage 2: FastAPI backend serving the built bundle
 FROM python:3.15-slim@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75
 WORKDIR /app
+# The pinned base can lag behind Debian's security fixes (2026-11: zlib1g
+# CVE-2026-76844 / CVE-2026-85091 fixed in trixie-security, not yet in the
+# newest python:3.15-slim): take the security updates at build time. CI
+# passes the ISO week as APT_REFRESH so a cached layer is at most a week old.
+ARG APT_REFRESH=
+RUN echo "security updates ${APT_REFRESH}" \
+    && apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt ./
 # pip is build-time only: removing it (and its vendored msgpack/
 # setuptools copies) from the runtime image shrinks the attack surface
 # and keeps image CVE scanners quiet about libraries the app never runs.
-# The pinned base can lag behind Debian's security fixes (2026-11: zlib1g
-# CVE-2026-76844 / CVE-2026-85091 fixed in trixie-security, not yet in the
-# newest python:3.15-slim): take the security updates at build time.
-RUN apt-get update \
-    && apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
     && pip uninstall -y pip \
     && rm -rf /usr/local/lib/python3.*/site-packages/setuptools* \
