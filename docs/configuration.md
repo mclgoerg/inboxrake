@@ -107,7 +107,7 @@ State files default to names inside `/data` and normally need no change:
 | `UNSUB_STATE_PATH` | `unsub_state.json` | Which senders you already unsubscribed from. |
 | `AUDIT_LOG_PATH` | `audit_log.jsonl` | The append-only log of every action on a mailbox. |
 | `SESSION_SECRET_PATH` | `session_secret` | The secret behind login sessions. |
-| `TENANTS_DIR` | `tenants` | One isolated folder per SSO user. |
+| `TENANTS_DIR` | `tenants` | One isolated folder per additional SSO user (the admin keeps the top-level files in `/data`). |
 | `SNAPSHOT_DIR` | `/data` | The scan caches. |
 
 ## Settings with no environment variable

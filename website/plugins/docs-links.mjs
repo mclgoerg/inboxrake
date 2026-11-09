@@ -55,7 +55,11 @@ export function docsLinks() {
         for (const q of banner) {
           if (q.type !== "blockquote") continue;
           q.data = { hName: "aside", hProperties: { className: ["demo-banner"] } };
-          visitLinks(q, (a) => { a.url = a.url.replace(/^https:\/\/inboxrake\.com(?=\/demo\/)/, ""); });
+          visitLinks(q, (a) => {
+            a.url = a.url.replace(/^https:\/\/inboxrake\.com(?=\/demo\/)/, "");
+            // on phones the link's text is hidden (the strip is the link): keep a real accessible name
+            a.data = { hProperties: { ariaLabel: plain(a) } };
+          });
         }
         tree.children.splice(from, to - from + 1, ...banner);
       } else {

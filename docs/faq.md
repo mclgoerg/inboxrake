@@ -48,7 +48,7 @@ Trash or moved on, they cannot be brought back this way.
 ## Privacy
 
 <details class="faq-q">
-<summary><h3 id="what-leaves-my-machine">What leaves my machine?</h3><span class="faq-short">Mailbox access goes to your mail provider. Optional AI review sends only metadata, never mail bodies or attachments.</span></summary>
+<summary><h3 id="what-leaves-my-machine">What leaves my machine?</h3><span class="faq-short">Mailbox access goes to your mail provider; unsubscribe actions contact the sender, SSO contacts your identity provider, and optional AI review sends only metadata.</span></summary>
 
 Mailbox access goes to your mail provider. Unsubscribe actions contact the
 sender, and SSO contacts your identity provider. Optional AI review sends
