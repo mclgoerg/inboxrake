@@ -46,31 +46,33 @@ domain or subject), its label, or its sub-label. `shop` finds
 `age:` also accepts the number without `>`; `age:>6m` and `age:6m` mean
 the same.
 
-**`in:` time windows.** `in:<N>min`, `in:<N>h` or `in:<N>d` narrows one of
-three time-aware conditions to the last N minutes, hours or days. With `is:new`
-the sender must have been first seen in that window - the window *replaces* the
-configured new-sender window (`NEW_SENDER_WINDOW_DAYS`), so it can widen it.
-With `is:still-mailing` a late mail must have arrived in the window, and with
-`ai:` the AI verdict must have been given in it; for these two it narrows.
-`in:` alone is refused in a rule (it would act on every match), changes nothing
-on the Senders page, and in the **All mails** list means "mails that arrived in
-the window" (the Overview's "Last week" rows open it that way). A bad value
-such as `in:7w` is read as a free word in the filter box, but a rule refuses
-it. A rule also allows only one `in:`.
-Examples: `is:new in:7d`, `is:still-mailing in:2d`, `ai:safe in:1h`.
+> [!NOTE]
+> **`in:` time windows.** `in:<N>min`, `in:<N>h` or `in:<N>d` narrows one of
+> three time-aware conditions to the last N minutes, hours or days. With `is:new`
+> the sender must have been first seen in that window - the window *replaces* the
+> configured new-sender window (`NEW_SENDER_WINDOW_DAYS`), so it can widen it.
+> With `is:still-mailing` a late mail must have arrived in the window, and with
+> `ai:` the AI verdict must have been given in it; for these two it narrows.
+> `in:` alone is refused in a rule (it would act on every match), changes nothing
+> on the Senders page, and in the **All mails** list means "mails that arrived in
+> the window" (the Overview's "Last week" rows open it that way). A bad value
+> such as `in:7w` is read as a free word in the filter box, but a rule refuses
+> it. A rule also allows only one `in:`.
+> Examples: `is:new in:7d`, `is:still-mailing in:2d`, `ai:safe in:1h`.
 
-**Typos can widen a filter.** An unknown qualifier name, or a bad value for
-`is:`, `has:` or `eng:`, is treated as a free
-word and usually matches nothing. But an invalid `age:`, `unread:` or
-`att:` value (for example `age:>2w`, `unread:high`, `att:>10mb`) is
-silently **ignored** and the rest of the filter still applies - so the
-filter matches *more* mail, not less. `tag:newsletter age:>2w` selects
-every newsletter group. Check the result list before you act. Saving a **rule**
-with such a part is refused with an error that names it, and a rule saved
-before that check shows a warning: its execute runs are skipped (report runs
-still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `ai:`, `from:`, `domain:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
-qualifiers in a rule and refused unless they are valid ones. The AI filter writer validates strictly
-and retries when the filter it wrote contains a bad token.
+> [!WARNING]
+> **Typos can widen a filter.** An unknown qualifier name, or a bad value for
+> `is:`, `has:` or `eng:`, is treated as a free
+> word and usually matches nothing. But an invalid `age:`, `unread:` or
+> `att:` value (for example `age:>2w`, `unread:high`, `att:>10mb`) is
+> silently **ignored** and the rest of the filter still applies - so the
+> filter matches *more* mail, not less. `tag:newsletter age:>2w` selects
+> every newsletter group. Check the result list before you act. Saving a **rule**
+> with such a part is refused with an error that names it, and a rule saved
+> before that check shows a warning: its execute runs are skipped (report runs
+> still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `ai:`, `from:`, `domain:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
+> qualifiers in a rule and refused unless they are valid ones. The AI filter writer validates strictly
+> and retries when the filter it wrote contains a bad token.
 
 ## Combining
 

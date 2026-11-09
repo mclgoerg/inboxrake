@@ -11,7 +11,7 @@ environment. Put the variables in the `.env` next to the starter compose
 file ([`deploy/.env.example`](../deploy/.env.example)) or pass them with
 `-e` to `docker run`.
 
-## `INBOXRAKE_*`
+## Server (INBOXRAKE_\*)
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -85,20 +85,30 @@ publish the port. Details in
 | `STATIC_DIR` | bundled UI | Where the built web UI is served from. |
 
 State files default to names inside `/data` and normally need no change:
-`CONFIG_PATH` (`config.json`), `SERVER_PATH` (`server.json`),
-`STATS_PATH` (`ai_usage.json`), `STATS_HISTORY_PATH`
-(`stats_history.json`), `RULES_PATH` (`rules.json`), `AUTOSCAN_PATH`
-(`autoscan.json`), `DIGEST_PATH` (`digest.json`), `PRESETS_PATH`
-(`presets.json`), `PINS_PATH` (`pinned_mails.json`), `REPLIED_PATH`
-(`replied.json`), `VERDICTS_PATH` (`ai_verdicts.json`), `AI_SORT_PATH`
-(`ai_sort.json`), `SENDER_KNOWLEDGE_PATH` (`sender_knowledge.json`),
-`LABELS_PATH` (`sender_labels.json`, the verdicts and categories you set with
-"Edit labels"), `DUPS_PATH` (`duplicates_kept.json`, the duplicate sets you
-chose to keep),
-`KNOWN_SENDERS_PATH` (`known_senders.json`), `UNSUB_STATE_PATH`
-(`unsub_state.json`), `AUDIT_LOG_PATH` (`audit_log.jsonl`),
-`SESSION_SECRET_PATH` (`session_secret`), `TENANTS_DIR` (`tenants`),
-`SNAPSHOT_DIR` (the scan caches, `/data`).
+
+| Variable | Default file | What it holds |
+|---|---|---|
+| `CONFIG_PATH` | `config.json` | The accounts and their settings. |
+| `SERVER_PATH` | `server.json` | Server-level settings (login and the shared AI). |
+| `STATS_PATH` | `ai_usage.json` | AI usage. |
+| `STATS_HISTORY_PATH` | `stats_history.json` | The cleanup history: per-scan snapshots and per-month action tallies. |
+| `RULES_PATH` | `rules.json` | Your saved rules. |
+| `AUTOSCAN_PATH` | `autoscan.json` | When each account's automatic scan last ran. |
+| `DIGEST_PATH` | `digest.json` | When each account's activity digest was last sent. |
+| `PRESETS_PATH` | `presets.json` | Saved filter presets. |
+| `PINS_PATH` | `pinned_mails.json` | Pinned mails. |
+| `REPLIED_PATH` | `replied.json` | Who you have written to (To/Cc of the Sent folder). |
+| `VERDICTS_PATH` | `ai_verdicts.json` | Cached AI verdicts. |
+| `AI_SORT_PATH` | `ai_sort.json` | Cached answers of the optional AI sorting. |
+| `SENDER_KNOWLEDGE_PATH` | `sender_knowledge.json` | Where you (or the AI) filed a sender or a company. |
+| `LABELS_PATH` | `sender_labels.json` | The verdicts and categories you set with "Edit labels". |
+| `DUPS_PATH` | `duplicates_kept.json` | The duplicate sets you chose to keep. |
+| `KNOWN_SENDERS_PATH` | `known_senders.json` | Which senders were first seen when (for "new sender"). |
+| `UNSUB_STATE_PATH` | `unsub_state.json` | Which senders you already unsubscribed from. |
+| `AUDIT_LOG_PATH` | `audit_log.jsonl` | The append-only log of every action on a mailbox. |
+| `SESSION_SECRET_PATH` | `session_secret` | The secret behind login sessions. |
+| `TENANTS_DIR` | `tenants` | One isolated folder per SSO user. |
+| `SNAPSHOT_DIR` | `/data` | The scan caches. |
 
 ## Settings with no environment variable
 

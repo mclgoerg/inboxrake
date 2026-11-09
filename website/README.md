@@ -87,4 +87,21 @@ requires it to be installed for `markdown.remarkPlugins` to run.
   each feature as `###` + `<small class="where">where in the app</small>` +
   text, closed by `</div>`; the chips at the top are the
   `<nav class="area-chips">` list. A new area needs an icon in `inboxrake.css`.
+- The start page (`index.md`) is plain Markdown too: the lists inside
+  `<div class="cards">` / `<div class="cards cards--small">` become cards (a
+  `**[Title](page.md)**\` line, then the text; the icon follows the link
+  target, see `src/styles/inboxrake-pages.css`). The blockquote between
+  `<!-- demo:start -->` and `<!-- demo:end -->` becomes the "Try it before you
+  install" banner, and is dropped while the demo is not live (the plugin reads
+  the same `INBOXRAKE_DEMO_LIVE` switch). Astro caches rendered Markdown in
+  `node_modules/.astro`: delete it when you flip the switch locally.
+- `faq.md` is one `##` per group, then each question as
+  `<details class="faq-q"><summary><h3 id="...">Question</h3><span
+  class="faq-short">short answer</span></summary>` + the full answer as
+  Markdown + `</details>`. The short answer must be text that is already in
+  the full answer; keep the `id` (it is the old heading anchor, search results
+  and links use it - a small head script opens the card a link points to).
+- A GitHub alert that opens with a bold lead-in (`> **Title.** text`) shows
+  the lead-in as the callout's title.
+- The 404 page (search field + links) is `src/components/Hero.astro`.
 - Invented `.example` data only (see CONTRIBUTING.md, "Privacy").

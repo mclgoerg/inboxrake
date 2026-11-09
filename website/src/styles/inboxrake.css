@@ -88,7 +88,10 @@ site-search kbd { background: var(--ir-bg); box-shadow: 0 0 0 1px var(--ir-line)
   site-search > button { width: 2.75rem; min-height: 2.75rem; padding: 0; justify-content: center; background: transparent; color: var(--ir-body); }
   .sl-menu-button {
     border-radius: 12px; box-shadow: none; background: transparent !important; color: var(--ir-body) !important;
+    /* the menu / close icon on the same line as the search icon (inline svg sat on the text baseline) */
+    display: flex; align-items: center; justify-content: center; padding: 0;
   }
+  .sl-menu-button svg { width: 1.35rem; height: 1.35rem; }
 }
 
 /* ---- sidebar ---- */
