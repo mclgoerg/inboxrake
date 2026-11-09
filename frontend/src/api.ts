@@ -291,10 +291,12 @@ export const api = {
   deleteGroups: (grouping: Grouping, keys: string[],
                  action = "trash", dest = "", force = false,
                  keepLatest: number | null = null,
-                 olderThanDays: number | null = null) =>
+                 olderThanDays: number | null = null,
+                 onlyAddrs: string[] | null = null) =>
     req<{ ok: boolean; queued: number; skipped: number }>("/api/delete",
       { grouping, keys, action, dest, force, keep_latest: keepLatest,
-        older_than_days: olderThanDays }),
+        older_than_days: olderThanDays,
+        ...(onlyAddrs ? { only_addrs: onlyAddrs } : {}) }),
   protect: (entry: string, on: boolean) =>
     req<{ protected: string[] }>("/api/protect", { entry, on }),
   // The AI writes a filter query from a sentence (nothing else is sent).

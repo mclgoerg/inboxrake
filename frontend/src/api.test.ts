@@ -81,6 +81,20 @@ test("pin and force-delete send the documented bodies", async () => {
   expect(JSON.parse(fetchMock.mock.calls[2][1].body).force).toBe(false);
 });
 
+test("deleteGroups names the senders to act on only when given", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true, json: () => Promise.resolve({ ok: true }) });
+  vi.stubGlobal("fetch", fetchMock);
+  setAccount("");
+  await api.deleteGroups("domain", ["x.example"]);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body))
+    .not.toHaveProperty("only_addrs");
+  await api.deleteGroups("domain", ["x.example"], "trash", "", false, null,
+    null, ["a@x.example"]);
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body).only_addrs)
+    .toEqual(["a@x.example"]);
+});
+
 test.each([
   ["no_message_id", /no Message-ID/],
   ["pinned_mails", /contains protected mails/],

@@ -68,7 +68,7 @@ const BULK: UnsubRequest = { kind: "bulk", grouping: "sender",
 interface Props {
   request?: UnsubRequest; unsub?: UnsubState; demo?: boolean;
   groups?: Record<string, Group>;
-  onTrash?: (g: string, keys: string[]) => Promise<number | null>;
+  onTrash?: (g: string, keys: string[], addrs: string[]) => Promise<number | null>;
   onChanged?: () => void; onRun?: (r: number | null) => void;
   onClose?: () => void;
 }
@@ -320,7 +320,9 @@ describe("a bulk run", () => {
       unsub: { ...idle, status: "done", seq: 7 } }));
     await waitFor(() => expect(onTrash).toHaveBeenCalledTimes(1));
     // not the failed one, not the one that needs its web page
-    expect(onTrash).toHaveBeenCalledWith("sender", ["one@chirper.example"]);
+    // and it names the addresses, so the server moves only their mails
+    expect(onTrash).toHaveBeenCalledWith("sender", ["one@chirper.example"],
+      ["one@chirper.example"]);
     // the number the trash path actually queued, not the preview's 120
     expect(await screen.findByText(
       "Moved their 97 mails to Trash - you can undo it.")).toBeTruthy();
@@ -589,7 +591,7 @@ describe("one sender", () => {
     fireEvent.click(screen.getByRole("switch"));
     press("Unsubscribe and move to Trash");
     await waitFor(() => expect(onTrash).toHaveBeenCalledWith("sender",
-      ["one@chirper.example"]));
+      ["one@chirper.example"], ["one@chirper.example"]));
   });
 
   it("a refusal of the check (e.g. a pooled row) is shown", async () => {

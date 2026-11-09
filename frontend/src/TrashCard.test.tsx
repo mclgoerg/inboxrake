@@ -8,6 +8,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { noteAccountSwitch } from "./accountGuard";
 import { autoEmptyRule, TrashCard } from "./components/TrashCard";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog }
@@ -193,6 +194,48 @@ test("a refused preview shows the error and writes nothing", async () => {
   expect(await screen.findByText(/Trash is ambiguous/)).toBeTruthy();
   untouched();
 });
+
+test("switching account while the preview loads arms nothing in the other account",
+  async () => {
+    let release!: (v: unknown) => void;
+    purgePreview.mockReturnValue(new Promise((r) => { release = r; }));
+    card();
+    fireEvent.click(sw());
+    await waitFor(() => expect(purgePreview).toHaveBeenCalled());
+    noteAccountSwitch();                         // the user picks another account
+    release(preview());
+    await new Promise((r) => setTimeout(r, 30));
+    await expectNoDialog();                      // A's count is never shown for B
+    untouched();
+  });
+
+test("switching account while the confirm is open: confirming writes nothing",
+  async () => {
+    card();
+    fireEvent.click(sw());
+    await findDialog();
+    noteAccountSwitch();
+    await pressDialog("Turn on");
+    await new Promise((r) => setTimeout(r, 30));
+    untouched();
+  });
+
+test("a refused report run puts an edited armed rule back to the age it had",
+  async () => {
+    runRule.mockRejectedValue(new Error("A rule is running right now"));
+    card([rule()]);                                          // armed, 30 days
+    fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Older than" }),
+      { key: "ArrowUp" });                                   // 31
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await findDialog();
+    await pressDialog("Turn on");
+    expect(await screen.findByText(/A rule is running right now/))
+      .toBeTruthy();
+    expect(updateRule).toHaveBeenNthCalledWith(1, "r1", { older_than_days: 31 });
+    expect(updateRule).toHaveBeenLastCalledWith("r1", { older_than_days: 30 });
+    expect(updateRule).not.toHaveBeenCalledWith("r1", { mode: "execute" });
+    expect(deleteRule).not.toHaveBeenCalled();   // it is not ours to remove
+  });
 
 test("the days are editable before turning it on and go into the rule",
   async () => {

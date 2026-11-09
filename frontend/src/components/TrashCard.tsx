@@ -1,5 +1,6 @@
 import { Timer } from "lucide-react";
 import { useEffect, useState } from "react";
+import { accountGuard } from "../accountGuard";
 import { api, errorText, fmtSize } from "../api";
 import { t } from "../i18n";
 import type { Rule, TrashResp } from "../types";
@@ -73,12 +74,18 @@ export function TrashCard({ list, rules, onChanged }: {
    *  Declining touches nothing - an armed rule or a report-only rule made on
    *  the Rules page stays exactly as it was. */
   const enable = async () => {
+    // The preview and the confirm describe THIS account's Trash: a switch
+    // while either is pending ends the flow (a rule is created in whichever
+    // account is active when the request is sent). Once the rule exists
+    // every later call names it by id and stays with its own account.
+    const switched = accountGuard();
     // the live count of exactly what the rule would select (old enough AND
     // long enough in Trash) - nothing is created or edited yet
     const [pv, cap] = await Promise.all([
       api.purgePreview("trash", { older_than_days: days }, days),
       api.rules().then((r) => r.cap).catch(() => 500),
     ]);
+    if (switched()) return;
     const skipped = [
       pv.skipped_protected > 0
         && t("fp.purge_b_protected", { n: pv.skipped_protected }),
@@ -95,9 +102,11 @@ export function TrashCard({ list, rules, onChanged }: {
         ...(pv.count > 0 ? [] : [t("fp.auto_hint", { n: days })]),
         ...skipped],
       confirmLabel: t("fp.auto_confirm_btn") });
-    if (!sure) return;
+    if (!sure || switched()) return;
     let r = rule;
     let created = false;
+    // what an edited rule goes back to if its report cannot run
+    const before = rule?.older_than_days;
     if (!r) {
       r = await api.createRule({
         name: t("fp.auto_rule_name"), scope: "trash", action: "purge",
@@ -111,6 +120,13 @@ export function TrashCard({ list, rules, onChanged }: {
       await api.runRule(r.id);          // the report of the CURRENT definition
     } catch (e) {
       if (created) await api.deleteRule(r.id).catch(() => {});
+      // A rule that was already there (an armed one, or one made on the
+      // Rules page) is not left at an age nobody previewed: the edit
+      // already sent it back to report, so it can only get its age back.
+      else if (before != null && before !== days) {
+        await api.updateRule(r.id, { older_than_days: before })
+          .catch(() => {});
+      }
       throw e;
     }
     await api.updateRule(r.id, { mode: "execute" });

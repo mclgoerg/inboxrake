@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /* Swipe triage: deck, decisions, gestures, and the single confirmed apply. */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -290,6 +290,43 @@ test("Apply runs protect, unsubscribe, then trash with exactly the decided keys"
   // the run's outcome is listed in the unsubscribe sheet (no toast)
   expect(await screen.findByRole("dialog", { name: "Unsubscribe" })).toBeTruthy();
 });
+
+/** The user picks the other account from the sidebar switcher. */
+const switchToWork = async () => {
+  fireEvent.click(await screen.findByRole("button", { name: /^Account:/ }));
+  fireEvent.click((await screen.findByText("work")).closest("button")!);
+};
+const withTwoAccounts = async (go: () => Promise<void>) => {
+  (cfg.accounts as any).work = cfg.accounts.proton;
+  try { await go(); } finally { delete (cfg.accounts as any).work; }
+};
+const decideAll = async (dlg: HTMLElement) => {
+  fireEvent.click(btn(dlg, /Unsubscribe/));     // News A
+  fireEvent.click(btn(dlg, /Trash/));           // Shop B
+  fireEvent.click(btn(dlg, /Keep/));            // Bank C
+  fireEvent.click(btn(dlg, /Keep/));            // List D
+  fireEvent.click(btn(dlg, /Protect/));         // Pin E
+  await within(dlg).findByRole("button", { name: "Apply" });
+  fireEvent.click(btn(dlg, "Apply"));
+};
+
+test("switching account between Apply's steps stops the rest: nothing is "
+  + "unsubscribed or trashed in the other account", () => withTwoAccounts(async () => {
+  let release!: (v: unknown) => void;
+  protectMany.mockReturnValueOnce(new Promise((r) => { release = r; }));
+  const dlg = await open();
+  await decideAll(dlg);
+  await findDialog();
+  await pressDialog("Apply");
+  await waitFor(() => expect(protectMany).toHaveBeenCalled());
+  await switchToWork();                       // while the first step is out
+  await act(async () => {
+    release({ protected: [] });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(unsubscribeBulk).not.toHaveBeenCalled();
+  expect(deleteGroups).not.toHaveBeenCalled();
+}));
 
 test("pinned mails are left out of the counted mails", async () => {
   const dlg = await open();
