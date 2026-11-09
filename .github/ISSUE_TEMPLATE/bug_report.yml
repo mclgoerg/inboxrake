@@ -1,0 +1,87 @@
+name: Bug report
+description: Something does not work as described in the docs.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Two things first:
+
+        - **Keep your mail private.** Do not paste real sender addresses, subjects, mail text or
+          screenshots of your mailbox. Replace them with made-up ones, e.g. `news@shop.example`.
+        - **Security problems** go through a private report, not an issue - see
+          [SECURITY.md](https://github.com/mclgoerg/inboxrake/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Inboxrake version
+      description: At the bottom of the account menu (tap the account at the top), or the image tag you run.
+      placeholder: v2.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker Compose
+        - docker run
+        - Synology
+        - Unraid
+        - TrueNAS
+        - Portainer
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Mail provider
+      multiple: true
+      options:
+        - Gmail
+        - Outlook / Microsoft 365
+        - iCloud
+        - Fastmail
+        - GMX
+        - mailbox.org
+        - Yahoo
+        - Proton Mail (Bridge)
+        - Other IMAP server
+        - Not related to a provider
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Browser and device
+      placeholder: Firefox on Windows, Safari on iPhone, ...
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Senders
+        2. Select two senders
+        3. Press Archive
+  - type: textarea
+    id: logs
+    attributes:
+      label: Container log (optional)
+      description: "`docker logs <container> --tail 50` - remove addresses, subjects and host names first."
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send it
+      options:
+        - label: I removed real addresses, subjects, mail text and host names from everything above.
+          required: true
+        - label: I checked the [FAQ](https://inboxrake.com/docs/faq/).
