@@ -47,7 +47,7 @@ const areas = (toc?.items ?? []).filter((i) => i.slug !== "_top");
   const open = document.querySelector<HTMLButtonElement>("button[data-open-modal]");
   if (field && open) {
     field.hidden = false;
-    field.addEventListener("click", () => open.click());
+    field.addEventListener("click", (e) => { e.stopPropagation(); open.click(); });
   }
   // Mark the area that the page's own "On this page" list shows as current.
   const sub = document.querySelector("[data-ir-areas]");

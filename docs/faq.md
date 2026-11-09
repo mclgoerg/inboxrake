@@ -5,7 +5,12 @@ description: "Short answers on safety, privacy, exposure, footprint and backups.
 
 # FAQ
 
-## Does it delete anything without asking?
+Short answers first - open a question for the details.
+
+## Safety
+
+<details class="faq-q">
+<summary><h3 id="does-it-delete-anything-without-asking">Does it delete anything without asking?</h3><span class="faq-short">No. Trashing is an IMAP move to the Trash folder, always behind a confirmation, with an Undo.</span></summary>
 
 No. Trashing is an IMAP move to the Trash folder, always behind a
 confirmation, with an Undo. The confirmation gives the number of mails;
@@ -22,7 +27,28 @@ selected mails from a protected sender are not checked. **Empty Trash
 empties everything in Trash**, protected or not. Rules also start in report
 mode.
 
-## What leaves my machine?
+</details>
+
+<details class="faq-q">
+<summary><h3 id="how-far-back-does-undo-go">How far back does Undo go?</h3><span class="faq-short">Each account keeps its last 10 undoable actions, in memory only.</span></summary>
+
+Each account keeps its last 10 undoable actions, in memory only: a restart
+or an image update (e.g. an auto-updated `:latest`) empties the list. An
+undo tracks destination UIDs and UIDVALIDITY, using server COPYUID responses
+when available and otherwise identifying newly arrived copies. It never
+restores a pre-existing matching copy. If identity cannot be established
+safely, the entry is kept and you must restore those mails manually from
+the destination folder -
+Trash for a trash action, the destination folder for an archive or move -
+so it only works while they are still there; once they are emptied from
+Trash or moved on, they cannot be brought back this way.
+
+</details>
+
+## Privacy
+
+<details class="faq-q">
+<summary><h3 id="what-leaves-my-machine">What leaves my machine?</h3><span class="faq-short">Mailbox access goes to your mail provider; unsubscribe actions contact the sender, SSO contacts your identity provider, and optional AI review sends only metadata.</span></summary>
 
 Mailbox access goes to your mail provider. Unsubscribe actions contact the
 sender, and SSO contacts your identity provider. Optional AI review sends
@@ -31,37 +57,10 @@ only metadata, never mail bodies or attachments (see
 (Ollama, LM Studio, vLLM) keeps the AI traffic on your own network. The AI is optional and you can set a monthly
 budget in Settings -> AI review. The UI loads no external assets.
 
-## Why not just use filters or Sieve?
+</details>
 
-Filters work forward in time. Inboxrake shows what already piled up - which
-senders, how many mails, how much space, how much you actually read - so
-you decide in bulk, and can then block a sender, unsubscribe or export a
-Sieve rule so it stays gone.
-
-## How heavy is it?
-
-One container, about 80 MB to download and roughly 55 MB of RAM while idle
-(measured by the maintainer on amd64 with the demo; scanning a large mailbox
-uses more while it runs). Images are published for amd64 and arm64, for
-example Raspberry Pi 4/5.
-
-## Backup and uninstall?
-
-Everything lives in the `/data` volume; Settings -> Backup & restore has a backup
-export, which leaves out all passwords, tokens and API keys (the mail
-password, OAuth tokens and client secrets, AI keys) - after a restore you
-re-enter them. Stop the container and delete the
-volume to remove it. Your mailbox is never modified by installing or
-removing Inboxrake.
-
-## Is it safe to expose?
-
-There is no login by default - keep the port on localhost or behind an
-authenticating proxy, or enable the built-in password or SSO login. Without
-a login it also answers only to `localhost` and IP addresses; for a host
-name set `INBOXRAKE_ALLOWED_HOSTS`. Details in [Security & privacy](security.md).
-
-## Why does it need my IMAP password?
+<details class="faq-q">
+<summary><h3 id="why-does-it-need-my-imap-password">Why does it need my IMAP password?</h3><span class="faq-short">Use an app password where your provider offers one.</span></summary>
 
 Inboxrake reads and moves mail over IMAP, and IMAP has no way to do that
 without a credential. Use an app password where your provider offers one
@@ -73,7 +72,65 @@ The credential is stored in `/data`; it is encrypted only if you set
 `INBOXRAKE_SECRET_KEY` (without a key it is plaintext and every start logs
 a warning). It is only ever sent to your own mail server.
 
-## How is it different from other tools?
+</details>
+
+## Running it
+
+<details class="faq-q">
+<summary><h3 id="how-heavy-is-it">How heavy is it?</h3><span class="faq-short">One container, about 80 MB to download and roughly 55 MB of RAM while idle.</span></summary>
+
+One container, about 80 MB to download and roughly 55 MB of RAM while idle
+(measured by the maintainer on amd64 with the demo; scanning a large mailbox
+uses more while it runs). Images are published for amd64 and arm64, for
+example Raspberry Pi 4/5.
+
+</details>
+
+<details class="faq-q">
+<summary><h3 id="is-it-safe-to-expose">Is it safe to expose?</h3><span class="faq-short">There is no login by default - keep the port on localhost or behind an authenticating proxy.</span></summary>
+
+There is no login by default - keep the port on localhost or behind an
+authenticating proxy, or enable the built-in password or SSO login. Without
+a login it also answers only to `localhost` and IP addresses; for a host
+name set `INBOXRAKE_ALLOWED_HOSTS`. Details in [Security & privacy](security.md).
+
+</details>
+
+<details class="faq-q">
+<summary><h3 id="cannot-write-to-data">"Cannot write to /data"</h3><span class="faq-short">The image runs as user ID 1000. Give your folder to 1000 and restart.</span></summary>
+
+The image runs as user ID 1000. A host folder you created yourself is
+usually owned by root; give it to 1000 (`chown -R 1000:1000 <folder>`) and
+restart. See [Install](install.md#data-folder-ownership).
+
+</details>
+
+<details class="faq-q">
+<summary><h3 id="backup-and-uninstall">Backup and uninstall?</h3><span class="faq-short">Everything lives in the /data volume. Your mailbox is never modified by installing or removing Inboxrake.</span></summary>
+
+Everything lives in the `/data` volume; Settings -> Backup & restore has a backup
+export, which leaves out all passwords, tokens and API keys (the mail
+password, OAuth tokens and client secrets, AI keys) - after a restore you
+re-enter them. Stop the container and delete the
+volume to remove it. Your mailbox is never modified by installing or
+removing Inboxrake.
+
+</details>
+
+## The project
+
+<details class="faq-q">
+<summary><h3 id="why-not-just-use-filters-or-sieve">Why not just use filters or Sieve?</h3><span class="faq-short">Filters work forward in time. Inboxrake shows what already piled up.</span></summary>
+
+Filters work forward in time. Inboxrake shows what already piled up - which
+senders, how many mails, how much space, how much you actually read - so
+you decide in bulk, and can then block a sender, unsubscribe or export a
+Sieve rule so it stays gone.
+
+</details>
+
+<details class="faq-q">
+<summary><h3 id="how-is-it-different-from-other-tools">How is it different from other tools?</h3><span class="faq-short">Inboxrake looks at what has already piled up and lets you decide in bulk.</span></summary>
 
 - **Server-side filters / Sieve** act on new mail as it arrives. Inboxrake
   looks at what has already piled up and lets you decide in bulk (and can
@@ -89,37 +146,29 @@ a warning). It is only ever sent to your own mail server.
   server and your mail server (plus metadata to an AI provider if you turn
   that on).
 
-## What is the project's status?
+</details>
+
+<details class="faq-q">
+<summary><h3 id="what-is-the-projects-status">What is the project's status?</h3><span class="faq-short">One maintainer, MIT-licensed.</span></summary>
 
 One maintainer, MIT-licensed. Releases are cut with release-please from
 the commit history, see the [changelog](../CHANGELOG.md). Security reports
 go through [SECURITY.md](../SECURITY.md); nothing is promised beyond what
 is written there.
 
-## Is there an API?
+</details>
+
+<details class="faq-q">
+<summary><h3 id="is-there-an-api">Is there an API?</h3><span class="faq-short">No public one.</span></summary>
 
 No public one. The web UI talks to JSON endpoints under `/api/`, but they
 are internal and may change in any release.
 
-## How far back does Undo go?
+</details>
 
-Each account keeps its last 10 undoable actions, in memory only: a restart
-or an image update (e.g. an auto-updated `:latest`) empties the list. An
-undo tracks destination UIDs and UIDVALIDITY, using server COPYUID responses
-when available and otherwise identifying newly arrived copies. It never
-restores a pre-existing matching copy. If identity cannot be established
-safely, the entry is kept and you must restore those mails manually from
-the destination folder -
-Trash for a trash action, the destination folder for an archive or move -
-so it only works while they are still there; once they are emptied from
-Trash or moved on, they cannot be brought back this way.
-
-## "Cannot write to /data"
-
-The image runs as user ID 1000. A host folder you created yourself is
-usually owned by root; give it to 1000 (`chown -R 1000:1000 <folder>`) and
-restart. See [Install](install.md#data-folder-ownership).
-
-## Where do I report a vulnerability?
+<details class="faq-q">
+<summary><h3 id="where-do-i-report-a-vulnerability">Where do I report a vulnerability?</h3><span class="faq-short">Not in a public issue - see SECURITY.md.</span></summary>
 
 Not in a public issue - see [SECURITY.md](../SECURITY.md).
+
+</details>
