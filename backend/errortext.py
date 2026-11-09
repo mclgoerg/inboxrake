@@ -165,6 +165,10 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The scan failed unexpectedly - try again; if it keeps failing, check the server log.',
     'internal_error':
         'Something went wrong on the server - try again; if it keeps happening, check the server log.',
+    'oauth_reconnect':
+        'The mail provider no longer accepts the saved sign-in - reconnect the account in Settings.',
+    'idp_unavailable':
+        'The sign-in provider is not reachable right now - try again later.',
     'not_in_demo':
         'Not available in the demo.',
     'data_not_writable':

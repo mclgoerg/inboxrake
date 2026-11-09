@@ -2709,6 +2709,10 @@ export const DE: Record<string, string> = {
   "ferr.scan_failed":
     "Der Scan ist unerwartet fehlgeschlagen – versuche es erneut; wenn es "
     + "weiter scheitert, sieh im Server-Log nach.",
+  "ferr.oauth_reconnect":
+    "Der Mail-Anbieter akzeptiert die gespeicherte Anmeldung nicht mehr – verbinde das Konto in den Einstellungen neu.",
+  "ferr.idp_unavailable":
+    "Der Anmeldedienst ist gerade nicht erreichbar – versuche es später erneut.",
   "ferr.internal_error":
     "Auf dem Server ist etwas schiefgegangen – versuche es erneut; wenn es "
     + "weiter passiert, sieh im Server-Log nach.",

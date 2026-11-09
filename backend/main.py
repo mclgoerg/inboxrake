@@ -438,7 +438,7 @@ def get_oidc_login(request: Request):
         url = authmod.auth_url(cfg["auth"]["oidc"], redirect,
                                authmod.make_state(), verifier)
     except Exception as exc:
-        raise HTTPException(502, f"IdP discovery failed: {exc}")
+        raise _idp_unavailable(exc, "discovery")
     resp = RedirectResponse(url)
     # PKCE verifier for the callback leg. Lax still sends it on the IdP's
     # top-level redirect back to us; it never appears in any URL.
@@ -471,7 +471,7 @@ def get_oidc_callback(request: Request, code: str = Query(""),
         claims = authmod.exchange_code(cfg["auth"]["oidc"], redirect, code,
                                        verifier)
     except Exception as exc:
-        raise HTTPException(502, f"token exchange failed: {exc}")
+        raise _idp_unavailable(exc, "token exchange")
     if authmod.email_unverified(claims):
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login refused for %r (email not verified by the IdP)",
@@ -709,6 +709,15 @@ _request_line: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_line", default="")
 
 
+def _idp_unavailable(exc: Exception, step: str) -> HTTPException:
+    """The 502 of the public OIDC login legs: the IdP's own error text (it
+    can carry the issuer's URL or response body) goes to the log only."""
+    logging.getLogger("inboxrake.auth").error(
+        "OIDC %s failed: %s: %s", step, type(exc).__name__, exc,
+        exc_info=exc)
+    return HTTPException(502, mailops.coded(mailops.IDP_UNAVAILABLE))
+
+
 def _internal_error(exc: Exception, acc=None) -> HTTPException:
     """The 500 for an exception no handler expected. The full exception goes
     to the server log with the request line; the client only gets a coded,
@@ -722,11 +731,13 @@ def _internal_error(exc: Exception, acc=None) -> HTTPException:
     `internal_error`."""
     log = logging.getLogger("inboxrake.api")
     line = _request_line.get() or "request"
-    if isinstance(exc, RuntimeError) or mailops.is_coded(str(exc)):
+    if mailops.is_coded(str(exc)):
         log.warning("%s refused: %s", line, exc)
         return HTTPException(500, str(exc))
     log.error("%s failed: %s: %s", line, type(exc).__name__, exc,
-              exc_info=exc)
+              exc_info=exc)       # a plain RuntimeError may be a real bug
+    if isinstance(exc, RuntimeError):
+        return HTTPException(500, str(exc))
     if acc is not None:
         try:
             host = cfgmod.account_imap(acc.name)["host"]

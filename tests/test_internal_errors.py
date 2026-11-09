@@ -143,3 +143,103 @@ def test_specific_errors_are_unchanged(monkeypatch):
 
 def test_the_english_text_exists_for_the_csv_export():
     assert "internal_error" in errortext.TEXT
+
+
+# ---------------------------------------- provider text stays in the log
+
+PROVIDER_TEXT = "oauth token error: invalid_grant Token revoked for tenant-7f3a"
+
+
+def test_a_refused_oauth_refresh_asks_to_reconnect_and_logs_the_text(
+        monkeypatch, caplog):
+    import time
+    from backend import oauthflow
+
+    class Conn:
+        def __init__(self, *a, **k):
+            pass
+
+        def shutdown(self):
+            pass
+
+    def refused(*_a, **_k):
+        raise RuntimeError(PROVIDER_TEXT)
+
+    monkeypatch.setattr(mailops.imaplib, "IMAP4_SSL", Conn)
+    monkeypatch.setattr(oauthflow, "refresh", refused)
+    im = {"host": "imap.example", "port": 993, "security": "ssl",
+          "user": "me@mail.example", "password": "", "cafile": "",
+          "oauth": {"provider": "google", "client_id": "cid",
+                    "client_secret": "sec", "refresh_token": "rt",
+                    "access_token": "old", "expires_at": time.time() - 10}}
+    with caplog.at_level(logging.WARNING, logger="inboxrake.mail"):
+        with pytest.raises(RuntimeError) as err:
+            mailops.connect(im, "gmail")
+    assert str(err.value) == "oauth_reconnect"
+    assert "tenant-7f3a" in caplog.text
+
+
+def test_the_reader_shows_the_reconnect_code_not_the_provider_text(
+        monkeypatch):
+    def refused(*_a, **_k):
+        raise RuntimeError(mailops.coded(mailops.OAUTH_RECONNECT))
+    monkeypatch.setattr(mailops, "fetch_message", refused)
+    r = client.get("/api/message", params={"folder": "INBOX", "uid": 1})
+    assert r.json()["detail"] == "oauth_reconnect"
+
+
+def test_a_plain_runtime_error_keeps_its_traceback_in_the_log(
+        monkeypatch, caplog):
+    def bug(*_a, **_k):
+        raise RuntimeError("unknown message")
+    monkeypatch.setattr(mailops, "fetch_message", bug)
+    with caplog.at_level(logging.WARNING, logger="inboxrake.api"):
+        client.get("/api/message", params={"folder": "INBOX", "uid": 1})
+    rec = [r for r in caplog.records if r.name == "inboxrake.api"][0]
+    assert rec.exc_info and "Traceback" in caplog.text
+
+
+def _oidc():
+    from backend import auth as authmod
+    r = client.post("/api/config", json={"auth": {
+        "mode": "oidc",
+        "oidc": {"issuer": "https://idp.example", "client_id": "inboxrake",
+                 "client_secret": "sst", "allowed": ["me@corp.example"]}}})
+    assert r.status_code == 200
+    return authmod
+
+
+def test_an_unreachable_idp_is_a_coded_502_and_logged(monkeypatch, caplog):
+    authmod = _oidc()
+    secret = "https://idp.internal.example/.well-known: connection reset"
+
+    def down(*_a, **_k):
+        raise OSError(secret)
+
+    monkeypatch.setattr(authmod, "auth_url", down)
+    with caplog.at_level(logging.ERROR, logger="inboxrake.auth"):
+        r = TestClient(app).get("/api/oidc/login", follow_redirects=False)
+    assert r.status_code == 502 and r.json()["detail"] == "idp_unavailable"
+    assert "idp.internal.example" not in r.text
+    assert "idp.internal.example" in caplog.text
+
+
+def test_a_failed_token_exchange_is_a_coded_502_and_logged(
+        monkeypatch, caplog):
+    authmod = _oidc()
+    monkeypatch.setattr(authmod, "discovery", lambda issuer: {
+        "authorization_endpoint": "https://idp.example/authorize",
+        "token_endpoint": "https://idp.example/token"})
+    anon = TestClient(app)
+    login = anon.get("/api/oidc/login", follow_redirects=False)
+    state = login.headers["location"].split("state=")[1].split("&")[0]
+
+    def refused(*_a, **_k):
+        raise RuntimeError("token endpoint said: invalid_client secret-body")
+
+    monkeypatch.setattr(authmod, "exchange_code", refused)
+    with caplog.at_level(logging.ERROR, logger="inboxrake.auth"):
+        r = anon.get("/api/oidc/callback", params={
+            "code": "abc", "state": state}, follow_redirects=False)
+    assert r.status_code == 502 and r.json()["detail"] == "idp_unavailable"
+    assert "secret-body" not in r.text and "secret-body" in caplog.text
