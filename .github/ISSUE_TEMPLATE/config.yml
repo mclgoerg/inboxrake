@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions and ideas - Discussions
+    url: https://github.com/mclgoerg/inboxrake/discussions
+    about: Ask, share an idea, or show what your mailbox looked like before and after.
   - name: Questions - read the FAQ first
     url: https://inboxrake.com/docs/faq/
     about: Short answers on safety, privacy, running it and the project.
