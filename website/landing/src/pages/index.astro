@@ -105,6 +105,7 @@ const heroAlt = "The Inboxrake app on a computer";
           <a href="/docs/">Docs</a>
           <a href="#install">Install</a>
           <a href={GITHUB}>GitHub</a>
+          <a class="menu-version" href={RELEASE_URL}>Release notes v{VERSION}</a>
         </div>
       </details>
     </header>
@@ -354,6 +355,7 @@ const heroAlt = "The Inboxrake app on a computer";
   .menu-pop { position: absolute; right: 0; top: 100%; z-index: 5; min-width: 11rem; background: var(--panel); border-radius: 14px; box-shadow: 0 0 0 1px var(--line), 0 16px 40px rgb(0 0 0 / 0.2); padding: 0.4rem; display: grid; }
   .menu-pop a { padding: 0.7rem 0.9rem; border-radius: 10px; text-decoration: none; font-weight: 550; }
   .menu-pop a:hover { background: var(--tint); }
+  .menu-pop .menu-version { display: none; color: var(--muted); font-weight: 500; font-size: 0.9rem; white-space: nowrap; }
   .short { display: none; }
 
   /* ---- buttons ---- */
@@ -457,8 +459,12 @@ const heroAlt = "The Inboxrake app on a computer";
   /* ---- phone ---- */
   @media (max-width: 720px) {
     .top { padding-block: 0.7rem; }
-    .brand { font-size: 1.1rem; }
-    .links, .version { display: none; }
+    .top { gap: 0.5rem; }
+    .brand { font-size: 1.1rem; flex: none; gap: 0.5rem; }
+    .brand img { width: 28px; height: 28px; }
+    .version { font-size: 0.68rem; padding: 0.05rem 0.45rem; }
+    .top .btn.sm { padding-inline: 0.9rem; }
+    .links { display: none; }
     .menu { display: block; }
     .long { display: none; }
     .short { display: inline; }
@@ -502,5 +508,10 @@ const heroAlt = "The Inboxrake app on a computer";
   }
   @media (max-width: 380px) {
     .promise { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* the smallest phones: no room beside the logo - the version moves into the menu */
+  @media (max-width: 359px) {
+    .version { display: none; }
+    .menu-pop .menu-version { display: block; }
   }
 </style>
