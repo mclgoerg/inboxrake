@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions - read the FAQ first
+    url: https://inboxrake.com/docs/faq/
+    about: Short answers on safety, privacy, running it and the project.
+  - name: Report a security problem (private)
+    url: https://github.com/mclgoerg/inboxrake/security/advisories/new
+    about: Please do not open a public issue for security problems.
+  - name: Try the demo
+    url: https://inboxrake.com/demo/
+    about: The whole app in your browser, on made-up mailboxes.
