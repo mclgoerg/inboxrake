@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { FolderInfo, FoldersResp, SpecialRole } from "../types";
@@ -17,6 +17,22 @@ const ROLE_ORDER = ["trash", "junk", "sent", "drafts", "archive", "all"];
 const UNSCANNED = new Set(["trash", "junk", "sent", "drafts", "all"]);
 
 const roleName = (role: string) => t(`role.${role}`);
+
+/* "Choose folder" on the Junk / Trash page opens the account's settings,
+ * which land at their top: this asks the special-folders block to scroll
+ * into view and put the focus on the unresolved role's chooser as soon as
+ * it is there (it loads after the page opens). One-shot, and it lapses so
+ * a request nobody could serve does not fire on some later visit. */
+const FOCUS_EVENT = "irk-focus-special-folders";
+const FOCUS_TTL_MS = 15000;
+let focusAsked = 0;
+let focusRole = "";
+/** `role`: the one to put the focus on first (the page's own). */
+export function focusSpecialFolders(role = ""): void {
+  focusAsked = Date.now();
+  focusRole = role;
+  window.dispatchEvent(new Event(FOCUS_EVENT));
+}
 
 /** Rows nested by hierarchy: sorted segment-wise, each shown under its
  *  nearest listed ancestor with only the part below it as its label. */
@@ -74,6 +90,7 @@ export function FolderSettings({ account, data, included, setIncluded,
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const specialRef = useRef<HTMLDivElement>(null);
 
   const special: SpecialRole[] = data.special ?? data.folders
     .filter((x) => x.role)
@@ -101,6 +118,24 @@ export function FolderSettings({ account, data, included, setIncluded,
   const scanned = nest(data.folders.filter((x) => !x.view
     && !holders.has(x.raw)
     && !(x.looks_like && UNSCANNED.has(x.looks_like)) && !hidden(x)));
+
+  const hasSpecial = !simple && (roles.length > 0 || views.length > 0);
+  useEffect(() => {
+    if (!hasSpecial) return;
+    const serve = () => {
+      const el = specialRef.current;
+      if (!el || Date.now() - focusAsked > FOCUS_TTL_MS) return;
+      focusAsked = 0;
+      el.scrollIntoView({ block: "start" });
+      // the chooser of the role that needs a pick, else the block itself
+      (el.querySelector<HTMLElement>(
+        `[data-role="${focusRole}"][data-ambiguous] button`)
+        ?? el.querySelector<HTMLElement>("[data-ambiguous] button"))?.focus();
+    };
+    serve();                                   // asked before this mounted
+    window.addEventListener(FOCUS_EVENT, serve);
+    return () => window.removeEventListener(FOCUS_EVENT, serve);
+  }, [hasSpecial]);
 
   const fail = (e: unknown) =>
     toast.show(String((e as Error)?.message ?? e), { variant: "error" });
@@ -165,14 +200,17 @@ export function FolderSettings({ account, data, included, setIncluded,
       ))}
     </div>
   );
-  const showSpecial = !simple && (roles.length > 0 || views.length > 0);
-  const specialBody = (<>
+  const showSpecial = hasSpecial;
+  // scroll-mt: "Choose folder" scrolls here and leaves the group's header
+  // ("Special folders") in view
+  const specialBody = (<div ref={specialRef} className="scroll-mt-14">
     <p className="mt-0.5 type-meta text-muted">
       {t("folders.special_hint")}
     </p>
           <div className="mt-2 grid gap-2">
             {roles.map((r) => (
               <div key={r.role} data-role={r.role}
+                data-ambiguous={r.ambiguous || undefined}
                 className="rounded-control border border-line p-2">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="type-body font-medium">
@@ -258,7 +296,7 @@ export function FolderSettings({ account, data, included, setIncluded,
               </div>
             )}
           </div>
-  </>);
+  </div>);
 
   if (grouped) return (<>
     <SettingsGroup header={header}>

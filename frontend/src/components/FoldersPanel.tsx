@@ -6,7 +6,8 @@ import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
-import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp }
+import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
+  UndoIdent }
   from "../types";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
@@ -44,7 +45,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
    *  live total this panel just listed; resolves true once emptied. */
   onEmptyTrash: (listing: TrashResp) => Promise<boolean>;
   /** Undo the recorded move (the App's confirmed undo). */
-  onUndo: (entry: { ts: number; label: string; count: number }) => void;
+  onUndo: (entry: UndoIdent) => void | Promise<void>;
   /** Protect these senders (the App's one-tap protect). */
   onProtect: (addrs: string[]) => Promise<boolean>;
   /** Block one sender address (the App's confirmed Block); resolves true
@@ -54,7 +55,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   blockedSenders?: ReadonlySet<string>;
   /** Open the account's folder setting (where the ambiguous role is
    *  chosen); without it the notice has no button. */
-  onChooseFolder?: () => void;
+  onChooseFolder?: (role: FolderRole) => void;
 }) {
   const toast = useToast();
   const wide = useMediaQuery("(min-width: 640px)");   // phones: own full row
@@ -172,6 +173,19 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     setSel(new Set());
   };
 
+  // The page's toast is the result: the backend's notice of the same move
+  // (shown while the rescan runs) would otherwise stay above the app until
+  // dismissed. The "..._rescan" variants ask the user to act and stay.
+  const clearMoveNotice = () => {
+    api.clearNotice(["junk_rescued", "trash_restored"]).catch(() => {});
+  };
+
+  // The undone mails are back in this folder: the listing re-reads it
+  const undoMove = async (entry: UndoIdent) => {
+    await onUndo(entry);
+    load();
+  };
+
   const restore = async (dest: string, uids: number[] = [...sel],
                          toRow = false) => {
     if (!list || !dest || uids.length === 0) return;
@@ -184,6 +198,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       if (toRow) toast.show(msg, { variant: "success" });
       else setNote(msg);
       dropped(new Set(uids), r.restored);
+      clearMoveNotice();
       onChanged();
     } catch (e: any) {
       const msg = t("err.generic", { msg: e.message ?? e });
@@ -219,7 +234,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       }
       dropped(new Set(uids), r.moved);
       const undo = r.undo ? { label: t("Undo"),
-        onClick: () => onUndo(r.undo!) } : undefined;
+        onClick: () => undoMove(r.undo!) } : undefined;
       if (action === "not_junk") {
         toast.show(t("fp.not_junk_done", { n: r.moved }), {
           variant: "success", action: undo, duration: 12000,
@@ -232,6 +247,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         toast.show(t("toast.moved_trash", { n: r.moved }),
           { variant: "success", action: undo });
       }
+      clearMoveNotice();
       onChanged();
       setBusy(false);
       return true;
@@ -297,7 +313,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         toast.show(t("fp.purge_unverified", { n: r.unverified }), {
           variant: "error", duration: 0,
           action: r.undo ? { label: t("Undo"),
-            onClick: () => onUndo(r.undo!) } : undefined });
+            onClick: () => undoMove(r.undo!) } : undefined });
       }
       if (r.deleted > 0) {
         toast.show(t(skipped ? "fp.purged_skipped" : "fp.purged",
@@ -358,7 +374,9 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // delete goes through): saying so now beats failing after the click
   const unclear = list?.ambiguous ?? [];
   const blocked = unclear.length > 0;
-  const describedBy = blocked ? `fp-ambiguous-${unclear[0].role}` : undefined;
+  // what the disabled delete buttons point at: a visible reason beside them
+  // (the notice above scrolls away on a phone)
+  const describedBy = blocked ? "fp-ambiguous-reason" : undefined;
   // The reader's Trash on a Junk mail: the same move (and protected-sender
   // confirm) as the row's Trash. Trash has nothing to move a mail to.
   const readerActions: ReaderActions | undefined = junk ? {
@@ -398,21 +416,27 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         <>
           <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto
             px-4 pb-4 pt-3">
-            {unclear.map((a) => (
-              <Notice key={a.role} tone="warn" className="mb-3"
+            {blocked && (
+              <Notice tone="warn" className="mb-3"
                 icon={<TriangleAlert size={16} />}>
-                <div id={`fp-ambiguous-${a.role}`}>
-                  {t("fp.ambiguous", { role: t(`role.${a.role}`),
-                    folders: a.choices.join(", ") })}
+                <div id="fp-ambiguous">
+                  {unclear.length > 1
+                    ? t("fp.ambiguous_both", {
+                      role: t(`role.${unclear[0].role}`),
+                      folders: unclear[0].choices.join(", "),
+                      role2: t(`role.${unclear[1].role}`),
+                      folders2: unclear[1].choices.join(", ") })
+                    : t("fp.ambiguous", { role: t(`role.${unclear[0].role}`),
+                      folders: unclear[0].choices.join(", ") })}
                 </div>
                 {onChooseFolder && (
                   <Button size="sm" variant="secondary" className="mt-2"
-                    onClick={onChooseFolder}>
+                    onClick={() => onChooseFolder(role)}>
                     {t("fp.ambiguous_choose")}
                   </Button>
                 )}
               </Notice>
-            ))}
+            )}
             {!junk && (
               <TrashCard list={list} rules={state.rules ?? []}
                 onChanged={onChanged} />
@@ -576,23 +600,26 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             <div className="grid grid-cols-2 gap-2 border-t border-line px-4
               py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
               sm:flex sm:justify-end">
+              {blocked && (
+                <p id="fp-ambiguous-reason" className="col-span-2 type-meta
+                  text-muted sm:mr-auto sm:self-center">
+                  {t("fp.ambiguous_hint")}
+                </p>
+              )}
               <Button variant="secondary" disabled={busy || blocked}
                 className={rowBtn} aria-describedby={describedBy}
-                title={blocked ? t("fp.ambiguous_hint") : undefined}
                 onClick={() => void purgeOlder()}>
                 {t("fp.older")}
               </Button>
               {junk ? (
                 <Button variant="danger-tint" disabled={busy || blocked}
                   className={rowBtn} aria-describedby={describedBy}
-                  title={blocked ? t("fp.ambiguous_hint") : undefined}
                   onClick={() => void purge({ everything: true })}>
                   {t("fp.empty_junk", { n: list.total })}
                 </Button>
               ) : (
                 <Button variant="danger-tint" disabled={busy || blocked}
                   className={rowBtn} aria-describedby={describedBy}
-                  title={blocked ? t("fp.ambiguous_hint") : undefined}
                   onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>

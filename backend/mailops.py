@@ -661,6 +661,14 @@ def cancel_requested(target: str, acc=None) -> bool:
     return (acc or accounts.get()).cancel[target]
 
 
+def _undo_ident(entry: dict) -> dict:
+    """What a mutating call returns so the UI's Undo toast can find the entry
+    in `state.undo` (it matches by `id`; the others are the fallback)."""
+    return {"ts": entry["ts"], "label": entry["label"],
+            "count": entry["count"],
+            **({"id": entry["id"]} if entry.get("id") else {})}
+
+
 def _undo_summaries(acc) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
@@ -4594,8 +4602,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
     log.info("%s: %d mails -> %r", action, len(moved), decode_mutf7(dest))
     with acc.lock:
         last = acc.undo_log[-1] if moved and acc.undo_log else None
-        undo = ({"ts": last["ts"], "label": last["label"],
-                 "count": last["count"]} if last else None)
+        undo = _undo_ident(last) if last else None
     return {"moved": len(moved), "rescan": rescan, "undo": undo,
             "senders": sorted({known[u]["addr"] for u in moved})}
 
@@ -4811,8 +4818,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
                     "items": items, "in": target, "copies": copies})
                 del acc.undo_log[:-UNDO_MAX]
                 acc.state["undo"] = _undo_summaries(acc)
-                undo = {"ts": acc.undo_log[-1]["ts"], "label": label,
-                        "count": len(items)}
+                undo = _undo_ident(acc.undo_log[-1])
             if role == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += moved
         log.info("moved %d mails from a look-alike %s folder", moved, role)
@@ -5529,8 +5535,7 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
                          audit_id=audit_id)
             last = acc.undo_log[-1] if acc.undo_log else None
             if last and last["label"] == stranded_label:
-                res["undo"] = {"ts": last["ts"], "label": last["label"],
-                               "count": last["count"]}
+                res["undo"] = _undo_ident(last)
     if led.deleted:
         statsmod.record_action("purge", led.deleted, led.freed, acc.name)
     if stranded:

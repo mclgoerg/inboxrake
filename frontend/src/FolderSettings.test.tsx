@@ -20,7 +20,7 @@ vi.mock("./api", () => ({
   },
 }));
 
-import { FolderSettings } from "./components/FolderSettings";
+import { focusSpecialFolders, FolderSettings } from "./components/FolderSettings";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog }
   from "./dialogTestUtils";
@@ -152,6 +152,34 @@ test("an ambiguous role shows the candidates with counts and a Select", () => {
   const opts = screen.getAllByRole("menuitemradio").map((o) => o.textContent);
   expect(opts).toEqual(["Deleted Items (3 mails)", "Trash (1 mail)"]);
   expect(screen.getByText(/the one permanent actions will use/)).toBeTruthy();
+});
+
+test("\"Choose folder\" scrolls to the special folders and focuses the chooser",
+  async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    // asked before the list loaded: served as soon as the block is there
+    focusSpecialFolders();
+    mount(ambiguous());
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(screen.getByRole("button",
+      { name: /Which folder is your Trash folder\?/ }));
+    // one-shot: a later render does not scroll again
+    cleanup();
+    mount(ambiguous());
+    expect(scroll).toHaveBeenCalledTimes(1);
+  });
+
+test("with two unresolved roles the requested one gets the focus", async () => {
+  Element.prototype.scrollIntoView = vi.fn();
+  const two = ambiguous();
+  two.special!.push(special("junk", "Spam", { source: "name", ambiguous: true,
+    choices: [{ raw: "Spam", name: "Spam", count: 2 },
+      { raw: "Junk Email", name: "Junk Email", count: 1 }] }));
+  focusSpecialFolders("junk");
+  mount(two);
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole(
+    "button", { name: /Which folder is your Junk folder\?/ })));
 });
 
 test("choosing a candidate saves it and reloads the list", async () => {

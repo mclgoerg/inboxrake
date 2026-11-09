@@ -142,6 +142,9 @@ def test_not_junk_moves_to_inbox_with_undo_and_protect(junked):
     # quiet undo entry for the panel's own toast
     undo = mailops.STATE["undo"][-1]
     assert undo["count"] == 1 and undo["quiet"] is True
+    # the returned identity carries the entry's id: the toast's Undo finds
+    # the entry in state.undo by it (without the id it matched nothing)
+    assert body["undo"]["id"] == undo["id"]
     # the rescued mail shows up in the cleanup views
     assert "bob@friends.example" in mailops.STATE["groups"]["sender"]
     # "Protect sender": the toast action is the ordinary protect call, and
@@ -231,6 +234,20 @@ def test_bad_action_refused(junked):
     res = client.post("/api/folders_panel/move", json={
         "role": "junk", "action": "delete", "uids": [40], "uv": 1})
     assert res.status_code == 400
+
+
+def test_the_returned_undo_identity_undoes_that_entry(junked):
+    """Every role move hands back an identity with the entry's `id`; sent to
+    /api/undo it restores exactly that entry, even after a newer one."""
+    mailops.run_scan()
+    r = _list()
+    first = _move("trash", [40], r["uv"]).json()
+    assert first["undo"]["id"]
+    _move("not_junk", [41], _list()["uv"])
+    out = client.post("/api/undo", json={"index": -1,
+                                         "ident": first["undo"]}).json()
+    assert out["restored"] == 1
+    assert 40 in {m["uid"] for m in junked.mailbox["Spam"]}
 
 
 def test_ambiguous_junk_still_usable_for_moves(monkeypatch):

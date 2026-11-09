@@ -1279,8 +1279,8 @@ def test_stopped_after_the_move_returns_the_undo_entry(monkeypatch):
     res = mailops.purge_mails("junk", c["uids"], c["uv"], **_at(c))
     assert res["unverified"] == 3
     last = mailops.UNDO_LOG[-1]
-    assert res["undo"] == {"ts": last["ts"], "label": last["label"],
-                           "count": 3}
+    assert res["undo"] == {"id": last["id"], "ts": last["ts"],
+                           "label": last["label"], "count": 3}
     ok, _ = _purge("trash", everything=True)
     assert ok["undo"] is None
 

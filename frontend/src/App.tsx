@@ -45,6 +45,7 @@ import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterM
 import { SelectMatches } from "./components/SelectMatches";
 import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
+import { focusSpecialFolders } from "./components/FolderSettings";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
@@ -68,7 +69,7 @@ import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
   KnowledgeStored,
-  StatusMsg, TrashResp, FolderRole } from "./types";
+  StatusMsg, TrashResp, FolderRole, UndoIdent } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -97,6 +98,10 @@ const sortValue = (g: Group, k: SortKey): number | string => {
 };
 
 const RESTORE_NOTICES = ["restored", "restored_rescan"];
+// Set by the Junk / Trash pages' moves while the rescan runs; their own
+// toast is the result, so the banner stays out (the "..._rescan" ones tell
+// the user to act and stay).
+const ROLE_MOVE_NOTICES = ["junk_rescued", "trash_restored"];
 const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
   u.id ?? `${u.ts}|${u.count}|${u.label}`;
 
@@ -1061,12 +1066,12 @@ export default function App() {
 
   // Undo of a move the Folders panel made (it toasts by itself): by identity,
   // after a refresh when the list has not caught up yet.
-  const undoEntry = async (e: { ts: number; count: number; label: string }) => {
+  const undoEntry = async (e: UndoIdent) => {
     const find = () => stateRef.current?.undo
       .findIndex((u) => undoId(u) === undoId(e)) ?? -1;
     if (find() < 0) await refresh();
     const i = find();
-    if (i >= 0) undo(i, false);
+    if (i >= 0) await undo(i, false);
   };
 
   // Shared by the profile menu and the Trash panel; resolves whether the
@@ -2363,7 +2368,8 @@ export default function App() {
         onProtect={protectSenders}
         onBlock={blockAddress}
         blockedSenders={blockedAddrs}
-        onChooseFolder={() => void fixAccount(account)}
+        onChooseFolder={(r) => void fixAccount(account)
+          .then(() => focusSpecialFolders(r))}
       />
     )}
     {toolShown("duplicates") && (
@@ -2820,8 +2826,8 @@ export default function App() {
         )}
       </div>}
       {state?.notice && state.notice.key !== "cached_verdicts"
-        && state.notice.key !== "restored"
-        && state.notice.key !== "restored_rescan" && (
+        && !RESTORE_NOTICES.includes(state.notice.key)
+        && !ROLE_MOVE_NOTICES.includes(state.notice.key) && (
         <Notice className={routed ? "mx-3 mt-3" : "mb-2"} icon={<Info size={14} />}
           onClose={dismissNotice}>
           {t(`notice.${state.notice.key}`, noticeParams(state.notice.params))}
