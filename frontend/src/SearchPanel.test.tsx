@@ -348,3 +348,14 @@ test("the reader's Trash drops only that mail from the selection", async () => {
   await waitFor(() => expect(screen.queryByText("body text")).toBeNull());
   expect(screen.getByRole("button", { name: "Trash selected (2)" })).toBeTruthy();
 });
+
+test("Trash selected with one pick names that mail's subject", async () => {
+  search.mockResolvedValue({ notes: [], mails: [mail(1), mail(2)] });
+  withDialogs(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByLabelText("Select Parcel 2"));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (1)" }));
+  expect((await findDialog()).textContent).toContain('"Parcel 2"');
+  await cancelDialog();
+});

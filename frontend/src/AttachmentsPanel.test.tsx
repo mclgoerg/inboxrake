@@ -9,12 +9,14 @@ import { afterEach, expect, test, vi } from "vitest";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { setClockShift } from "./clock";
 import { setLang } from "./i18n";
 import type { AppState } from "./types";
 
 const attachments = vi.fn();
 const deleteMessages = vi.fn();
 const summary = vi.fn();
+let switched = false;   // the account changed under the open page
 
 vi.mock("./api", () => ({
   api: { attachments: () => attachments(),
@@ -53,7 +55,7 @@ const state = (status: string) => ({ status: "done",
 
 const show = (status = "done") => render(<DialogProvider>
   <AttachmentsPanel state={state(status)} onClose={() => {}}
-    onDeleted={() => {}} />
+    onDeleted={() => {}} isStale={() => switched} />
 </DialogProvider>);
 
 // two mails carry scan.pdf (one tile "in 2 mails"), one carries a photo
@@ -67,6 +69,8 @@ afterEach(() => {
   deleteMessages.mockReset();
   summary.mockReset();
   localStorage.clear();
+  switched = false;
+  setClockShift(0);
   setLang("en");
 });
 
@@ -267,4 +271,76 @@ test("a truncated list says so", async () => {
   summary.mockResolvedValue(SUMMARY);
   show();
   await screen.findByText(/Showing the 2.?000 mails/);
+});
+
+// 70 distinct PDFs, largest first (so tile n is mail n), plus a small photo
+const many = () => [
+  ...Array.from({ length: 70 }, (_, i) =>
+    mk(i + 1, [file(`f${i + 1}.pdf`, 1e6 - i * 1000, "pdf")])),
+  mk(71, [file("p.jpg", 10, "images")])];
+
+test("a tile ticked behind Show more is not acted on after a filter keeps it "
+  + "beyond the first page", async () => {
+  attachments.mockResolvedValue(many());
+  summary.mockResolvedValue(SUMMARY);
+  deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+  show();
+  await screen.findByText("f1.pdf");
+  expect(screen.queryByText("f65.pdf")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show 11 more" }));
+  fireEvent.click(await screen.findByLabelText("Select f65.pdf"));
+  expect(screen.getByText("1 mail · 2 MB")).toBeTruthy();
+  // the PDF filter still lists f65 - at position 65, behind Show more again
+  fireEvent.click(screen.getByRole("radio", { name: "PDF" }));
+  expect(screen.queryByText("f65.pdf")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Move to Trash" })).toBeNull();
+});
+
+test("Show more keeps what was ticked on the pages already shown", async () => {
+  attachments.mockResolvedValue(many());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("f1.pdf");
+  fireEvent.click(screen.getByLabelText("Select f2.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Show 11 more" }));
+  await screen.findByText("f65.pdf");
+  expect(screen.getByText("1 mail · 2 MB")).toBeTruthy();
+});
+
+test("one mail in the bar: the confirm names its subject", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
+  show();
+  fireEvent.click(await screen.findByLabelText("Select beach.jpg"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  expect((await findDialog()).textContent).toContain('"Scan 3"');
+  await cancelDialog();
+});
+
+test("the age filter reads the UI clock, not the machine's", async () => {
+  const yearAndHalfAgo = Date.now() / 1000 - 1.5 * 365 * 86400;
+  attachments.mockResolvedValue([mk(1, [file("mid.pdf", 9, "pdf")],
+    yearAndHalfAgo)]);
+  summary.mockResolvedValue(SUMMARY);
+  setClockShift(2 * 365 * 86400 * 1000);   // the demo's "now" is two years back
+  show();
+  await screen.findByText("mid.pdf");
+  fireEvent.click(screen.getByRole("button", { name: /Older than/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "1 year" }));
+  // on the demo clock the mail is not even a year old yet
+  expect(screen.queryByText("mid.pdf")).toBeNull();
+});
+
+test("a confirm that outlives an account switch moves nothing", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  fireEvent.click(await screen.findByLabelText("Select beach.jpg"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  await findDialog();
+  switched = true;
+  await pressDialog(/Move to Trash \(1\)/);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(deleteMessages).not.toHaveBeenCalled();
 });

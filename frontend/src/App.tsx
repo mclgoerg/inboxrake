@@ -468,6 +468,8 @@ export default function App() {
   useUnsubscribeOpener(setUnsubSheet);
   // The account generation the open sheet was rendered in (see its onTrash).
   const sheetGeneration = accountGeneration.current;
+  // Same for the tool pages: mail ids they hold belong to one account.
+  const toolStale = () => sheetGeneration !== accountGeneration.current;
   useEffect(() => {
     if (!state) { seenJobs.current = null; return; }
     const prev = seenJobs.current;
@@ -2376,7 +2378,7 @@ export default function App() {
       <DuplicatesPanel key={account} scannedTs={state?.scanned_ts}
         reloadKey={`${state?.scanned_ts ?? 0}:${undoRev}`}
         onClose={() => closeTool(() => { setDupsOpen(false); refresh(); })}
-        onDeleted={refresh}
+        onDeleted={refresh} isStale={toolStale}
       />
     )}
     {toolShown("trackers") && (
@@ -2404,7 +2406,7 @@ export default function App() {
       <AttachmentsPanel key={account}
         state={state}
         onClose={() => closeTool(() => { setAttsOpen(false); refresh(); })}
-        onDeleted={refresh}
+        onDeleted={refresh} isStale={toolStale}
       />
     )}
     {toolShown("rules") && state && (

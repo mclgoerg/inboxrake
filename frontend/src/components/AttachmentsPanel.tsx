@@ -3,6 +3,7 @@ import { Copy, Eye, File, FileArchive, FileText, Film, Image as ImageIcon,
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmtSize, mailKey } from "../api";
+import { nowMs } from "../clock";
 import { t } from "../i18n";
 import { confirmTrashMails } from "../mailActions";
 import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
@@ -49,10 +50,13 @@ const AGES = [0, 1, 2, 5];
  *  files by kind (bar), repeats, and one tile per file. IMAP cannot strip
  *  single attachments, so selecting a file selects its MAIL(S) and the
  *  action moves the whole mail to Trash (reversible, as everywhere). */
-export function AttachmentsPanel({ state, onClose, onDeleted }: {
+export function AttachmentsPanel({ state, onClose, onDeleted, isStale }: {
   state: AppState;
   onClose: () => void;
   onDeleted: () => void;
+  /** True once the account this page was opened for is no longer the active
+   *  one: a confirm that outlives the page must then send nothing. */
+  isStale?: () => boolean;
 }) {
   const [mails, setMails] = useState<AttMail[] | null>(null);
   const [summary, setSummary] = useState<AttSummary | null>(null);
@@ -130,7 +134,7 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   }, [mails]);
 
   const visible = useMemo(() => {
-    const cutoff = age ? Date.now() / 1000 - age * 365 * 86400 : 0;
+    const cutoff = age ? nowMs() / 1000 - age * 365 * 86400 : 0;
     return tiles.filter((f) =>
       (kind === "all" || f.kind === kind)
       && (!repeatsOnly || f.mails.length > 1)
@@ -138,18 +142,22 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       && (!cutoff || Math.max(...f.mails.map((m) => m.ts || 0)) < cutoff));
   }, [tiles, kind, age, repeatsOnly]);
 
-  // Filters change what is listed: start from the top again, and drop any
-  // selected mail that no visible tile stands for (nothing hidden is ever
-  // selected).
+  // What is on screen is one page of the visible tiles ("Show more" grows
+  // it). A selection only covers rendered tiles: a filter change starts from
+  // the top again and drops every selected mail that no rendered tile stands
+  // for (nothing hidden, not even behind "Show more", is ever selected).
+  const page = useMemo(() => visible.slice(0, shown), [visible, shown]);
+  const pageKeys = useMemo(() => new Set(
+    page.flatMap((f) => f.mails.map(mailKey))), [page]);
   const visibleKeys = useMemo(() => new Set(
     visible.flatMap((f) => f.mails.map(mailKey))), [visible]);
+  useEffect(() => { setShown(PAGE); }, [visibleKeys]);
   useEffect(() => {
-    setShown(PAGE);
     setSel((s) => {
-      const keep = [...s].filter((k) => visibleKeys.has(k));
+      const keep = [...s].filter((k) => pageKeys.has(k));
       return keep.length === s.size ? s : new Set(keep);
     });
-  }, [visibleKeys]);
+  }, [pageKeys]);
 
   const setLayoutKeep = (v: "grid" | "list") => {
     setLayout(v);
@@ -164,16 +172,20 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     setSel(next);
   };
 
-  // Only mails of visible tiles can be acted on.
+  // Only mails of rendered tiles can be acted on.
   const chosen = (mails ?? []).filter((m) =>
-    sel.has(mailKey(m)) && visibleKeys.has(mailKey(m)));
+    sel.has(mailKey(m)) && pageKeys.has(mailKey(m)));
   const chosenSize = chosen.reduce((n, m) => n + m.size, 0);
 
   // Resolves true when the mails are on their way to Trash.
   const trashMails = async (go: AttMail[], subject?: string):
       Promise<boolean> => {
     if (!mails || go.length === 0) return false;
-    if (!await confirmTrashMails(go.length, subject)) return false;
+    if (!await confirmTrashMails(go.length,
+      subject ?? (go.length === 1 ? go[0].subject ?? "" : undefined)))
+      return false;
+    // the confirm can outlive this page: mail ids belong to one account
+    if (isStale?.()) return false;
     try {
       const items = go.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items, "trash");
@@ -205,7 +217,6 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   const total = summary?.total ?? 0;
   const kinds = summary?.kinds ?? [];
   const repeats = summary?.repeats;
-  const page = visible.slice(0, shown);
 
   return (
     <Modal onClose={onClose} size="lg" full={!!view || running || !emptyPanel}>

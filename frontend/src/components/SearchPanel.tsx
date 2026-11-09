@@ -213,10 +213,12 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashKeys = async (go: Set<string>, subject?: string):
       Promise<boolean> => {
     if (!res || go.size === 0) return false;
-    if (!await confirmTrashMails(go.size, subject)) return false;
+    const goMails = mails.filter((m) => go.has(mailKey(m)));
+    if (!await confirmTrashMails(go.size, subject
+      ?? (goMails.length === 1 && go.size === 1
+        ? goMails[0].subject ?? "" : undefined))) return false;
     try {
-      const items = mails.filter((m) => go.has(mailKey(m)))
-        .map((m) => [m.folder, m.uid] as [string, number]);
+      const items = goMails.map((m) => [m.folder, m.uid] as [string, number]);
       await api.deleteMessages(items);
       setRes({ ...res, mails: res.mails.filter((m) => !go.has(mailKey(m))) });
       // only the mails that went; other ticks stay (the reader trashes ONE)
