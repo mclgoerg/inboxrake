@@ -116,10 +116,17 @@ jobs:
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.title=Inboxrake
 
+      # The Dockerfile's Debian security-update layer is keyed on this, so
+      # the build cache never serves one older than a week.
+      - name: Week for the security-update layer
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Build (and push on main/tags)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
+          build-args: APT_REFRESH=${{ steps.week.outputs.week }}
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
