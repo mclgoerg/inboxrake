@@ -173,6 +173,12 @@ NOT_IMAP = "not_imap"
 CERT_FAILED = "cert_failed"
 CONNECT_FAILED = "connect_failed"
 SCAN_FAILED = "scan_failed"
+# any other unexpected server error of an API call (the log has the detail)
+INTERNAL_ERROR = "internal_error"
+# the mail provider refused the OAuth token refresh (its own text stays in
+# the log) / the OIDC sign-in provider could not be reached or refused
+OAUTH_RECONNECT = "oauth_reconnect"
+IDP_UNAVAILABLE = "idp_unavailable"
 # the data folder (/data) cannot be written - see data_dir_problem()
 DATA_NOT_WRITABLE = "data_not_writable"
 # a move without MOVE/UIDPLUS found mail another client had flagged \Deleted
@@ -261,6 +267,9 @@ FOLDER_ERROR_CODES = frozenset({
     CERT_FAILED,
     CONNECT_FAILED,
     SCAN_FAILED,
+    INTERNAL_ERROR,
+    OAUTH_RECONNECT,
+    IDP_UNAVAILABLE,
     DATA_NOT_WRITABLE})
 
 
@@ -853,7 +862,13 @@ def connect(im: dict, account_name: str | None = None) -> imaplib.IMAP4:
             if not oauth.get("refresh_token"):
                 raise RuntimeError(cfgmod.OAUTH_NOT_CONNECTED)
             from . import oauthflow
-            fresh = oauthflow.ensure_fresh(oauth)
+            try:
+                fresh = oauthflow.ensure_fresh(oauth)
+            except RuntimeError as exc:
+                # the provider's refusal (raw response text) is for the log;
+                # the user is told to reconnect
+                log.warning("OAuth token refresh refused", exc_info=exc)
+                raise RuntimeError(coded(OAUTH_RECONNECT)) from exc
             if fresh is not oauth and account_name:
                 cfgmod.save_oauth(account_name, fresh)
             token = fresh["access_token"]
