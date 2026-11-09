@@ -30,7 +30,7 @@ const jsonLd = {
   sameAs: [GITHUB],
 };
 
-const works = ["Gmail", "Outlook", "iCloud", "Fastmail", "GMX", "Proton Mail (Bridge)", "any IMAP"];
+const works = ["Gmail", "Outlook", "iCloud", "Fastmail", "GMX", "mailbox.org", "Yahoo", "Proton Mail (Bridge)", "any IMAP"];
 
 // Copy for every card is checked against docs/features.md, docs/security.md
 // and the app (Settings > AI states what is sent): no claim beyond those.
@@ -44,9 +44,9 @@ const features = [
 ];
 const promises = [
   { icon: "list-checks", title: "You see it first", text: "Every action shows the exact number of mails before anything moves." },
-  { icon: "undo-2", title: "Undo", text: "Moves go to Trash first and normally offer Undo - the last 10 actions, until the server restarts." },
+  { icon: "undo-2", title: "Undo", text: "Moves go to Trash first and normally offer Undo - each account keeps its last 10 actions until the server restarts. Permanent deletes in Trash and Junk cannot be undone." },
   { icon: "scan-eye", title: "Scans only read", text: "Scanning never changes your mailbox. Nothing changes until you say so." },
-  { icon: "sparkles", title: "AI is optional", text: "Off until you turn it on. It sends mail metadata (senders, counts, sizes, subjects) to the provider you pick - never bodies or attachments." },
+  { icon: "sparkles", title: "AI is optional", text: "Off until you set it up. It sends only mail metadata - such as sender addresses, counts, sizes, dates and subject lines - to the provider you pick, never bodies or attachments.", more: { href: "/docs/security/#what-the-optional-ai-review-sends", label: "Exactly what is sent" } },
 ];
 const steps = [
   { title: "Start the container", text: "One Docker image - NAS guides for Synology, Unraid, TrueNAS, Portainer, Raspberry Pi." },
@@ -134,15 +134,15 @@ const heroAlt = "The Inboxrake app on a computer";
           <div class="dev" aria-hidden="false">
             <div class="win">
               <div class="chrome"><i></i><i></i><i></i></div>
-              <Shot src={desktopLight} dark={desktopDark} alt={heroAlt} widths={[640, 960, 1280]} sizes="(min-width: 1100px) 600px, 90vw" />
+              <Shot src={desktopLight} dark={desktopDark} alt={heroAlt} eager widths={[640, 960, 1280]} sizes="(min-width: 1100px) 600px, 90vw" />
             </div>
             <div class="phone-frame">
-              <Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[200, 400, 600]} sizes="200px" />
+              <Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" eager widths={[200, 400, 600]} sizes="200px" />
             </div>
           </div>
           <div class="phones">
-            <div class="phone-frame flat"><Shot src={phoneOverviewLight} alt="The Overview page of the app on a phone" widths={[170, 340, 510]} sizes="170px" /></div>
-            <div class="phone-frame flat lower"><Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" widths={[170, 340, 510]} sizes="170px" /></div>
+            <div class="phone-frame flat"><Shot src={phoneOverviewLight} alt="The Overview page of the app on a phone" eager widths={[170, 340, 510]} sizes="170px" /></div>
+            <div class="phone-frame flat lower"><Shot src={phoneSendersDark} alt="The Senders page of the app on a phone" eager widths={[170, 340, 510]} sizes="170px" /></div>
           </div>
         </div>
       </section>
@@ -183,6 +183,7 @@ const heroAlt = "The Inboxrake app on a computer";
                 <span class="ic"><Icon name={p.icon} size={20} /></span>
                 <h3>{p.title}</h3>
                 <p>{p.text}</p>
+                {p.more && <a class="more" href={p.more.href}>{p.more.label}</a>}
               </li>
             ))}
           </ul>
@@ -238,7 +239,7 @@ const heroAlt = "The Inboxrake app on a computer";
     <script is:inline>
       // Progressive enhancement only: the page and the install commands work
       // without it. Shows the Copy button and the position dots of the
-      // swipeable feature cards on phones.
+      // swipeable feature cards on phones, and closes the phone menu after a tap.
       (function () {
         var btn = document.querySelector(".copy");
         if (btn && navigator.clipboard) {
@@ -250,6 +251,12 @@ const heroAlt = "The Inboxrake app on a computer";
               setTimeout(function () { label.textContent = "Copy"; }, 1800);
             });
           });
+        }
+        var menu = document.querySelector(".menu");
+        if (menu) {
+          menu.addEventListener("click", function (e) { if (e.target.closest("a")) menu.open = false; });
+          document.addEventListener("click", function (e) { if (!menu.contains(e.target)) menu.open = false; });
+          document.addEventListener("keydown", function (e) { if (e.key === "Escape") menu.open = false; });
         }
         var list = document.getElementById("feature-list");
         var dots = document.getElementById("feature-dots");
@@ -405,6 +412,7 @@ const heroAlt = "The Inboxrake app on a computer";
   .pc .ic { width: 2.5rem; height: 2.5rem; border-radius: 12px; background: var(--tint); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 0.9rem; }
   .pc h3 { margin-bottom: 0.3rem; }
   .pc p { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+  .pc .more { display: inline-block; margin-top: 0.5rem; color: var(--accent); font-size: 0.9rem; font-weight: 600; }
 
   .install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; align-items: start; }
   .steps { display: grid; gap: 1rem; margin-top: 1.4rem; }
@@ -482,6 +490,8 @@ const heroAlt = "The Inboxrake app on a computer";
     .pc .ic { width: 2.1rem; height: 2.1rem; margin-bottom: 0.6rem; }
     .pc h3 { font-size: 0.98rem; }
     .pc p { font-size: 0.82rem; }
+    .pc .more { font-size: 0.82rem; }
+    .works .small { flex-basis: 100%; margin-bottom: 0.1rem; }
     .code pre { font-size: 0.75rem; padding-inline: 0.9rem; }
     .cta-card { flex-direction: column; align-items: stretch; text-align: center; padding: 1.4rem; gap: 1rem; }
     .cta-card img { display: none; }
