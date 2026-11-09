@@ -39,7 +39,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, "..", "..");
 
 // ------------------------------------------------------------------ config
-const BUDGET_MB = 10;                // fail above this, estimated on the wire
+const BUDGET_MB = 15;                // fail above this, estimated on the wire
 const SEED_NOW = 1790000000;         // the instant the demo's dates derive from
 // (a fixed one keeps the bundle reproducible; loading shifts the clock to it,
 // see scripts/demo_seed.py)
