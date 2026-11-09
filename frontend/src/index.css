@@ -289,11 +289,13 @@ body {
    to that box (WebKit bug 263955) - the demo bar sits above body's box, so
    iOS Safari did not draw it at all. There body keeps the whole viewport
    and reserves the bar in its top padding instead: content, sticky headers
-   and the strip below stay exactly where they are elsewhere. */
+   and the strip below land where they do elsewhere, and scroll-padding
+   keeps scrollIntoView / scroll-margin targets below the bar. */
 @supports (-webkit-touch-callout: none) {
   html[data-demo] body {
     top: 0;
     padding-top: calc(var(--demo-bar-h) + var(--safe-top) + 8px);
+    scroll-padding-top: var(--demo-bar-h);
   }
   html[data-demo] body::before {
     top: 0;
