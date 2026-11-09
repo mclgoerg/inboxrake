@@ -17,21 +17,24 @@ down to the same four things:
 Everything set via env can also be configured later in the settings UI
 (env is only the first-start bootstrap). Two things to decide up front:
 
-- **Login:** out of the box there is NO authentication. Either keep the
-  port on localhost behind a reverse proxy with auth, or enable the
-  built-in password/SSO login (Settings -> Sign-in & users, or `AUTH_MODE` env).
-  Never publish port 8765 straight to the internet without one of these.
-  Without a login, Inboxrake only answers to `localhost` and IP
-  addresses (DNS-rebinding protection); to open it under a host name,
-  add `INBOXRAKE_ALLOWED_HOSTS=<name>` to the container environment
-  (comma list, `*.example.org` for subdomains).
-- **Secrets encryption:** set `INBOXRAKE_SECRET_KEY` (generate with
-  `openssl rand -base64 32`) **before the first start**, so IMAP
-  passwords, API keys and OAuth tokens are encrypted inside `/data` and the
-  stored secrets in a copied volume backup are unreadable without the
-  key (mail metadata, verdicts and stats are not encrypted). Without it
-  the secrets are stored as plaintext and every start logs a warning. Keep the key out of
-  your backups; if it is lost you re-enter the secrets.
+> [!WARNING]
+> **Login.** Out of the box there is NO authentication. Either keep the
+> port on localhost behind a reverse proxy with auth, or enable the
+> built-in password/SSO login (Settings -> Sign-in & users, or `AUTH_MODE` env).
+> Never publish port 8765 straight to the internet without one of these.
+> Without a login, Inboxrake only answers to `localhost` and IP
+> addresses (DNS-rebinding protection); to open it under a host name,
+> add `INBOXRAKE_ALLOWED_HOSTS=<name>` to the container environment
+> (comma list, `*.example.org` for subdomains).
+
+> [!IMPORTANT]
+> **Secrets encryption.** Set `INBOXRAKE_SECRET_KEY` (generate with
+> `openssl rand -base64 32`) **before the first start**, so IMAP
+> passwords, API keys and OAuth tokens are encrypted inside `/data` and the
+> stored secrets in a copied volume backup are unreadable without the
+> key (mail metadata, verdicts and stats are not encrypted). Without it
+> the secrets are stored as plaintext and every start logs a warning. Keep the key out of
+> your backups; if it is lost you re-enter the secrets.
 
 **Proton Mail users:** Inboxrake talks to Proton through the
 [Proton Mail Bridge](https://proton.me/mail/bridge), which runs as a
@@ -46,7 +49,7 @@ does not support, and Bridge needs a paid Proton plan.
 
 ## Docker Compose (recommended)
 
-```bash
+```bash title="terminal"
 git clone https://github.com/mclgoerg/inboxrake
 cd inboxrake/deploy
 cp .env.example .env        # optional edits - account setup happens in the UI
@@ -71,7 +74,7 @@ as is).
 
 ## Plain `docker run`
 
-```bash
+```bash title="terminal"
 docker run -d --name inboxrake \
   -e IMAP_HOST=imap.mail.me.com -e IMAP_PORT=993 -e IMAP_CAFILE= \
   -e IMAP_USER=you@icloud.com -e IMAP_PASSWORD=app-password \
@@ -93,7 +96,7 @@ usually owned by root, and Inboxrake then logs `Cannot write to /data` and
 the UI says it cannot write to its data folder. Fix it once on the host
 and restart:
 
-```bash
+```bash title="terminal"
 chown -R 1000:1000 /path/to/the/folder      # or: docker run --user <uid>:<gid> ...
 ```
 

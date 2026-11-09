@@ -1,0 +1,26 @@
+---
+// Bottom of the phone menu: "Try the demo" (when live), GitHub and the theme switch.
+import ThemeSelect from "virtual:starlight/components/ThemeSelect";
+import Icon from "./Icon.astro";
+import { DEMO_LIVE, GITHUB } from "../../landing/site.mjs";
+---
+<div class="foot">
+  {DEMO_LIVE && <a class="try-demo" href="/demo/">Try the demo</a>}
+  <a class="round" href={GITHUB} aria-label="GitHub"><Icon name="github" size={18} /></a>
+  <div class="round"><ThemeSelect /></div>
+</div>
+<style>
+  .foot { display: flex; align-items: center; gap: 0.6rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--ir-line); }
+  .try-demo {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem;
+    border-radius: 999rem; background: var(--ir-accent); color: var(--ir-on-accent);
+    font-weight: 650; text-decoration: none;
+  }
+  .round {
+    display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem;
+    border-radius: 999rem; background: var(--ir-panel); box-shadow: 0 0 0 1px var(--ir-line) inset;
+    color: var(--sl-color-white); margin-left: auto;
+  }
+  .try-demo + .round { margin-left: 0; }
+  .round :global(button) { width: 100%; height: 100%; border-radius: 999rem; }
+</style>
