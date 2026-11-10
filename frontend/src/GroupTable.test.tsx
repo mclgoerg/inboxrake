@@ -405,6 +405,17 @@ describe("GroupTable rows and header", () => {
     expect(head.querySelectorAll("button").length).toBe(3);
   });
 
+  it("stacks the Mails / Size header like the cells below it", () => {
+    const { container } = renderTable();
+    const th = container.querySelector("th[aria-sort]")!;
+    const stack = th.firstElementChild!;
+    expect(stack.className).toContain("flex-col");
+    expect([...stack.querySelectorAll("button")].map((b) => b.textContent))
+      .toEqual(["Mails", "Size"]);
+    const cell = container.querySelector("tbody tr td.text-right.tabular-nums")!;
+    expect(cell.children.length).toBe(2);   // count over size
+  });
+
   it("marks only the sorted column with aria-sort", () => {
     const { container } = renderTable();
     const sorted = container.querySelectorAll("th[aria-sort]");

@@ -652,13 +652,76 @@ export const useIsPage = (): boolean =>
 /** How many dialogs are open right now (a page is none). */
 export const modalCount = (): number => openModals.length;
 
-/** Standard panel/modal header. Three looks, one component: a dialog keeps
- *  the compact head (title + subtitle left, actions, close button right); a
- *  page in the content column (>= 1024) shows the page title + subtitle with
- *  the actions on the right and nothing to close (the sidebar navigates, a
- *  `closeLabel` button stays); a full-screen tool below 1024 gets an iOS
- *  head: back link to its parent page (or `closeLabel`) + the actions as icon
- *  buttons, then the large title and subtitle. */
+const hasSub = (sub: ReactNode) => sub != null && sub !== "";
+
+/** The one page header. `page` (>= 1024): title + subtitle on the left,
+ *  actions on the right, one fixed height (`min-h-20`) and one inset on every
+ *  page - Overview, Senders, All mail, every tool page and Settings - with
+ *  the title always at the same spot (top-aligned; the actions centre).
+ *  `large` (phones and tablets): the iOS head - an optional back link and the
+ *  actions as one row, then the large title and subtitle. `flush`: the page
+ *  already insets its content (the large head then adds no side padding);
+ *  `contain`: classes that bound the inner row to the content's width, so the
+ *  title lines up with a centred column while the hairline spans the page. */
+export function PageHeader({ title, sub, actions, back, variant = "page",
+  flush = false, contain = "" }: {
+  title: ReactNode; sub?: ReactNode; actions?: ReactNode;
+  /** `large` only: the back link (named after the page it returns to). */
+  back?: { label: string; ariaLabel?: string; icon?: ReactNode;
+    onClick: () => void };
+  variant?: "page" | "large";
+  flush?: boolean; contain?: string;
+}) {
+  const subLine = hasSub(sub);
+  if (variant === "large") {
+    return (
+      <header data-page-header="large"
+        className={`${flush ? "" : "px-4 sm:px-5 "}pt-2 pb-3`}>
+        {(back || actions) && (
+          <div className="flex items-center gap-1">
+            {back && (
+              <button type="button" onClick={back.onClick}
+                aria-label={back.ariaLabel}
+                className="-ml-1 inline-flex min-h-11 min-w-11 items-center
+                  gap-0.5 rounded-control pr-2 type-body-mobile text-accent
+                  focus-visible:ring-2 focus-visible:ring-accent">
+                {back.icon ?? <ChevronLeft size={18} aria-hidden />}
+                {back.label}
+              </button>
+            )}
+            <div className="flex-1" />
+            {actions}
+          </div>
+        )}
+        {/* The panels put an icon before their title; the large title has none. */}
+        <h1 className="mt-1 type-largetitle [&_svg]:hidden">{title}</h1>
+        {subLine && <div className="type-body text-muted">{sub}</div>}
+      </header>
+    );
+  }
+  return (
+    <header data-page-header="page" className="shrink-0 border-b border-line">
+      <div className={`flex min-h-20 items-start gap-3 px-5 py-4 ${contain}`}>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate type-title2 [&_svg]:hidden">{title}</h1>
+          {subLine && (
+            <div className="truncate type-meta text-muted">{sub}</div>
+          )}
+        </div>
+        {actions && (
+          <div className="flex shrink-0 items-center gap-2 self-center">
+            {actions}
+          </div>
+        )}
+      </div>
+    </header>
+  );
+}
+
+/** Standard panel/modal header. A dialog keeps the compact head (title +
+ *  subtitle left, actions, close button right); a page in the content column
+ *  (>= 1024) and a full-screen tool below 1024 are the shared `PageHeader`
+ *  (a `closeLabel` button stays on a page; the sidebar navigates). */
 export function PanelHeader({ title, sub, actions, onClose, closeLabel,
   closeIcon }: {
   title: ReactNode; sub?: ReactNode; actions?: ReactNode;
@@ -668,48 +731,39 @@ export function PanelHeader({ title, sub, actions, onClose, closeLabel,
 }) {
   const presentation = useContext(PresentationContext);
   const parent = useContext(ScreenParentContext);
-  const subLine = sub != null && sub !== "";
   if (presentation === "screen") {
-    // The panels put an icon before their title; the large title has none.
     return (
-      <div className="px-4 pt-2 pb-3">
-        <div className="-mx-2 flex items-center gap-1">
-          <button type="button" onClick={onClose}
-            aria-label={closeLabel ? undefined
-              : parent ? t("nav.back_to", { page: parent }) : undefined}
-            className="inline-flex min-h-11 min-w-11 items-center gap-0.5
-              rounded-control px-1 type-body-mobile text-accent
-              focus-visible:ring-2 focus-visible:ring-accent">
-            {closeIcon ?? <ChevronLeft size={18} aria-hidden />}
-            {closeLabel ?? parent ?? t("Close")}
-          </button>
-          <div className="flex-1" />
-          {actions}
-        </div>
-        <div className="mt-1 type-largetitle [&_svg]:hidden">{title}</div>
-        {subLine && <div className="type-body text-muted">{sub}</div>}
-      </div>
+      <PageHeader variant="large" title={title} sub={sub} actions={actions}
+        back={{ label: closeLabel ?? parent ?? t("Close"),
+          ariaLabel: closeLabel ? undefined
+            : parent ? t("nav.back_to", { page: parent }) : undefined,
+          icon: closeIcon, onClick: onClose }} />
     );
   }
-  const onPage = presentation === "page" && closeLabel === undefined;
-  const wide = presentation === "page";
+  if (presentation === "page") {
+    return (
+      <PageHeader title={title} sub={sub} actions={<>
+        {actions}
+        {closeLabel !== undefined && (
+          <Button variant="secondary" size="icon" label={closeLabel}
+            onClick={onClose}>{closeIcon ?? <X size={18} />}</Button>
+        )}
+      </>} />
+    );
+  }
   return (
-    <div className={`flex items-center gap-3 border-b border-line px-4
-      ${wide ? "py-4" : "py-3"}`}>
+    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className={`truncate ${wide ? "type-title2 [&_svg]:hidden"
-          : "type-heading"}`}>{title}</div>
-        {subLine && (
+        <div className="truncate type-heading">{title}</div>
+        {hasSub(sub) && (
           <div className="truncate type-meta text-muted">{sub}</div>
         )}
       </div>
       {actions}
-      {!onPage && (
-        <Button variant="secondary" size="icon"
-          label={closeLabel ?? t("Close")} onClick={onClose}>
-          {closeIcon ?? <X size={18} />}
-        </Button>
-      )}
+      <Button variant="secondary" size="icon"
+        label={closeLabel ?? t("Close")} onClick={onClose}>
+        {closeIcon ?? <X size={18} />}
+      </Button>
     </div>
   );
 }
@@ -1520,10 +1574,12 @@ export function Modal({ children, onClose, full = false, fit = false,
    *  installed app a drag from the left edge calls `onClose` (`useEdgeBack`). */
   edgeBack?: boolean;
 }) {
-  const sz = size ?? (full || fit ? "lg" : "md");
   const presentation = useContext(PresentationContext);
   const slot = presentation === "slot";
   const tool = presentation === "tool";
+  // Every tool page below 1024 px has the same width (tablets).
+  const sz = tool && size !== "sm" ? "lg"
+    : size ?? (full || fit ? "lg" : "md");
   const id = useRef(Symbol("modal")).current;
   const dialog = useRef<HTMLDivElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);

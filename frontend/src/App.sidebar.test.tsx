@@ -336,8 +336,7 @@ test("All mail is a page: hash follows, back/forward work, selection resets",
   expect(nav.getByRole("link", { name: /All mail/ }).getAttribute("aria-current"))
     .toBe("page");
   // no grouping segments on the All mail page
-  expect(screen.getByRole("tab", { name: "Subject" }).closest(".hidden"))
-    .toBeTruthy();
+  expect(screen.queryByRole("tab", { name: "Subject" })).toBeNull();
   act(() => {
     window.location.hash = "#/senders";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -345,8 +344,29 @@ test("All mail is a page: hash follows, back/forward work, selection resets",
   await waitFor(() => expect(
     nav.getByRole("link", { name: /Senders/ }).getAttribute("aria-current"))
     .toBe("page"));
-  expect(screen.getByRole("tab", { name: "Subject" }).closest(".hidden"))
-    .toBeNull();
+  expect(screen.getByRole("tab", { name: "Subject" })).toBeTruthy();
+});
+
+test(">= 1024: Senders has the page header - title, scanned subtitle, "
+  + "segments and Scan - and the status line drops the scanned suffix",
+  async () => {
+  mount();
+  window.location.hash = "#/senders";
+  const header = await waitFor(() => {
+    const h = document.querySelector<HTMLElement>("[data-page-header='page']");
+    expect(h).toBeTruthy();
+    return h!;
+  });
+  const inHeader = within(header);
+  expect(inHeader.getByRole("heading", { level: 1, name: "Senders" }))
+    .toBeTruthy();
+  expect(inHeader.getByText(/^scanned .* ago$/)).toBeTruthy();
+  expect(inHeader.getByRole("button", { name: "Scan" })).toBeTruthy();
+  for (const seg of ["Sender", "Smart", "Subject", "Thread"])
+    expect(inHeader.getByRole("tab", { name: seg })).toBeTruthy();
+  // the status line keeps its counts, without repeating when it was scanned
+  const line = await screen.findByText(/^\d+ groups? · /);
+  expect(line.textContent).not.toMatch(/scanned/);
 });
 
 test("keyboard shortcuts act only on the senders page", async () => {
