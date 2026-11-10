@@ -207,10 +207,16 @@ UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
 NOT_IN_DEMO = "not_in_demo"
 # password login (backend/auth.py LoginThrottle): n= minutes to wait
 LOGIN_THROTTLED = "login_throttled"
+# the sign-in page's other refusals (backend/main.py): a wrong password, and
+# a login endpoint of the method that is not switched on
+LOGIN_WRONG_PASSWORD = "login_wrong_password"
+LOGIN_PASSWORD_OFF = "login_password_off"
+LOGIN_SSO_OFF = "login_sso_off"
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
     MAILTO_UNSAFE, MOVE_FOREIGN_DELETED, *UNSUB_CODES, LOGIN_THROTTLED,
+    LOGIN_WRONG_PASSWORD, LOGIN_PASSWORD_OFF, LOGIN_SSO_OFF,
     NOT_IN_DEMO,
     NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,

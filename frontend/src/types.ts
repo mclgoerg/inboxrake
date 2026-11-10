@@ -768,6 +768,7 @@ export interface AuthProbe {
   sub?: string;        // OIDC identity of the session (empty otherwise)
   is_admin?: boolean;  // may edit server-level settings (auth, shared AI)
   demo?: boolean;      // the in-browser demo: network controls are disabled
+  idp_host?: string;   // SSO, signed out: the provider's host (sign-in page)
 }
 
 // Non-admins only ever receive {mode, is_admin} - the server-side login

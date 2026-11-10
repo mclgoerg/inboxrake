@@ -209,7 +209,8 @@ def _oidc():
     return authmod
 
 
-def test_an_unreachable_idp_is_a_coded_502_and_logged(monkeypatch, caplog):
+def test_an_unreachable_idp_lands_on_the_login_page_and_is_logged(
+        monkeypatch, caplog):
     authmod = _oidc()
     secret = "https://idp.internal.example/.well-known: connection reset"
 
@@ -219,12 +220,15 @@ def test_an_unreachable_idp_is_a_coded_502_and_logged(monkeypatch, caplog):
     monkeypatch.setattr(authmod, "auth_url", down)
     with caplog.at_level(logging.ERROR, logger="inboxrake.auth"):
         r = TestClient(app).get("/api/oidc/login", follow_redirects=False)
-    assert r.status_code == 502 and r.json()["detail"] == "idp_unavailable"
-    assert "idp.internal.example" not in r.text
+    # a plain link opens this: the login page words the code
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=idp_unavailable"
+    assert "idp.internal.example" not in r.text + r.headers["location"]
     assert "idp.internal.example" in caplog.text
+    assert "pmc_oidc_pkce" not in r.cookies
 
 
-def test_a_failed_token_exchange_is_a_coded_502_and_logged(
+def test_a_failed_token_exchange_lands_on_the_login_page_and_is_logged(
         monkeypatch, caplog):
     authmod = _oidc()
     monkeypatch.setattr(authmod, "discovery", lambda issuer: {
@@ -241,5 +245,9 @@ def test_a_failed_token_exchange_is_a_coded_502_and_logged(
     with caplog.at_level(logging.ERROR, logger="inboxrake.auth"):
         r = anon.get("/api/oidc/callback", params={
             "code": "abc", "state": state}, follow_redirects=False)
-    assert r.status_code == 502 and r.json()["detail"] == "idp_unavailable"
-    assert "secret-body" not in r.text and "secret-body" in caplog.text
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=idp_unavailable"
+    assert "secret-body" not in r.text + r.headers["location"]
+    assert "secret-body" in caplog.text
+    assert "pmc_session" not in r.cookies
+    assert anon.get("/api/state").status_code == 401

@@ -1612,8 +1612,20 @@ export const DE: Record<string, string> = {
     "Es ist kein Admin gesetzt: Erlaube zur Einrichtung genau eine Identität "
     + "oder setze den Administrator, bevor du SSO aktivierst.",
   "login.err.email_unverified":
-    "Anmeldung abgelehnt: Dein Identity Provider hat diese E-Mail-Adresse "
-    + "nicht bestätigt.",
+    "Dein SSO-Konto hat keine bestätigte E-Mail-Adresse.",
+  "login.err.sso_rejected":
+    "Dein Identity Provider hat die Anmeldung abgelehnt. Versuch es noch "
+    + "einmal oder prüfe seine Einstellungen.",
+  "login.err.sso_not_allowed":
+    "Dieses Konto darf sich hier nicht anmelden. Bitte die Person, die "
+    + "diesen Server betreibt, es hinzuzufügen.",
+  "login.err.sso_no_admin":
+    "SSO ist nicht fertig eingerichtet: Es ist noch kein Administrator "
+    + "festgelegt. Frag die Person, die diesen Server betreibt.",
+  "login.err.sso_expired":
+    "Die Anmeldung hat zu lange gedauert oder wurde unterbrochen. Versuch "
+    + "es noch einmal.",
+  "login.err.generic": "Anmeldung fehlgeschlagen. Versuch es noch einmal.",
   "login.sign_out_all": "Alle Sitzungen abmelden…",
   "login.sign_out_all_help":
     "Das passiert automatisch, wenn du Passwort, Anmeldemethode, erlaubte "
@@ -1625,11 +1637,19 @@ export const DE: Record<string, string> = {
     + "anmelden. Dieser Browser bleibt angemeldet.",
   "confirm.sign_out_all_confirm": "Alle abmelden",
   "ferr.login_throttled":
-    "Zu viele fehlgeschlagene Versuche. Versuche es in {n} Minuten erneut.",
+    "Zu viele Versuche. Warte {n} Minuten und melde dich dann erneut an.",
   "ferr.login_throttled_one":
-    "Zu viele fehlgeschlagene Versuche. Versuche es in 1 Minute erneut.",
+    "Zu viele Versuche. Warte 1 Minute und melde dich dann erneut an.",
+  "ferr.login_wrong_password": "Falsches Passwort. Versuch es noch einmal.",
+  "ferr.login_password_off": "Die Anmeldung mit Passwort ist nicht eingeschaltet.",
+  "ferr.login_sso_off": "Die Anmeldung per SSO ist nicht eingeschaltet.",
+  "login.title": "Bei Inboxrake anmelden",
   "login.submit": "Anmelden",
-  "login.sso": "Mit SSO anmelden",
+  "login.sso": "Weiter mit SSO",
+  "login.show_password": "Passwort anzeigen",
+  "login.forgot": "Zugang verloren?",
+  "login.forgot_link": "So setzt du das Passwort zurück",
+  "login.trouble": "Probleme bei der Anmeldung?",
   "login.logout": "Abmelden",
   "login.admin_tip": "Admin - verwaltet die Server-Einstellungen",
   "menu.profile": "Profil & Einstellungen",
@@ -2747,7 +2767,7 @@ export const DE: Record<string, string> = {
   "ferr.oauth_reconnect":
     "Der Mail-Anbieter akzeptiert die gespeicherte Anmeldung nicht mehr – verbinde das Konto in den Einstellungen neu.",
   "ferr.idp_unavailable":
-    "Der Anmeldedienst ist gerade nicht erreichbar – versuche es später erneut.",
+    "Der Anmeldedienst ist nicht erreichbar. Versuch es gleich noch einmal.",
   "ferr.internal_error":
     "Auf dem Server ist etwas schiefgegangen – versuche es erneut; wenn es "
     + "weiter passiert, sieh im Server-Log nach.",

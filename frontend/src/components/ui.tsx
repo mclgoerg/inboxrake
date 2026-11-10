@@ -1852,14 +1852,16 @@ const NOTICE_TONE = {
   warn: "bg-review-bg text-review-fg",
 };
 
+/** `role` "alert" (and an `id` for `aria-describedby`) for an error that
+ *  belongs to a form field and must be announced when it appears. */
 export function Notice({ children, icon, onClose, tone = "neutral",
-  className = "" }: {
+  className = "", role = "status", id }: {
   children: ReactNode; icon?: ReactNode; onClose?: () => void;
   tone?: "neutral" | "danger" | "warn";
-  className?: string;
+  className?: string; role?: "status" | "alert"; id?: string;
 }) {
   return (
-    <div role="status" className={`flex items-start gap-2 rounded-card
+    <div role={role} id={id} className={`flex items-start gap-2 rounded-card
       px-3 py-2 type-meta ${NOTICE_TONE[tone]} ${className}`}>
       {icon != null && <span className={`mt-0.5 shrink-0 ${tone === "danger"
         ? "text-keep-fg" : tone === "warn" ? "text-review-fg"

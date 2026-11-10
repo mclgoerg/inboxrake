@@ -327,8 +327,8 @@ describe("the unsubscribe codes", () => {
 describe("the login throttle code", () => {
   test("names the minutes in both languages", () => {
     expect(errorText("login_throttled:n=7"))
-      .toBe("Too many failed attempts. Try again in 7 minutes.");
-    expect(errorText("login_throttled:n=1")).toContain("in 1 minute.");
+      .toBe("Too many tries. Wait 7 minutes, then sign in again.");
+    expect(errorText("login_throttled:n=1")).toContain("Wait 1 minute,");
     setLang("de");
     expect(errorText("login_throttled:n=7")).toContain("7 Minuten");
   });

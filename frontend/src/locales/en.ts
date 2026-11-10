@@ -123,8 +123,19 @@ export const EN: Record<string, string> = {
     "No admin is set: restrict allowed users to exactly one identity for "
     + "bootstrap, or set the administrator before enabling SSO.",
   "login.err.email_unverified":
-    "Sign-in refused: your identity provider has not verified this email "
-    + "address.",
+    "Your SSO account has no verified email address.",
+  "login.err.sso_rejected":
+    "Your identity provider rejected the sign-in. Try again, or check its "
+    + "settings.",
+  "login.err.sso_not_allowed":
+    "This account isn't allowed to sign in here. Ask the person who runs "
+    + "this server to add it.",
+  "login.err.sso_no_admin":
+    "SSO isn't fully set up: no administrator is configured yet. Ask the "
+    + "person who runs this server.",
+  "login.err.sso_expired":
+    "The sign-in took too long or was interrupted. Try again.",
+  "login.err.generic": "Sign-in failed. Try again.",
   "login.sign_out_all": "Sign out all sessions…",
   "login.sign_out_all_help":
     "Changing the password, the login method, the allowed users or the "
@@ -136,11 +147,19 @@ export const EN: Record<string, string> = {
     + "browser stays signed in.",
   "confirm.sign_out_all_confirm": "Sign out all",
   "ferr.login_throttled":
-    "Too many failed attempts. Try again in {n} minutes.",
+    "Too many tries. Wait {n} minutes, then sign in again.",
   "ferr.login_throttled_one":
-    "Too many failed attempts. Try again in 1 minute.",
+    "Too many tries. Wait 1 minute, then sign in again.",
+  "ferr.login_wrong_password": "Wrong password. Try again.",
+  "ferr.login_password_off": "Password sign-in is not switched on.",
+  "ferr.login_sso_off": "SSO sign-in is not switched on.",
+  "login.title": "Sign in to Inboxrake",
   "login.submit": "Sign in",
-  "login.sso": "Sign in with SSO",
+  "login.sso": "Continue with SSO",
+  "login.show_password": "Show password",
+  "login.forgot": "Forgot the password?",
+  "login.forgot_link": "How to reset it",
+  "login.trouble": "Trouble signing in?",
   "login.logout": "Logout",
   "login.admin_tip": "admin - owns the server settings",
   "menu.profile": "Profile & settings",
@@ -2489,7 +2508,7 @@ export const EN: Record<string, string> = {
   "ferr.oauth_reconnect":
     "The mail provider no longer accepts the saved sign-in - reconnect the account in Settings.",
   "ferr.idp_unavailable":
-    "The sign-in provider is not reachable right now - try again later.",
+    "The sign-in provider isn't reachable. Try again in a moment.",
   "ferr.internal_error":
     "Something went wrong on the server - try again; if it keeps happening, "
     + "check the server log.",

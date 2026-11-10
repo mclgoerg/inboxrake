@@ -14,8 +14,11 @@ TEXT: dict[str, str | tuple[str, str]] = {
     'protected_sender_selected': 'Some selected mails belong to a protected sender. Unprotect that sender in its group before moving these mails.',
     'undo_copy_unknown': 'Some moved copies could not be identified safely. The Undo entry is kept; open the destination folder to restore those mails manually.',
     'login_throttled': (
-        'Too many failed attempts. Try again in {n} minutes.',
-        'Too many failed attempts. Try again in 1 minute.'),
+        'Too many tries. Wait {n} minutes, then sign in again.',
+        'Too many tries. Wait 1 minute, then sign in again.'),
+    'login_wrong_password': 'Wrong password. Try again.',
+    'login_password_off': 'Password sign-in is not switched on.',
+    'login_sso_off': 'SSO sign-in is not switched on.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':
@@ -168,7 +171,7 @@ TEXT: dict[str, str | tuple[str, str]] = {
     'oauth_reconnect':
         'The mail provider no longer accepts the saved sign-in - reconnect the account in Settings.',
     'idp_unavailable':
-        'The sign-in provider is not reachable right now - try again later.',
+        "The sign-in provider isn't reachable. Try again in a moment.",
     'not_in_demo':
         'Not available in the demo.',
     'data_not_writable':

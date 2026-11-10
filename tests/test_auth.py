@@ -51,10 +51,17 @@ def test_password_mode_locks_the_api():
     assert c.get("/api/state").status_code == 401
     # login screen probes stay public
     assert c.get("/api/auth").json() == {"mode": "password", "authed": False}
+    # the other login endpoints of the method that is off refuse by code
+    # (plain links: they land on the login page with the code)
+    for path in ("/api/oidc/login", "/api/oidc/callback"):
+        r = c.get(path, follow_redirects=False)
+        assert r.status_code in (302, 307)
+        assert r.headers["location"] == "/?login_error=login_sso_off"
     # SPA bundle stays public (it renders the login screen)
     assert c.get("/").status_code == 200
 
-    assert c.post("/api/login", json={"password": "wrong"}).status_code == 401
+    r = c.post("/api/login", json={"password": "wrong"})
+    assert r.status_code == 401 and r.json() == {"detail": "login_wrong_password"}
     r = c.post("/api/login", json={"password": "s3cret"})
     assert r.status_code == 200 and "pmc_session" in r.cookies
     assert c.get("/api/state").status_code == 200
@@ -97,12 +104,17 @@ def test_oidc_mode_flow(monkeypatch):
     state = loc.split("state=")[1].split("&")[0]
 
     # tampered/expired state is rejected
-    assert c.get("/api/oidc/callback?code=abc&state=bad").status_code == 400
+    r = c.get("/api/oidc/callback?code=abc&state=bad", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_expired"
 
-    # an IdP error redirect surfaces the IdP's reason, not "bad state"
+    # an IdP error redirect is its own code (not "bad state"); the IdP's
+    # reason stays out of the URL
     r = c.get("/api/oidc/callback?error=invalid_request"
-              "&error_description=This+client+requires+PKCE&state=x")
-    assert r.status_code == 502 and "requires PKCE" in r.json()["detail"]
+              "&error_description=This+client+requires+PKCE&state=x",
+              follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_rejected"
 
     # a user NOT on the allow-list is rejected
     monkeypatch.setattr(authmod, "exchange_code",
@@ -110,7 +122,16 @@ def test_oidc_mode_flow(monkeypatch):
                         {"email": "evil@other.example", "sub": "e1", "email_verified": True})
     import urllib.parse
     q = urllib.parse.quote(state)
-    assert c.get(f"/api/oidc/callback?code=abc&state={q}").status_code == 403
+    r = c.get(f"/api/oidc/callback?code=abc&state={q}", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_not_allowed"
+    assert "pmc_session" not in r.cookies
+
+    # a refusal ends that attempt (the PKCE cookie is dropped): sign in afresh
+    r = c.get("/api/oidc/login", follow_redirects=False)
+    loc = r.headers["location"]
+    verifier = r.cookies.get("pmc_oidc_pkce")
+    q = urllib.parse.quote(loc.split("state=")[1].split("&")[0])
 
     # allowed user gets a session and lands on /; the token exchange
     # receives the SAME verifier the login leg set
@@ -258,3 +279,35 @@ def test_startup_warns_about_open_oidc(caplog):
     with caplog.at_level("WARNING", logger="inboxrake.auth"):
         main._warn_open_oidc()
     assert caplog.text == ""
+
+
+def _oidc_setup(monkeypatch, issuer="https://idp.example"):
+    r = client.post("/api/config", json={"auth": {
+        "mode": "oidc", "admin": "me@corp.example",
+        "oidc": {"issuer": issuer, "client_id": "app",
+                 "client_secret": "sst", "allowed": []}}})
+    assert r.status_code == 200
+    monkeypatch.setattr(authmod, "discovery", lambda issuer: {
+        "authorization_endpoint": "https://idp.example/authorize",
+        "token_endpoint": "https://idp.example/token",
+        "userinfo_endpoint": "https://idp.example/userinfo"})
+
+
+def test_password_login_is_refused_by_code_when_off():
+    client.post("/api/config", json={"auth": {"mode": "none"}})
+    r = client.post("/api/login", json={"password": "x"})
+    assert r.status_code == 400 and r.json() == {"detail": "login_password_off"}
+
+
+def test_the_probe_names_the_idp_host_only_while_signed_out(monkeypatch):
+    _oidc_setup(monkeypatch, issuer="https://user:pw@auth.home.example:8443/realm")
+    c = TestClient(app)
+    # the host only: no credentials, port or path of the issuer URL
+    assert c.get("/api/auth").json() == {
+        "mode": "oidc", "authed": False, "idp_host": "auth.home.example"}
+
+
+def test_the_probe_of_a_malformed_issuer_omits_the_host(monkeypatch):
+    _oidc_setup(monkeypatch, issuer="https://[broken")
+    assert TestClient(app).get("/api/auth").json() == {
+        "mode": "oidc", "authed": False}

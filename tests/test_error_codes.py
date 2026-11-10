@@ -113,6 +113,19 @@ def test_the_ui_maps_no_code_the_backend_does_not_define():
     assert set(_ui_codes()) == _backend_codes()
 
 
+def test_every_sso_refusal_of_the_callback_has_a_login_page_text():
+    """The callback ends on `/?login_error=<code>` (main.py `_login_refused`):
+    each code is worded by the sign-in page in both languages (a code the
+    page does not know gets the generic text)."""
+    main = (SRC.parent.parent / "backend" / "main.py").read_text()
+    codes = set(re.findall(r'_login_refused\("(\w+)"\)', main))
+    assert codes >= {"email_unverified", "sso_rejected", "sso_not_allowed",
+                     "sso_no_admin", "sso_expired"}
+    for locale in ("en.ts", "de.ts"):
+        keys = _locale_keys(locale)
+        assert {c for c in codes if f"login.err.{c}" not in keys} == set()
+
+
 def test_every_code_constant_is_registered():
     consts = {v for k, v in vars(mailops).items()
               if k.isupper() and isinstance(v, str)
