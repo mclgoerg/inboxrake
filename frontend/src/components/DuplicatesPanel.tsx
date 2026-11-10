@@ -311,46 +311,47 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     const mark = kind === "identical" && !s.locked
       ? (i === 0 ? "keep" : "remove") : null;
     return (
-      <li key={mailKey(m)} className="flex items-stretch rounded-control
-        bg-panel2">
+      <li key={mailKey(m)} className="flex items-stretch">
         {review && (
-          <Checkbox round checked={sel.has(mailKey(m))} className="pl-1"
+          <Checkbox round checked={sel.has(mailKey(m))} className="pl-2"
             onChange={() => toggle(mailKey(m))}
             aria-label={t("select.named", { subject })} />
         )}
         <button type="button" onClick={() => setView(m)}
-          className="flex min-h-9 coarse:min-h-11 min-w-0 flex-1 cursor-pointer
-            items-center gap-2 px-2 py-1.5 text-left">
-          {m.pinned && (
-            <>
-              <Pin size={14} aria-hidden className="shrink-0 text-muted" />
-              <span className="sr-only">{t("dups.locked_pinned")}</span>
-            </>
-          )}
-          {mark === "keep" && <CircleCheck size={16} aria-hidden
+          className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center
+            gap-2.5 px-3 py-2 text-left sm:px-4">
+          {mark === "keep" && <CircleCheck size={18} aria-hidden
             className="shrink-0 text-safe-fg" />}
-          {mark === "remove" && <CircleMinus size={16} aria-hidden
+          {mark === "remove" && <CircleMinus size={18} aria-hidden
             className="shrink-0 text-danger-fg" />}
-          {!m.seen && (
-            <>
-              <span aria-hidden className="inline-block size-2 shrink-0
-                rounded-full bg-accent" />
-              <span className="sr-only">{t("unread")}</span>
-            </>
-          )}
-          <span className="min-w-0 truncate type-body font-semibold">
-            {m.folder}</span>
-          <ShortDate iso={m.date || ""} time
-            className="type-meta text-muted" />
-          {kind !== "identical" && (
-            <span className="type-meta text-muted tabular-nums">
-              {fmtSize(m.size)}</span>
-          )}
-          <span className="ml-auto flex shrink-0 items-center">
-            {mark === "keep" && <span className="type-caption text-safe-fg">
-              {t("dups.keep_tag")}</span>}
-            {mark === "remove" && <span className="type-caption
-              text-danger-fg">{t("dups.remove_tag")}</span>}
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {m.pinned && (
+                <>
+                  <Pin size={14} aria-hidden className="shrink-0 text-muted" />
+                  <span className="sr-only">{t("dups.locked_pinned")}</span>
+                </>
+              )}
+              {!m.seen && (
+                <>
+                  <span aria-hidden className="inline-block size-2 shrink-0
+                    rounded-full bg-accent" />
+                  <span className="sr-only">{t("unread")}</span>
+                </>
+              )}
+              <span className="min-w-0 truncate type-body font-semibold">
+                {m.folder}</span>
+            </span>
+            <span className="flex items-center gap-1.5 type-meta text-muted">
+              <ShortDate iso={m.date || ""} time />
+              {kind !== "identical" && (
+                <span className="tabular-nums">· {fmtSize(m.size)}</span>
+              )}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {mark === "keep" && <Tag tone="safe">{t("dups.keep_tag")}</Tag>}
+            {mark === "remove" && <Tag tone="keep">{t("dups.remove_tag")}</Tag>}
             {i === largest && <Tag>{t("dups.largest")}</Tag>}
           </span>
         </button>
@@ -377,48 +378,50 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
       : [`×${s.mails.length}`])].join(" · ");
     return (
       <div key={s.key} role="group" aria-label={subject}
-        className="rounded-card bg-panel p-3 sm:p-4">
-        <div className="flex items-start gap-3">
-          <Avatar name={head.addr || "?"} size="md" />
-          {/* phones: the buttons sit under the text; from sm on, at its right */}
-          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row
-            sm:items-start sm:gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="truncate type-body font-semibold">{subject}</div>
-              <div className="break-words type-meta text-muted">{meta}</div>
-              {((kind === "identical" && !s.locked) || s.locked) && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  {kind === "identical" && !s.locked && (
-                    <Tag tone="safe">{t("dups.wasted",
-                      { size: fmtSize(s.wasted) })}</Tag>
-                  )}
-                  {s.locked && (
-                    <Tag tone="review"
-                      className="inline-flex items-center gap-1">
-                      <Lock size={14} aria-hidden />
-                      {t(`dups.locked_${s.locked}`)}
-                    </Tag>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {kind !== "identical" && (
-                <Button size="sm" variant="tinted"
-                  aria-label={t("dups.compare_named", { subject })}
-                  onClick={() => setCompare({ kind, key: s.key })}>
-                  {t("dups.compare")}
-                </Button>
-              )}
-              <Button size="sm" variant="secondary" disabled={working}
-                aria-label={t("dups.keep_all_named", { subject })}
-                onClick={() => keepAll(kind, s)}>
-                {t("dups.keep_all")}
+        className="overflow-hidden rounded-card border border-line bg-panel">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2 p-3 sm:p-4">
+          <Avatar name={head.addr || "?"} size="md"
+            className="max-sm:hidden" />
+          {/* phones: Compare / Keep all sit under the text of versions and
+              possible sets (two buttons would squeeze it); one button fits
+              beside an identical set's */}
+          <div className={`min-w-0 flex-1 ${kind === "identical"
+            ? "" : "max-sm:basis-full"}`}>
+            <div className="truncate type-body font-semibold">{subject}</div>
+            <div className="break-words type-meta text-muted">{meta}</div>
+            {((kind === "identical" && !s.locked) || s.locked) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {kind === "identical" && !s.locked && (
+                  <Tag tone="safe">{t("dups.wasted",
+                    { size: fmtSize(s.wasted) })}</Tag>
+                )}
+                {s.locked && (
+                  <Tag tone="review"
+                    className="inline-flex items-center gap-1">
+                    <Lock size={14} aria-hidden />
+                    {t(`dups.locked_${s.locked}`)}
+                  </Tag>
+                )}
+              </div>
+            )}
+          </div>
+          <div className={`flex shrink-0 items-center gap-1 ${kind === "identical"
+            ? "" : "max-sm:w-full max-sm:justify-end"}`}>
+            {kind !== "identical" && (
+              <Button size="sm" variant="tinted"
+                aria-label={t("dups.compare_named", { subject })}
+                onClick={() => setCompare({ kind, key: s.key })}>
+                {t("dups.compare")}
               </Button>
-            </div>
+            )}
+            <Button size="sm" variant="plain" disabled={working}
+              aria-label={t("dups.keep_all_named", { subject })}
+              onClick={() => keepAll(kind, s)}>
+              {t("dups.keep_all")}
+            </Button>
           </div>
         </div>
-        <ul className="mt-2 space-y-1">
+        <ul className="divide-y divide-line border-t border-line">
           {s.mails.map((m, i) => row(kind, s, m, i, largest))}
         </ul>
       </div>
@@ -487,44 +490,42 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
             )}
             {sets.length > 0 && (
               <section aria-label={t("dups.hero_label")}
-                className="rounded-card bg-panel p-4 sm:p-5">
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-                  <div className="min-w-0 flex-1 basis-72">
+                className="rounded-card border border-line bg-panel p-4 sm:p-5">
+                <div className="flex items-center gap-x-4">
+                  <div className="min-w-0 flex-1">
                     {plan.items.length > 0 ? (
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="type-largetitle tabular-nums">
-                          {fmtSize(plan.wasted)}</span>
-                        <span className="type-meta text-muted">
+                      <>
+                        <div className="type-largetitle tabular-nums">
+                          {fmtSize(plan.wasted)}</div>
+                        <div className="type-meta text-muted">
                           {t("dups.can_go")} - {t("dups.hero_copies",
                             { n: plan.items.length })}
-                        </span>
-                      </div>
+                        </div>
+                      </>
                     ) : (
                       <div className="type-title2">{t("dups.hero_none")}</div>
                     )}
-                    <p className="mt-1 type-meta text-muted">
-                      {t("dups.hero_hint")}</p>
-                    {plan.locked > 0 && (
-                      <p className="mt-1 type-meta text-muted">
-                        {t("dups.locked_left", { n: plan.locked })}</p>
-                    )}
-                    {capped && (
-                      <p className="mt-1 type-meta text-muted">
-                        {t("dups.capped", { n: sets.length })}</p>
-                    )}
                   </div>
-                  <div className="flex w-full flex-col-reverse gap-2
-                    sm:w-auto sm:flex-row sm:items-center">
-                    {reviewButton}
-                    {plan.items.length > 0 && (
-                      <Button disabled={working} onClick={removeCopies}>
-                        <Trash2 size={16} aria-hidden
-                          className="mr-1.5 inline align-text-bottom" />
-                        {t("dups.remove_n", { n: plan.items.length })}
-                      </Button>
-                    )}
-                  </div>
+                  {plan.items.length > 0 && (
+                    <Button className="shrink-0" disabled={working}
+                      onClick={removeCopies}>
+                      <Trash2 size={16} aria-hidden
+                        className="mr-1.5 inline align-text-bottom" />
+                      {t("dups.remove_n", { n: plan.items.length })}
+                    </Button>
+                  )}
                 </div>
+                <p className="mt-2 type-meta text-muted">
+                  {t("dups.hero_hint")}</p>
+                {plan.locked > 0 && (
+                  <p className="mt-1 type-meta text-muted">
+                    {t("dups.locked_left", { n: plan.locked })}</p>
+                )}
+                {capped && (
+                  <p className="mt-1 type-meta text-muted">
+                    {t("dups.capped", { n: sets.length })}</p>
+                )}
+                <div className="mt-3">{reviewButton}</div>
               </section>
             )}
             {!!lists && !empty && (

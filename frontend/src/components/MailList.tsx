@@ -2,6 +2,7 @@ import { MailOpen, Pin, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
+import { groupByDate, monthHeading } from "../dayGroups";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
 import { AiTag, Button, MailRow, PinButton, SwipeRow, useBackLayer,
@@ -95,7 +96,7 @@ export interface MailSwipe {
 }
 
 export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
-  paged, mark, swipe }: {
+  paged, mark, swipe, byMonth, pageSize = RENDER_CAP, spread }: {
   mails: Mail[];
   sel: Set<string>;
   onToggle: (k: string) => void;
@@ -113,8 +114,29 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   mark?: (text: string) => ReactNode;
   // Row swipe; off while mails are ticked (the selection bar is the way).
   swipe?: MailSwipe;
+  // Month headings with the month's mail count (the list is in date order).
+  byMonth?: boolean;
+  // How many rows show before "Show more", and per click (default 500).
+  pageSize?: number;
+  // Tablet widths: the date and size sit at the row's right edge instead of
+  // under the subject (single-sender lists, where the meta is short).
+  spread?: boolean;
 }) {
-  const [cap, setCap] = useState(RENDER_CAP);
+  const [cap, setCap] = useState(pageSize);
+  // A selected mail is on screen: a preset ("All", "Older than a year") that
+  // picks mails beyond the rendered part shows them too, up to the old cap of
+  // 500 rows (the selection bar counts the ones still not shown).
+  const reach = useMemo(() => {
+    if (paged || sel.size === 0) return 0;
+    let last = -1;
+    mails.forEach((m, i) => { if (sel.has(mailKey(m))) last = i; });
+    return last + 1;
+  }, [mails, sel, paged]);
+  useEffect(() => {
+    const want = Math.min(Math.ceil(reach / pageSize) * pageSize,
+      Math.max(RENDER_CAP, pageSize));
+    if (want > cap) setCap(want);
+  }, [reach, cap, pageSize]);
   const swipeActions = (m: Mail) => {
     if (!swipe) return { leading: [], trailing: [] };
     const trailing: SwipeAction[] = [
@@ -144,9 +166,7 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
     () => new Set(mails.map((m) => m.folder)).size > 1, [mails]);
   const multiSender = !!detailed || variesSender;
   const multiFolder = !!detailed || variesFolder;
-  return (
-    <>
-      {(paged ? mails : mails.slice(0, cap)).map((m) => {
+  const renderRow = (m: Mail) => {
         const meta: ReactNode[] = [];
         if (multiFolder) meta.push(m.folder);
         if (multiSender) meta.push(mark ? mark(m.addr) : m.addr);
@@ -171,7 +191,8 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
               : <span className="min-w-0 truncate">{meta.map((x, i) => (
                 <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>))}</span>} dateIso={m.date || ""}
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
-            pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing} />
+            pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing}
+            spread={spread} />
         );
         return swipe ? (
           <SwipeRow key={mailKey(m)} {...swipeActions(m)}
@@ -179,11 +200,34 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             {row}
           </SwipeRow>
         ) : row;
-      })}
+  };
+  const visible = paged ? mails : mails.slice(0, cap);
+  // each month counts ALL its mails, also those not rendered yet
+  const months = useMemo(() => byMonth
+    ? groupByDate(mails, (m) => m.date || "", 7) : [], [byMonth, mails]);
+  let shownSoFar = 0;
+  return (
+    <>
+      {byMonth ? months.map((g) => {
+        const rows = visible.slice(shownSoFar, shownSoFar + g.items.length);
+        shownSoFar += g.items.length;
+        if (rows.length === 0) return null;
+        const title = monthHeading(g.key);
+        return (
+          <section key={g.key || "none"} aria-label={title || undefined}>
+            {title && (
+              <h3 className="px-4 pb-1 pt-3 type-section text-muted md:px-3">
+                {title} · {t("n.mails", { n: g.items.length })}
+              </h3>
+            )}
+            {rows.map(renderRow)}
+          </section>
+        );
+      }) : visible.map(renderRow)}
       {!paged && mails.length > cap && (
         <div className="py-3 text-center">
-          <Button variant="secondary" onClick={() => setCap(cap + RENDER_CAP)}>
-            {t("show_more", { n: Math.min(RENDER_CAP, mails.length - cap),
+          <Button variant="secondary" onClick={() => setCap(cap + pageSize)}>
+            {t("show_more", { n: Math.min(pageSize, mails.length - cap),
               hidden: mails.length - cap })}
           </Button>
         </div>

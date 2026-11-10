@@ -277,14 +277,14 @@ test("cards mark keep · newest and remove per copy, never for versions or "
   duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096,
     versions: 1 }));
   show();
-  await screen.findByText("keep · newest");
-  expect(screen.getAllByText("remove")).toHaveLength(2);
+  await screen.findByText("Keep");
+  expect(screen.getAllByText("Remove")).toHaveLength(2);
   expect(screen.getByText(/×3/)).toBeTruthy();
   expect(screen.getByText("4 KB to free")).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: /Versions/ }));
   await screen.findByText(/Compare them; nothing is preselected/);
-  expect(screen.queryByText("keep · newest")).toBeNull();
-  expect(screen.queryByText("remove")).toBeNull();
+  expect(screen.queryByText("Keep")).toBeNull();
+  expect(screen.queryByText("Remove")).toBeNull();
   expect(screen.getByText("largest")).toBeTruthy();
 });
 
@@ -309,7 +309,7 @@ test("without the summary the segments count the listed sets", async () => {
   identicalWorld();
   duplicatesSummary.mockRejectedValue(new Error("boom"));
   show();
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
   expect(screen.getAllByRole("tab").map((x) => x.textContent))
     .toEqual(["Identical 1", "Versions 0", "Possible 0"]);
 });
@@ -329,7 +329,7 @@ test("Review each is the manual selection mode: select all but newest, tick "
     versions: 1 }));
   deleteMessages.mockResolvedValue({ ok: true, queued: 3 });
   show();
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
   expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
   expect(screen.queryByRole("button", { name: /Trash selected/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Review each" }));
@@ -357,7 +357,7 @@ test("ticks and Keep newest on the Identical tab are not acted on from "
     versions: 1 }));
   deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
   show();
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
   fireEvent.click(screen.getByRole("button", { name: "Review each" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
   fireEvent.click(screen.getByRole("tab", { name: /Versions/ }));
@@ -444,7 +444,7 @@ test("a failing versions fetch keeps the identical list", async () => {
   identicalWorld();
   duplicateVersions.mockRejectedValue(new Error("boom"));
   show();
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
   expect(screen.getAllByText("Archive")).toHaveLength(1);
 });
 
@@ -454,7 +454,7 @@ test("opening a copy shows the mail and back returns to the list", async () => {
   fireEvent.click((await screen.findAllByRole("button", { name: /INBOX/ }))[0]);
   await screen.findByText("viewing mail 3");
   fireEvent.click(screen.getByText("back to list"));
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
 });
 
 test("the reader's Trash confirms, moves just that copy and returns to the list",
@@ -703,7 +703,7 @@ test("German wording", async () => {
   expect(screen.getByRole("button", { name: "Einzeln prüfen" })).toBeTruthy();
   expect(screen.getAllByRole("tab").map((x) => x.textContent))
     .toEqual(["Identisch 1", "Versionen 0", "Mögliche 1"]);
-  expect(screen.getByText("behalten · neueste")).toBeTruthy();
+  expect(screen.getByText("Behalten")).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: /Mögliche/ }));
   fireEvent.click(await screen.findByRole("button", { name: "Vergleichen: Offer" }));
   const cmp = within(await screen.findByRole("dialog", { name: "Vergleichen" }));
@@ -771,7 +771,7 @@ test("a double click on Trash selected opens one confirm, not two", async () => 
   identicalWorld();
   deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
   show();
-  await screen.findByText("keep · newest");
+  await screen.findByText("Keep");
   fireEvent.click(screen.getByRole("button", { name: "Review each" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all but newest" }));
   const btn = screen.getByRole("button", { name: "Trash selected (2)" });

@@ -146,7 +146,7 @@ test("the bottom bar's Empty Trash runs the shared handler and reloads the list"
     panel({ state: { ...state, trash_count: 1 } as AppState, onEmptyTrash });
     await screen.findByText("Deleted elsewhere");
     // the panel's own listing total, not the (possibly stale) state count
-    fireEvent.click(screen.getByRole("button", { name: "Empty Trash · 7" }));
+    fireEvent.click(screen.getByRole("button", { name: "Empty Trash (7)" }));
     await waitFor(() => expect(onEmptyTrash).toHaveBeenCalledWith(
       expect.objectContaining({ total: 7, uv: 1, max_uid: 77 })));
   });
@@ -245,7 +245,7 @@ test("the page follows the route: initialRole switches the folder", async () => 
   expect(foldersPanel).toHaveBeenLastCalledWith("junk");
   // Empty Trash belongs to Trash only
   expect(screen.queryByRole("button", { name: /Empty Trash/ })).toBeNull();
-  expect(screen.getByRole("button", { name: "Empty Junk · 3" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Empty Junk (3)" })).toBeTruthy();
 });
 
 test("Junk: one row per sender with count, size and first seen",
@@ -677,4 +677,38 @@ test("two ambiguous roles get one combined notice with one button, and a "
   const empty = screen.getByRole("button", { name: /Empty Junk/ });
   expect(empty.getAttribute("aria-describedby")).toBe(reason.id);
   expect(empty.getAttribute("title")).toBeNull();
+});
+
+test("Trash on a phone: mails under month headings with their counts, one "
+  + "icon restore per row that names its mail", async () => {
+  const mail = (uid: number, date: string, subject: string) => ({
+    uid, folder: "Trash", date, ts: uid, subject, addr: "a@b.example",
+    size: 700, seen: true, ai: null });
+  foldersPanel.mockResolvedValue({ folder: "Trash", uv: 1, total: 3, max_uid: 9,
+    mails: [mail(3, "2026-10-20", "Fresh one"), mail(2, "2026-10-02", "Older one"),
+      mail(1, "2025-03-02", "Ancient one")],
+    senders: [] });
+  trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+  panel();
+  await screen.findByText("Fresh one");
+  expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
+    .toEqual(["October 2026 · 2 mails", "March 2025 · 1 mail"]);
+  // the same restore as before, named after its mail (the word is for
+  // screen readers on a phone)
+  fireEvent.click(screen.getByRole("button", { name: "Restore: Older one" }));
+  await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([2], "INBOX", 1));
+});
+
+test("Trash on a phone: the oldest month has no count when older mails "
+  + "were not listed", async () => {
+  const mail = (uid: number, date: string) => ({
+    uid, folder: "Trash", date, ts: uid, subject: `Mail ${uid}`,
+    addr: "a@b.example", size: 700, seen: true, ai: null });
+  foldersPanel.mockResolvedValue({ folder: "Trash", uv: 1, total: 5000,
+    max_uid: 9, mails: [mail(3, "2026-10-20"), mail(2, "2026-10-02"),
+      mail(1, "2025-03-02")], senders: [] });
+  panel();
+  await screen.findByText("Mail 3");
+  expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
+    .toEqual(["October 2026 · 2 mails", "March 2025"]);
 });
