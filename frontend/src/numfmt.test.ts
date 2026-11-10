@@ -38,6 +38,13 @@ describe("number format", () => {
     expect(fmtPct(1500)).toBe(`1\u202f500${NBSP}%`);
   });
 
+  it("gives nothing for a missing or non-finite percentage", () => {
+    expect(fmtPct(NaN)).toBe("");
+    expect(fmtPct(Infinity)).toBe("");
+    expect(fmtPct(undefined as unknown as number)).toBe("");
+    expect(fmtPct(0)).toBe("0%");
+  });
+
   it("keeps a count and its unit together in the locale strings", () => {
     expect(t("n.mails", { n: 60 })).toBe(`60${NBSP}mails`);
     setLang("de");

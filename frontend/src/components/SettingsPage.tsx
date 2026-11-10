@@ -1591,7 +1591,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
                 {u.ai.budget_usd ? ` / ${fmtUsd(u.ai.budget_usd)}` : ""}
                 {u.ai.source === "shared"
                   ? ` (${t("usage.shared")})` : ""}</>)}
-              {stat(t("usage.last_scan"), fmtAgo(u.last_scan_ts) || "-")}
+              {stat(t("usage.last_scan"), (fmtAgo(u.last_scan_ts) && t("scan.ago", { ago: fmtAgo(u.last_scan_ts) })) || "-")}
               {stat(t("usage.disk"), fmtSize(u.disk_bytes))}
             </>} />
         );

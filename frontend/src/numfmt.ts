@@ -79,6 +79,7 @@ export function fmtNum(n: number, opts: { digits?: number; max?: number;
  *  not 0.3); options as fmtNum. */
 export function fmtPct(value: number, opts: { digits?: number; max?: number }
   = {}): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
   const spaced = localeOf() !== "en-US";
   return `${fmtNum(value, opts)}${spaced ? NBSP : ""}%`;
 }

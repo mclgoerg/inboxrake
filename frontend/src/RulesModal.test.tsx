@@ -574,7 +574,7 @@ test("Run on an execute-mode purge rule confirms with the permanent wording",
   fireEvent.click(screen.getByText("Run now"));
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("permanently, on the server");
-  expect(dlg).toContain("up to 37 mails per run");
+  expect(dlg).toContain("up to 37\u00a0mails per run");
   expect(dlg).toContain("Protected senders and protected mails are never touched");
   expect(dlg).toContain("switch the rule back to report mode");
   expect(runRule).not.toHaveBeenCalled();
@@ -630,7 +630,7 @@ test("German: folder select, warning, defaults and the confirm", async () => {
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("endgültig");
   expect(dlg).toContain("auf dem Server");
-  expect(dlg).toContain("bis zu 37 Mails pro Lauf");
+  expect(dlg).toContain("bis zu 37\u00a0Mails pro Lauf");
   expect(dlg).toContain("Geschützte Absender und geschützte Mails werden nie");
   expect(dlg).toContain("Berichtsmodus");
   expect(screen.getByRole("button", { name: "Endgültig löschen (bis zu 37)" }))

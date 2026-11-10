@@ -1020,8 +1020,8 @@ export const DE: Record<string, string> = {
   "fp.auto_confirm_title": "Papierkorb automatisch leeren?",
   "fp.auto_confirm_body":
     "Einmal am Tag werden Mails endgültig auf dem Server gelöscht, die vor "
-    + "mehr als {n}\u00a0Tagen eingegangen sind und außerdem seit mindestens {n} "
-    + "Tagen im Papierkorb liegen - höchstens {cap} pro Lauf. Geschützte "
+    + "mehr als {n}\u00a0Tagen eingegangen sind und außerdem seit mindestens "
+    + "{n}\u00a0Tagen im Papierkorb liegen - höchstens {cap} pro Lauf. Geschützte "
     + "Absender und geschützte Mails bleiben unangetastet. Das lässt sich "
     + "nicht rückgängig machen.",
   "fp.auto_confirm_body_one":
@@ -1563,8 +1563,8 @@ export const DE: Record<string, string> = {
   "account.delete_data":
     "Inboxrake löscht die Anmeldedaten und Verbindungseinstellungen, "
     + "Scan-Ergebnisse, den lokalen Suchindex, gespeicherte Filter, Pins, "
-    + "Abbestell-Einträge, bekannte Absender sowie Digest- und "
-    + "Auto-Scan-Einstellungen.",
+    + "Abbestell-Einträge, bekannte Absender sowie die Einstellungen für "
+    + "Aktivitätsbericht und Auto-Scan.",
   "account.delete_rules":
     "Seine Mail-Regeln behalten den Kontonamen, laufen aber nicht mehr; "
     + "seine Lösch-Regeln für Spam und Papierkorb werden gelöscht.",
@@ -1868,9 +1868,9 @@ export const DE: Record<string, string> = {
   "search.try_old": "Älter als 5 Jahre",
   "search.try_att_prefix": "über 1 MB",
   "search.try_senders": "{n}\u00a0Absender",
-  "search.try_senders_one": "1 Absender",
+  "search.try_senders_one": "1\u00a0Absender",
   "search.try_mails": "{n}\u00a0Mails",
-  "search.try_mails_one": "1 Mail",
+  "search.try_mails_one": "1\u00a0Mail",
   "search.try_note": "„Ausprobieren“ öffnet Absender mit dem passenden Filter - ein Tipp, dort editierbar.",
   "search.more_hint": "Nicht das Gesuchte?",
   "search.more_action": "Auch im Mailtext suchen",
@@ -1936,7 +1936,7 @@ export const DE: Record<string, string> = {
   "index.delete": "Index löschen",
   "index.confirm_read":
     "Liest den Text von {n} gescannten Mails dieses Kontos von deinem "
-    + "Mailserver (je die ersten ~256 KB) und speichert lokal nur "
+    + "Mailserver (je die ersten ~256\u00a0KB) und speichert lokal nur "
     + "geschlüsselte Wort-Hashes - keinen lesbaren Text.",
   "index.confirm_disk":
     "Belegt etwa {size} Speicherplatz (bis zu {max} bei textlastigen "
@@ -1975,13 +1975,13 @@ export const DE: Record<string, string> = {
   "auto_scan.help":
     "Scannt dieses Konto in festen Abständen neu, unabhängig von "
     + "Regel-Zeitplänen - hält die „Neu“-Markierung und die "
-    + "Aktivitäts-Übersicht aktuell, ohne dass die App geöffnet sein muss. "
+    + "Aktivitätsbericht aktuell, ohne dass die App geöffnet sein muss. "
     + "Wird automatisch übersprungen, solange das Konto mit etwas anderem "
     + "beschäftigt ist, und beim nächsten Takt einfach erneut versucht.",
   "auto_scan.help_on":
     "Scannt dieses Konto in festen Abständen neu, unabhängig von "
     + "Regel-Zeitplänen - hält die „Neu“-Markierung und die "
-    + "Aktivitäts-Übersicht aktuell, ohne dass die App geöffnet sein muss. "
+    + "Aktivitätsbericht aktuell, ohne dass die App geöffnet sein muss. "
     + "Die „Startminute“ richtet den Takt an einer festen Uhrzeit aus "
     + "(z. B. alle 3\u00a0Stunden zur Minute 10 -> 00:10, 03:10, 06:10, ...) "
     + "statt ab dem Speicherzeitpunkt zu driften. Wird automatisch "
@@ -2269,13 +2269,13 @@ export const DE: Record<string, string> = {
     + "angefasst. Das lässt sich nicht rückgängig machen. Danach kann die "
     + "Regel zurück in den Berichtsmodus geschaltet werden.",
   "rule.purge_enable_body":
-    "Ab jetzt löscht diese Regel Mails endgültig auf dem Server, bis zu {cap} "
-    + "Mails pro Lauf (auch nach Zeitplan). Geschützte Absender und "
+    "Ab jetzt löscht diese Regel Mails endgültig auf dem Server, bis zu "
+    + "{cap}\u00a0Mails pro Lauf (auch nach Zeitplan). Geschützte Absender und "
     + "geschützte Mails werden nie angefasst. Der Wechsel zurück in den "
     + "Berichtsmodus ist jederzeit möglich.",
   "rule.purge_enable_body_one":
-    "Ab jetzt löscht diese Regel Mails endgültig auf dem Server, bis zu {cap} "
-    + "Mail pro Lauf (auch nach Zeitplan). Geschützte Absender und "
+    "Ab jetzt löscht diese Regel Mails endgültig auf dem Server, bis zu "
+    + "{cap}\u00a0Mail pro Lauf (auch nach Zeitplan). Geschützte Absender und "
     + "geschützte Mails werden nie angefasst. Der Wechsel zurück in den "
     + "Berichtsmodus ist jederzeit möglich.",
   "rule.purge_confirm_btn": "Endgültig löschen (bis zu {cap})",

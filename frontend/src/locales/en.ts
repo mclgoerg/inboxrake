@@ -375,9 +375,9 @@ export const EN: Record<string, string> = {
   "search.try_old": "Older than 5 years",
   "search.try_att_prefix": "over 1 MB",
   "search.try_senders": "{n}\u00a0senders",
-  "search.try_senders_one": "1 sender",
+  "search.try_senders_one": "1\u00a0sender",
   "search.try_mails": "{n}\u00a0mails",
-  "search.try_mails_one": "1 mail",
+  "search.try_mails_one": "1\u00a0mail",
   "search.try_note": "“Try” opens Senders with the matching filter - one tap, editable there.",
   "search.more_hint": "Not what you look for?",
   "search.more_action": "Search mail text too",
@@ -440,7 +440,7 @@ export const EN: Record<string, string> = {
   "index.delete": "Delete index",
   "index.confirm_read":
     "Reads the text of {n} scanned mails of this account from your mail "
-    + "server (the first ~256 KB of each) and stores only keyed word hashes "
+    + "server (the first ~256\u00a0KB of each) and stores only keyed word hashes "
     + "locally - no readable text.",
   "index.confirm_disk":
     "Takes roughly {size} of disk space (up to {max} for text-heavy mail); "
@@ -2049,13 +2049,13 @@ export const EN: Record<string, string> = {
   "rule.purge_unverified_one":
     "1\u00a0mail moved to Trash but not deleted (could not be verified)",
   "rule.purge_run_body":
-    "This deletes matching mail permanently, on the server, up to {cap} "
-    + "mails per run. Protected senders and protected mails are never "
+    "This deletes matching mail permanently, on the server, up to "
+    + "{cap}\u00a0mails per run. Protected senders and protected mails are never "
     + "touched. It cannot be undone. Afterwards you can switch the rule "
     + "back to report mode.",
   "rule.purge_run_body_one":
-    "This deletes matching mail permanently, on the server, up to {cap} "
-    + "mail per run. Protected senders and protected mails are never "
+    "This deletes matching mail permanently, on the server, up to "
+    + "{cap}\u00a0mail per run. Protected senders and protected mails are never "
     + "touched. It cannot be undone. Afterwards you can switch the rule "
     + "back to report mode.",
   "rule.purge_enable_body":
