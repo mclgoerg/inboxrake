@@ -1,20 +1,19 @@
-import { ChevronRight, Hourglass, Mail, MoreHorizontal, Newspaper, Paperclip,
+import { ChevronRight, Hourglass, Info, Mail, MoreHorizontal, Newspaper, Paperclip,
   ShieldAlert, Sparkles, BellOff, TrendingDown, TrendingUp, TriangleAlert,
   UserPlus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLang, t } from "../i18n";
 import { fmtNum } from "../numfmt";
-import { fmtSize } from "../lib";
+import { fmtDate, fmtSize } from "../lib";
 import { WEEK_S } from "../activity";
 import { categoryHues, categoryName } from "../categories";
-import { nowMs } from "../clock";
+import { nowDate, nowMs } from "../clock";
 import { kindShares, type Trend, windowTerm } from "../overview";
 import { TOP_CARDS, type QuickWinCard } from "../quickwins";
 import type { OverviewResp } from "../types";
-import { Button, Checkbox, DivergingBars, hueFillAt, IconTile, Menu,
-  MenuItem, Segmented, Spinner, tabPanelProps, useMediaQuery, type TagTone }
-  from "./ui";
+import { Button, Checkbox, hueFillAt, IconTile, Menu, MenuItem, Segmented,
+  Spinner, tabPanelProps, useMediaQuery, type TagTone } from "./ui";
 
 /* The cards of the Overview besides the biggest senders: the balance of the
  * last 8 weeks, "Last week" / "Since last visit", the next steps and what
@@ -87,6 +86,115 @@ const weekLabel = (i: number, weeks: number): string =>
     : t("overview.days_ago_range",
       { from: (weeks - 1 - i) * 7 + 1, to: (weeks - i) * 7 });
 
+/** First day of the column's 7 days as a short date ("27 Jul"); the last
+ *  column is "this week". */
+const weekDate = (i: number, weeks: number, now: number): string => {
+  if (i === weeks - 1) return t("overview.balance_this_week");
+  const d = new Date((now - (weeks - i) * WEEK_S) * 1000);
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")
+    }-${String(d.getDate()).padStart(2, "0")}`;
+  return fmtDate(iso, nowDate(), { lang: getLang() });
+};
+
+/** Height of a bar in percent of its row; a non-zero value keeps a sliver. */
+const pct = (v: number, max: number): number =>
+  Math.max(3, (100 * v) / Math.max(1, max));
+
+/** Two rows on the same week columns: what arrived on top, what you cleaned
+ *  below, each on its own scale (a big cleanup week must not shrink the
+ *  arrivals to stubs). Every column is a button whose accessible name is its
+ *  `tips[i]` text (colour is never the only signal; the caller also shows the
+ *  selected column's text). Estimated arrivals are hatched. Weeks with
+ *  nothing get a short faint line, so an empty week reads as a week. The
+ *  left labels give each row's total; `cleaned` is null while / if it did not
+ *  load (that row then stays empty). Week dates sit under the columns from
+ *  640 px; below, one line spells the span out. */
+function BalanceChart({ arrived, cleaned, estimated, tips, labels, active,
+  onActive, cleanedAtLeast }: {
+  arrived: number[]; cleaned: number[] | null; estimated: boolean[];
+  tips: string[]; labels: string[]; active: number;
+  onActive: (i: number) => void;
+  /** Some week's cleaned count is a floor (the audit log was cut short). */
+  cleanedAtLeast: boolean;
+}) {
+  const maxA = Math.max(...arrived, 0);
+  const maxC = Math.max(...(cleaned ?? []), 0);
+  const ROW = "h-11 sm:h-14";   // each row: 44 px on phones, 56 px from 640
+  const LAB = "flex flex-col justify-end";
+  const CAP = "inline-flex items-center gap-1.5 whitespace-nowrap type-caption text-muted";
+  const total = (v: number[]) => v.reduce((a, b) => a + b, 0);
+  const any = estimated.some(Boolean);
+  return (
+    <div>
+      <div className="flex gap-3">
+        <div className="flex w-24 shrink-0 flex-col gap-1.5">
+          <div className={`${LAB} ${ROW}`}>
+            <b className="type-heading tabular-nums">
+              {any ? "~" : ""}{fmtNum(total(arrived))}</b>
+            <span className={CAP}>
+              <span aria-hidden className="size-2 rounded-full bg-accent" />
+              {t("overview.balance_arrived")}
+            </span>
+          </div>
+          <div className={`${LAB} ${ROW}`}>
+            <b className="type-heading tabular-nums">
+              {cleaned ? `${cleanedAtLeast ? "≥ " : ""}${fmtNum(total(cleaned))}`
+                : "–"}</b>
+            <span className={CAP}>
+              <span aria-hidden className="size-2 rounded-full bg-safe-fg" />
+              {t("overview.balance_cleaned")}
+            </span>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="grid grid-flow-col auto-cols-fr gap-1.5">
+            {tips.map((tip, i) => {
+              const a = arrived[i] ?? 0;
+              const c = cleaned?.[i];
+              const dim = i === active ? "" : "opacity-80";
+              const zero = "mt-1 h-0.5 w-3/5 max-w-6 rounded-full bg-faint opacity-50";
+              return (
+                <button key={i} type="button" aria-label={tip}
+                  aria-pressed={i === active}
+                  onMouseEnter={() => onActive(i)} onFocus={() => onActive(i)}
+                  onClick={() => onActive(i)}
+                  className={`flex min-w-0 cursor-pointer flex-col gap-1.5
+                    rounded-control px-1 outline-offset-0 transition-colors
+                    ${i === active ? "bg-accent-tint" : ""}`}>
+                  <span className={`flex items-end justify-center ${ROW}`}>
+                    {a > 0 ? (
+                      <span className={`w-full max-w-10 rounded-t-badge ${dim}
+                        ${estimated[i] ? "bar-estimate" : "bg-accent"}`}
+                        style={{ height: `${pct(a, maxA)}%` }} />
+                    ) : <span className={`${zero} self-end`} />}
+                  </span>
+                  <span className={`flex items-start justify-center border-t
+                    border-line ${ROW}`}>
+                    {c === undefined ? null : c > 0 ? (
+                      <span className={`w-full max-w-10 rounded-b-badge
+                        bg-safe-fg ${dim}`}
+                        style={{ height: `${pct(c, maxC)}%` }} />
+                    ) : <span className={zero} />}
+                  </span>
+                  <span aria-hidden className={`hidden h-5 text-center
+                    type-caption whitespace-nowrap sm:block ${i === active
+                    ? "font-semibold text-accent" : "text-muted"}`}>
+                    {labels[i]}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div aria-hidden className="mt-1.5 flex justify-between type-caption
+            text-muted sm:hidden">
+            <span>{t("overview.balance_from", { n: tips.length })}</span>
+            <span>{t("overview.balance_this_week")}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The main card: size, mails, senders, the trend against a month back and
  *  the 8-week balance (mails that arrived vs mails you cleaned). */
 export function BalanceCard({ accountLine, size, mails, senders, trend,
@@ -119,6 +227,8 @@ export function BalanceCard({ accountLine, size, mails, senders, trend,
       : t("overview.balance_tip", { range, arrived, gone,
         cleaned: partial ? t("activity.at_least", { n: c }) : c });
   });
+  const floored = cleanedFloor !== null && !!data && weeks.some((_, i) =>
+    data.now - (weeks.length - i) * WEEK_S < cleanedFloor);
   const tr = trend && TREND_TONE[trend.dir];
   return (
     <section aria-label={t("overview.balance")} className={CARD}>
@@ -142,31 +252,22 @@ export function BalanceCard({ accountLine, size, mails, senders, trend,
       </div>
       <div className="mt-5">
         {!data ? <CardStatus failed={failed} onRetry={onRetry} /> : (<>
-          <div className="mb-2 min-h-5 type-meta text-muted" aria-live="polite">
-            <span className="rounded-full bg-chip px-2 py-0.5 text-body">
-              {tips[active]}</span>
+          <div className="mb-3 flex flex-wrap items-center justify-between
+            gap-x-3 gap-y-2">
+            <h3 className="type-body font-semibold">
+              {t("overview.balance_title", { n: weeks.length })}</h3>
+            <div className="min-h-5 type-meta text-muted" aria-live="polite">
+              <span className="rounded-full bg-chip px-2 py-0.5 text-body">
+                {tips[active]}</span>
+            </div>
           </div>
-          <DivergingBars up={weeks} down={cleaned ?? weeks.map(() => 0)}
+          <BalanceChart arrived={weeks} cleaned={cleaned} estimated={est}
             tips={tips} active={active} onActive={setPicked}
-            estimated={est}
-            className="h-32 sm:h-40" />
-          <div className="mt-2 flex flex-wrap items-center justify-between
-            gap-x-4 gap-y-1 type-meta text-muted">
-            <span>{t("overview.balance_from", { n: weeks.length })}</span>
-            <span className="inline-flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-accent" />
-                {t("overview.balance_arrived")}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-safe-fg" />
-                {t("overview.balance_cleaned")}
-              </span>
-            </span>
-            <span>{t("overview.balance_now")}</span>
-          </div>
+            labels={weeks.map((_, i) => weekDate(i, weeks.length, data.now))}
+            cleanedAtLeast={floored} />
           {est.some(Boolean) && (
-            <p className="mt-2 type-meta text-muted">
+            <p className="mt-3 flex items-center gap-1.5 type-meta text-muted">
+              <Info size={14} aria-hidden className="shrink-0" />
               {t("overview.balance_note")}</p>
           )}
         </>)}
@@ -417,16 +518,15 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
               {tileEl}
               <div className="min-w-0 flex-1">
                 <div className="type-body font-medium">{name}</div>
-                <div className="type-meta text-muted">{meta}</div>
-                <div data-testid="qw-hint" className="type-meta text-muted">
-                  {t(c.def.hintKey)}</div>
+                <div className="type-meta text-muted">{meta} ·{" "}
+                  <span data-testid="qw-hint">{t(c.def.hintKey)}</span></div>
               </div>
-              <Button variant="tinted" size="sm"
+              <Button variant="tinted" size="sm" className="shrink-0"
                 onClick={() => onReview(c)}>{t("qw.review")}</Button>
-              <Button variant="quiet" size="sm"
+              <Button variant="quiet" size="sm" className="shrink-0"
                 onClick={() => onCleanUp(c)}>{t("qw.clean_up")}</Button>
               <Button variant="quiet" size="icon" label={t("qw.not_now")}
-                className="text-muted" onClick={() => onDismiss(c)}>
+                className="shrink-0 text-muted" onClick={() => onDismiss(c)}>
                 <X size={16} />
               </Button>
             </li>
@@ -447,15 +547,14 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
 /* ------------------------- what fills your inbox ------------------------- */
 
 /** The last 30 days by kind of sender as a stacked bar + legend with shares. */
-export function KindsCard({ data, failed, onRetry, className = "" }: {
+export function KindsCard({ data, failed, onRetry }: {
   data: OverviewResp | null; failed: boolean; onRetry: () => void;
-  className?: string;
 }) {
   const title = t("overview.kinds");
   const shares = data ? kindShares(data.kinds.items) : [];
   const hues = categoryHues(shares.map((s) => s.kind));
   return (
-    <section aria-label={title} className={`${CARD} ${className}`}>
+    <section aria-label={title} className={CARD}>
       <CardHead title={title}
         sub={t("overview.kinds_sub", { n: data?.kinds.days ?? 30 })} />
       {!data ? <CardStatus failed={failed} onRetry={onRetry} />
