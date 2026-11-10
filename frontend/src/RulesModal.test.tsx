@@ -212,15 +212,116 @@ test("and in German, with the right case and word order", () => {
       + "from:a passen, dann endgültig löschen, wenn älter als 1 Tag");
 });
 
-test("the editor's first row follows each language's word order", () => {
-  renderNew();
-  expect(popup("Grouping").closest("span")!.parentElement!.textContent)
-    .toMatch(/^When .*groups in /);
+test("the drawer's first row follows each language's word order", () => {
+  const page = () => { render(<PageSlot page><RulesModal state={baseState}
+    onClose={() => {}} onChanged={() => {}} /></PageSlot>); openNew(); };
+  const row = (name: string) => popup(name).closest("div.grid")!;
+  page();
+  expect(row("Grouping").textContent).toMatch(/^When a.*group in/);
   cleanup();
   setLang("de");
+  page();
+  expect(row("Gruppierung").textContent).toMatch(/^Gruppen nach.*im/);
+});
+
+test("the drawer has one label column; phones get a grouped form", () => {
+  render(<PageSlot page><RulesModal state={baseState} onClose={() => {}}
+    onChanged={() => {}} /></PageSlot>);
+  openNew();
+  const labels = [...document.querySelectorAll("aside div.grid > span")]
+    .map((e) => e.textContent);
+  expect(labels).toEqual(["Name", "When a", "matches", "then", "apply to",
+    "run"]);
+  expect(screen.queryByRole("group", { name: "Which mail" })).toBeNull();
+  cleanup();
+  // a tablet-sized modal keeps the label column (the filter builder pops
+  // over the form there; a grouped list would clip it)
   renderNew();
-  expect(popup("Gruppierung").closest("span")!.parentElement!.textContent)
-    .toMatch(/^Wenn Gruppen nach .* im /);
+  expect(screen.queryByRole("group", { name: "Which mail" })).toBeNull();
+  expect(document.querySelectorAll("div.grid > span.py-1\\.5").length)
+    .toBeGreaterThan(5);
+  cleanup();
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: true, media: q,
+    addEventListener() {}, removeEventListener() {} }));
+  renderNew();
+  const which = screen.getByRole("group", { name: "Which mail" });
+  expect(which.textContent).toMatch(/Grouped by.*in.*matches/);
+  const what = screen.getByRole("group", { name: "What happens" });
+  expect(what.textContent).toMatch(/then.*apply to.*run/);
+  // every field is still there, the preview and the report-mode note too
+  for (const f of ["Name", "Filter"]) expect(screen.getByLabelText(f)).toBeTruthy();
+  expect(screen.getByText("Preview")).toBeTruthy();
+  expect(screen.getByText("Starts in report mode")).toBeTruthy();
+  vi.unstubAllGlobals();
+});
+
+const at = (y: number, mo: number, d: number, h: number, mi: number) =>
+  new Date(y, mo, d, h, mi).getTime() / 1000;
+const lineOf = (re: RegExp) => screen.getByText(re).parentElement!.textContent!;
+const runOf = (over: Partial<NonNullable<Rule["last_run"]>>): Rule => ({
+  ...rule, last_run: { ts: at(2020, 7, 31, 3, 30), mode: "execute", groups: 4,
+    mails: 150, acted: 150, capped: 0, skipped_protected: 0, skipped_pinned: 0,
+    preview: [], error: "", ...over } });
+
+test("the card's last-run line: app date format, status, counts", () => {
+  renderCards([runOf({})]);
+  expect(lineOf(/Last run 31 Aug 2020, 03:30/))
+    .toBe("Last run 31 Aug 2020, 03:30 · completed: 150 mails in 4 groups");
+  expect(document.body.textContent).not.toMatch(/AM|PM|\/2020/);
+  cleanup();
+  renderCards([runOf({ mode: "report", acted: 0 })]);
+  expect(lineOf(/Last run/))
+    .toBe("Last run 31 Aug 2020, 03:30 · report: 150 mails in 4 groups "
+      + "would be affected");
+  cleanup();
+  // matched and affected differ, and what was skipped stays on the line
+  renderCards([runOf({ acted: 140, skipped_protected: 2, capped: 1 })]);
+  const line = lineOf(/Last run/);
+  expect(line).toContain("completed: 140 mails in 4 groups · 150 matched");
+  expect(line).toContain("1 mail beyond the per-run cap");
+  expect(line).toContain("2 protected skipped");
+  cleanup();
+  setLang("de");
+  renderCards([runOf({})]);
+  expect(lineOf(/Letzter Lauf/))
+    .toBe("Letzter Lauf 31. Aug. 2020, 03:30 · abgeschlossen: 150 Mails in "
+      + "4 Gruppen");
+});
+
+test("a failed run keeps its error on the card and says it failed", () => {
+  renderCards([runOf({ acted: 0, error: "boom" })]);
+  const line = lineOf(/Last run/);
+  expect(line).toContain("Last run 31 Aug 2020, 03:30 · failed");
+  expect(line).toContain("boom");
+  expect(screen.getByText("boom").className).toContain("text-danger-fg");
+  expect(screen.getByRole("button", { name: /Last report/ })).toBeTruthy();
+});
+
+test("the rule sentence's chips never break inside; the footer has the actions",
+  () => {
+  renderCards([{ ...rule, query: "tag:a age:>1y" }]);
+  const code = screen.getByText("tag:a age:>1y");
+  expect(code.className).toContain("inline-block");
+  expect(screen.getByText("Sender").className).toContain("inline-block");
+  const footer = screen.getByText("Run now").closest("div")!;
+  expect([...footer.querySelectorAll("button")].map((b) => b.textContent))
+    .toEqual(["Run now", "Edit", ""]);   // no run yet: no "Last report"
+  cleanup();
+  renderCards([runOf({})]);
+  const f2 = screen.getByText("Run now").closest("div")!;
+  expect([...f2.querySelectorAll("button")].map((b) => b.textContent))
+    .toEqual(["Run now", "Last report", "Edit", ""]);
+});
+
+test("the intro is one line with a link to the docs section", () => {
+  renderCards([rule]);
+  const link = screen.getByRole("link", { name: "How rules work" });
+  expect(link.getAttribute("href")).toBe(
+    "https://inboxrake.com/docs/features/#rules-and-scheduler");
+  expect(link.getAttribute("rel")).toContain("noopener");
+  expect(document.body.textContent).toContain("at most 500 mails per run");
+  expect(document.body.textContent).not.toMatch(/REPORT/);
+  expect(screen.getByText(/1 rule · new rules only report/)).toBeTruthy();
 });
 
 test("the mode switch is a radiogroup", () => {
@@ -831,7 +932,7 @@ test("a new rule says it starts in report mode (the server always does)",
 test("See last report shows the run in full, senders as rows; absent without a run",
   () => {
   renderCards([rule]);
-  expect(screen.queryByText("See last report")).toBeNull();
+  expect(screen.queryByText("Last report")).toBeNull();
   cleanup();
   const ran: Rule = { ...rule, last_run: {
     ts: 1, mode: "report", groups: 2, mails: 5, acted: 0, capped: 1,
@@ -839,7 +940,7 @@ test("See last report shows the run in full, senders as rows; absent without a r
       { key: "a@x.example", label: "Anna", count: 3 },
       { key: "b@x.example", label: "Bob", count: 2 }] } };
   renderCards([ran]);
-  fireEvent.click(screen.getByText("See last report"));
+  fireEvent.click(screen.getByText("Last report"));
   const dlg = screen.getByRole("dialog", { name: "Last report" });
   expect(dlg.textContent).toMatch(/2 groups/);
   expect(dlg.textContent).toMatch(/2 protected mails skipped/);
@@ -855,7 +956,7 @@ test("a failed run's error shows in the report", () => {
   renderCards([{ ...rule, last_run: { ts: 1, mode: "execute", groups: 0,
     mails: 0, acted: 0, capped: 0, skipped_protected: 0, skipped_pinned: 0,
     preview: [], error: "boom" } }]);
-  fireEvent.click(screen.getByText("See last report"));
+  fireEvent.click(screen.getByText("Last report"));
   expect(screen.getByRole("dialog", { name: "Last report" }).textContent)
     .toContain("boom");
 });
@@ -920,8 +1021,7 @@ test("the disabled Active option points at its reason; one timestamp in the " +
     skipped_protected: 0, skipped_pinned: 0, preview: [], error: "" } }]);
   const hint = screen.getByText("Run at least one report first");
   expect(tab("Active").getAttribute("aria-describedby")).toBe(hint.id);
-  fireEvent.click(screen.getByText("See last report"));
+  fireEvent.click(screen.getByText("Last report"));
   const dlg = screen.getByRole("dialog", { name: "Last report" });
-  const stamp = new Date(86400 * 365 * 1000).toLocaleString();
-  expect(dlg.textContent!.split(stamp).length - 1).toBe(1);
+  expect(dlg.textContent!.match(/Last run/g)).toHaveLength(1);
 });

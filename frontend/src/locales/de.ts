@@ -549,17 +549,19 @@ export const DE: Record<string, string> = {
   "notice.rule_executed":
     "Regel „{name}“ ausgeführt: {acted} Mails eingereiht ({groups} Gruppen).",
   "rules.help":
-    "Eine Regel speichert einen Gruppenfilter (gleiche Syntax wie das "
-    + "Filterfeld) plus eine Aktion. Neue Regeln BERICHTEN nur, was sie tun "
-    + "würden; nach Prüfung eines Berichts kann auf Ausführen umgeschaltet "
-    + "werden. Läufe sind auf 500 Mails begrenzt, geschützte Absender "
-    + "werden übersprungen, alles landet wie üblich im Papierkorb/Undo.",
+    "Eine Regel führt einen gespeicherten Filter mit einer Aktion aus - "
+    + "höchstens 500 Mails pro Lauf, geschützte Absender werden übersprungen, "
+    + "alles lässt sich aus dem Papierkorb rückgängig machen.",
+  "rules.how": "So funktionieren Regeln",
+  "rules.sub": "{n} Regeln · neue Regeln berichten nur, bis du sie auf Aktiv stellst",
+  "rules.sub_one": "1 Regel · neue Regeln berichten nur, bis du sie auf Aktiv stellst",
   "rules.empty": "Noch keine Regeln - unten eine anlegen.",
   "rule.never_ran": "noch nie gelaufen",
-  "rule.run_report":
-    "Bericht: {groups} Gruppen · {mails} Mails wären betroffen",
-  "rule.run_executed":
-    "abgeschlossen: {acted} Mails bearbeitet ({groups} Gruppen, {mails} Treffer)",
+  "rule.last_run": "Letzter Lauf {date}",
+  "rule.run_failed": "fehlgeschlagen",
+  "rule.run_done": "abgeschlossen: {mails} in {groups}",
+  "rule.run_would": "Bericht: {mails} in {groups} wären betroffen",
+  "rule.run_matched": "{n} Treffer",
   "rule.capped": "{n} Mails über dem Limit pro Lauf",
   "rule.capped_one": "1 Mail über dem Limit pro Lauf",
   "rule.protected_skipped": "{n} geschützte übersprungen",
@@ -573,7 +575,7 @@ export const DE: Record<string, string> = {
   "rule.new_title": "Neue Regel",
   "rule.name": "Regelname",
   "rule.create": "Regel anlegen (nur Bericht)",
-  "rule.see_report": "Letzten Bericht ansehen",
+  "rule.see_report": "Letzter Bericht",
   "rule.report_title": "Letzter Bericht",
   "rule.report_senders": "Wichtigste Absender",
   "rule.f_mode": "Modus",
@@ -583,7 +585,13 @@ export const DE: Record<string, string> = {
     "Wenn Gruppen nach {grouping} zu {filter} passen, dann {action}{retention}\u00a0· {schedule}",
   "rule.sent_purge":
     "Wenn Gruppen nach {grouping} im {scope} zu {filter} passen, dann {action}{retention}\u00a0· {schedule}",
-  "rule.ed_when": "Wenn Gruppen nach {grouping} im {scope}",
+  "rule.row_when": "Gruppen nach",
+  "rule.mid_in": "im",
+  "rule.row_grouped": "Gruppiert nach",
+  "rule.row_in": "im",
+  "rule.row_matches": "passen zu",
+  "rule.grp_which": "Welche Mails",
+  "rule.grp_what": "Was passiert",
   "rule.ed_older": "wenn älter als {n} Tage",
   "rule.s_all_senders": "allen Absendern",
   "rule.act_trash": "in den Papierkorb verschieben",
@@ -603,7 +611,7 @@ export const DE: Record<string, string> = {
   "rule.apply_older": "nur Mails älter als N Tage",
   "rule.s_then": "dann",
   "rule.s_apply": "anwenden auf",
-  "rule.s_run": "Läuft",
+  "rule.s_run": "läuft",
   "rule.s_everything": "allem",
   "rule.more": "Mehr: {name}",
   "rule.new_btn": "Neue Regel",

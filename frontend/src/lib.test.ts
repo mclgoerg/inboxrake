@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyStatus, fmtDate, ENGAGEMENT_HIGH_MIN, ENGAGEMENT_LOW_MAX,
+import { applyStatus, fmtDate, fmtTs, ENGAGEMENT_HIGH_MIN, ENGAGEMENT_LOW_MAX,
   engagementTier, fmtAgo, fmtSize, fmtUsd, mailKey, matchGroup, olderThan,
   parseFilter, parseProgress, progressFolder, retainedMailKeys, shortcutTarget,
   sieveSnippet, smartMembers } from "./lib";
@@ -367,6 +367,25 @@ describe("parseProgress", () => {
     expect(parseProgress("queued…")).toBeNull();
     expect(parseProgress("0/0")).toBeNull();
     expect(parseProgress("")).toBeNull();
+  });
+});
+
+describe("fmtTs", () => {
+  const local = (y: number, mo: number, d: number, h: number, mi: number) =>
+    new Date(y, mo, d, h, mi).getTime() / 1000;
+  const year = new Date().getFullYear();
+  it("an epoch timestamp in local time; this year without the year", () => {
+    expect(fmtTs(local(year, 7, 31, 3, 30), "en")).toBe("31 Aug, 03:30");
+    expect(fmtTs(local(year, 0, 5, 14, 5), "en")).toBe("5 Jan, 14:05");
+  });
+  it("another year adds the year; time: false drops the clock", () => {
+    expect(fmtTs(local(2020, 7, 31, 3, 30), "en")).toBe("31 Aug 2020, 03:30");
+    expect(fmtTs(local(2020, 7, 31, 3, 30), "en", false)).toBe("31 Aug 2020");
+    expect(fmtTs(local(year, 7, 31, 3, 30), "en", false)).toBe("31 Aug");
+  });
+  it("German", () => {
+    expect(fmtTs(local(year, 7, 31, 3, 30), "de")).toBe("31. Aug., 03:30");
+    expect(fmtTs(local(2020, 7, 31, 3, 30), "de", false)).toBe("31. Aug. 2020");
   });
 });
 
