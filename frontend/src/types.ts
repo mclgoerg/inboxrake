@@ -835,6 +835,9 @@ export interface Config {
   auth: AuthCfg;
   protected: string[];
   categories: Record<string, string[]>;
+  /** The keywords the six built-in categories ship with (read-only);
+   *  absent from older backends. */
+  builtin_categories?: Record<string, string[]>;
   new_sender_window_days: number;
   ai: {
     provider: "anthropic" | "foundry" | "openai" | "ollama";

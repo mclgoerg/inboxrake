@@ -851,6 +851,10 @@ test("picking the local index saves it and points to the index panel",
       .disabled).toBe(false);
     fireEvent.click(screen.getByRole("menuitemradio",
       { name: /Local word index/ }));
+    // the short note is there, the long text behind its disclosure
+    expect(screen.getByText(/Stores no readable mail text/)).toBeTruthy();
+    expect(screen.queryByText(/stores NO readable mail text/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "How the index works" }));
     expect(screen.getByText(/stores NO readable mail text/)).toBeTruthy();
     // not saved as "local" yet: the build controls wait for the save
     expect(screen.getByText(/Save the settings first/)).toBeTruthy();
@@ -1306,7 +1310,9 @@ test("protected senders and categories save the same payload the text areas did"
   fireEvent.keyDown(input(), { key: "Enter" });
   openSection("categories");
   // an empty list = a built-in turned off: visible, and stored as before
-  expect(screen.getByText(/Turned off/)).toBeTruthy();
+  expect(within(screen.getByRole("group", { name: "Shipping" })).getByRole(
+    "switch", { name: "Shipping enabled" }).getAttribute("aria-checked"))
+    .toBe("false");
   fireEvent.click(screen.getByRole("button", { name: "Add a keyword to insurance" }));
   const kw = screen.getByRole("textbox", { name: "Add a keyword to insurance" });
   fireEvent.change(kw, { target: { value: "huk" } });
@@ -1361,7 +1367,9 @@ test("AI review without a cap shows what was spent, no ring", () => {
   render(<Settings section="ai" account="default"
     cfg={{ ...cfg, ai: { ...cfg.ai, month_cost: 1.25 } }} />);
   expect(screen.queryByRole("img", { name: /of/ })).toBeNull();
-  expect(screen.getByText(/spent this month: \$1\.25/)).toBeTruthy();
+  expect(screen.getByText(/\$1\.25 spent/)).toBeTruthy();
+  // "This month" once: the title says it, the line does not repeat it
+  expect(screen.queryByText(/spent this month/)).toBeNull();
   // no saved key: the field is there at once
   expect(screen.getByLabelText("API key", { selector: "input" })).toBeTruthy();
 });
@@ -1445,4 +1453,93 @@ test("edge swipe back leaves a section for the root list (installed app only)", 
   } finally {
     vi.unstubAllGlobals(); vi.restoreAllMocks();
   }
+});
+
+
+// ----------------------------------------------------- settings polish (F7)
+
+test("categories: the built-in keywords come from the config; off / edit save the same payload", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={{ ...cfg, builtin_categories: {
+    shipping: ["parcel", "tracking", "shipment", "delivery", "courier"],
+    finance: ["invoice", "billing"] } }} account="default"
+  section="categories" />);
+  const shipping = within(screen.getByRole("group", { name: "Shipping" }));
+  expect(shipping.getByText("parcel")).toBeTruthy();
+  expect(shipping.getByText("+1 more")).toBeTruthy();
+  expect(screen.getByText("Your categories")).toBeTruthy();
+  fireEvent.click(shipping.getByRole("switch", { name: "Shipping enabled" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].categories).toEqual({ shipping: [] });
+});
+
+test("auto-scan: the footnote only talks about 'Start at minute' while that control is on screen", () => {
+  render(<Settings cfg={cfg} account="default" section="autoscan" />);
+  expect(screen.getByText(/Rescans this account on a timer/)).toBeTruthy();
+  expect(screen.queryByText(/Start at minute/)).toBeNull();
+  fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
+  expect(screen.getAllByText(/Start at minute/).length).toBeGreaterThan(1);
+});
+
+test("account: 'switch accounts' is only advice while there is one account", () => {
+  const { unmount } = render(<Settings cfg={cfg} account="default" />);
+  expect(screen.getByText(/views never mix/)).toBeTruthy();
+  expect(screen.queryByText(/once more than one is set up/)).toBeNull();
+  unmount();
+  render(<Settings account="default" cfg={{ ...cfg, accounts: {
+    default: cfg.accounts.default } }} />);
+  expect(screen.getByText(/once more than one is set up/)).toBeTruthy();
+});
+
+test("backup: the export row does not repeat the footnote", () => {
+  renderWithDialogs();
+  openSection("backup");
+  expect(screen.queryByText(/are never exported/)).toBeNull();
+  expect(screen.getAllByText(/never part of a backup/)).toHaveLength(1);
+});
+
+test("sign-in: the demo hint sits inside its section, texts without 'as before' / 'below'", async () => {
+  render(<Settings cfg={cfg} account="default" section="signin" />);
+  const help = screen.getByText(/Protects the API with a login/);
+  expect(help.textContent).not.toMatch(/as before/);
+  expect(screen.getByText(/capped per user and month/).textContent)
+    .not.toMatch(/below/);
+  expect(screen.getByText(/all of its accounts together/)).toBeTruthy();
+  expect(await screen.findByText(/Mails \(all accounts\)/)).toBeTruthy();
+});
+
+test("AI review: the price rows say 'auto' once (no second copy as placeholder)", () => {
+  render(<Settings cfg={cfg} account="default" section="ai" />);
+  expect(screen.getAllByText("auto: 2")).toHaveLength(1);
+  const input = screen.getByLabelText("Input price ($ per 1M tokens)");
+  expect(input.getAttribute("placeholder")).toBeFalsy();
+});
+
+test("special folders: the role is a label with an icon, the folder its value (no 'Trash Trash')", async () => {
+  foldersResult = { wildcards: [], special: [{
+    role: "trash", raw: "Bin", name: "Bin", source: "flag", ambiguous: false,
+    choices: [{ raw: "Bin", name: "Bin", count: 2 }] }],
+  folders: [{ raw: "Bin", name: "Bin", role: "trash", excluded: true }] };
+  try {
+    const { container } = render(<Settings cfg={cfg} account="default" />);
+    const row = await waitFor(() => {
+      const r = container.querySelector('[data-role="trash"]');
+      if (!r) throw new Error("no row");
+      return r as HTMLElement;
+    });
+    expect(within(row).getByText("Trash")).toBeTruthy();
+    expect(within(row).getByText("Bin")).toBeTruthy();
+    expect(row.querySelector("svg")).toBeTruthy();
+    // one folder to choose from: a value, not a picker
+    expect(within(row).queryByRole("button", { name: /Which folder/ })).toBeNull();
+  } finally {
+    foldersResult = null;
+  }
+});
+
+test("the Categories badge counts only your own categories, not built-in overrides", () => {
+  render(<Settings cfg={{ ...cfg, categories: { shipping: [], travel: ["x"],
+    hobby: ["y"] } }} account="default" section={null} />);
+  const rowBtn = screen.getByRole("button", { name: /^Categories/ });
+  expect(rowBtn.textContent).toBe("Categories1");
 });

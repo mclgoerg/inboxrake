@@ -1023,7 +1023,7 @@ def effective_ai(cfg: dict) -> tuple[dict, str | None]:
 def masked_config(cfg: dict) -> dict:
     admin = is_admin()
     ai_eff, ai_source = effective_ai(cfg)
-    from . import oauthflow
+    from . import mailops, oauthflow
     out = {
         "accounts": {
             n: {**b, "password": "", "password_set": bool(b["password"]),
@@ -1038,6 +1038,9 @@ def masked_config(cfg: dict) -> dict:
         "oauth_ms_device_available": oauthflow.has_shared_microsoft_client(),
         "protected": normalize_protected(cfg.get("protected")),
         "categories": cfg.get("categories") or {},
+        # the keywords the six built-in categories ship with (read-only;
+        # Settings lists them next to the user's overrides in "categories")
+        "builtin_categories": {n: list(k) for n, k in mailops.CATEGORY_RULES},
         "new_sender_window_days": cfg.get("new_sender_window_days",
                                           knownsenders.NEW_SENDER_WINDOW_DAYS),
         # Non-admins get the mode (their UI needs it) but none of the

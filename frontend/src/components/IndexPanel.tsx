@@ -1,10 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { localIso } from "../activity";
 import { api } from "../api";
-import { t } from "../i18n";
-import { fmtSizeGb as fmtSize } from "../lib";
+import { getLang, t } from "../i18n";
+import { fmtDate, fmtSizeGb as fmtSize } from "../lib";
 
 import type { BodySearchMode, IndexEstimate, IndexInfo } from "../types";
 import { Button, confirmDialog, ProgressBar, Spinner } from "./ui";
+
+/** The "how the index works" note under the index: one short line and the
+ *  long technical text behind a disclosure. */
+export function IndexNote() {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <span className="block">
+      {t("index.short")}{" "}
+      <button type="button" aria-expanded={open} aria-controls={id}
+        onClick={() => setOpen(!open)}
+        className="cursor-pointer text-accent underline
+          underline-offset-2">
+        {t("index.how")}
+      </button>
+      {open && <span id={id} className="mt-1 block">
+        {t("body_search.local_help")}</span>}
+    </span>
+  );
+}
 
 /** Settings -> mail-text search = "local index": status of the account's
  *  keyed word index plus build / update / rebuild / cancel / delete. The
@@ -83,7 +104,8 @@ export function IndexPanel({ account, savedMode, secretKeySet }: {
   if (!info) return <div className="mt-2"><Spinner /></div>;
 
   const built = info.built_ts
-    ? new Date(info.built_ts * 1000).toLocaleString() : "";
+    ? fmtDate(localIso(info.built_ts), undefined,
+      { lang: getLang(), time: true }) : "";
   return (
     <div className="mt-2 flex flex-col gap-2">
       {running && (
@@ -102,14 +124,15 @@ export function IndexPanel({ account, savedMode, secretKeySet }: {
         {info.job.status === "running"
           ? null
           : info.usable
-            ? t("index.status", { docs: info.docs, ts: built })
+            ? t("index.status", { docs: info.docs, ts: built,
+              size: fmtSize(info.bytes) })
             : info.reason === "index_key"
               ? t("index.key_changed") : t("index.none")}
         {info.job.status === "error" && (
           <span className="ml-2 text-danger-fg">{info.job.error}</span>
         )}
       </div>
-      {info.exists && (
+      {info.exists && !(info.usable && !running) && (
         <div className="type-meta text-muted">
           {t("index.disk", { size: fmtSize(info.bytes) })}
         </div>
@@ -121,12 +144,12 @@ export function IndexPanel({ account, savedMode, secretKeySet }: {
           {tight(info.estimate) && ` ${t("index.confirm_tight")}`}
         </div>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {running ? (
           <Button variant="secondary" onClick={() => act(() =>
             api.indexCancel(account))}>{t("cancel")}</Button>
         ) : (<>
-          <Button onClick={() => build(false)}>
+          <Button variant="tinted" onClick={() => build(false)}>
             {info.usable ? t("index.update") : t("index.build")}
           </Button>
           {info.usable && (
@@ -135,7 +158,8 @@ export function IndexPanel({ account, savedMode, secretKeySet }: {
             </Button>
           )}
           {info.exists && (
-            <Button variant="secondary" onClick={async () => {
+            <Button variant="danger-quiet" className="ml-auto"
+              onClick={async () => {
               if (await confirmDialog({
                 title: t("index.delete_title"),
                 body: t("index.delete_body", { name: account }),

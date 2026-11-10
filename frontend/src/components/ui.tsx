@@ -544,7 +544,8 @@ export function Button({ variant = "primary", size = "md", label, title,
  * locally. They accept all native props incl. ref (React 19). */
 
 const CONTROL = `min-h-9 coarse:min-h-10 rounded-control border border-line
-  bg-panel2 px-3 py-1.5 text-left type-body focus:border-accent ${DISABLED}`;
+  bg-panel2 px-3 py-1.5 text-left type-body focus:border-accent ${DISABLED}
+  disabled:placeholder:text-muted`;
 
 export function Input({ className = "", ...rest }:
   ComponentProps<"input">) {
@@ -2893,13 +2894,18 @@ export function IconTile({ tone = "neutral", children }: {
  *  control or value on the right. With `onClick` the whole row is a button
  *  with a trailing chevron (drill-down; `value` shows before it; a plain row
  *  shows `value` as muted text before its control). `stack`
- *  puts the children under the label at full width (an input, a text area).
+ *  puts the children under the label at full width (an input, a text area);
+ *  `stackOnPhone` does that below 640 px only (the appearance pictures).
+ *  A row with a `sub` text and a control keeps the control beside the label
+ *  and, on phones, lets the sub text run the full width below both.
  *  `danger` makes it a destructive text row. Switch / Stepper inside take
  *  their name from the label. */
 export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
-  stack = false, disabled, current, expanded, children }: {
+  stack = false, stackOnPhone = false, disabled, current, expanded,
+  children }: {
   label: ReactNode; sub?: ReactNode; icon?: ReactNode; value?: ReactNode;
   onClick?: () => void; danger?: boolean; stack?: boolean;
+  stackOnPhone?: boolean;
   disabled?: boolean;
   /** The row of the page that is open (`aria-current`). */
   current?: boolean;
@@ -2942,12 +2948,32 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
       </button>
     );
   }
+  if (sub && children != null && !icon && !stack && !stackOnPhone
+    && !hasValue) {
+    // label + control on one line; the sub text under the label from 640 px,
+    // under both (full width) on phones
+    return (
+      <RowContext.Provider value={ctx}>
+        <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto]
+          items-center gap-x-3 px-4 py-2.5">
+          <span id={ctx.labelId} className={`block type-body
+            ${danger ? "text-danger-fg" : ""}`}>{label}</span>
+          <div className="col-start-2 row-start-1 min-w-0 sm:row-span-2">
+            {children}
+          </div>
+          <span id={ctx.descId} className="col-span-2 row-start-2 block
+            type-meta text-muted sm:col-span-1">{sub}</span>
+        </div>
+      </RowContext.Provider>
+    );
+  }
   return (
     <RowContext.Provider value={ctx}>
       <div role={hasValue ? "group" : undefined}
         aria-labelledby={hasValue ? ctx.labelId : undefined}
         aria-describedby={hasValue ? `${id}-v` : undefined}
         className={`flex gap-3 px-4 py-2.5 ${stack ? "flex-col"
+        : stackOnPhone ? "max-sm:flex-col sm:min-h-12 sm:items-center"
         : "min-h-12 items-center"}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {iconEl}
@@ -2958,7 +2984,8 @@ export function SettingsRow({ label, sub, icon, value, onClick, danger = false,
             type-body text-muted">{value}</span>
         )}
         {children != null && (
-          <div className={stack ? "min-w-0" : "min-w-0 shrink-0"}>
+          <div className={stack ? "min-w-0"
+            : stackOnPhone ? "min-w-0 sm:shrink-0" : "min-w-0 shrink-0"}>
             {children}
           </div>
         )}
