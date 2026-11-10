@@ -1,12 +1,11 @@
-import { CircleMinus, CirclePlus, Pencil, RotateCcw, Trash2, X }
-  from "lucide-react";
+import { CircleMinus, CirclePlus, Pencil, Trash2, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
+import { categoryName } from "../categories";
 import { t } from "../i18n";
-import { Avatar, Button, Input, SettingsGroup, SettingsRow, Switch, Tag }
+import { Avatar, Button, Input, SettingsGroup, SettingsRow, Switch }
   from "./ui";
 
-/* The two list editors of Settings: Protected senders and Custom
- * categories. Both stay a plain text underneath (one entry / "name: kw1, kw2"
+/* The two list editors of Settings: Protected senders and Categories. Both stay a plain text underneath (one entry / "name: kw1, kw2"
  * per line) - the exact value that is staged, compared and saved - and only
  * edit it through add / remove / rename, so nothing about what is stored
  * changed. */
@@ -165,11 +164,12 @@ export function ProtectedList({ text, onChange }: {
   );
 }
 
-/* ------------------------------ custom categories ---------------------------- */
+/* ---------------------------------- categories ------------------------------- */
 
-/** The categories the backend ships (`mailops.CATEGORY_RULES`). A custom
- *  category with one of these names replaces its keywords; with no keywords
- *  it turns that built-in off. */
+/** The categories the backend ships (`mailops.CATEGORY_RULES`). A stored
+ *  entry with one of these names replaces its keywords; with no keywords it
+ *  turns that built-in off. Their keyword lists come with the config
+ *  (`builtin_categories`). */
 export const BUILTIN_CATEGORIES = ["shipping", "finance", "shopping",
   "social", "travel", "dev/cloud"];
 
@@ -200,33 +200,82 @@ const CHIP_X = `inline-flex min-h-8 min-w-8 cursor-pointer items-center
 const ICON_BTN = `inline-flex min-h-11 min-w-11 cursor-pointer items-center
   justify-center rounded-full text-muted transition-colors hover:text-body`;
 
-/** One category: name (renamable), keyword chips with × and "+ keyword", and
- *  for a built-in name the on / off switch ("off" = the stored empty list). */
-function CategoryRow({ cat, builtin, stored, startAdding, nameError, onChange,
-  onRename, onToggle, onDelete }: {
-  cat: Category; builtin: boolean;
-  /** In the text (an override); false = a built-in added by name that
-   *  stores nothing until it has a keyword. */
-  stored: boolean; startAdding: boolean;
+/** How many keywords a built-in row shows before "+N more". */
+const SHOWN_KEYWORDS = 4;
+
+/** Keyword chips with × and a "+ keyword" input; `onChange` gets the whole
+ *  next list. `name` is only for the accessible names. */
+function KeywordChips({ name, kws, startAdding = false, onChange }: {
+  name: string; kws: string[]; startAdding?: boolean;
+  onChange: (kws: string[]) => void;
+}) {
+  const [adding, setAdding] = useState(startAdding);
+  const [kw, setKw] = useState("");
+  const addBtn = useRef<HTMLButtonElement>(null);
+  const addKeywords = (raw: string) => {
+    const more = raw.split(",").map((s) => s.trim().toLowerCase())
+      .filter((s) => s && !kws.includes(s));
+    if (more.length) onChange([...kws, ...new Set(more)]);
+    setKw("");
+  };
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {kws.map((k) => (
+        <span key={k} className="inline-flex items-center rounded-full
+          bg-chip pl-3 type-meta">
+          {k}
+          <button type="button" className={CHIP_X}
+            aria-label={t("categories.kw_remove", { kw: k, name })}
+            onClick={() => onChange(kws.filter((x) => x !== k))}>
+            <X size={14} aria-hidden />
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <Input autoFocus className="w-36"
+          value={kw} placeholder={t("categories.kw_ph")}
+          aria-label={t("categories.kw_add_to", { name })}
+          onChange={(e) => setKw(e.target.value)}
+          onBlur={() => { addKeywords(kw); setAdding(false); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); addKeywords(kw); }
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              setKw("");
+              setAdding(false);
+              refocus(addBtn.current);
+            }
+          }} />
+      ) : (
+        <button ref={addBtn} type="button" onClick={() => setAdding(true)}
+          aria-label={t("categories.kw_add_to", { name })}
+          className="inline-flex min-h-8 cursor-pointer items-center gap-1
+            rounded-full px-2 type-meta text-accent transition-colors
+            hover:bg-chip coarse:min-h-11">
+          <CirclePlus size={14} aria-hidden />
+          {t("categories.kw_ph")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const sameKeywords = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((k) => b.includes(k));
+
+/** A category of the user's own: name (renamable, deletable) and its
+ *  keyword chips. */
+function CustomRow({ cat, startAdding, nameError, onChange, onRename,
+  onDelete }: {
+  cat: Category; startAdding: boolean;
   nameError: (name: string) => string | null;
   onChange: (kws: string[]) => void;
   onRename: (name: string) => void;
-  onToggle: (on: boolean) => void;
   onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(cat.name);
   const [err, setErr] = useState("");
-  const [adding, setAdding] = useState(startAdding);
-  const [kw, setKw] = useState("");
-  const addBtn = useRef<HTMLButtonElement>(null);
-  const off = builtin && stored && cat.kws.length === 0;
-  const addKeywords = (raw: string) => {
-    const more = raw.split(",").map((s) => s.trim().toLowerCase())
-      .filter((s) => s && !cat.kws.includes(s));
-    if (more.length) onChange([...cat.kws, ...new Set(more)]);
-    setKw("");
-  };
   const commitRename = () => {
     const name = draft.trim().toLowerCase();
     if (name === cat.name) { setRenaming(false); return; }
@@ -253,16 +302,8 @@ function CategoryRow({ cat, builtin, stored, startAdding, nameError, onChange,
             }} />
         ) : (
           <span className="min-w-0 flex-1 truncate type-body font-semibold">
-            {cat.name}
+            {categoryName(cat.name)}
           </span>
-        )}
-        {builtin && !renaming && <Tag>{t("categories.builtin")}</Tag>}
-        {builtin && !renaming && (
-          // off = the stored empty list (only this switch makes it); on
-          // again drops the override, so the built-in keywords are back
-          <Switch checked={!off}
-            label={t("categories.enabled", { name: cat.name })}
-            onChange={onToggle} />
         )}
         {!renaming && (
           <button type="button" className={ICON_BTN}
@@ -273,152 +314,153 @@ function CategoryRow({ cat, builtin, stored, startAdding, nameError, onChange,
             <Pencil size={16} aria-hidden />
           </button>
         )}
-        {!renaming && !off && (builtin ? stored : true) && (
+        {!renaming && (
           <button type="button" className={ICON_BTN}
-            aria-label={t(builtin ? "categories.restore"
-              : "categories.delete", { name: cat.name })}
-            title={t(builtin ? "categories.restore"
-              : "categories.delete", { name: cat.name })}
+            aria-label={t("categories.delete", { name: cat.name })}
+            title={t("categories.delete", { name: cat.name })}
             onClick={onDelete}>
-            {builtin ? <RotateCcw size={16} aria-hidden />
-              : <Trash2 size={16} aria-hidden />}
+            <Trash2 size={16} aria-hidden />
           </button>
         )}
       </div>
       {err && (
         <p role="alert" className="mt-1 type-meta text-danger-fg">{err}</p>
       )}
-      {off ? (
-        <p className="mt-1 type-meta text-muted">{t("categories.off")}</p>
-      ) : (<>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {cat.kws.map((k) => (
-            <span key={k} className="inline-flex items-center rounded-full
-              bg-chip pl-3 type-meta">
-              {k}
-              <button type="button" className={CHIP_X}
-                aria-label={t("categories.kw_remove",
-                  { kw: k, name: cat.name })}
-                onClick={() => onChange(cat.kws.filter((x) => x !== k))}>
-                <X size={14} aria-hidden />
-              </button>
-            </span>
-          ))}
-          {adding ? (
-            <Input autoFocus className="w-36"
-              value={kw} placeholder={t("categories.kw_ph")}
-              aria-label={t("categories.kw_add_to", { name: cat.name })}
-              onChange={(e) => setKw(e.target.value)}
-              onBlur={() => { addKeywords(kw); setAdding(false); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); addKeywords(kw); }
-                else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setKw("");
-                  setAdding(false);
-                  refocus(addBtn.current);
-                }
-              }} />
-          ) : (
-            <button ref={addBtn} type="button" onClick={() => setAdding(true)}
-              aria-label={t("categories.kw_add_to", { name: cat.name })}
-              className="inline-flex min-h-8 cursor-pointer items-center
-                gap-1 rounded-full px-2 type-meta text-accent
-                transition-colors hover:bg-chip coarse:min-h-11">
-              <CirclePlus size={14} aria-hidden />
-              {t("categories.kw_ph")}
-            </button>
-          )}
-        </div>
-        {builtin ? (
-          <p className="mt-1 type-meta text-muted">{t("categories.replaced")}</p>
-        ) : cat.kws.length === 0 && (
-          <p className="mt-1 type-meta text-muted">{t("categories.no_kw")}</p>
-        )}
-      </>)}
+      <KeywordChips name={cat.name} kws={cat.kws} startAdding={startAdding}
+        onChange={onChange} />
+      {cat.kws.length === 0 && (
+        <p className="mt-1 type-meta text-muted">{t("categories.no_kw")}</p>
+      )}
     </div>
   );
 }
 
-/** Custom categories as one row per category (see `CategoryRow`), plus an
- *  "Add category…" row. `text` is the stored value ("name: kw1, kw2" per
- *  line, an empty list = a built-in turned off). */
-export function CategoryList({ text, onChange }: {
+/** One built-in category: its name, the first keywords as chips and
+ *  "+N more", Edit and the on / off switch. `override` is the stored list
+ *  (undefined = none: the built-in keywords apply; empty = turned off).
+ *  `onSet(null)` drops the override. */
+function BuiltinRow({ name, defaults, override, onSet }: {
+  name: string; defaults: string[]; override: string[] | undefined;
+  onSet: (kws: string[] | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const off = override !== undefined && override.length === 0;
+  const edited = !!override && override.length > 0;
+  const kws = edited ? override : defaults;
+  const label = categoryName(name);
+  // an edit that ends up with the built-in list (or nothing) is no override
+  const setKeywords = (next: string[]) =>
+    onSet(next.length === 0 || sameKeywords(next, defaults) ? null : next);
+  return (
+    <div role="group" aria-label={label} className="px-4 py-3">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-h-8 items-center gap-2">
+            <span className="type-body font-semibold">{label}</span>
+            {off && <span className="type-meta text-muted">
+              {t("categories.off_label")}</span>}
+            {edited && !editing && <span className="type-meta text-muted">
+              {t("categories.edited")}</span>}
+          </div>
+          {editing && !off ? (
+            <KeywordChips name={label} kws={kws} onChange={setKeywords} />
+          ) : kws.length > 0 && (
+            <div className={`mt-1 flex flex-wrap items-center gap-1.5
+              ${off ? "text-faint" : ""}`}>
+              {kws.slice(0, SHOWN_KEYWORDS).map((k) => (
+                <span key={k} className="inline-flex min-h-6 items-center
+                  rounded-badge bg-chip px-2 type-meta">{k}</span>
+              ))}
+              {kws.length > SHOWN_KEYWORDS && (
+                <span className="type-meta text-muted">
+                  {t("categories.more", { n: kws.length - SHOWN_KEYWORDS })}
+                </span>
+              )}
+            </div>
+          )}
+          {editing && !off && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <p className="type-meta text-muted">{t("categories.replaced")}</p>
+              {edited && (
+                <Button size="sm" variant="quiet"
+                  aria-label={t("categories.restore", { name: label })}
+                  onClick={() => onSet(null)}>
+                  {t("categories.restore_short")}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button size="sm" variant="secondary" disabled={off}
+            aria-label={t(editing ? "categories.done_edit"
+              : "categories.edit", { name: label })}
+            aria-expanded={editing}
+            onClick={() => setEditing(!editing)}>
+            {t(editing ? "menu.done" : "categories.edit_short")}
+          </Button>
+          {/* off = the stored empty list (only this switch makes it); on
+              again drops the override, so the built-in keywords are back */}
+          <Switch checked={!off}
+            label={t("categories.enabled", { name: label })}
+            onChange={(on) => { setEditing(false); onSet(on ? null : []); }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Categories as lists: your own (one row each, plus "Add category…") above
+ *  the six built-in ones with their keywords. `text` is the stored value
+ *  ("name: kw1, kw2" per line; a built-in's entry = its replaced keywords,
+ *  an empty list = turned off). `builtin` holds the shipped keyword lists. */
+export function CategoryList({ text, onChange, builtin }: {
   text: string; onChange: (text: string) => void;
+  builtin?: Record<string, string[]>;
 }): ReactNode {
   const cats = parseCategories(text);
   const [fresh, setFresh] = useState<string | null>(null);
-  // Built-ins shown without an override (added by name, or just given back
-  // their keywords): they are not in the text.
-  const [bare, setBare] = useState<string[]>([]);
-  const shown = [...cats.map((c) => ({ ...c, stored: true })),
-    ...bare.filter((n) => !cats.some((c) => c.name === n))
-      .map((name) => ({ name, kws: [] as string[], stored: false }))];
+  const custom = cats.filter((c) => !BUILTIN_CATEGORIES.includes(c.name));
   const set = (next: Category[]) => onChange(categoriesText(next));
-  const unbare = (name: string) => setBare((b) => b.filter((n) => n !== name));
+  // every name is taken: the built-ins are always listed below
   const nameError = (name: string): string | null =>
     !name ? t("categories.err_empty")
       : name.includes(":") ? t("categories.err_colon")
-      : shown.some((c) => c.name === name)
+      : cats.some((c) => c.name === name) || BUILTIN_CATEGORIES.includes(name)
         ? t("categories.err_dup", { name }) : null;
-  return (
-    <SettingsGroup footnote={t("categories.help")}>
-      {shown.length === 0 && (
-        <p className="px-4 py-3 type-body text-muted">{t("categories.none")}</p>
-      )}
-      {shown.map((c) => {
-        const builtin = BUILTIN_CATEGORIES.includes(c.name);
-        const i = cats.findIndex((x) => x.name === c.name);
-        return (
-          <CategoryRow key={c.name} cat={c} builtin={builtin}
-            stored={c.stored} startAdding={fresh === c.name}
-            nameError={nameError}
-            onChange={(kws) => {
-              if (builtin && kws.length === 0) {
-                // the last chip of an override goes: the override goes
-                // with it (the built-in keywords are back), it is not "off"
-                set(cats.filter((_, j) => j !== i));
-                setBare((b) => [...b, c.name]);
-              } else if (c.stored) {
-                set(cats.map((x, j) => j === i ? { ...x, kws } : x));
-              } else {
-                unbare(c.name);
-                set([...cats, { name: c.name, kws }]);
-              }
-            }}
-            onRename={(name) => {
-              if (c.stored) set(cats.map((x, j) => j === i ? { ...x, name } : x));
-              else { unbare(c.name); set([...cats, { name, kws: [] }]); }
-            }}
-            onDelete={() => {
-              unbare(c.name);
-              if (c.stored) set(cats.filter((_, j) => j !== i));
-            }}
-            // the switch: off = the empty-list override, on = no override
-            onToggle={(on) => {
-              if (on) {
-                set(cats.filter((_, j) => j !== i));
-                setBare((b) => [...b, c.name]);
-              } else {
-                unbare(c.name);
-                set(c.stored ? cats.map((x, j) =>
-                  j === i ? { ...x, kws: [] } : x)
-                  : [...cats, { name: c.name, kws: [] }]);
-              }
-            }} />
-        );
-      })}
+  return (<>
+    <p className="mb-4 type-meta text-muted">{t("categories.intro")}</p>
+    <SettingsGroup header={t("categories.yours")}>
+      {custom.map((c) => (
+        <CustomRow key={c.name} cat={c} startAdding={fresh === c.name}
+          nameError={nameError}
+          onChange={(kws) => set(cats.map((x) =>
+            x.name === c.name ? { ...x, kws } : x))}
+          onRename={(name) => set(cats.map((x) =>
+            x.name === c.name ? { ...x, name } : x))}
+          onDelete={() => set(cats.filter((x) => x.name !== c.name))} />
+      ))}
       <InlineAdd label={t("categories.add")} placeholder={t("categories.add_ph")}
         onSubmit={(raw) => {
           const name = raw.trim().toLowerCase();
           const e = nameError(name);
           if (e) return e;
           setFresh(name);
-          // a built-in name starts ON and stores nothing until it has a keyword
-          if (BUILTIN_CATEGORIES.includes(name)) setBare((b) => [...b, name]);
-          else set([...cats, { name, kws: [] }]);
+          set([...cats, { name, kws: [] }]);
           return null;
         }} />
     </SettingsGroup>
-  );
+    <SettingsGroup header={t("categories.builtin_h")}
+      footnote={t("categories.help")}>
+      {BUILTIN_CATEGORIES.map((name) => (
+        <BuiltinRow key={name} name={name} defaults={builtin?.[name] ?? []}
+          override={cats.find((c) => c.name === name)?.kws}
+          onSet={(kws) => set(kws === null
+            ? cats.filter((c) => c.name !== name)
+            : cats.some((c) => c.name === name)
+              ? cats.map((c) => c.name === name ? { name, kws } : c)
+              : [...cats, { name, kws }])} />
+      ))}
+    </SettingsGroup>
+  </>);
 }

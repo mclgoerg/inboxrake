@@ -61,8 +61,9 @@ export const EN: Record<string, string> = {
   "account.label": "Account to edit",
   "account.add": "Add account",
   "account.hint":
-    "Each account is scanned and cleaned separately - views never mix. "
-    + "Switch accounts in the header once more than one is set up.",
+    "Each account is scanned and cleaned separately - views never mix.",
+  "account.hint_switch":
+    "Switch accounts in the header once more than one is set up.",
   "account.rename_title": "Rename account",
   "account.rename_confirm": "Rename",
   "account.err_empty": "Enter a name.",
@@ -98,10 +99,10 @@ export const EN: Record<string, string> = {
   "login.section": "Login (optional)",
   "login.help":
     "Protects the API with a login. \"None\" trusts your network or a "
-    + "reverse-proxy auth layer (as before). Password = one shared "
-    + "password. SSO/OIDC = sign in via an OpenID Connect provider "
-    + "(Pocket ID, Authentik, Keycloak, …); register this app there "
-    + "with the callback URL <origin>/api/oidc/callback first.",
+    + "reverse-proxy auth layer. Password = one shared password. SSO/OIDC = "
+    + "sign in via an OpenID Connect provider (Pocket ID, Authentik, "
+    + "Keycloak, …); register this app there with the callback URL "
+    + "<origin>/api/oidc/callback first.",
   "login.mode": "Login method",
   "login.mode_none": "None (reverse proxy / trusted network)",
   "login.mode_password": "Password",
@@ -227,16 +228,17 @@ export const EN: Record<string, string> = {
   "shared.help":
     "Optionally share one server-side AI key: users without their own "
     + "key use it automatically, capped per user and month by the "
-    + "default budget below (users may lower their cap, never raise it).",
+    + "default budget (users may lower their cap, never raise it).",
   "shared.enabled": "Share this key with all users",
   "shared.budget": "Default monthly budget per user ($)",
   "ai.shared_key_ph": "using the shared server key",
   "usage.section": "User statistics",
   "usage.help":
-    "Usage per workspace - counts, AI spend and disk only. Inboxrake "
-    + "never shows you other users' mail data, account names or senders.",
+    "Usage per workspace, all of its accounts together - counts, AI spend "
+    + "and disk only. Inboxrake never shows you other users' mail data, "
+    + "account names or senders.",
   "usage.user": "User / workspace",
-  "usage.mails": "Mails (last scan)",
+  "usage.mails": "Mails (all accounts)",
   "usage.cleaned": "Cleaned (month)",
   "usage.ai_month": "AI spend (month)",
   "usage.last_scan": "Last scan",
@@ -421,7 +423,9 @@ export const EN: Record<string, string> = {
     "The index was built with a different secret key and cannot be used - "
     + "rebuild it.",
   "index.building": "Indexing…",
-  "index.status": "{docs} mails indexed, last updated {ts}.",
+  "index.status": "{docs} mails indexed · last updated {ts} · {size}",
+  "index.short": "Stores no readable mail text.",
+  "index.how": "How the index works",
   "index.disk": "Disk space used: {size}",
   "index.build": "Build index",
   "index.update": "Update now",
@@ -462,6 +466,11 @@ export const EN: Record<string, string> = {
     + "answers locally. Turn it off to keep search to subject and sender.",
   "auto_scan.align": "Start at minute (0-59)",
   "auto_scan.help":
+    "Rescans this account on a timer, independent of any rule schedule - "
+    + "keeps the New-sender flag and the activity digest fresh without "
+    + "needing the app open. Skipped automatically while the account is busy "
+    + "with something else; it just retries on the next tick.",
+  "auto_scan.help_on":
     "Rescans this account on a timer, independent of any rule schedule - "
     + "keeps the New-sender flag and the activity digest fresh without "
     + "needing the app open. \"Start at minute\" aligns the cadence to a "
@@ -1427,19 +1436,26 @@ export const EN: Record<string, string> = {
     + "reached (raise it in settings).",
   "budget.label": "Monthly AI budget ($, 0 = unlimited)",
   "budget.none": "no cap",
-  "budget.month": "spent this month: {spent}",
+  "budget.spent": "{spent} spent",
+  "categories.intro":
+    "Inboxrake tags senders by keywords in the address and subject. The "
+    + "tags group the Senders list and the Smart tab.",
+  "categories.yours": "Your categories",
+  "categories.builtin_h": "Built in",
   "categories.help":
-    "A name matching a built-in category (shipping, finance, shopping, "
-    + "social, travel, dev/cloud) replaces its keywords; turn it off to "
-    + "disable it. New names add categories. A category you define or edit "
-    + "also decides the rows of the Smart tab. Applies right away to the "
-    + "Sender and Smart tabs, to the other tabs on the next scan.",
+    "Editing a built-in category replaces its keywords; turning it off hides "
+    + "its tag. Changes apply right away to Senders and Smart, to the other "
+    + "tabs on the next scan.",
   "categories.add": "Add category…",
   "categories.add_ph": "Category name, e.g. insurance",
-  "categories.none": "No custom categories yet.",
-  "categories.builtin": "Built-in",
   "categories.enabled": "{name} enabled",
-  "categories.off": "Turned off - this built-in category matches nothing.",
+  "categories.off_label": "off",
+  "categories.edited": "edited",
+  "categories.more": "+{n} more",
+  "categories.edit": "Edit {name}",
+  "categories.edit_short": "Edit",
+  "categories.done_edit": "Done editing {name}",
+  "categories.restore_short": "Restore defaults",
   "categories.replaced": "Your keywords replace the built-in ones.",
   "categories.no_kw": "No keywords yet - this category matches nothing.",
   "categories.kw_ph": "keyword",

@@ -41,3 +41,17 @@ def test_categories_config_roundtrip():
         "categories": {" Insurance ": ["Allianz", " ", "HUK"],
                        "bad": "not-a-list", "": ["x"]}}).json()
     assert cfg["categories"] == {"insurance": ["allianz", "huk"]}
+
+
+def test_config_lists_the_builtin_keywords():
+    cfg = client.get("/api/config").json()
+    shipped = cfg["builtin_categories"]
+    assert list(shipped) == [c for c, _ in mailops.CATEGORY_RULES]
+    assert shipped["shipping"][:3] == ["parcel", "paket", "tracking"]
+    # read-only: saving overrides never changes what the built-ins ship with
+    cfg = client.post("/api/config", json={
+        "categories": {"shipping": ["mycarrier"]}}).json()
+    assert cfg["categories"] == {"shipping": ["mycarrier"]}
+    assert cfg["builtin_categories"]["shipping"] == dict(
+        mailops.CATEGORY_RULES)["shipping"]
+    client.post("/api/config", json={"categories": {}})

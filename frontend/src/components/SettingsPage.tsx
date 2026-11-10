@@ -15,7 +15,7 @@ import type { AdminTenantStats, AppState, AuthMethod, AuthMode, AutoScanUnit, Bo
   DigestSchedule, FoldersResp, ImapAccount, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
 import { FolderSettings } from "./FolderSettings";
-import { IndexPanel } from "./IndexPanel";
+import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { CategoryList, parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
@@ -1029,7 +1029,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </div>
     </div>
     <p className="-mt-3 mb-6 px-3 type-meta text-muted">
-      {t("account.hint")}</p>
+      {t("account.hint")}{!multi && ` ${t("account.hint_switch")}`}</p>
     <SettingsGroup header={t("settings.connection")}
       footnote={presetFoot.length ? presetFoot.map((x) =>
         <span key={x} className="block">{x}</span>) : undefined}>
@@ -1136,7 +1136,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       {t("secrets.plaintext_warning")}
     </Notice>}
     <SettingsGroup>
-      <SettingsRow label={t("Appearance")}><AppearanceControl /></SettingsRow>
+      <SettingsRow label={t("Appearance")} stackOnPhone>
+        <AppearanceControl className="max-sm:justify-between" />
+      </SettingsRow>
       <SettingsRow label={t("Language")}>
         <PopupSelect name={t("Language")} value={getLang()}
           // The language applies with a reload: staged edits would be lost,
@@ -1175,8 +1177,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup header={t("settings.for_account", { name: editAcct })}
-      footnote={t(f.bodySearch === "local"
-        ? "body_search.local_help" : "body_search.help")}>
+      footnote={f.bodySearch === "local" ? undefined
+        : t("body_search.help")}>
       {scopeRow}
       <SettingsRow label={t("smart.min_label")} sub={t("smart.min_help")}>
         <Stepper min={2} max={50}
@@ -1201,7 +1203,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       )}
     </SettingsGroup>
     {f.bodySearch === "local" && (
-      <SettingsGroup padded>
+      <SettingsGroup padded footnote={<IndexNote />}>
         <IndexPanel account={editAcct}
           savedMode={(cfg.accounts[editAcct]?.body_search ?? "server"
             ) as BodySearchMode}
@@ -1223,7 +1225,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const categoriesBody = (
-    <CategoryList text={categoriesText} onChange={setCategoriesText} />
+    <CategoryList text={categoriesText} onChange={setCategoriesText}
+      builtin={cfg.builtin_categories} />
   );
 
   const filedBody = (
@@ -1232,9 +1235,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const digestBody = (<>
-    <DemoHint className="mb-3" />
     <DemoFieldset>
       <SettingsGroup footnote={t("digest.help")}>
+        <DemoHint className="px-4 py-2.5" />
         {scopeRow}
         <SettingsRow label={t("digest.schedule")}>
           <PopupSelect name={t("digest.schedule")} value={f.digestSchedule}
@@ -1285,7 +1288,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 
   const everyMax = f.autoScanUnit === "hours" ? 24 : 1440;
   const autoscanBody = (
-    <SettingsGroup footnote={t("auto_scan.help")}>
+    <SettingsGroup footnote={t(f.autoScanEnabled ? "auto_scan.help_on"
+      : "auto_scan.help")}>
       {scopeRow}
       <SettingsRow label={t("auto_scan.enabled")}>
         <Switch checked={f.autoScanEnabled}
@@ -1337,7 +1341,6 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const aiBody = (<>
-    <DemoHint className="mb-3" />
     <SettingsGroup padded>
       <div className="flex items-center gap-4">
         {aiCap > 0 ? (
@@ -1360,7 +1363,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             </div>
           </>) : (
             <div className="type-body">
-              {t("budget.month", { spent: fmtUsd(aiSpent) })}
+              {t("budget.spent", { spent: fmtUsd(aiSpent) })}
               <span className="type-meta text-muted">
                 {" "}· {t("budget.none")}</span>
             </div>
@@ -1371,6 +1374,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     <DemoFieldset>
     <SettingsGroup header={t("AI review (optional)")}
       footnote={t("ai.data_note")}>
+      <DemoHint className="px-4 py-2.5" />
       <SettingsRow label={t("Provider")}>
         <PopupSelect name={t("Provider")} value={f.provider}
           onChange={(v) => put("provider", v as Form["provider"])}
@@ -1410,14 +1414,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         sub={t("ai.price_auto", { n: pi })}>
         <DecimalInput className="w-28"
           aria-label={t("ai.price_in")} value={f.priceIn}
-          placeholder={`auto: ${pi}`}
           onChange={(v) => put("priceIn", v)} />
       </SettingsRow>
       <SettingsRow label={t("ai.price_out")}
         sub={t("ai.price_auto", { n: po })}>
         <DecimalInput className="w-28"
           aria-label={t("ai.price_out")} value={f.priceOut}
-          placeholder={`auto: ${po}`}
           onChange={(v) => put("priceOut", v)} />
       </SettingsRow>
       <SettingsRow label={t("budget.label")}>
@@ -1517,9 +1519,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsGroup>
     )}
 
-    <DemoHint className="mb-3" />
     <DemoFieldset>
     <SettingsGroup header={t("shared.section")} footnote={t("shared.help")}>
+      <DemoHint className="px-4 py-2.5" />
       <SettingsRow label={t("shared.enabled")}>
         <Switch checked={f.sharedEnabled}
           onChange={(on) => put("sharedEnabled", on)} />
@@ -1596,7 +1598,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
 
   const backupBody = (
     <SettingsGroup footnote={t("backup.help")}>
-      <SettingsRow label={t("backup.export")} sub={t("export.tip")}>
+      <SettingsRow label={t("backup.export")}>
         <Button variant="secondary"
           onClick={() => downloadFile("/api/export_config")}>
           {t("Export")}

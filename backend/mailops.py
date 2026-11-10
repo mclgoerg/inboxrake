@@ -60,23 +60,25 @@ clamp_smart_min = cfgmod.clamp_smart_min
 SMART_RULES_VERSION = 4
 SMART_MEMBERS_CAP = 300            # member addresses shipped per bucket row
 
-# Order matters: the first matching category becomes the primary tag.
+# Order matters: the first matching category becomes the primary tag. Inside
+# a category the order is only how Settings shows the keywords (the first few
+# as chips): plain words first, then names.
 CATEGORY_RULES: list[tuple[str, list[str]]] = [
-    ("shipping", ["dhl", "dpd", "ups.com", "fedex", "hermes", "gls-", "gls.",
-                  "usps", "royalmail", "postnl", "parcel", "paket",
-                  "tracking", "shipment", "lieferung", "zustellung"]),
-    ("finance", ["paypal", "klarna", "bank", "sparkasse", "volksbank", "n26",
-                 "revolut", "wise.com", "visa", "mastercard", "billing",
-                 "invoice", "rechnung", "payment", "mahnung"]),
-    ("shopping", ["amazon", "ebay", "zalando", "otto.de", "aliexpress",
-                  "etsy", "temu", "shein", "mediamarkt", "saturn", "ikea",
-                  "shop", "store", "order", "bestellung"]),
+    ("shipping", ["parcel", "paket", "tracking", "shipment", "lieferung",
+                  "zustellung", "dhl", "dpd", "ups.com", "fedex", "hermes",
+                  "gls-", "gls.", "usps", "royalmail", "postnl"]),
+    ("finance", ["invoice", "rechnung", "billing", "payment", "bank",
+                 "mahnung", "paypal", "klarna", "sparkasse", "volksbank",
+                 "n26", "revolut", "wise.com", "visa", "mastercard"]),
+    ("shopping", ["shop", "store", "order", "bestellung", "amazon", "ebay",
+                  "zalando", "otto.de", "aliexpress", "etsy", "temu",
+                  "shein", "mediamarkt", "saturn", "ikea"]),
     ("social", ["facebook", "instagram", "twitter", "x.com", "linkedin",
                 "tiktok", "reddit", "discord", "pinterest", "snapchat",
                 "youtube", "twitch", "whatsapp", "telegram"]),
-    ("travel", ["booking.com", "airbnb", "expedia", "bahn.de", "flixbus",
-                "lufthansa", "ryanair", "easyjet", "eurowings", "hotel",
-                "flight", "reise", "check24"]),
+    ("travel", ["hotel", "flight", "reise", "booking.com", "airbnb",
+                "expedia", "bahn.de", "flixbus", "lufthansa", "ryanair",
+                "easyjet", "eurowings", "check24"]),
     ("dev/cloud", ["github", "gitlab", "atlassian", "jira", "npmjs", "docker",
                    "aws", "amazonaws", "azure", "hetzner", "cloudflare",
                    "oracle", "proton.me", "protonmail", "google.com",

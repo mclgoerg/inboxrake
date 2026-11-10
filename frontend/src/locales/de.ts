@@ -1141,21 +1141,27 @@ export const DE: Record<string, string> = {
     + "erreicht (in den Einstellungen erhöhen).",
   "budget.label": "Monatliches KI-Budget ($, 0 = unbegrenzt)",
   "budget.none": "kein Limit",
-  "budget.month": "diesen Monat ausgegeben: {spent}",
+  "budget.spent": "{spent} ausgegeben",
   "Custom categories": "Eigene Kategorien",
+  "categories.intro":
+    "Inboxrake vergibt Tags anhand von Stichwörtern in Adresse und Betreff. "
+    + "Die Tags gruppieren die Liste Absender und den Tab Smart.",
+  "categories.yours": "Deine Kategorien",
+  "categories.builtin_h": "Eingebaut",
   "categories.help":
-    "Ein Name einer eingebauten Kategorie (shipping, finance, shopping, "
-    + "social, travel, dev/cloud) ersetzt deren Stichwörter; schalte sie "
-    + "aus, um sie zu deaktivieren. Neue Namen ergänzen Kategorien. Eine "
-    + "Kategorie, die du anlegst oder änderst, bestimmt auch die Zeilen im "
-    + "Tab Smart. Gilt sofort im Tab Absender und Smart, in den anderen "
-    + "Tabs ab dem nächsten Scan.",
+    "Wenn du eine eingebaute Kategorie änderst, ersetzen deine Stichwörter "
+    + "die eingebauten; ausgeschaltet verschwindet ihr Tag. Gilt sofort in "
+    + "Absender und Smart, in den anderen Tabs ab dem nächsten Scan.",
   "categories.add": "Kategorie hinzufügen…",
   "categories.add_ph": "Name der Kategorie, z. B. insurance",
-  "categories.none": "Noch keine eigenen Kategorien.",
-  "categories.builtin": "Eingebaut",
   "categories.enabled": "{name} aktiv",
-  "categories.off": "Ausgeschaltet – diese eingebaute Kategorie trifft auf nichts zu.",
+  "categories.off_label": "aus",
+  "categories.edited": "geändert",
+  "categories.more": "+{n} weitere",
+  "categories.edit": "{name} bearbeiten",
+  "categories.edit_short": "Bearbeiten",
+  "categories.done_edit": "Bearbeiten von {name} beenden",
+  "categories.restore_short": "Standard wiederherstellen",
   "categories.replaced": "Deine Stichwörter ersetzen die eingebauten.",
   "categories.no_kw": "Noch keine Stichwörter – diese Kategorie trifft auf nichts zu.",
   "categories.kw_ph": "Stichwort",
@@ -1546,7 +1552,9 @@ export const DE: Record<string, string> = {
   "account.add": "Konto hinzufügen",
   "account.hint":
     "Jedes Konto wird getrennt gescannt und aufgeräumt - Ansichten "
-    + "vermischen sich nie. Bei mehreren Konten oben im Kopf umschalten.",
+    + "vermischen sich nie.",
+  "account.hint_switch":
+    "Bei mehreren Konten oben im Kopf umschalten.",
   "account.rename_title": "Konto umbenennen",
   "account.rename_confirm": "Umbenennen",
   "account.err_empty": "Bitte einen Namen eingeben.",
@@ -1584,11 +1592,10 @@ export const DE: Record<string, string> = {
   "login.section": "Anmeldung (optional)",
   "login.help":
     "Schützt die API mit einem Login. \"Keine\" vertraut dem Netzwerk "
-    + "bzw. einer Reverse-Proxy-Anmeldung (wie bisher). Passwort = ein "
-    + "gemeinsames Passwort. SSO/OIDC = Anmeldung über einen "
-    + "OpenID-Connect-Anbieter (Pocket ID, Authentik, Keycloak, …); die "
-    + "App dort vorher mit der Callback-URL <origin>/api/oidc/callback "
-    + "registrieren.",
+    + "bzw. einer Reverse-Proxy-Anmeldung. Passwort = ein gemeinsames "
+    + "Passwort. SSO/OIDC = Anmeldung über einen OpenID-Connect-Anbieter "
+    + "(Pocket ID, Authentik, Keycloak, …); die App dort vorher mit der "
+    + "Callback-URL <origin>/api/oidc/callback registrieren.",
   "login.mode": "Anmeldemethode",
   "login.mode_none": "Keine (Reverse Proxy / vertrautes Netz)",
   "login.mode_password": "Passwort",
@@ -1717,18 +1724,18 @@ export const DE: Record<string, string> = {
   "shared.help":
     "Optional einen serverseitigen KI-Schlüssel teilen: Nutzer ohne "
     + "eigenen Schlüssel verwenden ihn automatisch, begrenzt pro Nutzer "
-    + "und Monat durch das Standard-Budget unten (Nutzer dürfen ihr "
+    + "und Monat durch das Standard-Budget (Nutzer dürfen ihr "
     + "Limit senken, nie erhöhen).",
   "shared.enabled": "Diesen Schlüssel mit allen Nutzern teilen",
   "shared.budget": "Standard-Monatsbudget pro Nutzer ($)",
   "ai.shared_key_ph": "nutzt den gemeinsamen Server-Schlüssel",
   "usage.section": "Nutzerstatistik",
   "usage.help":
-    "Nutzung pro Arbeitsbereich - nur Zahlen, KI-Kosten und "
-    + "Speicherplatz. Inboxrake zeigt dir nie Maildaten, Kontonamen "
-    + "oder Absender anderer Nutzer.",
+    "Nutzung pro Arbeitsbereich, alle seine Konten zusammen - nur Zahlen, "
+    + "KI-Kosten und Speicherplatz. Inboxrake zeigt dir nie Maildaten, "
+    + "Kontonamen oder Absender anderer Nutzer.",
   "usage.user": "Nutzer / Arbeitsbereich",
-  "usage.mails": "Mails (letzter Scan)",
+  "usage.mails": "Mails (alle Konten)",
   "usage.cleaned": "Aufgeräumt (Monat)",
   "usage.ai_month": "KI-Kosten (Monat)",
   "usage.last_scan": "Letzter Scan",
@@ -1917,7 +1924,9 @@ export const DE: Record<string, string> = {
     "Der Index wurde mit einem anderen geheimen Schlüssel gebaut und ist "
     + "unbrauchbar - neu aufbauen.",
   "index.building": "Indexiere…",
-  "index.status": "{docs} Mails indexiert, zuletzt aktualisiert {ts}.",
+  "index.status": "{docs} Mails indexiert · zuletzt aktualisiert {ts} · {size}",
+  "index.short": "Speichert keinen lesbaren Mailtext.",
+  "index.how": "So funktioniert der Index",
   "index.disk": "Belegter Speicherplatz: {size}",
   "index.build": "Index aufbauen",
   "index.update": "Jetzt aktualisieren",
@@ -1962,6 +1971,12 @@ export const DE: Record<string, string> = {
     + "nach Betreff und Absender zu suchen.",
   "auto_scan.align": "Startminute (0-59)",
   "auto_scan.help":
+    "Scannt dieses Konto in festen Abständen neu, unabhängig von "
+    + "Regel-Zeitplänen - hält die „Neu“-Markierung und die "
+    + "Aktivitäts-Übersicht aktuell, ohne dass die App geöffnet sein muss. "
+    + "Wird automatisch übersprungen, solange das Konto mit etwas anderem "
+    + "beschäftigt ist, und beim nächsten Takt einfach erneut versucht.",
+  "auto_scan.help_on":
     "Scannt dieses Konto in festen Abständen neu, unabhängig von "
     + "Regel-Zeitplänen - hält die „Neu“-Markierung und die "
     + "Aktivitäts-Übersicht aktuell, ohne dass die App geöffnet sein muss. "

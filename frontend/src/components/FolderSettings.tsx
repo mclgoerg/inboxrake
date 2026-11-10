@@ -1,4 +1,5 @@
-import { X } from "lucide-react";
+import { Archive, FileText, Layers, ShieldAlert, Send, Trash2, X }
+  from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -17,6 +18,13 @@ const ROLE_ORDER = ["trash", "junk", "sent", "drafts", "archive", "all"];
 const UNSCANNED = new Set(["trash", "junk", "sent", "drafts", "all"]);
 
 const roleName = (role: string) => t(`role.${role}`);
+const ROLE_ICON: Record<string, typeof Archive> = {
+  trash: Trash2, junk: ShieldAlert, sent: Send, drafts: FileText,
+  archive: Archive, all: Layers };
+const RoleIcon = ({ role }: { role: string }) => {
+  const Icon = ROLE_ICON[role] ?? Archive;
+  return <span aria-hidden className="text-accent"><Icon size={16} /></span>;
+};
 
 /* "Choose folder" on the Junk / Trash page opens the account's settings,
  * which land at their top: this asks the special-folders block to scroll
@@ -212,13 +220,34 @@ export function FolderSettings({ account, data, included, setIncluded,
               <div key={r.role} data-role={r.role}
                 data-ambiguous={r.ambiguous || undefined}
                 className="rounded-control border border-line p-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="type-body font-medium">
-                    {roleName(r.role)}
+                <div className="flex items-center gap-3">
+                  <RoleIcon role={r.role} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block type-body font-medium">
+                      {roleName(r.role)}
+                    </span>
+                    <span className="mt-0.5 block">
+                      <Tag>{t(`folder.src.${r.source}`)}</Tag>
+                    </span>
                   </span>
-                  <span className="min-w-0 truncate type-body"
-                    title={r.name}>{r.name}</span>
-                  <Tag>{t(`folder.src.${r.source}`)}</Tag>
+                  {r.choices.length > 1 ? (
+                    <PopupSelect value={r.ambiguous ? null : r.raw}
+                      disabled={busy}
+                      name={t("folder.choose_label",
+                        { role: roleName(r.role) })}
+                      placeholder={t("folder.choose")}
+                      // any pick is saved - also the folder Inboxrake
+                      // already uses by default: that is how it is confirmed
+                      onChange={(v) => choose(r, v)}
+                      options={r.choices.map((c) => ({
+                        value: c.raw,
+                        label: `${c.name}${c.count != null
+                          ? ` (${t("n.mails", { n: c.count })})` : ""}`,
+                      }))} />
+                  ) : (
+                    <span className="min-w-0 max-w-1/2 truncate type-body
+                      text-muted" title={r.name}>{r.name}</span>
+                  )}
                 </div>
                 {r.role === "archive" && (
                   <p className="mt-1 type-meta text-muted">
@@ -233,27 +262,14 @@ export function FolderSettings({ account, data, included, setIncluded,
                           pick: r.name })
                         : t("folder.confirmed", { role: roleName(r.role) })}
                     </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <PopupSelect value={r.ambiguous ? null : r.raw}
-                        disabled={busy}
-                        name={t("folder.choose_label",
-                          { role: roleName(r.role) })}
-                        placeholder={t("folder.choose")}
-                        // any pick is saved - also the folder Inboxrake
-                        // already uses by default: that is how it is confirmed
-                        onChange={(v) => choose(r, v)}
-                        options={r.choices.map((c) => ({
-                          value: c.raw,
-                          label: `${c.name}${c.count != null
-                            ? ` (${t("n.mails", { n: c.count })})` : ""}`,
-                        }))} />
-                      {r.source === "override" && (
+                    {r.source === "override" && (
+                      <div>
                         <Button variant="secondary" size="sm" disabled={busy}
                           onClick={() => choose(r, "")}>
                           {t("folder.auto")}
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <p className="type-meta text-muted">
                       {t("folder.choice_note")}
                     </p>

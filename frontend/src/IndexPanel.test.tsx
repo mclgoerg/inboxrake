@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor }
   from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { IndexPanel } from "./components/IndexPanel";
+import { IndexNote, IndexPanel } from "./components/IndexPanel";
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog }
   from "./dialogTestUtils";
@@ -143,8 +143,12 @@ test("a usable index shows its size, offers update/rebuild/delete", async () => 
   indexInfo.mockResolvedValue(info({ exists: true, usable: true, reason: null,
     docs: 1531, bytes: 3 * 1048576, built_ts: 1790000000 }));
   renderPanel();
-  await screen.findByText(/1,531 mails indexed, last updated/);
-  expect(screen.getByText("Disk space used: 3.0 MB")).toBeTruthy();
+  // one status line: count, date in the app format, size
+  await screen.findByText(/1,531 mails indexed · last updated \d{1,2} \w{3,4}, \d\d:\d\d · 3\.0 MB/);
+  expect(screen.queryByText(/Disk space used/)).toBeNull();
+  // Delete is the last button of the row
+  const row = screen.getByText("Update now").parentElement!;
+  expect(row.lastElementChild!.textContent).toBe("Delete index");
   fireEvent.click(screen.getByText("Update now"));
   await pressDialog("Update now");
   await waitFor(() => expect(indexBuild).toHaveBeenCalledWith("proton", false));
@@ -219,4 +223,15 @@ test("cancelling the delete confirmation keeps the index", async () => {
   await cancelDialog();
   await expectNoDialog();
   expect(indexDelete).not.toHaveBeenCalled();
+});
+
+test("the technical note sits behind 'How the index works'", () => {
+  render(<IndexNote />);
+  expect(screen.getByText(/Stores no readable mail text/)).toBeTruthy();
+  expect(screen.queryByText(/INBOXRAKE_SECRET_KEY/)).toBeNull();
+  const how = screen.getByRole("button", { name: "How the index works" });
+  expect(how.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(how);
+  expect(how.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByText(/INBOXRAKE_SECRET_KEY/)).toBeTruthy();
 });

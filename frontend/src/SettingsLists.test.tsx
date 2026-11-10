@@ -12,13 +12,19 @@ import { categoriesText, CategoryList, normalizeProtected, parseCategories,
 afterEach(cleanup);
 
 let stored = "";
+const BUILTIN = {
+  shipping: ["parcel", "tracking", "shipment", "delivery", "courier", "post"],
+  finance: ["invoice", "billing", "payment"],
+  shopping: ["shop"], social: ["chat"], travel: ["hotel"],
+  "dev/cloud": ["hosting"],
+};
 function Lists({ kind, initial }: { kind: "protected" | "categories";
   initial: string }) {
   const [text, setText] = useState(initial);
   stored = text;
   return kind === "protected"
     ? <ProtectedList text={text} onChange={setText} />
-    : <CategoryList text={text} onChange={setText} />;
+    : <CategoryList text={text} onChange={setText} builtin={BUILTIN} />;
 }
 
 test("entries normalise like the server: lower case, bare domain gets its @", () => {
@@ -108,22 +114,53 @@ test("category text round-trips: names and keywords lower-cased, empty list kept
     { name: "a", kws: ["3"] }, { name: "b", kws: ["2"] }]);
 });
 
-test("categories: keyword chips add and remove in the stored 'name: kw1, kw2' form", () => {
-  render(<Lists kind="categories" initial="insurance: allianz, versicherung" />);
+const row = (name: string) => within(screen.getByRole("group", { name }));
+
+test("categories: the six built-ins are rows with their first keywords and +N more", () => {
+  render(<Lists kind="categories" initial="" />);
+  const shipping = row("Shipping");
+  for (const k of ["parcel", "tracking", "shipment", "delivery"])
+    expect(shipping.getByText(k)).toBeTruthy();
+  expect(shipping.queryByText("courier")).toBeNull();
+  expect(shipping.getByText("+2 more")).toBeTruthy();
+  expect(row("Finance").queryByText(/more/)).toBeNull();
+  for (const n of ["Shipping", "Finance", "Shopping", "Social", "Travel",
+    "Dev / cloud"]) {
+    expect(row(n).getByRole("switch", { name: `${n} enabled` })
+      .getAttribute("aria-checked")).toBe("true");
+  }
+  expect(stored).toBe("");
+});
+
+test("categories: your own sit above with an Add row; no built-in name can be added twice", () => {
+  render(<Lists kind="categories" initial="insurance: policy, claim" />);
+  const own = screen.getByRole("group", { name: "insurance" });
+  const builtIn = screen.getByRole("group", { name: "Shipping" });
+  expect(own.compareDocumentPosition(builtIn)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
+  const name = screen.getByRole("textbox", { name: "Add category…" });
+  fireEvent.change(name, { target: { value: "Shipping" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  expect(screen.getByRole("alert").textContent).toContain("already");
+  expect(stored).toBe("insurance: policy, claim");
+});
+
+test("categories: keyword chips of your own add and remove in the stored 'name: kw1, kw2' form", () => {
+  render(<Lists kind="categories" initial="insurance: policy, claim" />);
   fireEvent.click(screen.getByRole("button",
-    { name: "Remove keyword allianz from insurance" }));
-  expect(stored).toBe("insurance: versicherung");
+    { name: "Remove keyword policy from insurance" }));
+  expect(stored).toBe("insurance: claim");
   fireEvent.click(screen.getByRole("button",
     { name: "Add a keyword to insurance" }));
   const kw = screen.getByRole("textbox", { name: "Add a keyword to insurance" });
-  fireEvent.change(kw, { target: { value: "HUK, versicherung, dkv" } });
+  fireEvent.change(kw, { target: { value: "Cover, claim, quote" } });
   fireEvent.keyDown(kw, { key: "Enter" });
-  expect(stored).toBe("insurance: versicherung, huk, dkv");
+  expect(stored).toBe("insurance: claim, cover, quote");
 });
 
-test("categories: add, rename and delete a category; names are validated", () => {
-  render(<Lists kind="categories" initial="insurance: allianz" />);
-  expect(screen.getByRole("group", { name: "insurance" })).toBeTruthy();
+test("categories: add, rename and delete a category of your own; names are validated", () => {
+  render(<Lists kind="categories" initial="insurance: policy" />);
   fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
   const name = screen.getByRole("textbox", { name: "Add category…" });
   fireEvent.change(name, { target: { value: "a:b" } });
@@ -134,81 +171,83 @@ test("categories: add, rename and delete a category; names are validated", () =>
   expect(screen.getByRole("alert").textContent).toContain("already");
   fireEvent.change(name, { target: { value: "Hobby" } });
   fireEvent.keyDown(name, { key: "Enter" });
-  expect(stored).toBe("insurance: allianz\nhobby: ");
+  expect(stored).toBe("insurance: policy\nhobby: ");
   expect(screen.getByText(/No keywords yet/)).toBeTruthy();
-  // rename keeps the keywords and the place
   fireEvent.click(screen.getByRole("button", { name: "Rename insurance" }));
   const ren = screen.getByRole("textbox", { name: "Rename insurance" });
   fireEvent.change(ren, { target: { value: "cover" } });
   fireEvent.keyDown(ren, { key: "Enter" });
-  expect(stored).toBe("cover: allianz\nhobby: ");
+  expect(stored).toBe("cover: policy\nhobby: ");
+  // a built-in name is taken, too
+  fireEvent.click(screen.getByRole("button", { name: "Rename cover" }));
+  const ren2 = screen.getByRole("textbox", { name: "Rename cover" });
+  fireEvent.change(ren2, { target: { value: "travel" } });
+  fireEvent.keyDown(ren2, { key: "Enter" });
+  expect(screen.getByRole("alert").textContent).toContain("already");
+  fireEvent.keyDown(ren2, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "Delete hobby" }));
-  expect(stored).toBe("cover: allianz");
+  expect(stored).toBe("cover: policy");
 });
 
-test("categories: the switch alone makes 'off': empty list stored; on again drops the override", () => {
-  render(<Lists kind="categories" initial="shipping: dhl, dpd" />);
-  const row = within(screen.getByRole("group", { name: "shipping" }));
-  expect(row.getByText("Built-in")).toBeTruthy();
-  expect(row.getByText(/replace the built-in ones/)).toBeTruthy();
-  const sw = row.getByRole("switch", { name: "shipping enabled" });
-  expect(sw.getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(sw);
-  expect(stored).toBe("shipping: ");
-  const off = within(screen.getByRole("group", { name: "shipping" }));
-  expect(off.getByText(/Turned off/)).toBeTruthy();
-  expect(off.getByRole("switch", { name: "shipping enabled" })
-    .getAttribute("aria-checked")).toBe("false");
-  fireEvent.click(off.getByRole("switch", { name: "shipping enabled" }));
-  expect(stored).toBe("");
-  const on = within(screen.getByRole("group", { name: "shipping" }));
-  expect(on.getByRole("switch", { name: "shipping enabled" })
-    .getAttribute("aria-checked")).toBe("true");
-  expect(screen.queryByText(/Turned off/)).toBeNull();
-});
-
-test("categories: a built-in added by name starts on and stores nothing until it has a keyword", () => {
+test("categories: the switch makes 'off' (empty list stored); on again drops the override", () => {
   render(<Lists kind="categories" initial="" />);
-  fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
-  const name = screen.getByRole("textbox", { name: "Add category…" });
-  fireEvent.change(name, { target: { value: "Shipping" } });
-  fireEvent.keyDown(name, { key: "Enter" });
-  expect(stored).toBe("");
-  const row = within(screen.getByRole("group", { name: "shipping" }));
-  expect(row.getByRole("switch", { name: "shipping enabled" })
-    .getAttribute("aria-checked")).toBe("true");
-  expect(screen.queryByText(/Turned off/)).toBeNull();
-  // a keyword makes the override
-  const kw = screen.getByRole("textbox", { name: "Add a keyword to shipping" });
-  fireEvent.change(kw, { target: { value: "dhl, dpd" } });
-  fireEvent.keyDown(kw, { key: "Enter" });
-  expect(stored).toBe("shipping: dhl, dpd");
-  // the last chip removed: the override is gone (not "off")
-  fireEvent.click(screen.getByRole("button",
-    { name: "Remove keyword dhl from shipping" }));
-  expect(stored).toBe("shipping: dpd");
-  fireEvent.click(screen.getByRole("button",
-    { name: "Remove keyword dpd from shipping" }));
-  expect(stored).toBe("");
-  expect(screen.queryByText(/Turned off/)).toBeNull();
-  expect(within(screen.getByRole("group", { name: "shipping" }))
-    .getByRole("switch", { name: "shipping enabled" })
-    .getAttribute("aria-checked")).toBe("true");
-});
-
-test("categories: switching a bare built-in off stores the empty list", () => {
-  render(<Lists kind="categories" initial="" />);
-  fireEvent.click(screen.getByRole("button", { name: "Add category…" }));
-  const name = screen.getByRole("textbox", { name: "Add category…" });
-  fireEvent.change(name, { target: { value: "travel" } });
-  fireEvent.keyDown(name, { key: "Enter" });
-  fireEvent.click(screen.getByRole("switch", { name: "travel enabled" }));
+  fireEvent.click(row("Travel").getByRole("switch", { name: "Travel enabled" }));
   expect(stored).toBe("travel: ");
+  const off = row("Travel");
+  expect(off.getByText("off")).toBeTruthy();
+  expect(off.getByRole("switch", { name: "Travel enabled" })
+    .getAttribute("aria-checked")).toBe("false");
+  // the keywords stay visible (muted) and Edit is unavailable while off
+  expect(off.getByText("hotel")).toBeTruthy();
+  expect((off.getByRole("button", { name: "Edit Travel" }) as HTMLButtonElement)
+    .disabled).toBe(true);
+  fireEvent.click(off.getByRole("switch", { name: "Travel enabled" }));
+  expect(stored).toBe("");
+  expect(row("Travel").queryByText("off")).toBeNull();
 });
 
-test("categories: restoring a built-in drops its override", () => {
-  render(<Lists kind="categories" initial="travel: flug" />);
-  fireEvent.click(screen.getByRole("button",
-    { name: "Restore the built-in keywords of travel" }));
+test("categories: editing a built-in replaces its keywords; back to the defaults leaves no override", () => {
+  render(<Lists kind="categories" initial="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Finance" }));
+  // all keywords as chips while editing
+  expect(row("Finance").getByRole("button",
+    { name: "Remove keyword payment from Finance" })).toBeTruthy();
+  fireEvent.click(row("Finance").getByRole("button",
+    { name: "Remove keyword payment from Finance" }));
+  expect(stored).toBe("finance: invoice, billing");
+  expect(row("Finance").getByRole("button",
+    { name: "Restore the built-in keywords of Finance" })).toBeTruthy();
+  // adding the keyword back = the built-in list again = no override
+  fireEvent.click(row("Finance").getByRole("button",
+    { name: "Add a keyword to Finance" }));
+  const kw = screen.getByRole("textbox", { name: "Add a keyword to Finance" });
+  fireEvent.change(kw, { target: { value: "payment" } });
+  fireEvent.keyDown(kw, { key: "Enter" });
   expect(stored).toBe("");
+  // a new keyword is an override; Restore defaults drops it (the input
+  // stays open for the next keyword)
+  const kw2 = screen.getByRole("textbox", { name: "Add a keyword to Finance" });
+  fireEvent.change(kw2, { target: { value: "tax" } });
+  fireEvent.keyDown(kw2, { key: "Enter" });
+  expect(stored).toBe("finance: invoice, billing, payment, tax");
+  fireEvent.click(row("Finance").getByRole("button",
+    { name: "Restore the built-in keywords of Finance" }));
+  expect(stored).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Done editing Finance" }));
+  expect(screen.getByRole("button", { name: "Edit Finance" })).toBeTruthy();
+});
+
+test("categories: removing the last keyword of an override brings the built-ins back (not 'off')", () => {
+  render(<Lists kind="categories" initial="shopping: outlet" />);
+  const r = row("Shopping");
+  expect(r.getByText("outlet")).toBeTruthy();
+  expect(r.queryByText("shop")).toBeNull();
+  expect(r.getByText("edited")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Edit Shopping" }));
+  fireEvent.click(row("Shopping").getByRole("button",
+    { name: "Remove keyword outlet from Shopping" }));
+  expect(stored).toBe("");
+  expect(row("Shopping").getByRole("switch", { name: "Shopping enabled" })
+    .getAttribute("aria-checked")).toBe("true");
+  expect(row("Shopping").getByText("shop")).toBeTruthy();
 });
