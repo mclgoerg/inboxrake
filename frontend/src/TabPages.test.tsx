@@ -172,7 +172,7 @@ test("Insights: the mini Space map uses the Space map's tones", async () => {
     mk("b@y.example", { size: 4 * MB, engagement: 90 })];
   const { container } = render(<InsightsPage groups={gs} state={state()}
     onOpen={vi.fn()} />);
-  await screen.findByText(/Top 2 senders/);
+  await screen.findByText(/biggest senders take up/);
   const fills = [...container.querySelectorAll("span.absolute.rounded-badge")]
     .map((e) => e.className);
   expect(fills[0]).toContain("bg-heat");
