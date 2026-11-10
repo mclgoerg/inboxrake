@@ -251,3 +251,15 @@ test("categories: removing the last keyword of an override brings the built-ins 
     .getAttribute("aria-checked")).toBe("true");
   expect(row("Shopping").getByText("shop")).toBeTruthy();
 });
+
+test("categories: switching an edited built-in off and on again brings its edited keywords back", () => {
+  render(<Lists kind="categories" initial="shopping: outlet" />);
+  fireEvent.click(row("Shopping").getByRole("switch", { name: "Shopping enabled" }));
+  expect(stored).toBe("shopping: ");
+  fireEvent.click(row("Shopping").getByRole("switch", { name: "Shopping enabled" }));
+  expect(stored).toBe("shopping: outlet");
+  // an unedited one still goes back to the built-in keywords
+  fireEvent.click(row("Travel").getByRole("switch", { name: "Travel enabled" }));
+  fireEvent.click(row("Travel").getByRole("switch", { name: "Travel enabled" }));
+  expect(stored).toBe("shopping: outlet");
+});

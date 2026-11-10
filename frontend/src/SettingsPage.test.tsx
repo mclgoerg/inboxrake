@@ -1536,3 +1536,10 @@ test("special folders: the role is a label with an icon, the folder its value (n
     foldersResult = null;
   }
 });
+
+test("the Categories badge counts only your own categories, not built-in overrides", () => {
+  render(<Settings cfg={{ ...cfg, categories: { shipping: [], travel: ["x"],
+    hobby: ["y"] } }} account="default" section={null} />);
+  const rowBtn = screen.getByRole("button", { name: /^Categories/ });
+  expect(rowBtn.textContent).toBe("Categories1");
+});

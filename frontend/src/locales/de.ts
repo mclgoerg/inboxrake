@@ -1179,10 +1179,6 @@ export const DE: Record<string, string> = {
     + "Neu-Abzeichen), nachdem er erstmals in einem Scan gesehen wurde.",
   "Export": "Exportieren",
   "Import…": "Importieren…",
-  "export.tip":
-    "Einstellungen, Regeln, KI-Bewertungen, Antwort-Cache und die "
-    + "eingeordneten Absender herunterladen – die Datei listet "
-    + "Absenderadressen (Passwörter und API-Schlüssel nie enthalten)",
   "backup.title": "Sichern & Wiederherstellen",
   "backup.help":
     "Der Export lädt Einstellungen, Regeln, KI-Bewertungen, den "

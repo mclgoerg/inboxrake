@@ -17,7 +17,8 @@ import type { AdminTenantStats, AppState, AuthMethod, AuthMode, AutoScanUnit, Bo
 import { FolderSettings } from "./FolderSettings";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
-import { CategoryList, parseCategories as parseCategoryText, ProtectedList }
+import { BUILTIN_CATEGORIES, CategoryList,
+  parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
 import { demoHint, useDemo } from "../demoMode";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
@@ -731,6 +732,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     value: string | undefined, rows: string[]): SecDef =>
     ({ id, icon, tone, value, rows,
       label: t(`settings.sec.${id}`) });
+  // the badge counts your own categories, not overrides of built-in ones
+  const ownCategories = Object.keys(cfg.categories ?? {})
+    .filter((n) => !BUILTIN_CATEGORIES.includes(n)).length;
   const defs: Record<SettingsSection, SecDef> = {
     account: sec("account", null, "neutral", undefined,
       [t("preset.row"), t("Host"), t("IMAP port"), t("imap.security"),
@@ -745,8 +749,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     protected: sec("protected", <Shield size={16} />, "safe",
       cfg.protected?.length ? String(cfg.protected.length) : undefined, []),
     categories: sec("categories", <TagIcon size={16} />, "review",
-      Object.keys(cfg.categories ?? {}).length
-        ? String(Object.keys(cfg.categories).length) : undefined,
+      ownCategories ? String(ownCategories) : undefined,
       [t("Custom categories")]),
     filed: sec("filed", <Folder size={16} />, "info", undefined, []),
     digest: sec("digest", <Mail size={16} />, "attach",

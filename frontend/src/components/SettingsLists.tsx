@@ -344,13 +344,18 @@ function BuiltinRow({ name, defaults, override, onSet }: {
   onSet: (kws: string[] | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  // the edited keywords of a built-in that is switched off: switching it on
+  // again brings them back instead of the defaults
+  const stash = useRef<string[] | null>(null);
   const off = override !== undefined && override.length === 0;
   const edited = !!override && override.length > 0;
   const kws = edited ? override : defaults;
   const label = categoryName(name);
   // an edit that ends up with the built-in list (or nothing) is no override
-  const setKeywords = (next: string[]) =>
+  const setKeywords = (next: string[]) => {
+    stash.current = null;
     onSet(next.length === 0 || sameKeywords(next, defaults) ? null : next);
+  };
   return (
     <div role="group" aria-label={label} className="px-4 py-3">
       <div className="flex items-start gap-3">
@@ -384,7 +389,7 @@ function BuiltinRow({ name, defaults, override, onSet }: {
               {edited && (
                 <Button size="sm" variant="quiet"
                   aria-label={t("categories.restore", { name: label })}
-                  onClick={() => onSet(null)}>
+                  onClick={() => { stash.current = null; onSet(null); }}>
                   {t("categories.restore_short")}
                 </Button>
               )}
@@ -403,7 +408,11 @@ function BuiltinRow({ name, defaults, override, onSet }: {
               again drops the override, so the built-in keywords are back */}
           <Switch checked={!off}
             label={t("categories.enabled", { name: label })}
-            onChange={(on) => { setEditing(false); onSet(on ? null : []); }} />
+            onChange={(on) => {
+              setEditing(false);
+              if (on) { onSet(stash.current); stash.current = null; }
+              else { stash.current = edited ? override : null; onSet([]); }
+            }} />
         </div>
       </div>
     </div>

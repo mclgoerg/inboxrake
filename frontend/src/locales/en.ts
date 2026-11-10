@@ -1471,10 +1471,6 @@ export const EN: Record<string, string> = {
   "new_sender.window_help":
     "How many days a sender stays flagged \"New\" (is:new, the New badge) "
     + "after it's first seen in a scan.",
-  "export.tip":
-    "Download settings, rules, AI verdicts, the replied cache and the senders "
-    + "you filed - the file lists sender addresses (passwords and API keys "
-    + "are never exported)",
   "backup.title": "Backup & restore",
   "backup.help":
     "Export downloads your settings, rules, AI verdicts, the replied cache "
