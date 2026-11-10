@@ -502,6 +502,11 @@ test("the biggest senders keep the storage bar legend and the list", async () =>
   show();
   const section = within(await screen.findByRole("region",
     { name: "Biggest senders" }));
+  // one card: its title like the other cards', the bar and the list inside
+  const card = section.getByRole("heading", { name: "Biggest senders" })
+    .closest("section")!;
+  expect(card.className).toContain("bg-panel");
+  expect(card.querySelectorAll("ul")).toHaveLength(2);
   const storage = within(section.getByRole("region", { name: "Storage" }));
   fireEvent.click(storage.getByRole("button", { name: /Label rest/ }));
   expect(cbs.onOpenSender).toHaveBeenCalledWith(rest);

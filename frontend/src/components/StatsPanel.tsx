@@ -316,7 +316,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
       label: t("v.delete_safe") },
     { key: "review", n: stats.ai_groups.review, fill: "bg-review-fg",
       label: t("v.review") },
-    { key: "keep", n: stats.ai_groups.keep, fill: "bg-keep-fg",
+    { key: "keep", n: stats.ai_groups.keep, fill: "bg-info-fg",
       label: t("v.keep") },
     { key: "unrated", n: stats.ai_groups.unrated, fill: "bg-faint",
       label: t("v.unrated") },

@@ -162,3 +162,21 @@ test("German: counters, up next and help line", () => {
   expect(within(dlg).getByText("+ 3 weitere")).toBeTruthy();
   expect(within(dlg).getByRole("button", { name: "Geringe Interaktion" })).toBeTruthy();
 });
+
+test("the card's tags: categories are one neutral style that never wraps, "
+  + "status is tinted", () => {
+  open([grp(0, { tags: ["newsletter", "shopping"], new: true, ai: {
+    verdict: "keep", reason: "r" } as Group["ai"],
+  unsubscribed: { n: 1, of: 1, status: "done", link: "", addr: "" } }),
+  ...DECK.slice(1)]);
+  const c = within(card());
+  const cat = c.getByText("Newsletters");
+  expect(cat.className).toMatch(/whitespace-nowrap/);
+  expect(cat.className).toMatch(/border-line/);
+  expect(c.getByText("Shopping").className).toBe(cat.className);
+  // Unsubscribed / New are tinted statuses; Keep is calm, not Trash's red
+  expect(c.getByText("Unsubscribed").className).toMatch(/bg-info-bg/);
+  expect(c.getByText("New").className).toMatch(/bg-new-bg/);
+  expect(c.getByText("keep", { exact: false }).closest("span.rounded-full")!
+    .className).toMatch(/bg-info-bg/);
+});

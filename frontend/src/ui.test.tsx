@@ -1282,7 +1282,7 @@ test("RatingChips: a labelled button whose popover explains the counts", () => {
   </div>);
   const btn = screen.getByRole("button", {
     name: "Per-mail AI ratings: 3 safe to delete, 2 keep" });
-  expect(btn.textContent).toBe("🟢3🔴2");            // zero buckets stay out
+  expect(btn.textContent).toBe("🟢3🔵2");            // zero buckets stay out
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(btn);
   const pop = screen.getByRole("dialog", { name: "Per-mail AI ratings" });

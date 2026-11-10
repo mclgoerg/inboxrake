@@ -591,7 +591,6 @@ export const EN: Record<string, string> = {
   "tab.att_sub": "in attachments",
   "tab.ai_sub": "mails rated safe",
   "tab.junk_sub": "waiting for you",
-  "tab.trash_sub": "mails",
   "tab.rules_last": "last run {ago} ago",
   "tab.rules_none": "no runs yet",
   "tab.per_month": "{n} a month",
@@ -1964,6 +1963,8 @@ export const EN: Record<string, string> = {
   "n.newsletters_one": "1 newsletter",
   "n.groups": "{n}\u00a0groups",
   "n.groups_one": "1\u00a0group",
+  "n.rules": "{n}\u00a0rules",
+  "n.rules_one": "1\u00a0rule",
   "status.groups_of": "{n} of {total}\u00a0groups",
   "status.groups_of_one": "{n} of {total}\u00a0group",
   "filter.syntax_hint":

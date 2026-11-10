@@ -1,5 +1,4 @@
 import { ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cleanedWeeks, entriesSince, WEEK_S } from "../activity";
 import { api } from "../api";
@@ -11,8 +10,8 @@ import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
 import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
 import type { AuditEntry, Group, OverviewResp, Rule } from "../types";
-import { BalanceCard, KindsCard, LastWeekCard, NextSteps, type WeekRange }
-  from "./OverviewCards";
+import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
+  type WeekRange } from "./OverviewCards";
 import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex,
   ProgressBar, Spinner } from "./ui";
 
@@ -62,20 +61,6 @@ export interface OverviewProps {
   onOpenJunk: () => void;
   /** New AI verdicts: Senders, the ones the AI called safe, in the window. */
   onOpenAiVerdicts: (window: string) => void;
-}
-
-function Section({ title, action, children }: {
-  title: string; action?: ReactNode; children: ReactNode;
-}) {
-  return (
-    <section aria-label={title} className="mt-8">
-      <div className="mb-3 flex items-center justify-between gap-2 px-1">
-        <h2 className="type-title2">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -291,9 +276,9 @@ export function Overview(p: OverviewProps) {
         )}
       </div>
 
-      <Section title={t("overview.biggest")}>
-        <section aria-label={t("overview.storage")}
-          className="mb-3 rounded-card bg-panel p-5">
+      <section aria-label={t("overview.biggest")} className={`mt-4 ${CARD}`}>
+        <CardHead title={t("overview.biggest")} />
+        <section aria-label={t("overview.storage")}>
           {/* Decorative: the legend below names every segment. */}
           <div aria-hidden className="flex h-2.5 gap-0.5 overflow-hidden
             rounded-full">
@@ -326,41 +311,44 @@ export function Overview(p: OverviewProps) {
             })}
           </ul>
         </section>
-        <ul className="rounded-card bg-panel">
-          {top.map((g) => (
-            <li key={g.key}
-              className="relative [&:not(:first-child)]:before:absolute
-                [&:not(:first-child)]:before:left-16
-                [&:not(:first-child)]:before:right-0
-                [&:not(:first-child)]:before:top-0
-                [&:not(:first-child)]:before:border-t
-                [&:not(:first-child)]:before:border-line">
-              <button type="button" onClick={() => p.onOpenSender(g)}
-                className="flex min-h-14 w-full items-center gap-3
-                  rounded-card py-2 pl-4 pr-3 text-left transition-colors
-                  hover:bg-panel2">
-                <Avatar name={g.label} size="md" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate type-body font-medium">
-                    {g.label}</span>
-                  <span className="block type-meta text-muted">
-                    {t("n.mails", { n: g.count })}</span>
-                </span>
-                <span aria-hidden className="hidden h-1.5 w-1/3 shrink-0
-                  overflow-hidden rounded-full bg-chip sm:block">
-                  <span className="block h-full rounded-full bg-accent"
-                    style={{ width: `${Math.max(2, g.size / biggest * 100)}%` }}
-                  />
-                </span>
-                <span className="w-16 shrink-0 text-right type-body
-                  tabular-nums">{fmtSize(g.size)}</span>
-                <ChevronRight size={16} aria-hidden
-                  className="shrink-0 text-faint" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Section>
+        {/* the list continues the same card, below a hairline */}
+        <div className="mt-3 border-t border-line pt-1">
+          <ul className="-mx-2 sm:-mx-3">
+            {top.map((g) => (
+              <li key={g.key}
+                className="relative [&:not(:first-child)]:before:absolute
+                  [&:not(:first-child)]:before:left-16
+                  [&:not(:first-child)]:before:right-0
+                  [&:not(:first-child)]:before:top-0
+                  [&:not(:first-child)]:before:border-t
+                  [&:not(:first-child)]:before:border-line">
+                <button type="button" onClick={() => p.onOpenSender(g)}
+                  className="flex min-h-14 w-full items-center gap-3
+                    rounded-control py-2 pl-2 pr-2 text-left transition-colors
+                    hover:bg-panel2">
+                  <Avatar name={g.label} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate type-body font-medium">
+                      {g.label}</span>
+                    <span className="block type-meta text-muted">
+                      {t("n.mails", { n: g.count })}</span>
+                  </span>
+                  <span aria-hidden className="hidden h-1.5 w-1/3 shrink-0
+                    overflow-hidden rounded-full bg-chip sm:block">
+                    <span className="block h-full rounded-full bg-accent"
+                      style={{ width: `${Math.max(2, g.size / biggest * 100)}%` }}
+                    />
+                  </span>
+                  <span className="w-16 shrink-0 text-right type-body
+                    tabular-nums">{fmtSize(g.size)}</span>
+                  <ChevronRight size={16} aria-hidden
+                    className="shrink-0 text-faint" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }

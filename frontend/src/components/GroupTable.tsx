@@ -162,7 +162,7 @@ function rowPill(g: Group, blocked: boolean): ReactNode {
 }
 
 const VERDICT_PILL: Record<string, TagTone> = {
-  delete_safe: "safe", review: "review", keep: "keep",
+  delete_safe: "safe", review: "review", keep: "info",
 };
 
 /** Two unbreakable halves (`Meta`): on a narrow row the line breaks between

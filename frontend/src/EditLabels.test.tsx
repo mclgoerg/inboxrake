@@ -274,3 +274,12 @@ describe("the pill", () => {
     expect(screen.getByText("Prüfen · von dir gesetzt")).toBeTruthy();
   });
 });
+
+describe("verdict tones", () => {
+  it("the AI's Keep is calm (info), never the red of Trash", () => {
+    render(<AiTag ai={{ verdict: "keep", reason: "" }} />);
+    const el = screen.getByText("Keep").closest("span.rounded-full")!;
+    expect(el.className).toContain("bg-info-bg");
+    expect(el.className).not.toContain("keep-");
+  });
+});

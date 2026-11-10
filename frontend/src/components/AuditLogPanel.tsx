@@ -145,7 +145,8 @@ function MonthCard({ recent, rules }: {
   );
 }
 
-function TimelineRow({ e, rules, retry, undone = 0 }: {
+/** One entry of the log; the Insights hub's Recent activity uses it too. */
+export function TimelineRow({ e, rules, retry, undone = 0 }: {
   e: AuditEntry; rules: Rule[];
   /** Mails of this entry that a later undo restored. */
   undone?: number;

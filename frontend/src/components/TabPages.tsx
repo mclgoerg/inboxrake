@@ -1,4 +1,4 @@
-import { BarChart3, BellOff, ChevronRight, ClipboardList, Copy, Eye, History,
+import { BarChart3, ChevronRight, ClipboardList, Copy, Eye, History,
   Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -6,17 +6,19 @@ import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
-import { fmtAgo, fmtTs } from "../lib";
+import { fmtAgo } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
+import { senderItem, toneOf } from "../spacemap";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp, TrackerReport,
   WrappedResp }
   from "../types";
-import { actorLabel, tOr } from "./AuditLogPanel";
+import { TimelineRow } from "./AuditLogPanel";
+import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
-import { Avatar, Button, hueFillAt, MiniBars, Ring, Tag }
+import { Avatar, Button, MiniBars, Ring }
   from "./ui";
 
 /* The Clean up / Insights tab pages (below 1024 px): a "what is waiting"
@@ -30,7 +32,7 @@ export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
-  old_newsletters: "bg-info-fg", quiet_low: "bg-new-fg",
+  old_newsletters: "bg-info-fg", quiet_low: "bg-muted",
   unsubscribed: "bg-review-fg", big_attachments: "bg-attach-fg",
   ai_safe: "bg-safe-fg",
 };
@@ -230,7 +232,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
           <li className="contents">
             <Tile icon={<Wand2 size={18} aria-hidden />}
               tone="bg-safe-bg text-safe-fg" label={t("AI review")}
-              value={aiSafe > 0 ? fmtNum(aiSafe) : null}
+              value={aiSafe > 0 ? t("n.mails", { n: aiSafe }) : null}
               sub={demoHint ?? (aiSafe > 0 ? t("tab.ai_sub") : undefined)}
               disabled={aiDisabled} onClick={onReviewAi} />
           </li>
@@ -238,23 +240,25 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<ShieldAlert size={18} aria-hidden />}
             tone="bg-review-bg text-review-fg" label={t("role.junk")}
-            value={state?.junk_count ?? null} sub={t("tab.junk_sub")}
+            value={state?.junk_count != null
+              ? t("n.mails", { n: state.junk_count }) : null}
+            sub={t("tab.junk_sub")}
             onClick={() => onOpen("junk")} />
         </li>
         <li className="contents">
           <Tile icon={<ClipboardList size={18} aria-hidden />}
             tone="bg-new-bg text-new-fg" label={t("Rules")}
-            value={rules.length}
+            value={t("n.rules", { n: rules.length })}
             sub={ago ? t("tab.rules_last", { ago }) : t("tab.rules_none")}
             onClick={() => onOpen("rules")} />
         </li>
         <li className="contents">
           <Tile icon={<Trash2 size={18} aria-hidden />}
             tone="bg-keep-bg text-keep-fg" label={t("role.trash")}
-            value={state?.trash_count ?? null}
+            value={state?.trash_count != null
+              ? t("n.mails", { n: state.trash_count }) : null}
             // The big number is the count: the sub-line adds the size.
-            sub={state?.trash_size ? `${t("tab.trash_sub")} · ${fmtSize(state.trash_size)}`
-              : t("tab.trash_sub")}
+            sub={state?.trash_size ? fmtSize(state.trash_size) : undefined}
             onClick={() => onOpen("trash")} />
         </li>
       </ul>
@@ -287,14 +291,6 @@ function monthsEnding(last: string, n: number): string[] {
       .padStart(2, "0")}`;
   });
 }
-
-const iconOfAction = (a: string): ReactNode =>
-  a.startsWith("rule") ? <ClipboardList size={18} />
-    : a === "unsubscribe" ? <BellOff size={18} />
-    : a.includes("trash") || a === "purge" ? <Trash2 size={18} />
-    : <History size={18} />;
-
-const FAILED = new Set(["error", "failed"]);
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
@@ -357,7 +353,8 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
     // 240 x 100: about the widget's aspect, so tiles come out squarish.
     const rects = squarify(top.map((g) => ({ key: g.key, value: g.size })),
       { x: 0, y: 0, w: 240, h: 100 });
-    return { top, rects, pct: Math.round(
+    return { top, rects, tones: top.map((g) =>
+      toneOf(senderItem(g), "engagement")), pct: Math.round(
       100 * top.reduce((n, g) => n + g.size, 0) / total) };
   }, [groups]);
 
@@ -424,10 +421,10 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
           {space ? (
             <>
               <span aria-hidden className="relative block h-24">
-                {/* one palette hue per tile by rank, so neighbours differ */}
+                {/* the Space map page's engagement tones, same colours */}
                 {space.rects.map((r, i) => (
                   <span key={r.key} className={`absolute rounded-badge
-                    border border-panel ${hueFillAt(i)}`}
+                    border border-panel ${TONE_BAR[space.tones[i]]}`}
                     style={{ left: `${r.x / 2.4}%`, top: `${r.y}%`,
                       width: `${r.w / 2.4}%`, height: `${r.h}%` }} />
                 ))}
@@ -514,32 +511,16 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
         {audit.data ? (audit.data.length === 0 ? (
           <p className="mt-1 type-meta text-muted">{t("audit.empty")}</p>
         ) : (
-          <ul>
+          <ul className="-mx-3 divide-y divide-line">
             {audit.data.map((e, i) => {
-              const failed = FAILED.has(e.outcome);
-              const retry = failed && e.action === "unsubscribe" && onRetryUnsub
+              const retry = e.action === "unsubscribe" && onRetryUnsub
+                && (e.outcome === "failed" || e.outcome === "error")
                 ? retryableGroup(state?.groups.sender, e.label) : null;
               return (
-                <li key={`${e.ts}-${i}`} className="flex items-center gap-3
-                  py-2 not-first:border-t not-first:border-line">
-                  <span aria-hidden className="inline-flex size-9 shrink-0
-                    items-center justify-center rounded-control bg-panel2
-                    text-muted">{iconOfAction(e.action)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate type-body font-medium">
-                      {tOr("audit.act", e.action)}
-                      {e.count > 0 && ` · ${t("n.mails", { n: e.count })}`}
-                    </span>
-                    <span className="block truncate type-meta text-muted">
-                      {e.label || actorLabel(e.actor, rules)}
-                      {" · "}{fmtTs(e.ts, getLang(), false)}
-                    </span>
-                  </span>
-                  {failed && <Tag tone="keep">
-                    {tOr("audit.outcome", e.outcome)}</Tag>}
-                  {retry && (
+                <TimelineRow key={`${e.ts}-${i}`} e={e} rules={rules}
+                  retry={retry && (
                     <Button variant="secondary" size="sm"
-                      className="coarse:min-h-11" disabled={retrying}
+                      className="mt-2 coarse:min-h-11" disabled={retrying}
                       onClick={async () => {
                         setRetrying(true);
                         await onRetryUnsub!(retry);
@@ -547,9 +528,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
                         setAuditTick((n) => n + 1);
                       }}>
                       {t("tab.retry")}
-                    </Button>
-                  )}
-                </li>
+                    </Button>)} />
               );
             })}
           </ul>

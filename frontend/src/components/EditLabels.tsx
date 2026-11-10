@@ -12,7 +12,7 @@ import { Button, cap, Input, Loading, Modal, PopupSelect, SectionLabel,
 
 const VERDICTS: Verdict[] = ["delete_safe", "review", "keep"];
 const VERDICT_FG: Record<Verdict, string> = {
-  delete_safe: "text-safe-fg", review: "text-review-fg", keep: "text-keep-fg",
+  delete_safe: "text-safe-fg", review: "text-review-fg", keep: "text-info-fg",
 };
 const sameList = (a: string[], b: string[]) =>
   a.length === b.length && a.every((x, i) => x === b[i]);

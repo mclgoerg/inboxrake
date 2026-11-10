@@ -49,7 +49,7 @@ const TAG_TONE: Record<TagTone, string> = {
   accent: "bg-chip text-accent",
   // A sender's category (newsletter, shopping...): outlined and muted, so it
   // reads as a label next to the filled state badges.
-  category: "border border-line text-muted",
+  category: "whitespace-nowrap border border-line text-muted",
 };
 
 /** The semantic tones render as status pills (fully rounded); neutral,
@@ -78,7 +78,7 @@ export function Tag({ children, tone = "neutral", dot = false,
 const VERDICT_TONE: Record<string, TagTone> = {
   delete_safe: "safe",
   review: "review",
-  keep: "keep",
+  keep: "info",
 };
 
 /** Status labels read in sentence case in every language. */
@@ -96,7 +96,7 @@ export function AiTag({ ai }: { ai: GroupAi }) {
     );
   }
   return (
-    <Tag tone={VERDICT_TONE[ai.verdict]}>
+    <Tag tone={VERDICT_TONE[ai.verdict]} dot>
       <span title={ai.reason}>{cap(t(`v.${ai.verdict}`))}</span>
     </Tag>
   );
@@ -148,7 +148,7 @@ const POPOVER = `absolute top-full z-(--z-dropdown) mt-1 w-max
   max-w-[min(18rem,calc(100vw-1rem))] rounded-card border border-line
   bg-panel p-3 text-left type-meta shadow-popover`;
 
-/** Compact per-mail rating summary for a group: 🟢n 🟡n 🔴n. A button: tap
+/** Compact per-mail rating summary for a group: 🟢n 🟡n 🔵n. A button: tap
  *  (or click) opens a popover spelling out what the counts are - touch
  *  screens have no hover, and the bare emoji don't say what they count. */
 export function RatingChips({ ratings }: {
@@ -157,7 +157,7 @@ export function RatingChips({ ratings }: {
   const { open, setOpen, alignRight, ref, pop } = usePopover();
   const parts: [string, number, string][] = [
     ["🟢", ratings.delete_safe, "v.delete_safe"],
-    ["🟡", ratings.review, "v.review"], ["🔴", ratings.keep, "v.keep"]];
+    ["🟡", ratings.review, "v.review"], ["🔵", ratings.keep, "v.keep"]];
   const shown = parts.filter(([, n]) => n > 0);
   const tip = t("ratings.aria", { parts: shown.map(([, n, k]) =>
     `${n} ${t(k)}`).join(", ") });
@@ -279,8 +279,8 @@ export function EngagementMeter({ g, labelled = false }: {
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
         className={labelled
           ? `inline-flex min-h-6 cursor-pointer items-center gap-1.5
-            rounded-full bg-chip px-2 py-0.5 type-caption text-body
-            hover:bg-chiph`
+            whitespace-nowrap rounded-full bg-chip px-2 py-0.5 type-caption
+            text-body hover:bg-chiph`
           : `inline-flex min-h-6 min-w-6 cursor-pointer items-end gap-0.5
             rounded px-0.5 pb-1 hover:bg-chip`}>
         <span aria-hidden={labelled || undefined}
@@ -389,7 +389,12 @@ export function PinBadge({ n }: { n: number }) {
  *  pixel) or clicks (redirect links). A button like the engagement meter: a
  *  tap opens a popover with the share and the tracker hosts - the icon alone
  *  doesn't say what it means, and touch screens have no hover. */
-export function TrackerBadge({ g }: { g: { trackers?: GroupTrackers } }) {
+export function TrackerBadge({ g, labelled = false }: {
+  g: { trackers?: GroupTrackers };
+  /** A pill that says it in words ("Tracks opens", like the labelled
+   *  engagement meter) instead of the lone glyphs. */
+  labelled?: boolean;
+}) {
   const { open, setOpen, alignRight, ref, pop } = usePopover();
   const tr = g.trackers;
   if (!tr || (tr.pixel <= 0 && tr.click <= 0)) return null;
@@ -401,10 +406,15 @@ export function TrackerBadge({ g }: { g: { trackers?: GroupTrackers } }) {
         aria-expanded={open}
         // Rows are tap targets themselves - this one only explains itself.
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="inline-flex min-h-6 min-w-6 cursor-pointer items-center
-          justify-center gap-0.5 rounded px-0.5 text-muted hover:bg-chip">
+        className={labelled
+          ? `inline-flex min-h-6 cursor-pointer items-center gap-1.5
+            whitespace-nowrap rounded-full bg-chip px-2 py-0.5 type-caption
+            text-body hover:bg-chiph`
+          : `inline-flex min-h-6 min-w-6 cursor-pointer items-center
+            justify-center gap-0.5 rounded px-0.5 text-muted hover:bg-chip`}>
         {tr.pixel > 0 && <Eye size={14} aria-hidden />}
         {tr.click > 0 && <MousePointerClick size={14} aria-hidden />}
+        {labelled && label}
       </button>
       {open && (
         <div ref={pop} role="dialog" aria-label={label}
