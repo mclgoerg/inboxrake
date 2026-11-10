@@ -158,8 +158,8 @@ test("estimated arrivals are hatched and the arrived total says ~", async () => 
   expect(cols[0].querySelector(".bar-estimate")).not.toBeNull();
   expect(cols[7].querySelector(".bar-estimate")).toBeNull();
   expect(card.getByText("~241")).toBeTruthy();
-  // the note is one line
-  expect(card.getByText(/^Lighter bars are estimates from the mails still in your mailbox\.$/))
+  // the note keeps its second sentence
+  expect(card.getByText(/^Lighter bars are estimates from the mails still in your mailbox\. Mails you cleaned before the weekly count started are missing\.$/))
     .toBeTruthy();
 });
 

@@ -125,7 +125,7 @@ export const DE: Record<string, string> = {
   "overview.balance_arrived": "angekommen",
   "overview.balance_cleaned": "aufgeräumt",
   "overview.balance_note":
-    "Hellere Balken sind Schätzungen aus den Mails, die noch in deinem Postfach liegen.",
+    "Hellere Balken sind Schätzungen aus den Mails, die noch in deinem Postfach liegen. Was du vor Beginn der wöchentlichen Zählung aufgeräumt hast, fehlt.",
   "overview.balance_est": "ca. {n}",
   "overview.balance_gone": " (davon {n} nicht mehr in deinem Postfach)",
   "overview.load_failed": "Diese Zahlen konnten nicht geladen werden.",

@@ -699,7 +699,7 @@ export const EN: Record<string, string> = {
   "overview.balance_this_week": "this week",
   "overview.balance_arrived": "arrived",
   "overview.balance_cleaned": "cleaned",
-  "overview.balance_note": "Lighter bars are estimates from the mails still in your mailbox.",
+  "overview.balance_note": "Lighter bars are estimates from the mails still in your mailbox. Mails you cleaned before the weekly count started are missing.",
   "overview.balance_est": "about {n}",
   "overview.balance_gone": " (incl. {n} no longer in your mailbox)",
   "overview.load_failed": "Couldn't load these numbers.",
