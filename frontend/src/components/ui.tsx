@@ -676,7 +676,7 @@ export function PageHeader({ title, sub, actions, back, variant = "page",
   if (variant === "large") {
     return (
       <header data-page-header="large"
-        className={`${flush ? "" : "px-4 "}pt-2 pb-3`}>
+        className={`${flush ? "" : "px-4 sm:px-5 "}pt-2 pb-3`}>
         {(back || actions) && (
           <div className="flex items-center gap-1">
             {back && (
