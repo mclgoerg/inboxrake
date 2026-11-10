@@ -1,5 +1,301 @@
 # Changelog
 
+## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
+
+
+### Features
+
+* a calmer sender detail with the actions up front ([#266](https://github.com/mclgoerg/inboxrake/issues/266)) ([2a5e60b](https://github.com/mclgoerg/inboxrake/commit/2a5e60ba5276a23c2fc7101ad03efc70af7dd973))
+  <!-- release-notes:266 -->
+  - The sender detail is calmer: the actions (Unsubscribe, Block, Protect, Move) sit right under the name, with Mails / Size / Opened figures and the sender's signals in the header.
+  - New: "Move" in the detail moves all of a sender's mails to a folder (same confirmation, protected-mail handling and Undo as moving selected mails).
+  - "Trash all N" is now "Move N mails to Trash".
+* a clearer 8-week chart and a tidier Overview ([#343](https://github.com/mclgoerg/inboxrake/issues/343)) ([832fb30](https://github.com/mclgoerg/inboxrake/commit/832fb30c4f6cf3207201851382e1168855568478))
+  <!-- release-notes:343 -->
+  The Overview's 8-week chart now shows what arrived and what you cleaned as two separate rows, each with its own scale and a total, with week dates underneath. Estimated weeks are hatched. The Overview cards also line up with the page header, and Next steps rows are easier to read.
+* a floating bar for selected senders ([#268](https://github.com/mclgoerg/inboxrake/issues/268)) ([b806421](https://github.com/mclgoerg/inboxrake/commit/b806421130e6a0948b2d90023aeaef2b1b64d4b6))
+  <!-- release-notes:268 -->
+  - The bar for selected senders and mails is now a floating capsule with Unsubscribe, Archive, Move and a More menu; the Limit setting shows as a visible tag while active.
+* a slimmer demo bar, things to try and a clearer start screen ([#325](https://github.com/mclgoerg/inboxrake/issues/325)) ([04f6bc4](https://github.com/mclgoerg/inboxrake/commit/04f6bc46b646b52c0ba35dfe40878056fcef1cea))
+  <!-- release-notes:325 -->
+  - The in-browser demo has a slim bar above the whole app (nothing is hidden behind the sidebar any more), shows "Three things to try" on the first visit, and its start screen shows progress and what to try while it loads.
+* a welcome screen and a shorter first-run setup ([#265](https://github.com/mclgoerg/inboxrake/issues/265)) ([e39dc96](https://github.com/mclgoerg/inboxrake/commit/e39dc964bf80432a643eb672340b130dddf6463c))
+  <!-- release-notes:265 -->
+  - New first-run experience: a welcome screen, then a shorter setup. Choosing which folders to scan is now optional and tucked behind "Choose folders…" on the sign-in step; the defaults are unchanged.
+  - The first scan shows a progress ring with a short checklist.
+* account settings with status and grouped rows ([#288](https://github.com/mclgoerg/inboxrake/issues/288)) ([88cd0cb](https://github.com/mclgoerg/inboxrake/commit/88cd0cb7180fcc56dcdc0c5f420810e503072ba5))
+  <!-- release-notes:288 -->
+  - Account settings are clearer: a card shows the account's sign-in and scan status with a Scan now button, and the connection, folders and advanced options are grouped.
+  - Folders to scan are switches; the password is only shown when you choose Change….
+* account switcher with a card per account ([#313](https://github.com/mclgoerg/inboxrake/issues/313)) ([649daf8](https://github.com/mclgoerg/inboxrake/commit/649daf87d2cfaa0c664c9df499f4e09bc3bb01b6))
+  <!-- release-notes:313 -->
+  - The account menu shows a card per account with its sign-in state, last scan, mails and size; a broken sign-in links straight to its settings.
+  - "Add account" always opens the setup wizard, also from Settings.
+  - "Empty Trash…" moved out of the account menu; it is on the Trash page.
+* activity as a timeline ([#287](https://github.com/mclgoerg/inboxrake/issues/287)) ([666cb81](https://github.com/mclgoerg/inboxrake/commit/666cb81ec3eff0f7580a3fd8f76b3fed524be8d3))
+  <!-- release-notes:287 -->
+  The Activity page now shows this month's cleaning, what you can still undo as cards, and a timeline grouped by month with ok / failed status. A failed unsubscribe can be retried right there.
+* activity summary knows what was undone ([#291](https://github.com/mclgoerg/inboxrake/issues/291)) ([e913ad3](https://github.com/mclgoerg/inboxrake/commit/e913ad32a25ebaa0fb9b7779d6c6fc1b039dbd36))
+  <!-- release-notes:291 -->
+  - The "This month" card on the Activity page now subtracts mails you restored with Undo.
+  - Undone actions are marked "undone" in the timeline.
+  - Older log entries keep working; they just can't be marked as undone.
+* an Activity page that says what happened ([#349](https://github.com/mclgoerg/inboxrake/issues/349)) ([d166661](https://github.com/mclgoerg/inboxrake/commit/d166661b548e407600aaa409ebee739c65ede301))
+  <!-- release-notes:349 -->
+  The Activity page now describes each entry in plain words ("Moved 150 mails to Trash", "Unsubscribed from …"), says who did it (a rule or you), and shows Done or Failed with the reason one click away. On wide screens the log sits beside a month summary with the numbers per week and a split by rules / you / unsubscribes.
+* attachments by kind of file, repeats and file tiles ([#302](https://github.com/mclgoerg/inboxrake/issues/302)) ([d0db248](https://github.com/mclgoerg/inboxrake/commit/d0db248f3ec4dc2aa6808dd628677e2bbf464fd3))
+  <!-- release-notes:302 -->
+  - Attachments now shows how much space each kind of file (PDF, images, video, archives…) takes, and which files were sent again in several mails.
+  - Files appear as tiles (or a list) you can filter by kind and age; selecting one picks its mail(s) - the whole mail goes to Trash, not only the file.
+  - The overview covers your whole mailbox, not just the 300 largest mails.
+
+  The whole-mailbox bar refreshes after a background delete finishes; tiles update immediately.
+* built-in categories you can see, and tidier settings ([#350](https://github.com/mclgoerg/inboxrake/issues/350)) ([a6463cc](https://github.com/mclgoerg/inboxrake/commit/a6463ccb6534baaf96cbe62f668899a7b72f4209))
+  <!-- release-notes:350 -->
+  - Settings > Categories now shows the six built-in categories with their keywords, an Edit button and an on/off switch, above your own categories.
+  - Settings is easier to read on phones (Appearance, stepper rows), the search index shows one status line, and special folders no longer repeat their names.
+  - No upgrade steps.
+* calmer sender rows and a Select mode ([#270](https://github.com/mclgoerg/inboxrake/issues/270)) ([d79d8cb](https://github.com/mclgoerg/inboxrake/commit/d79d8cb57f83d2a7759d8727c57f555bcd74b172))
+  <!-- release-notes:270 -->
+  - Sender lists are calmer: one status badge per row instead of several columns; the details are in the sender panel.
+  - New "Select" button to pick several senders; checkboxes also appear when you hover a row.
+  - Phones show the checkboxes only in Select mode.
+* clearer Duplicates, sender mail list and Trash ([#344](https://github.com/mclgoerg/inboxrake/issues/344)) ([141b49c](https://github.com/mclgoerg/inboxrake/commit/141b49c2ab459ac7ce658c4d244dc7c4ca31af5c))
+  <!-- release-notes:344 -->
+  Duplicates, a sender's mail list and the Trash page are easier to scan on phones: duplicate sets are cards that show which copy stays, long mail lists have month headings and load 100 at a time, and Trash groups mails by month with a compact restore button.
+* clearer rule cards and a tidier rule editor ([#345](https://github.com/mclgoerg/inboxrake/issues/345)) ([e841dbd](https://github.com/mclgoerg/inboxrake/commit/e841dbd79d0c38754c6881281677ace3205360cb))
+  <!-- release-notes:345 -->
+  Rules look clearer: each card shows when it last ran in your language's date format and what it did, a failed run keeps its error visible, and the new-rule editor is aligned (grouped into "Which mail" / "What happens" on phones). The intro is shorter and links to how rules work. No change to what rules do.
+* correct a sender's verdict and categories yourself ([#295](https://github.com/mclgoerg/inboxrake/issues/295)) ([566286a](https://github.com/mclgoerg/inboxrake/commit/566286a624083c7edf2b540b4247787b0ed9eaa0))
+  <!-- release-notes:295 -->
+  - New "Edit labels" on every sender: set Safe to delete / Review / Keep yourself, and add or remove its categories. Your choice wins over the AI, survives rescans and shows as "set by you"; "Reset to automatic" undoes it.
+  - A protected sender is still never "safe to delete", and rows that contain a sender you put on hold are never offered as AI-safe.
+  - Your choices are part of the settings backup.
+* duplicates page with one-tap cleanup and compare ([#303](https://github.com/mclgoerg/inboxrake/issues/303)) ([c60a8c8](https://github.com/mclgoerg/inboxrake/commit/c60a8c82068afdc740dd9a65bb747ef461a31f88))
+  <!-- release-notes:303 -->
+  - Duplicates now opens with one number and one button: "Remove 13 copies" keeps the newest of each identical set and moves the rest to Trash (with the usual confirm and Undo); "Review each" is the old manual selection.
+  - Versions and possible double-sends get a Compare view with the differences highlighted; "Keep all" hides a set you want to keep (Show hidden brings it back).
+* filed senders as a grouped list ([#314](https://github.com/mclgoerg/inboxrake/issues/314)) ([1017678](https://github.com/mclgoerg/inboxrake/commit/10176780455e46566548f2443bb47d2b981a8610))
+  <!-- release-notes:314 -->
+  Settings › Filed senders is now a grouped list with search and an All / By you / AI / Unused filter. Change group, forget, download, upload and the AI-answer actions moved into "…" menus; sorting moved into the "…" menu (Sort by / Order).
+* friendlier protected senders, categories and AI settings ([#289](https://github.com/mclgoerg/inboxrake/issues/289)) ([ee53655](https://github.com/mclgoerg/inboxrake/commit/ee53655675d29bcdfcd3fc273db6c5c21bc9be59))
+  <!-- release-notes:289 -->
+  - Protected senders and custom categories are now easy lists with add and remove buttons and keyword chips instead of text boxes.
+  - AI review shows this month's spend against your budget as a ring; the API key is shown as "set" with a Change button.
+  - Login method and shared AI key settings (admins) use clearer rows. Nothing you saved changes.
+* livelier Clean up and Insights tabs on phones ([#282](https://github.com/mclgoerg/inboxrake/issues/282)) ([a38df0b](https://github.com/mclgoerg/inboxrake/commit/a38df0b8c852f2e39a97d60f33bd5592068569b8))
+  <!-- release-notes:282 -->
+  - The Clean up and Insights tabs on phones now show what is waiting (space ready to clean, Triage, live counts) and small previews of Statistics, Space map, Trackers and recent activity.
+* numbers formatted for your language ([#294](https://github.com/mclgoerg/inboxrake/issues/294)) ([64a58ea](https://github.com/mclgoerg/inboxrake/commit/64a58ea6c695ddb9c67998f233ecb40e60b3329d))
+  <!-- release-notes:294 -->
+  Numbers and sizes now follow your language (German "1.732", "11,3 MB"). New Settings > General > Number format lets you pick another style. Exports are unchanged.
+* one toolbar with a Filter menu ([#269](https://github.com/mclgoerg/inboxrake/issues/269)) ([cddfe9f](https://github.com/mclgoerg/inboxrake/commit/cddfe9f388165868d7a3c52c13f69d3d478efc8c))
+  <!-- release-notes:269 -->
+  - Search, filter and sort now share one tidy toolbar; the row of quick-filter chips is replaced by a Filter menu (quick filters, your saved filters, "Describe a filter").
+  - The Filter button lights up and the active filter shows as a removable token.
+* one-tap filters and a visible "Select all matches" ([#278](https://github.com/mclgoerg/inboxrake/issues/278)) ([ee1d1f6](https://github.com/mclgoerg/inboxrake/commit/ee1d1f60d575bf1002e958353476531468fb5f1d))
+  <!-- release-notes:278 -->
+  - One tap per filter: pick a quick, "Inactive for" or saved filter, tap it again to switch it off - with the number of matching groups shown per row.
+  - A visible "Select all N matches" bar above the filtered list replaces the hidden second tap (protected groups still stay out).
+  - "Inactive for" is its own list (6+ months / 1+ year / 2+ years); on phones Filter opens as a sheet and the toolbar is calmer.
+* Overview as the new start page ([#272](https://github.com/mclgoerg/inboxrake/issues/272)) ([699c3e0](https://github.com/mclgoerg/inboxrake/commit/699c3e02c6d9c6bca9e964f45577a98a96399c8d))
+  <!-- release-notes:272 -->
+  - New Overview start page: total size, the biggest senders and ready-made cleanup suggestions at a glance.
+  - Quick wins moved there as "Suggestions"; the app now always opens on the Overview instead of remembering All mail.
+* overview shows your mailbox balance and last week ([#297](https://github.com/mclgoerg/inboxrake/issues/297)) ([5e5d602](https://github.com/mclgoerg/inboxrake/commit/5e5d602fb07b7e45438010d45558310146bbda2a))
+  <!-- release-notes:297 -->
+  - The Overview now shows how your mailbox changed: size and a trend against a month ago, an 8-week chart of mails that arrived vs mails you cleaned, "Last week" / "Since last visit", next steps as a checklist and what fills your inbox.
+  - Nothing is lost: the biggest senders and every suggestion (Review, Clean up, Not now) are still there.
+  - "New AI verdicts" only counts verdicts rated from this version on.
+* pick a folder from a searchable list when moving ([#312](https://github.com/mclgoerg/inboxrake/issues/312)) ([516f5d4](https://github.com/mclgoerg/inboxrake/commit/516f5d4f25053099a716ea1437638b33c66b5623))
+  <!-- release-notes:312 -->
+  Moving mails now uses a searchable folder list with suggestions (your Archive folder and recently used folders) and mail counts instead of a drop-down. When you move everything from one sender you can also choose to always file their new mail there - this creates a rule that starts as a preview, nothing is moved automatically until you arm it.
+* pop-up buttons instead of browser dropdowns ([#279](https://github.com/mclgoerg/inboxrake/issues/279)) ([b1a6cdd](https://github.com/mclgoerg/inboxrake/commit/b1a6cdd6c29338e67653b5ab24bbfd6fd597a4c9))
+  <!-- release-notes:279 -->
+  Menus instead of browser dropdowns for sorting, moving and filtering, and calmer segmented controls.
+* read mail like in a mail app ([#316](https://github.com/mclgoerg/inboxrake/issues/316)) ([4eb33a4](https://github.com/mclgoerg/inboxrake/commit/4eb33a41aab2277b44980e0e4e154fc1e72a53b2))
+  <!-- release-notes:316 -->
+  - Mails now open like in a mail app: sender, readable date, big subject, tracking and attachment chips, folded quotes and an unsubscribe card when the mail has one.
+  - A toolbar on every opened mail: Trash, Pin, Move, Conversation and More (open sender, copy address, show headers, block sender); previous / next arrows where you came from a list.
+  - Conversations read as cards, your own replies marked "from Sent".
+* rules that read like sentences ([#284](https://github.com/mclgoerg/inboxrake/issues/284)) ([7f8d5c9](https://github.com/mclgoerg/inboxrake/commit/7f8d5c93fb7771c5cc49b9d8e629d19b887aa864))
+  <!-- release-notes:284 -->
+  - Rules now read like sentences, with a Report only / Active switch right on each card.
+  - New and edited rules are built from pop-ups in a side panel with a live preview of how many senders and mails match.
+  - Nothing about how rules run changes.
+
+  Review follow-ups: per-language sentence templates (DE case/commas), Esc yields to pop-ups and the nested filter sheet, focus moves into/out of the side panel, run/mode errors show on the card. The editor is a side panel at >= 1024 px and a nested full dialog below (centred dialog from 640 px, the existing modal rule).
+* search shows senders and mails as you type ([#299](https://github.com/mclgoerg/inboxrake/issues/299)) ([c05ad46](https://github.com/mclgoerg/inboxrake/commit/c05ad464deb6c107fc419d7d5630ae880416528b))
+  <!-- release-notes:299 -->
+  Search now shows matching senders and mails as you type, with a Recent list and ready-made "Try" searches. Mail-text search is a scope next to "Subject & sender" instead of a checkbox.
+* settings as a page with grouped sections ([#283](https://github.com/mclgoerg/inboxrake/issues/283)) ([f6f122b](https://github.com/mclgoerg/inboxrake/commit/f6f122bc657df194398213a07c3527d84440cb60))
+  <!-- release-notes:283 -->
+  - Settings is now a full page with a section list and search instead of a pop-up window; on phones it works like the iOS Settings app.
+  - Changes are saved from a floating bar that appears only when something changed, and Inboxrake asks before you leave with unsaved changes.
+  - General settings use switches, steppers and appearance thumbnails.
+* sidebar navigation on wide screens ([#267](https://github.com/mclgoerg/inboxrake/issues/267)) ([c33ce17](https://github.com/mclgoerg/inboxrake/commit/c33ce17e2fa53c5b613db24b2248d812111448aa))
+  <!-- release-notes:267 -->
+  - On wide screens (1024 px and up) a sidebar replaces the Tools menu: cleanup and insight tools, Junk/Trash, search, activity and settings are one click away, and "All mail" is a page of its own.
+  - Phones and narrow windows look exactly as before.
+* space map as readable tiles or rings ([#308](https://github.com/mclgoerg/inboxrake/issues/308)) ([68d4145](https://github.com/mclgoerg/inboxrake/commit/68d4145f54313f598bf7514f9c1c3b04d9aef3f8))
+  <!-- release-notes:308 -->
+  - The space map now opens with a sentence ("61 % of your space is mail you barely engage with") and the MB per colour, and shows tiles you can read, with gaps and names.
+  - Tap a tile for its details (size, how often opened, last mail, AI verdict) and jump to its senders; double-tap to zoom in.
+  - New "Rings" view next to "Tiles": domains inside, their senders outside.
+  - Upgrade note: a tap on a tile now shows details instead of zooming in - double-tap or use the zoom button to drill in.
+* Statistics as cards all the way down, one colour per category ([#346](https://github.com/mclgoerg/inboxrake/issues/346)) ([df1406b](https://github.com/mclgoerg/inboxrake/commit/df1406bbb323aaa1501dd5fa53d403d2a38a188f))
+  <!-- release-notes:346 -->
+  Statistics is tidier: four matching figure tiles, mails per year as bars, the cleanup history, AI verdicts and recent scans as cards with proper dates, and top domains / senders that open up with "Show all". Categories now have translated names (in German too) and one colour each across the Overview, Statistics and the space map.
+* statistics with charts ([#281](https://github.com/mclgoerg/inboxrake/issues/281)) ([511ac2c](https://github.com/mclgoerg/inboxrake/commit/511ac2c41110a0c84f28fa96e838c879abe43fa3))
+  <!-- release-notes:281 -->
+  The Statistics page now shows charts and a period switch (30 days / 12 months / all time) for the volume chart and the mail, size and unread figures. It also has a category donut and top senders with bars (click one to open it). All previous figures are still there.
+* swipe down to close sheets on phones ([#280](https://github.com/mclgoerg/inboxrake/issues/280)) ([1719920](https://github.com/mclgoerg/inboxrake/commit/17199204bedfb06e51142cd5afa8a61bb06fe1aa))
+  <!-- release-notes:280 -->
+  On phones, sheets can be swiped down to close.
+* swipe rows, pull to scan and swipe back on phones ([#305](https://github.com/mclgoerg/inboxrake/issues/305)) ([7c31984](https://github.com/mclgoerg/inboxrake/commit/7c319840537374fd5eaf6e5db5d3683ffaae98a6))
+  <!-- release-notes:305 -->
+  - On phones you can now swipe a sender or mail row: left for Trash (or Block / More), right for Protect, Pin and Read. Every action asks the same confirmations as its button.
+  - Pull down from the top of Overview, Senders or All mail to scan; the header shows the scan's progress.
+  - In the installed app, swipe from the left edge to go back from tool pages, a sender and Settings sections.
+* tab bar navigation on phones and tablets ([#271](https://github.com/mclgoerg/inboxrake/issues/271)) ([f878c6b](https://github.com/mclgoerg/inboxrake/commit/f878c6b8aa2b02e40bf4fc0ca897669b4d7fbb0a))
+  <!-- release-notes:271 -->
+  - On phones and tablets, navigation moves to a tab bar at the bottom (Senders, Clean up, Insights); the Tools menu and header links are replaced by the Clean up and Insights pages, and your account menu is the avatar at the top right.
+  - Fixes a sideways scroll on very narrow phones.
+* the digest mail shows your week like the Overview ([#301](https://github.com/mclgoerg/inboxrake/issues/301)) ([61beb58](https://github.com/mclgoerg/inboxrake/commit/61beb580f4450690d27dfb9d494ff92dc9885bd2))
+  <!-- release-notes:301 -->
+  The weekly digest mail now shows your week like the Overview: mails that arrived and were cleaned up, your mailbox size, what needs you and what happened. Set "Link to Inboxrake" in Settings > Weekly digest to get buttons that open the right page, and choose the mail's language (English / Deutsch).
+* tool pages get a large title and a back link ([#300](https://github.com/mclgoerg/inboxrake/issues/300)) ([a61c34d](https://github.com/mclgoerg/inboxrake/commit/a61c34dc61bc4160d0667e854800362538f77287))
+  <!-- release-notes:300 -->
+  Tool pages (Duplicates, Attachments, Rules, Statistics, Trash, ...) have a large title with a back link on phones and a cleaner page title on desktop.
+* tools open as pages beside the sidebar ([#273](https://github.com/mclgoerg/inboxrake/issues/273)) ([2d9a079](https://github.com/mclgoerg/inboxrake/commit/2d9a07915448d4b9e6634ef1febcc4e223a37f5c))
+  <!-- release-notes:273 -->
+  Tools such as Triage, Rules, Trash, Statistics and the Space map now open as pages next to the sidebar on wide screens, and Back / forward and reload keep you on them. The new Activity page lists what you can undo above the audit log. Phones and tablets are unchanged.
+* trackers page shows who is watching ([#311](https://github.com/mclgoerg/inboxrake/issues/311)) ([a122756](https://github.com/mclgoerg/inboxrake/commit/a1227562a099ece2c4a19c1815b99f74eecc4167))
+  <!-- release-notes:311 -->
+  The Trackers page now shows the share of tracked mails as a ring, which tracker hosts are behind them, and which senders track most - with a shortcut to list them all in Senders.
+* Trash and Junk pages with auto-empty and restore per mail ([#304](https://github.com/mclgoerg/inboxrake/issues/304)) ([96e0650](https://github.com/mclgoerg/inboxrake/commit/96e06500cda240b64df1d934512ee0b5871347eb))
+  <!-- release-notes:304 -->
+  - Trash and Junk are now their own pages. Trash shows how much space it holds, has an "Empty automatically" switch (it first shows what it would delete and only starts after you confirm) and a Restore button on every mail.
+  - Junk lists senders with Not junk / Block / Trash on each, and points out senders you have replied to.
+  - Upgrade: nothing to do; an automatic-empty rule is only created when you turn the switch on.
+* triage as a card stack ([#285](https://github.com/mclgoerg/inboxrake/issues/285)) ([fbfd53a](https://github.com/mclgoerg/inboxrake/commit/fbfd53a7d1704c11afad07e0c32f96f8fcbd7bbc))
+  <!-- release-notes:285 -->
+  Triage now shows your senders as a stack of cards with big round buttons, direction hints while you swipe and a running tally of your decisions.
+* Triage uses the width on desktops ([#348](https://github.com/mclgoerg/inboxrake/issues/348)) ([20df621](https://github.com/mclgoerg/inboxrake/commit/20df621885d1ed15c91b5005eef9efdacaad3c57))
+  <!-- release-notes:348 -->
+  Triage makes better use of wide screens: the buttons show their keyboard shortcuts and sit right under the card, an "Up next" list shows the following cards, and the counters say what they count. Phones are unchanged.
+* unsubscribe shows how each sender is unsubscribed ([#317](https://github.com/mclgoerg/inboxrake/issues/317)) ([44fc1ea](https://github.com/mclgoerg/inboxrake/commit/44fc1ea7dcbfd9c11453baf5b46b7b75892a888a))
+  <!-- release-notes:317 -->
+  - Unsubscribing now shows how each sender is handled before anything is sent: one click, an unsubscribe mail from your address, or a web page you confirm.
+  - Optionally move the sender's mails to Trash in the same step (off by default, undoable); the result lists what happened per sender, with "Open page" for web ones.
+* warm graphite theme, system font and appearance setting ([#263](https://github.com/mclgoerg/inboxrake/issues/263)) ([cf30219](https://github.com/mclgoerg/inboxrake/commit/cf30219153acc34c2ef21a23ccc04cbf0c5965ab))
+  <!-- release-notes:263 -->
+  - New calmer look: warm graphite surfaces with a caramel accent, in dark and light.
+  - The theme now follows your system's light/dark setting unless you picked one under Appearance (profile menu or Settings > General).
+  - If you had chosen a theme before, it is kept.
+* your year in mail as a full-screen story ([#315](https://github.com/mclgoerg/inboxrake/issues/315)) ([3a17bcc](https://github.com/mclgoerg/inboxrake/commit/3a17bcc21c5dcb6bd02cfb04b7c1a990bee0627c))
+  <!-- release-notes:315 -->
+  Your year in mail is now a full-screen story with a colourful card per topic and charts for months, weekdays and hours. Swipe or tap to move on; saving the summary image works as before.
+
+
+### Bug Fixes
+
+* a clearer sign-in page with translated errors ([#347](https://github.com/mclgoerg/inboxrake/issues/347)) ([08c7ca6](https://github.com/mclgoerg/inboxrake/commit/08c7ca67bd1d8d1709605f0cd8e595d8ff3f4683))
+  <!-- release-notes:347 -->
+  - The sign-in page is clearer: a centred card with a show / hide password button and its errors in your language.
+  - When single sign-on fails (provider unreachable, account not allowed, ...) you now land on the sign-in page with a message instead of a raw error.
+  - New FAQ entry on resetting a forgotten password.
+* actions finish on the account they started on ([#331](https://github.com/mclgoerg/inboxrake/issues/331)) ([6d3c1c3](https://github.com/mclgoerg/inboxrake/commit/6d3c1c39760da21dd5d857416f3720168bf8126b))
+  <!-- release-notes:331 -->
+  - Switching accounts while an action is still waiting (turning on "Empty automatically", emptying Junk / Trash, applying Triage, AI rating) no longer lets it run on the other account.
+  - "Also move their mails to Trash" after an unsubscribe only moves the mails of the senders you unsubscribed from.
+* Back closes tools and sender details on phones ([#309](https://github.com/mclgoerg/inboxrake/issues/309)) ([8364d9c](https://github.com/mclgoerg/inboxrake/commit/8364d9cde8717c9a25ddb6291c5de5da14f324f1))
+  <!-- release-notes:309 -->
+  - On phones and tablets, the Back button / swipe now closes the open tool, sender or mail first and returns to the page you came from, instead of leaving the app or the page underneath.
+* Clean up tiles count every kind of duplicate ([#298](https://github.com/mclgoerg/inboxrake/issues/298)) ([3e6622e](https://github.com/mclgoerg/inboxrake/commit/3e6622edf9ee60f3bd9512cc123970b4749314b9))
+  <!-- release-notes:298 -->
+  - The Duplicates tile on Clean up now counts every kind of duplicate, matching the Duplicates page.
+  - The Attachments tile says "Find big attachments" until a scan result exists, and the result survives a restart.
+* clearer settings, tracker list and German wording ([#357](https://github.com/mclgoerg/inboxrake/issues/357)) ([8479c49](https://github.com/mclgoerg/inboxrake/commit/8479c49ca1bc17822e13b35e3426c6ab4453d0eb))
+  <!-- release-notes:357 -->
+  Settings and the Trackers list are tidier (clearer units, price placeholders, a stat grid, top senders with "Show all"), German wording is fixed, and the demo's monthly figures now agree across pages. No upgrade steps.
+* clearing AI verdicts stays inside your own accounts ([#324](https://github.com/mclgoerg/inboxrake/issues/324)) ([943aaab](https://github.com/mclgoerg/inboxrake/commit/943aaabd53a4c133aab88de5bd7dfc224297fbeb))
+  <!-- release-notes:324 -->
+  Multi-user (OIDC) installs: clearing AI verdicts in Settings no longer touches other users' accounts.
+* colours and labels that agree across pages ([#355](https://github.com/mclgoerg/inboxrake/issues/355)) ([dc1dfe2](https://github.com/mclgoerg/inboxrake/commit/dc1dfe28f3304e4eba9585683e22d33b6a3e63fb))
+  <!-- release-notes:355 -->
+  Colours and labels now agree across pages: "Keep" verdicts are blue instead of red, the Space map shows high-engagement mail in a real colour, and the Insights tab's Recent activity reads like the Activity page. Counts on the Clean up tiles now say what they count.
+* dates, numbers and German wording follow your language everywhere ([#353](https://github.com/mclgoerg/inboxrake/issues/353)) ([868306f](https://github.com/mclgoerg/inboxrake/commit/868306f96611e2fbdffb2018ca2fb8c1f844a573))
+  <!-- release-notes:353 -->
+  Dates, sizes and percentages now follow your language and number format everywhere (no more US-style dates, "30 %" in German, sizes and counts no longer wrap between number and unit), relative times read "vor 3 Min." in German, and a few German wordings were fixed.
+* Duplicates and Attachments act only on what you see ([#330](https://github.com/mclgoerg/inboxrake/issues/330)) ([dc0bdbc](https://github.com/mclgoerg/inboxrake/commit/dc0bdbc73d6e5eaa793351472702ee969cde5973))
+  <!-- release-notes:330 -->
+  - Duplicates: "Trash selected" and "Select all but newest" only act on the tab you are looking at, and Attachments only trashes tiles that are shown.
+  - Switching account while Duplicates / Attachments is working no longer moves mails in the other account.
+  - Confirmations for a single mail now name its subject.
+* Duplicates and Attachments tiles show their last result ([#292](https://github.com/mclgoerg/inboxrake/issues/292)) ([1bfeecb](https://github.com/mclgoerg/inboxrake/commit/1bfeecbd479f6063a81f1127866931e43890ae91))
+  <!-- release-notes:292 -->
+  The Duplicates and Attachments tiles on the Clean up tab now show their last result instead of "Check".
+* every page keeps its own scroll position ([#290](https://github.com/mclgoerg/inboxrake/issues/290)) ([724939d](https://github.com/mclgoerg/inboxrake/commit/724939de4a247cb57e89b9b83cedcc5d1ec85fe8))
+  <!-- release-notes:290 -->
+  Each page now keeps its own scroll position: new pages open at the top, and going back returns you to where you were.
+* Junk works in the demo and a second Junk folder is named up front ([#326](https://github.com/mclgoerg/inboxrake/issues/326)) ([310ccc1](https://github.com/mclgoerg/inboxrake/commit/310ccc177b3cf58c45858cf3909be99674b56821))
+  <!-- release-notes:326 -->
+  - Junk and Trash pages now tell you up front when two folders could be your Junk or Trash folder, with a button to choose one, instead of failing when you press Empty or Delete permanently.
+  - The online demo's Junk page can now be emptied.
+* mails on the Junk page open instead of failing ([#306](https://github.com/mclgoerg/inboxrake/issues/306)) ([a9e0cb4](https://github.com/mclgoerg/inboxrake/commit/a9e0cb4beedebad89847820183c484544b5d9035))
+  <!-- release-notes:306 -->
+  - Mails on the Junk page open again instead of showing "unknown message".
+* menus are never cut off by their card ([#293](https://github.com/mclgoerg/inboxrake/issues/293)) ([3ac3299](https://github.com/mclgoerg/inboxrake/commit/3ac3299f6e4ceaa262ace6631d4c8053763d6773))
+  <!-- release-notes:293 -->
+  Pop-up menus (e.g. the language picker in Settings on a phone) are no longer cut off and no longer make the page jump.
+* one page header everywhere ([#354](https://github.com/mclgoerg/inboxrake/issues/354)) ([7a28158](https://github.com/mclgoerg/inboxrake/commit/7a281587629768d234c10d00f948d1ffbc072531))
+  <!-- release-notes:354 -->
+  Every page now has the same header layout. Page titles, subtitles and buttons sit in the same place on desktop and tablet, and the Senders table headers line up with the Mails / Size column.
+* show the demo bar in Safari on iPhone and iPad ([#342](https://github.com/mclgoerg/inboxrake/issues/342)) ([7506801](https://github.com/mclgoerg/inboxrake/commit/75068012b39d5ec27f1fc0c999472d31e1963f0e))
+  <!-- release-notes:342 -->
+  - The demo's top bar (DEMO, tips, Reset) now shows in Safari on iPhone and iPad.
+* small fixes on the new UX7 pages ([#319](https://github.com/mclgoerg/inboxrake/issues/319)) ([933aad3](https://github.com/mclgoerg/inboxrake/commit/933aad34dc802ddce4189f9d43998a8ff9a124ec))
+  <!-- release-notes:319 -->
+  Filed senders are easier to read on phones, the German Trackers page says "Öffnungen", and the folder picker no longer remembers folders for cancelled moves or clicks through when dismissed.
+* small layout fixes across pages ([#352](https://github.com/mclgoerg/inboxrake/issues/352)) ([0d67bed](https://github.com/mclgoerg/inboxrake/commit/0d67bed51e17808d421ff921f86ea1827c5f5a2e))
+  <!-- release-notes:352 -->
+  - All mail on phones now has the same search / filter toolbar as Senders, and the Junk, Trackers, Space map, Clean up and account screens got layout fixes (no cut-off labels, nothing wrapping beside pills, a calmer dark Space map).
+  - The Trash tile on Clean up shows the size of the Trash once it has been opened; the demo's account menu shows only the version.
+* small layout fixes on the new tool pages ([#307](https://github.com/mclgoerg/inboxrake/issues/307)) ([279d16a](https://github.com/mclgoerg/inboxrake/commit/279d16a7929a9b8c4befcfeee4c2d2d42d758be2))
+  <!-- release-notes:307 -->
+  - Smaller layout fixes: file tiles, the Junk page buttons, the German search field, the scan progress line (now names the folder) and the account User field on phones.
+* small layout leftovers after the redesign ([#276](https://github.com/mclgoerg/inboxrake/issues/276)) ([70ff13b](https://github.com/mclgoerg/inboxrake/commit/70ff13bf54b960b6a8dfdd267323ae794a0f39c1))
+  <!-- release-notes:276 -->
+  Small layout fixes: toasts sit in the right place, phone suggestions show protected mails skipped, tools return to their tab, and the Smart pile header no longer clips.
+* solid backgrounds for success and error toasts ([#275](https://github.com/mclgoerg/inboxrake/issues/275)) ([5a7a3e5](https://github.com/mclgoerg/inboxrake/commit/5a7a3e5a45781c9302e4fc513b934c29fcb43f02))
+  <!-- release-notes:275 -->
+  Success and error messages are readable again over busy lists.
+* statistics period edges ([#286](https://github.com/mclgoerg/inboxrake/issues/286)) ([f21fe4b](https://github.com/mclgoerg/inboxrake/commit/f21fe4babf7825aff34d09729e82a0164ab23456))
+  <!-- release-notes:286 -->
+  The "12 months" statistics view now always shows the last 12 calendar months, and the "All time" chart labels the year.
+* steadier lists and rows ([#356](https://github.com/mclgoerg/inboxrake/issues/356)) ([eb1840d](https://github.com/mclgoerg/inboxrake/commit/eb1840def4c148459aee80aa72d7a2419183fdb8))
+  <!-- release-notes:356 -->
+  Lists and rows are steadier: read and unread mails line up, long sender addresses shorten with an ellipsis instead of breaking mid-word, and small layout details on phones (Rules, Activity, Search, All mail while loading) are tidied.
+* take Debian security updates when building the image ([#340](https://github.com/mclgoerg/inboxrake/issues/340)) ([acbe6a2](https://github.com/mclgoerg/inboxrake/commit/acbe6a2b3647b67fdf2c8bd26bdf64a51f9388d7))
+  <!-- release-notes:340 -->
+  - The container image now includes Debian's latest security updates (fixes two zlib vulnerabilities, CVE-2026-76844 and CVE-2026-85091).
+* the reader and sender detail act on the mail you are looking at ([#332](https://github.com/mclgoerg/inboxrake/issues/332)) ([f3a5ae2](https://github.com/mclgoerg/inboxrake/commit/f3a5ae259d9d46426f1d2c527a168e5921ef74b9))
+  <!-- release-notes:332 -->
+  - Sender and conversation details, the reader and the Senders list now always act on what you are looking at: hidden selections are left out of Trash / Move, and trashing a mail from a conversation trashes that mail.
+  - "Restore to…" on the Trash page uses the folder picker and no longer offers Trash itself.
+* tidier sort menu and round checkboxes in mail lists ([#310](https://github.com/mclgoerg/inboxrake/issues/310)) ([5234e4e](https://github.com/mclgoerg/inboxrake/commit/5234e4e0af62f2bff1459ce1e41028389b8abedb))
+  <!-- release-notes:310 -->
+  Sort menus are tidier ("Sort by" and "Order" sections) and mail lists use round checkboxes everywhere.
+* Undo after Junk and Trash moves, and clearer Junk / Trash notices ([#329](https://github.com/mclgoerg/inboxrake/issues/329)) ([c4c3f0d](https://github.com/mclgoerg/inboxrake/commit/c4c3f0d5b9e41252147f2636935a5fd60c876842))
+  <!-- release-notes:329 -->
+  - Undo after "Not junk" and Trash on the Junk page works again, and the page updates after it.
+  - The "Moved N mails…" banner no longer stays at the top of the app after a Junk or Trash move.
+  - When two folders could be your Junk and/or Trash folder, one notice says so, the disabled delete buttons say why, and "Choose folder" takes you straight to the chooser.
+* unexpected server errors no longer show internal details ([#341](https://github.com/mclgoerg/inboxrake/issues/341)) ([22c6f46](https://github.com/mclgoerg/inboxrake/commit/22c6f4636a421537e89731d2be058c562af18662))
+  <!-- release-notes:341 -->
+  Unexpected server errors now show a short, generic message ("Something went wrong on the server - try again; if it keeps happening, check the server log.") instead of internal details; the full error is in the server log.
+
 ## [2.2.1](https://github.com/mclgoerg/inboxrake/compare/v2.2.0...v2.2.1) (2026-11-07)
 
 
