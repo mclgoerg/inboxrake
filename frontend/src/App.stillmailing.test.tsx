@@ -133,7 +133,7 @@ test("the row counts flagged groups; tapping it filters, the banner selects "
 
   // the banner selects the non-protected match
   fireEvent.click(screen.getAllByRole("button",
-    { name: /^Select the 1 match/ })[0]);
+    { name: /^Select the 1\u00a0match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
 
   tap();                                    // checked row again: clear
@@ -158,5 +158,5 @@ test("the row shows the badge; a tap opens the popover with the numbers",
   expect(screen.queryByText(/since you unsubscribed on 3 Oct/)).toBeNull();
   fireEvent.click(badge);
   expect(screen.getByRole("dialog").textContent)
-    .toMatch(/4 mails since you unsubscribed on 3 Oct/);
+    .toMatch(/4\u00a0mails since you unsubscribed on 3 Oct/);
 });

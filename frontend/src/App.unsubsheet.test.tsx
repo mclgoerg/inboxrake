@@ -153,7 +153,7 @@ test("the bulk bar opens the sheet - nothing is sent until its button", async ()
   expect(unsubscribePreview).toHaveBeenCalledWith("sender", [KEY]);
   expect(unsubscribeBulk).not.toHaveBeenCalled();
   expect(within(dlg).getByText("1 sender · how it works:")).toBeTruthy();
-  await pressDialog("Unsubscribe 1 sender");
+  await pressDialog("Unsubscribe 1\u00a0sender");
   await waitFor(() => expect(unsubscribeBulk)
     .toHaveBeenCalledWith("sender", [KEY]));
   expect(deleteGroups).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ test("the bulk bar opens the sheet - nothing is sent until its button", async ()
 test("the run's end is shown by the sheet, not announced as a toast",
   async () => {
   await openBulkSheet();
-  await pressDialog("Unsubscribe 1 sender");
+  await pressDialog("Unsubscribe 1\u00a0sender");
   await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalled());
   tick({ unsub: unsubState("running", { progress: "0/1" }) });
   tick({ unsub: unsubState("done") });
@@ -190,7 +190,7 @@ test("also move to Trash: the app's trash path runs after the unsubscribe",
 
 test("hiding the sheet mid-run brings the result toast back", async () => {
   await openBulkSheet();
-  await pressDialog("Unsubscribe 1 sender");
+  await pressDialog("Unsubscribe 1\u00a0sender");
   await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalled());
   tick({ unsub: unsubState("running", { progress: "0/1" }) });
   fireEvent.click(await screen.findByRole("button", { name: "Hide" }));

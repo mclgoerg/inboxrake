@@ -364,7 +364,7 @@ test("the Undo list and the restore confirm word a role label in the " +
   fireEvent.click(screen.getByText("2 Mails aus Spam"));
   const dlg = await findDialog();
   expect(dlg.textContent)
-    .toContain("2 Mails wiederherstellen (2 Mails aus Spam)?");
+    .toContain("2\u00a0Mails wiederherstellen (2\u00a0Mails aus Spam)?");
   await pressDialog("Abbrechen");
 });
 
@@ -375,7 +375,7 @@ test("the Undo list keeps the English label for English, one mail singular",
     expect(screen.getByText("1 mail from Junk")).toBeTruthy();
     fireEvent.click(screen.getByText("1 mail from Junk"));
     expect((await findDialog()).textContent)
-      .toContain("Restore 1 mail (1 mail from Junk)?");
+      .toContain("Restore 1\u00a0mail (1\u00a0mail from Junk)?");
     await cancelDialog();
   });
 
@@ -405,12 +405,12 @@ test("a partial Undo toasts how many came back; a refused one the error",
     await mount(st as any);
     undoApi.mockResolvedValueOnce({ restored: 3, of: 5, rescan: true });
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }));
-    fireEvent.click(screen.getByRole("button", { name: /5 mails.*Shop News/ }));
+    fireEvent.click(screen.getByRole("button", { name: /5\u00a0mails.*Shop News/ }));
     await pressDialog("Restore");
     expect(await screen.findByText(/Restored 3 of 5 mails \(/)).toBeTruthy();
     undoApi.mockRejectedValueOnce(new Error("The server refused the move."));
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }));
-    fireEvent.click(screen.getByRole("button", { name: /5 mails.*Shop News/ }));
+    fireEvent.click(screen.getByRole("button", { name: /5\u00a0mails.*Shop News/ }));
     await pressDialog("Restore");
     expect(await screen.findByText(
       "Undo error: The server refused the move.")).toBeTruthy();
@@ -426,7 +426,7 @@ test("an Undo that fails after restoring some mails still says how many",
       return Promise.reject(new Error("The server refused the move."));
     });
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }));
-    fireEvent.click(screen.getByRole("button", { name: /5 mails.*Shop News/ }));
+    fireEvent.click(screen.getByRole("button", { name: /5\u00a0mails.*Shop News/ }));
     await pressDialog("Restore");
     expect(await screen.findByText(
       "Undo error: The server refused the move.")).toBeTruthy();
@@ -442,7 +442,7 @@ test("an Undo only asks to clear a restore notice, not any other",
     (api.clearNotice as any).mockClear();
     undoApi.mockResolvedValueOnce({ restored: 5, of: 5, rescan: true });
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }));
-    fireEvent.click(screen.getByRole("button", { name: /5 mails.*Shop News/ }));
+    fireEvent.click(screen.getByRole("button", { name: /5\u00a0mails.*Shop News/ }));
     await pressDialog("Restore");
     await screen.findByText(/Restored 5 mails/);
     expect(api.clearNotice).toHaveBeenCalledTimes(1);

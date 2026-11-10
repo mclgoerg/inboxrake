@@ -104,7 +104,7 @@ describe("FolderPicker", () => {
     + "with counts and the tree", async () => {
     mount();
     const dlg = await findPicker();
-    expect(within(dlg).getByRole("heading", { name: "Move 88 mails" }))
+    expect(within(dlg).getByRole("heading", { name: "Move 88\u00a0mails" }))
       .toBeTruthy();
     await waitFor(() => expect(within(dlg).getAllByText("1,021")).toHaveLength(2));
     // Archive shows up twice (Suggested + All), the rest once
@@ -116,7 +116,7 @@ describe("FolderPicker", () => {
   it("singular title", async () => {
     mount({ count: 1 });
     expect(await findPicker()).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Move 1 mail" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Move 1\u00a0mail" })).toBeTruthy();
   });
 
   it("suggests the Archive role folder and the recently used ones", async () => {

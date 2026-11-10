@@ -125,8 +125,8 @@ test("the hero shows the account, the total size and the counts", async () => {
   await ready();
   const hero = screen.getByRole("region", { name: "Mailbox balance" });
   expect(hero.textContent).toContain("proton · me@proton.example");
-  expect(hero.textContent).toContain("36.0 MB");
-  expect(hero.textContent).toContain("in 95 mails from 4 senders");
+  expect(hero.textContent).toContain("36.0\u00a0MB");
+  expect(hero.textContent).toContain("in 95\u00a0mails from 4\u00a0senders");
   expect(window.location.hash).toBe("");          // the start page, no rewrite
 });
 
@@ -136,10 +136,10 @@ test("the storage legend names the 4 biggest senders and everyone else; the " +
   const storage = await ready();
   const legend = within(storage).getAllByRole("listitem");
   expect(legend.map((li) => li.textContent)).toEqual([
-    "Label g160.0 MB", "Label g250.0 MB", "Label g340.0 MB",
-    "Label g430.0 MB", "Everyone else30.0 MB"]);   // g5 + g6 = 20 + 10
+    "Label g160.0\u00a0MB", "Label g250.0\u00a0MB", "Label g340.0\u00a0MB",
+    "Label g430.0\u00a0MB", "Everyone else30.0\u00a0MB"]);   // g5 + g6 = 20 + 10
   expect(screen.getByRole("region", { name: "Mailbox balance" }).textContent)
-    .toContain("210.0 MB");                         // 60+50+40+30+20+10
+    .toContain("210.0\u00a0MB");                         // 60+50+40+30+20+10
 });
 
 test("a legend entry opens that sender on the Senders page", async () => {
@@ -162,7 +162,7 @@ test("Biggest senders: top 5 by size; a row opens Senders with the detail",
     .getAllByRole("button");
   expect(rows).toHaveLength(5);
   expect(rows[0].textContent).toContain("Label g1");
-  expect(rows[0].textContent).toContain("60.0 MB");
+  expect(rows[0].textContent).toContain("60.0\u00a0MB");
   fireEvent.click(rows[2]);
   expect(await screen.findByRole("dialog")).toBeTruthy();
   expect(window.location.hash).toBe("#/senders");

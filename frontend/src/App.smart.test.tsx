@@ -587,7 +587,7 @@ test("a pool of hundreds of senders at N=2: search, tick all matches, act on "
     const dlg = await findDialog();
     // names the first three senders, then counts the rest
     expect(dlg.textContent).toMatch(
-      new RegExp(`${hits * 3} mails from .+, .+, .+ and ${hits - 3} more`));
+      new RegExp(`${hits * 3}\u00a0mails from .+, .+, .+ and ${hits - 3} more`));
     await pressDialog(`Move to Trash (${hits * 3})`);
     await waitFor(() => expect(deleteGroups).toHaveBeenCalled());
     const [grouping, keys] = deleteGroups.mock.calls[0];
@@ -660,7 +660,7 @@ test("a selection unsubscribes only from own rows - pooled rows are skipped, "
   expect(within(dlg).getByText(
     "2 pooled rows are skipped: open one to unsubscribe from a single sender."))
     .toBeTruthy();
-  await pressDialog("Unsubscribe 1 sender");
+  await pressDialog("Unsubscribe 1\u00a0sender");
   await waitFor(() => expect(unsubscribeBulk).toHaveBeenCalledTimes(1));
   // exactly the own row's key - never a pool's
   expect(unsubscribeBulk).toHaveBeenCalledWith("smart", ["s:big@shop.example"]);
@@ -767,7 +767,7 @@ test("confirming starts the sorting once", async () => {
   openRow("Other senders");
   fireEvent.click(await screen.findByRole("button", { name: "Sort with AI" }));
   await findDialog();
-  await pressDialog("Sort 5 senders");
+  await pressDialog("Sort 5\u00a0senders");
   await waitFor(() => expect(aiSort).toHaveBeenCalledTimes(1));
   expect(await screen.findByText("AI sorting started.")).toBeTruthy();
 });
@@ -1038,7 +1038,7 @@ test("a ticked sender of a company group asks: just it, or the whole company",
     const dlg = await findDialog();
     expect(within(dlg).getByText("File only the ticked senders, or whole companies?"))
       .toBeTruthy();
-    await pressDialog("The whole company (2 senders)");
+    await pressDialog("The whole company (2\u00a0senders)");
     await waitFor(() => expect(knowledgePut).toHaveBeenCalledWith({ entries: [
       { key: "co:acme.example", kind: "accounts" }] }));
   });
@@ -1138,13 +1138,13 @@ test("'Keep these answers' sits next to 'Remove AI sorting', confirms with "
   openRow("Orders & deliveries");
   await screen.findByRole("tab", { name: /^Senders/ });
   expect(screen.getByRole("button", { name: "Remove AI sorting" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1 sender)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1\u00a0sender)" }));
   const dlg = await findDialog();
   expect(within(dlg).getByText("Keep the AI’s answer for 1 sender?")).toBeTruthy();
   expect(within(dlg).getByText(
     "“Remove AI sorting” does not touch kept answers. No mail is moved."))
     .toBeTruthy();
-  await pressDialog("Keep for 1 sender");
+  await pressDialog("Keep for 1\u00a0sender");
   await waitFor(() => expect(knowledgeKeepAi).toHaveBeenCalledTimes(1));
   expect(await screen.findByText("Kept the AI’s answer for 1 sender.")).toBeTruthy();
 });
@@ -1155,7 +1155,7 @@ test("declining the confirmation keeps nothing", async () => {
   await openSmart();
   openRow("Orders & deliveries");
   await screen.findByRole("tab", { name: /^Senders/ });
-  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1 sender)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1\u00a0sender)" }));
   await findDialog();
   await pressDialog("Cancel");
   await expectNoDialog();
@@ -1170,9 +1170,9 @@ test("a refused keep (an AI run is going) shows the reason in words", async () =
   await openSmart();
   openRow("Orders & deliveries");
   await screen.findByRole("tab", { name: /^Senders/ });
-  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1 sender)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1\u00a0sender)" }));
   await findDialog();
-  await pressDialog("Keep for 1 sender");
+  await pressDialog("Keep for 1\u00a0sender");
   expect(await screen.findByText(/An AI run is going/)).toBeTruthy();
 });
 
@@ -1202,11 +1202,11 @@ test("keeping answers is German in the German UI", async () => {
   openRow("Bestellungen & Lieferungen");
   await screen.findByRole("tab", { name: /^Absender \(/ });
   fireEvent.click(screen.getByRole("button",
-    { name: "Diese Antworten behalten (1 Absender)" }));
+    { name: "Diese Antworten behalten (1\u00a0Absender)" }));
   const dlg = await findDialog();
   expect(within(dlg).getByText("Die KI-Antwort für 1 Absender behalten?"))
     .toBeTruthy();
-  await pressDialog("Für 1 Absender behalten");
+  await pressDialog("Für 1\u00a0Absender behalten");
   expect(await screen.findByText("KI-Antworten für 3 Absender behalten.")).toBeTruthy();
 });
 
@@ -1236,12 +1236,12 @@ test("a finished AI sorting run offers to keep its answers right in the notice",
     knowledgeKeepAi.mockResolvedValue({ ok: true, kept: 1, senders: 1, skipped: 0 });
     await mount();
     const keep = await screen.findByRole("button",
-      { name: "Keep these answers (1 sender)" });
+      { name: "Keep these answers (1\u00a0sender)" });
     expect(within(keep.closest("[role=status]") as HTMLElement).getByText(
       /AI sorting done: 1 of 2 senders placed\./)).toBeTruthy();
     fireEvent.click(keep);
     await findDialog();
-    await pressDialog("Keep for 1 sender");
+    await pressDialog("Keep for 1\u00a0sender");
     await waitFor(() => expect(knowledgeKeepAi).toHaveBeenCalledTimes(1));
   });
 
@@ -1263,9 +1263,9 @@ test("keeping says how many senders were kept and how many already had a "
   await openSmart();
   openRow("Orders & deliveries");
   await screen.findByRole("tab", { name: /^Senders/ });
-  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1 sender)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1\u00a0sender)" }));
   await findDialog();
-  await pressDialog("Keep for 1 sender");
+  await pressDialog("Keep for 1\u00a0sender");
   expect(await screen.findByText("Kept the AI’s answers for 3 senders. "
     + "2 senders were left as they are: they have a filing of your own, or their address cannot be filed."))
     .toBeTruthy();
@@ -1280,9 +1280,9 @@ test("when every answer had to be left alone, the toast says so instead of "
   await openSmart();
   openRow("Orders & deliveries");
   await screen.findByRole("tab", { name: /^Senders/ });
-  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1 sender)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep these answers (1\u00a0sender)" }));
   await findDialog();
-  await pressDialog("Keep for 1 sender");
+  await pressDialog("Keep for 1\u00a0sender");
   expect(await screen.findByText("1 sender was left as it is: it has a filing "
     + "of your own, or its address cannot be filed.")).toBeTruthy();
 });

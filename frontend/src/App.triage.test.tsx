@@ -122,7 +122,7 @@ const card = () => screen.getByTestId("triage-card");
 const btn = (dlg: HTMLElement, name: string | RegExp) =>
   within(dlg).getByRole("button", { name });
 /** Header button: "Done", or "Apply N decisions" once something is decided. */
-const DONE = /^(Done|Apply \d+ decisions?)$/;
+const DONE = /^(Done|Apply \d+ decisions?)$/;
 const key = (k: string) => fireEvent.keyDown(window, { key: k });
 
 test("deck follows the current list order and shows the card details", async () => {
@@ -159,14 +159,14 @@ test("buttons decide, the running summary adds up, Undo takes one back", async (
   const status = () => within(dlg).getByRole("status").textContent;
   expect(status()).toBe("Nothing decided yet");
   fireEvent.click(btn(dlg, /Trash/));                                  // News A
-  await waitFor(() => expect(status()).toBe("Trash 1 group · 5000 B"));
+  await waitFor(() => expect(status()).toBe("Trash 1\u00a0group · 5000 B"));
   fireEvent.click(btn(dlg, /Trash/));                                  // Shop B
-  await waitFor(() => expect(status()).toBe("Trash 2 groups · 9000 B"));
+  await waitFor(() => expect(status()).toBe("Trash 2\u00a0groups · 9000 B"));
   fireEvent.click(btn(dlg, "Undo last decision"));
-  await waitFor(() => expect(status()).toBe("Trash 1 group · 5000 B"));
+  await waitFor(() => expect(status()).toBe("Trash 1\u00a0group · 5000 B"));
   expect(within(card()).getByText("Shop B")).toBeTruthy();    // back on it
   fireEvent.click(btn(dlg, /Protect/));
-  await waitFor(() => expect(status()).toBe("Trash 1 group · 5000 B · Protect 1"));
+  await waitFor(() => expect(status()).toBe("Trash 1\u00a0group · 5000 B · Protect 1"));
 });
 
 test("keyboard: arrows decide, Backspace undoes", async () => {
@@ -175,7 +175,7 @@ test("keyboard: arrows decide, Backspace undoes", async () => {
   key("ArrowUp");                                    // News A: has a header
   await waitFor(() => expect(status()).toBe("Unsubscribe 1"));
   key("ArrowLeft");                                  // Shop B
-  await waitFor(() => expect(status()).toBe("Trash 1 group · 4000 B · Unsubscribe 1"));
+  await waitFor(() => expect(status()).toBe("Trash 1\u00a0group · 4000 B · Unsubscribe 1"));
   key("Backspace");
   await waitFor(() => expect(status()).toBe("Unsubscribe 1"));
   key("ArrowRight");                                 // Shop B kept
@@ -226,10 +226,10 @@ test("a drag past the threshold commits, a short one springs back", async () => 
   expect(within(card()).getByText("News A")).toBeTruthy();
   expect(status()).toBe("Nothing decided yet");
   drag(-120, 0);                                     // left = Trash
-  await waitFor(() => expect(status()).toBe("Trash 1 group · 5000 B"));
+  await waitFor(() => expect(status()).toBe("Trash 1\u00a0group · 5000 B"));
   drag(120, 0);                                      // right = Keep (Shop B)
   await waitFor(() => expect(within(card()).getByText("Bank C")).toBeTruthy());
-  expect(status()).toBe("Trash 1 group · 5000 B");
+  expect(status()).toBe("Trash 1\u00a0group · 5000 B");
   drag(0, -120);                                     // up on a protected: no
   expect(within(card()).getByText("Bank C")).toBeTruthy();
   drag(-120, 0);                                     // left on a protected: no
@@ -243,7 +243,7 @@ test("without reduced motion the card flies out before the next shows", async ()
   expect(within(card()).getByText("News A")).toBeTruthy();    // still leaving
   expect(card().style.opacity).toBe("0");
   await waitFor(() => expect(within(card()).getByText("Shop B")).toBeTruthy());
-  expect(within(dlg).getByRole("status").textContent).toBe("Trash 1 group · 5000 B");
+  expect(within(dlg).getByRole("status").textContent).toBe("Trash 1\u00a0group · 5000 B");
 });
 
 const toSummary = async (dlg: HTMLElement) => {
@@ -258,7 +258,7 @@ test("nothing is called before Apply + confirm; Cancel leaves the deck alone", a
   expect(within(dlg).getByText(/Move 50 mails from 1 group to Trash/)).toBeTruthy();
   fireEvent.click(btn(dlg, "Apply"));
   const c = await findDialog();
-  expect(c.textContent).toContain("Move 50 mails from 1 group to Trash");
+  expect(c.textContent).toContain("Move 50\u00a0mails from 1\u00a0group to Trash");
   await cancelDialog();
   await expectNoDialog();
   expect(calls).toEqual([]);
@@ -275,9 +275,9 @@ test("Apply runs protect, unsubscribe, then trash with exactly the decided keys"
   await within(dlg).findByRole("button", { name: "Apply" });   // deck ended
   fireEvent.click(btn(dlg, "Apply"));
   const c = await findDialog();
-  expect(c.textContent).toContain("Move 40 mails from 1 group to Trash");
-  expect(c.textContent).toContain("Unsubscribe from 1 sender");
-  expect(c.textContent).toContain("Add 1 entry to your protected list");
+  expect(c.textContent).toContain("Move 40\u00a0mails from 1\u00a0group to Trash");
+  expect(c.textContent).toContain("Unsubscribe from 1\u00a0sender");
+  expect(c.textContent).toContain("Add 1\u00a0entry to your protected list");
   expect(calls).toEqual([]);
   await pressDialog("Apply");
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());
@@ -336,7 +336,7 @@ test("pinned mails are left out of the counted mails", async () => {
   await within(dlg).findByRole("button", { name: "Apply" });
   fireEvent.click(btn(dlg, "Apply"));
   const c = await findDialog();
-  expect(c.textContent).toContain("Move 6 mails from 1 group to Trash");
+  expect(c.textContent).toContain("Move 6\u00a0mails from 1\u00a0group to Trash");
   expect(c.textContent).toContain("4 protected mails stay untouched");
 });
 
@@ -352,7 +352,7 @@ test("a second finger voids the gesture: no decision on either pointer up", asyn
   expect(within(dlg).getByRole("status").textContent).toBe("Nothing decided yet");
   drag(-120, 0);                       // a fresh single-finger drag works again
   await waitFor(() => expect(within(dlg).getByRole("status").textContent)
-    .toBe("Trash 1 group · 5000 B"));
+    .toBe("Trash 1\u00a0group · 5000 B"));
 });
 
 test("keys do nothing while the discard prompt is on top", async () => {
@@ -362,7 +362,7 @@ test("keys do nothing while the discard prompt is on top", async () => {
   await findDialog();
   key("ArrowLeft"); key("ArrowRight");
   await cancelDialog();
-  expect(within(dlg).getByRole("status").textContent).toBe("Trash 1 group · 5000 B");
+  expect(within(dlg).getByRole("status").textContent).toBe("Trash 1\u00a0group · 5000 B");
   expect(within(card()).getByText("Shop B")).toBeTruthy();
 });
 
@@ -373,7 +373,7 @@ test("Back to cards at the end keeps the last decision", async () => {
   await within(dlg).findByRole("button", { name: "Apply" });
   fireEvent.click(btn(dlg, "Back to cards"));
   await waitFor(() => expect(within(card()).getByText("Pin E")).toBeTruthy());
-  expect(within(dlg).getByRole("status").textContent).toContain("Trash 1 group");
+  expect(within(dlg).getByRole("status").textContent).toContain("Trash 1\u00a0group");
 });
 
 test("a group protected since the deck was dealt is skipped and said so", async () => {
@@ -443,7 +443,7 @@ test("closing with decisions asks to discard; keeping them stays open", async ()
   fireEvent.click(btn(dlg, /Trash/));
   fireEvent.click(btn(dlg, "Back to Clean up"));
   const c = await findDialog();
-  expect(c.textContent).toContain("Discard 1 decision?");
+  expect(c.textContent).toContain("Discard 1\u00a0decision?");
   expect(c.textContent).toContain("Nothing has been changed in your mailbox.");
   await cancelDialog();
   expect(screen.getByRole("dialog", { name: "Triage" })).toBeTruthy();
@@ -494,11 +494,11 @@ test("German strings", async () => {
   expect(within(dlg).getByText("Karte 1 von 5")).toBeTruthy();
   fireEvent.click(btn(dlg, /Papierkorb/));
   await waitFor(() => expect(within(dlg).getByRole("status").textContent)
-    .toBe("1 Gruppe in den Papierkorb · 5000 B"));
-  fireEvent.click(btn(dlg, /^(Fertig|\d+ Entscheidung(en)? anwenden)$/));
+    .toBe("1\u00a0Gruppe in den Papierkorb · 5000 B"));
+  fireEvent.click(btn(dlg, /^(Fertig|\d+\u00a0Entscheidung(en)? anwenden)$/));
   fireEvent.click(btn(dlg, "Anwenden"));
   const c = await findDialog();
-  expect(c.textContent).toContain("50 Mails aus 1 Gruppe in den Papierkorb verschieben");
+  expect(c.textContent).toContain("50\u00a0Mails aus 1\u00a0Gruppe in den Papierkorb verschieben");
 });
 
 test("a still-mailing group shows the same pill as its row", async () => {
@@ -527,7 +527,7 @@ test("header button, tally chips, round-button labels and hints follow the card"
   const chips = () => [...dlg.querySelectorAll("span[aria-hidden] > span")]
     .map((e) => e.textContent).filter((x) => x && /^\d+$/.test(x));
   expect(chips().slice(0, 4)).toEqual(["1", "0", "0", "0"]);
-  expect(btn(dlg, "Apply 1 decision")).toBeTruthy();
+  expect(btn(dlg, "Apply 1\u00a0decision")).toBeTruthy();
   fireEvent.click(btn(dlg, /Protect/));
-  await waitFor(() => expect(btn(dlg, "Apply 2 decisions")).toBeTruthy());
+  await waitFor(() => expect(btn(dlg, "Apply 2\u00a0decisions")).toBeTruthy());
 });

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState,
   type PointerEvent, type ReactNode } from "react";
 import { api, fmtSize, saveBlob } from "../api";
 import { getLang, t } from "../i18n";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import type { WrappedResp, WrappedSender } from "../types";
 import {
   buildSummarySvg, paletteFromTheme, senderName, svgToPngBlob,
@@ -139,7 +139,7 @@ export function summaryStats(d: WrappedResp): { value: string; label: string }[]
   const r = d.received;
   return [
     { value: num(r.senders), label: t("wrapped.stat.senders") },
-    { value: `${pct(r.read, r.mails)}%`, label: t("wrapped.stat.read") },
+    { value: fmtPct(pct(r.read, r.mails)), label: t("wrapped.stat.read") },
     { value: num(r.new_senders), label: t("wrapped.stat.new") },
     { value: num(d.ghosts.count), label: t("wrapped.stat.ghosts") },
     { value: num(d.cleanup.trashed + d.cleanup.archived + d.cleanup.purged),
@@ -217,7 +217,7 @@ function Card({ card, d, showNames, onYear }: {
         <Slide lead={t("wrapped.senders.lead")} big={num(r.senders)}
           unit={t("wrapped.senders.unit", { n: r.senders })}>
           <p className="type-body text-knob/80">
-            {t("wrapped.senders.sub", { pct: pct(r.read, r.mails),
+            {t("wrapped.senders.sub", { pct: fmtPct(pct(r.read, r.mails)),
               new: r.new_senders })}
           </p>
         </Slide>
@@ -227,9 +227,9 @@ function Card({ card, d, showNames, onYear }: {
       const every = daysSpan(d) / Math.max(1, top.mails);
       const rate = every >= 1
         ? t("wrapped.loudest.rate", { mails: t("n.mails", { n: top.mails }),
-          days: (Math.round(every * 10) / 10).toLocaleString(getLang()) })
+          days: fmtNum(Math.round(every * 10) / 10) })
         : t("wrapped.loudest.rate_day", { mails: t("n.mails", { n: top.mails }),
-          per: (Math.round(10 / every) / 10).toLocaleString(getLang()) });
+          per: fmtNum(Math.round(10 / every) / 10) });
       return (
         <div className="flex flex-1 flex-col justify-center gap-3 px-6 py-8
           text-center text-knob sm:px-10">

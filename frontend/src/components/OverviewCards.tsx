@@ -4,7 +4,7 @@ import { ChevronRight, Hourglass, Info, Mail, MoreHorizontal, Newspaper, Papercl
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLang, t } from "../i18n";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { fmtSize } from "../lib";
 import { WEEK_S } from "../activity";
 import { categoryHues, categoryName } from "../categories";
@@ -581,7 +581,7 @@ export function KindsCard({ data, failed, onRetry }: {
                 <span className="min-w-0 flex-1 truncate">
                   {categoryName(s.kind)}</span>
                 <span className="text-muted tabular-nums">
-                  {t("overview.percent", { n: fmtNum(s.pct) })}</span>
+                  {fmtPct(s.pct)}</span>
               </li>
             ))}
           </ul>

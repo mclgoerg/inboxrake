@@ -312,7 +312,7 @@ describe("changing entries", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
     const dlg = await findDialog();
     expect(within(dlg).getByText("Delete 2 entries?")).toBeTruthy();
-    await pressDialog("Delete 2 entries");
+    await pressDialog("Delete 2\u00a0entries");
     await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
     expect(new Set((knowledgePut.mock.calls[0][0] as any).remove)).toEqual(
       new Set(["a:amy@solo.example", "co:acme.example"]));
@@ -365,7 +365,7 @@ describe("selection and undo", () => {
       { target: { value: "plumber" } });                 // only amy is shown
     expect(screen.getByText("1 selected")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete selected (1)" }));
-    await pressDialog("Delete 1 entry");
+    await pressDialog("Delete 1\u00a0entry");
     await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
     expect(knowledgePut).toHaveBeenCalledWith({ remove: ["a:amy@solo.example"] });
   });
@@ -398,7 +398,7 @@ describe("selection and undo", () => {
     fireEvent.click(screen.getByLabelText("Select amy@solo.example"));
     fireEvent.click(screen.getByLabelText("Select acme.example"));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
-    await pressDialog("Delete 2 entries");
+    await pressDialog("Delete 2\u00a0entries");
     await screen.findByText("2 entries removed.");
     knowledgePut.mockResolvedValueOnce({ ok: true, saved: 2, removed: 0, previous: {} });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -429,7 +429,7 @@ describe("selection covers only what is visible", () => {
       expect(screen.queryByLabelText("Select s000@x.example")).toBeNull();
       fireEvent.click(screen.getByLabelText("Select s119@x.example"));
       fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
-      await pressDialog("Delete 2 entries");
+      await pressDialog("Delete 2\u00a0entries");
       await waitFor(() => expect(knowledgePut).toHaveBeenCalledTimes(1));
       expect(new Set((knowledgePut.mock.calls[0][0] as any).remove)).toEqual(
         new Set(["a:s099@x.example", "a:s119@x.example"]));
@@ -445,7 +445,7 @@ describe("the confirmations say what they do", () => {
     let dlg = await findDialog();
     expect(within(dlg).getByText(/This cannot be undone\./)).toBeTruthy();
     await cancelDialog();
-    pick(moreMenu, "Forget kept AI answers (1 sender)");
+    pick(moreMenu, "Forget kept AI answers (1\u00a0sender)");
     dlg = await findDialog();
     expect(within(dlg).getByText(/gone for good/)).toBeTruthy();
     await cancelDialog();
@@ -504,7 +504,7 @@ describe("Remove unused", () => {
     pick(moreMenu, "Remove unused (1)");
     const dlg = await findDialog();
     expect(within(dlg).getByText("Remove 1 unused entry?")).toBeTruthy();
-    await pressDialog("Remove 1 entry");
+    await pressDialog("Remove 1\u00a0entry");
     await waitFor(() => expect(knowledgeRemoveUnused).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Removed 1 unused entry.")).toBeTruthy();
   });
@@ -527,7 +527,7 @@ describe("AI answers", () => {
     pick(moreMenu, "Keep all AI answers");
     const dlg = await findDialog();
     expect(within(dlg).getByText("Keep the AI’s answers for 3 senders?")).toBeTruthy();
-    await pressDialog("Keep for 3 senders");
+    await pressDialog("Keep for 3\u00a0senders");
     await waitFor(() => expect(knowledgeKeepAi).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Kept the AI’s answers for 3 senders.")).toBeTruthy();
   });
@@ -554,11 +554,11 @@ describe("AI answers", () => {
       knowledgeForgetAi.mockResolvedValue({ ok: true, forgotten: 1 });
       mount();
       await screen.findByText("amy@solo.example");
-      pick(moreMenu, "Forget kept AI answers (1 sender)");
+      pick(moreMenu, "Forget kept AI answers (1\u00a0sender)");
       const dlg = await findDialog();
       expect(within(dlg).getByText("Forget the kept AI answer for 1 sender?")).toBeTruthy();
       expect(within(dlg).getByText("What you filed yourself stays.")).toBeTruthy();
-      await pressDialog("Forget for 1 sender");
+      await pressDialog("Forget for 1\u00a0sender");
       await waitFor(() => expect(knowledgeForgetAi).toHaveBeenCalledTimes(1));
       expect(await screen.findByText("Forgot the kept AI answer for 1 sender.")).toBeTruthy();
     });
@@ -575,7 +575,7 @@ describe("AI answers", () => {
     knowledgeForgetAi.mockResolvedValue({ ok: true, forgotten: 3 });
     mount();
     await screen.findByText("acme.example");
-    pick(moreMenu, "Forget kept AI answers (4 senders)");   // 3 + 1 + 0 filed
+    pick(moreMenu, "Forget kept AI answers (4\u00a0senders)");   // 3 + 1 + 0 filed
     const dlg = await findDialog();
     expect(within(dlg).getByText("Forget the kept AI answers for 4 senders?"))
       .toBeTruthy();
@@ -585,7 +585,7 @@ describe("AI answers", () => {
       src: "ai", senders: 0, filed: 0, status: "unused" })] });
     mount();
     await screen.findByText("ghost@nowhere.example");
-    pick(moreMenu, "Forget kept AI answers (1 answer)");
+    pick(moreMenu, "Forget kept AI answers (1\u00a0answer)");
     expect(within(await findDialog()).getByText(
       "Forget 1 kept AI answer that currently files no sender?")).toBeTruthy();
     await cancelDialog();
@@ -598,7 +598,7 @@ describe("AI answers", () => {
     await screen.findByText("amy@solo.example");
     pick(moreMenu, "Keep all AI answers");
     await findDialog();
-    await pressDialog("Keep for 2 senders");
+    await pressDialog("Keep for 2\u00a0senders");
     expect(await screen.findByText(/An AI run is going/)).toBeTruthy();
   });
 });

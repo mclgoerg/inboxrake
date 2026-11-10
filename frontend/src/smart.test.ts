@@ -34,14 +34,14 @@ describe("Smart wording", () => {
     const b = row({ kind: "newsletter", n_senders: 12 });
     setLang("en");
     expect(smartView(b)).toMatchObject({ label: "Newsletters",
-      sub: "12 senders" });
-    expect(smartWhy(b, 10)).toContain("fewer than 10 mails");
+      sub: "12\u00a0senders" });
+    expect(smartWhy(b, 10)).toContain("fewer than 10\u00a0mails");
     setLang("de");
     expect(smartView(b)).toMatchObject({ label: "Newsletter",
-      sub: "12 Absender" });
-    expect(smartWhy(b, 10)).toContain("weniger als 10 Mails");
+      sub: "12\u00a0Absender" });
+    expect(smartWhy(b, 10)).toContain("weniger als 10\u00a0Mails");
     expect(smartView(row({ kind: "other", n_senders: 1 })).sub)
-      .toBe("1 Absender");
+      .toBe("1\u00a0Absender");
   });
 
   it("a company row is named by its domain, a category row by its name", () => {
@@ -73,10 +73,10 @@ describe("Smart wording", () => {
       const r = row({ kind: kind as SmartKind, n_senders: 4 });
       setLang("en");
       expect(smartView(r).label).toBe(en);
-      expect(smartWhy(r, 10)).toContain("fewer than 10 mails");
+      expect(smartWhy(r, 10)).toContain("fewer than 10\u00a0mails");
       setLang("de");
       expect(smartView(r).label).toBe(de);
-      expect(smartWhy(r, 10)).toContain("weniger als 10 Mails");
+      expect(smartWhy(r, 10)).toContain("weniger als 10\u00a0Mails");
     }
   });
 
@@ -87,16 +87,16 @@ describe("Smart wording", () => {
     expect(purposeSummary(c)).toBe(
       "Orders 6 \u00b7 Accounts 3 \u00b7 Newsletters 2 \u00b7 Unclassified 1");
     expect(purposeSummary(c, 2)).toBe("Orders 6 \u00b7 Accounts 3");
-    expect(smartView(c).sub).toBe("4 senders \u00b7 Orders 6 \u00b7 Accounts 3");
+    expect(smartView(c).sub).toBe("4\u00a0senders \u00b7 Orders 6 \u00b7 Accounts 3");
     expect(smartContent(c)).toBe(
       "What the mails are about: Orders 6 \u00b7 Accounts 3 \u00b7 "
       + "Newsletters 2 \u00b7 Unclassified 1");
     setLang("de");
     expect(smartView(c).sub).toBe(
-      "4 Absender \u00b7 Bestellungen 6 \u00b7 Konten 3");
+      "4\u00a0Absender \u00b7 Bestellungen 6 \u00b7 Konten 3");
     expect(smartContent(c)).toContain("Worum es in den Mails geht: Bestellungen 6");
     // rows without a summary keep the plain sub-line
-    expect(smartView(row({ kind: "company", n_senders: 2 })).sub).toBe("2 Absender");
+    expect(smartView(row({ kind: "company", n_senders: 2 })).sub).toBe("2\u00a0Absender");
     expect(smartContent(row({ kind: "newsletter" }))).toBe("");
   });
 

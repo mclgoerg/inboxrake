@@ -112,7 +112,7 @@ describe("review", () => {
       .toBeTruthy();
     expect(within(rows[2]).getByText("Web page")).toBeTruthy();
     expect(within(rows[2]).getByText("you confirm on their page")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Unsubscribe 3 senders" }))
+    expect(screen.getByRole("button", { name: "Unsubscribe 3\u00a0senders" }))
       .toBeTruthy();
     expect(preview).toHaveBeenCalledWith("sender", BULK.kind === "bulk"
       ? BULK.keys : []);
@@ -152,10 +152,10 @@ describe("review", () => {
   it("ignores a double tap but takes a keyboard press", async () => {
     render(tree());
     await screen.findByText("Chirper");
-    fireEvent.click(screen.getByRole("button", { name: "Unsubscribe 3 senders" }),
+    fireEvent.click(screen.getByRole("button", { name: "Unsubscribe 3\u00a0senders" }),
       { detail: 1 });
     expect(bulk).not.toHaveBeenCalled();
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
   });
 
@@ -173,7 +173,7 @@ describe("also move to Trash", () => {
   it("is off by default, sized, and its switch changes the button", async () => {
     render(tree());
     const sw = await screen.findByRole("switch",
-      { name: "Also move their 288 mails to Trash" });
+      { name: "Also move their 288\u00a0mails to Trash" });
     expect(sw.getAttribute("aria-checked")).toBe("false");
     expect(screen.getByText("8.6 MB · you can undo it")).toBeTruthy();
     expect(screen.queryByText(/The button below does both/)).toBeNull();
@@ -213,7 +213,7 @@ describe("a bulk run", () => {
     const onRun = vi.fn();
     const onChanged = vi.fn();
     const view = await start({ onRun, onChanged });
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalledWith("sender",
       BULK.kind === "bulk" ? BULK.keys : []));
     await waitFor(() => expect(onRun).toHaveBeenLastCalledWith(7));
@@ -250,7 +250,7 @@ describe("a bulk run", () => {
 
   it("a failed sender shows its reason in the user's language", async () => {
     const view = await start();
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
     results.mockResolvedValue({ run: 7, items: [
       item("one@chirper.example", "failed", "one_click",
@@ -268,7 +268,7 @@ describe("a bulk run", () => {
     async () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const view = await start();
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
     results.mockResolvedValue({ run: 7, items: [
       item("news@stream.example", "link", "http",
@@ -288,7 +288,7 @@ describe("a bulk run", () => {
   it("in the demo the page is explained, not opened", async () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const view = await start({ demo: true });
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
     results.mockResolvedValue({ run: 7, items: [
       item("news@stream.example", "link", "http",
@@ -347,7 +347,7 @@ describe("a bulk run", () => {
   it("with Trash off nothing is moved", async () => {
     const onTrash = vi.fn().mockResolvedValue(12);
     const view = await start({ onTrash });
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(bulk).toHaveBeenCalled());
     results.mockResolvedValue({ run: 7, items: [
       item("one@chirper.example", "done", "one_click")] });
@@ -372,10 +372,10 @@ describe("a bulk run", () => {
   it("a server refusal (busy) stays on the review with the reason", async () => {
     bulk.mockRejectedValue(new Error("busy: scan running"));
     await start();
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     expect((await screen.findByRole("alert")).textContent)
       .toBe("busy: scan running");
-    expect(screen.getByRole("button", { name: "Unsubscribe 3 senders" }))
+    expect(screen.getByRole("button", { name: "Unsubscribe 3\u00a0senders" }))
       .toBeTruthy();
   });
 
@@ -383,7 +383,7 @@ describe("a bulk run", () => {
     bulk.mockResolvedValue({ queued: 0, skipped_protected: 0, skipped_done: 3,
       capped: 0 });
     await start();
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     expect(await screen.findByText("Nothing was unsubscribed")).toBeTruthy();
   });
 
@@ -466,7 +466,7 @@ describe("a bulk run", () => {
       results.mockResolvedValue({ run: 7, items: [
         item("one@chirper.example", "done", "one_click")] });
       const view = await start();
-      press("Unsubscribe 3 senders");
+      press("Unsubscribe 3\u00a0senders");
       await waitFor(() => expect(bulk).toHaveBeenCalled());
       // the server was restarted: the state carries another id, idle
       view.rerender(tree({ unsub: { ...idle, status: "idle", seq: 99 } }));
@@ -481,7 +481,7 @@ describe("a bulk run", () => {
     try {
       results.mockResolvedValue({ run: 8, items: [] });
       const view = await start();
-      press("Unsubscribe 3 senders");
+      press("Unsubscribe 3\u00a0senders");
       await waitFor(() => expect(bulk).toHaveBeenCalled());
       view.rerender(tree({ unsub: { ...idle, status: "idle", seq: 8 } }));
       await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
@@ -505,7 +505,7 @@ describe("a bulk run", () => {
   it("hands the run over to the app while it shows it, and lets go", async () => {
     const onRun = vi.fn();
     const view = await start({ onRun });
-    press("Unsubscribe 3 senders");
+    press("Unsubscribe 3\u00a0senders");
     await waitFor(() => expect(onRun).toHaveBeenLastCalledWith(7));
     view.unmount();
     expect(onRun).toHaveBeenLastCalledWith(null);
@@ -529,7 +529,7 @@ describe("one sender", () => {
     render(tree({ request: ONE, onChanged }));
     expect(await screen.findByText("1 sender · how it works:")).toBeTruthy();
     expect(preview).toHaveBeenCalledWith("sender", ["one@chirper.example"], true);
-    press("Unsubscribe 1 sender");
+    press("Unsubscribe 1\u00a0sender");
     expect(await screen.findByText("1 done")).toBeTruthy();
     expect(single).toHaveBeenCalledWith("sender", "one@chirper.example");
     expect(bulk).not.toHaveBeenCalled();
@@ -542,7 +542,7 @@ describe("one sender", () => {
       via: "http" });
     render(tree({ request: ONE }));
     await screen.findByText("Chirper");
-    press("Unsubscribe 1 sender");
+    press("Unsubscribe 1\u00a0sender");
     expect(await screen.findByRole("button", { name: "Open page" })).toBeTruthy();
     expect(screen.getByText("1 needs you")).toBeTruthy();
   });
@@ -555,7 +555,7 @@ describe("one sender", () => {
         via: "http" });
       render(tree({ request: ONE, demo }));
       await screen.findByText("Chirper");
-      press("Unsubscribe 1 sender");
+      press("Unsubscribe 1\u00a0sender");
       fireEvent.click(await screen.findByRole("button", { name: "Open page" }));
       if (demo) {
         expect(open).not.toHaveBeenCalled();
@@ -641,7 +641,7 @@ describe("German", () => {
     expect(screen.getByText("Ein Klick")).toBeTruthy();
     expect(screen.getByText("Sendet eine Mail")).toBeTruthy();
     expect(screen.getByText("Webseite")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "3 Absender abbestellen" }))
+    expect(screen.getByRole("button", { name: "3\u00a0Absender abbestellen" }))
       .toBeTruthy();
   });
 });

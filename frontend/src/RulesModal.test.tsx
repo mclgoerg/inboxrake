@@ -266,26 +266,26 @@ const runOf = (over: Partial<NonNullable<Rule["last_run"]>>): Rule => ({
 test("the card's last-run line: app date format, status, counts", () => {
   renderCards([runOf({})]);
   expect(lineOf(/Last run 31 Aug 2020, 03:30/))
-    .toBe("Last run 31 Aug 2020, 03:30 · completed: 150 mails in 4 groups");
+    .toBe("Last run 31 Aug 2020, 03:30 · completed: 150\u00a0mails in 4\u00a0groups");
   expect(document.body.textContent).not.toMatch(/AM|PM|\/2020/);
   cleanup();
   renderCards([runOf({ mode: "report", acted: 0 })]);
   expect(lineOf(/Last run/))
-    .toBe("Last run 31 Aug 2020, 03:30 · report: 150 mails in 4 groups "
+    .toBe("Last run 31 Aug 2020, 03:30 · report: 150\u00a0mails in 4\u00a0groups "
       + "would be affected");
   cleanup();
   // matched and affected differ, and what was skipped stays on the line
   renderCards([runOf({ acted: 140, skipped_protected: 2, capped: 1 })]);
   const line = lineOf(/Last run/);
-  expect(line).toContain("completed: 140 mails in 4 groups · 150 matched");
-  expect(line).toContain("1 mail beyond the per-run cap");
+  expect(line).toContain("completed: 140\u00a0mails in 4\u00a0groups · 150 matched");
+  expect(line).toContain("1\u00a0mail beyond the per-run cap");
   expect(line).toContain("2 protected skipped");
   cleanup();
   setLang("de");
   renderCards([runOf({})]);
   expect(lineOf(/Letzter Lauf/))
-    .toBe("Letzter Lauf 31. Aug. 2020, 03:30 · abgeschlossen: 150 Mails in "
-      + "4 Gruppen");
+    .toBe("Letzter Lauf 31. Aug. 2020, 03:30 · abgeschlossen: 150\u00a0Mails in "
+      + "4\u00a0Gruppen");
 });
 
 test("a failed run keeps its error on the card and says it failed", () => {
@@ -319,7 +319,7 @@ test("the intro is one line with a link to the docs section", () => {
   expect(link.getAttribute("href")).toBe(
     "https://inboxrake.com/docs/features/#rules-and-scheduler");
   expect(link.getAttribute("rel")).toContain("noopener");
-  expect(document.body.textContent).toContain("at most 500 mails per run");
+  expect(document.body.textContent).toContain("at most 500\u00a0mails per run");
   expect(document.body.textContent).not.toMatch(/REPORT/);
   expect(screen.getByText(/1 rule · new rules only report/)).toBeTruthy();
 });
@@ -541,7 +541,7 @@ test("Enable execute on a purge rule opens a danger dialog with the " +
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("permanently");
   expect(dlg).toContain("on the server");
-  expect(dlg).toContain("up to 37 mails per run");       // from the API
+  expect(dlg).toContain("up to 37\u00a0mails per run");       // from the API
   expect(dlg).not.toContain("500");
   expect(dlg).toContain("Protected senders and protected mails are never touched");
   expect(dlg).toContain("switch back to report mode");
@@ -574,7 +574,7 @@ test("Run on an execute-mode purge rule confirms with the permanent wording",
   fireEvent.click(screen.getByText("Run now"));
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("permanently, on the server");
-  expect(dlg).toContain("up to 37 mails per run");
+  expect(dlg).toContain("up to 37\u00a0mails per run");
   expect(dlg).toContain("Protected senders and protected mails are never touched");
   expect(dlg).toContain("switch the rule back to report mode");
   expect(runRule).not.toHaveBeenCalled();
@@ -630,7 +630,7 @@ test("German: folder select, warning, defaults and the confirm", async () => {
   const dlg = (await findDialog()).textContent ?? "";
   expect(dlg).toContain("endgültig");
   expect(dlg).toContain("auf dem Server");
-  expect(dlg).toContain("bis zu 37 Mails pro Lauf");
+  expect(dlg).toContain("bis zu 37\u00a0Mails pro Lauf");
   expect(dlg).toContain("Geschützte Absender und geschützte Mails werden nie");
   expect(dlg).toContain("Berichtsmodus");
   expect(screen.getByRole("button", { name: "Endgültig löschen (bis zu 37)" }))
@@ -804,7 +804,7 @@ test("German: the run confirm of an execute-mode rule has the full " +
   renderCards([{ ...purgeRule, mode: "execute" }]);
   fireEvent.click(screen.getByText("Jetzt ausführen"));
   const dlg = (await findDialog()).textContent ?? "";
-  expect(dlg).toContain("endgültig auf dem Server, bis zu 37 Mails pro Lauf");
+  expect(dlg).toContain("endgültig auf dem Server, bis zu 37\u00a0Mails pro Lauf");
   expect(dlg).toContain("Geschützte Absender und geschützte Mails werden nie "
     + "angefasst");
   expect(dlg).toContain("zurück in den Berichtsmodus");
@@ -942,10 +942,10 @@ test("See last report shows the run in full, senders as rows; absent without a r
   renderCards([ran]);
   fireEvent.click(screen.getByText("Last report"));
   const dlg = screen.getByRole("dialog", { name: "Last report" });
-  expect(dlg.textContent).toMatch(/2 groups/);
+  expect(dlg.textContent).toMatch(/2\u00a0groups/);
   expect(dlg.textContent).toMatch(/2 protected mails skipped/);
   expect(dlg.textContent).toMatch(/1 protected skipped/);
-  expect(dlg.textContent).toMatch(/1 mail beyond the per-run cap/);
+  expect(dlg.textContent).toMatch(/1\u00a0mail beyond the per-run cap/);
   expect(dlg.querySelectorAll("li")).toHaveLength(2);
   expect(dlg.textContent).toContain("Anna");
   // the card keeps its own last-run line with the preview

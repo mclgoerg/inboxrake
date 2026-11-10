@@ -1,6 +1,6 @@
 import { ChevronRight, LayoutGrid } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
 import { fmtBig, buildDomains, childTiles, levelTiles, pct, senderIndex,
   soleSender, toggleItem, toneSums, type ColorBy, type MapItem }
@@ -170,7 +170,7 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
   const where = trail.length ? nameOf(trail[trail.length - 1]) : null;
   const headline = <SpaceHeadline items={level} by={mode} where={where} />;
   const { total: levelTotal, sums } = toneSums(level, mode);
-  const caption = t(`space.ring_${mode}`, { p: pct(sums[0].size, levelTotal) });
+  const caption = t(`space.ring_${mode}`, { p: fmtPct(pct(sums[0].size, levelTotal)) });
   const docked = !!focus && !selecting && !page;
   // The docked card must never hide what was tapped: the page keeps a
   // spacer of the card's height and the tapped item is scrolled above the card.

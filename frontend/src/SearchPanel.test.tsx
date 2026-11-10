@@ -181,7 +181,7 @@ test("matching senders are listed first and open the sender view; "
   type("parcel");
   await screen.findByText("Senders · 1");
   const btn = screen.getByRole("button", { name: /Shop/ });
-  expect(btn.textContent).toContain("18 mails");
+  expect(btn.textContent).toContain("18\u00a0mails");
   expect(screen.queryByText("Other")).toBeNull();
   expect(document.querySelectorAll("mark").length).toBeGreaterThan(1);
   fireEvent.click(btn);

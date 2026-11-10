@@ -4,9 +4,9 @@ import { BarChart3, BellOff, ChevronRight, ClipboardList, Copy, Eye, History,
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
-import { fmtAgo } from "../lib";
+import { fmtAgo, fmtTs } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
 import { squarify } from "../treemap";
@@ -113,7 +113,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
   }, [account, done]);
   const dupReady = dups != null && dups !== "failed";
   const dupCompare = dupReady ? dups.versions + dups.possible : 0;
-  const compareText = t("tab.dup_compare", { n: dupCompare.toLocaleString() });
+  const compareText = t("tab.dup_compare", { n: fmtNum(dupCompare) });
   const dupLoading = done && dups == null;
   const atts = state?.atts;
   const attRunning = atts?.status === "running";
@@ -206,7 +206,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
                 : dupCompare > 0 ? fmtNum(dupCompare)
                 : t("tab.dup_none_value")) : null}
             sub={dupReady ? (dups.sets > 0
-              ? [t("tab.dup_sets", { n: dups.sets.toLocaleString() }),
+              ? [t("tab.dup_sets", { n: fmtNum(dups.sets) }),
                 ...(dupCompare > 0 ? [compareText] : [])].join(" · ")
               : dupCompare > 0 ? compareText
                 : (dups.dismissed ?? 0) > 0
@@ -221,7 +221,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             value={attRunning ? t("tab.running")
               : attSize > 0 ? fmtSize(attSize) : null}
             sub={!attRunning && atts && atts.mails > 0 && atts.size > 0
-              ? t("tab.in_mails", { n: atts.mails.toLocaleString() })
+              ? t("tab.in_mails", { n: fmtNum(atts.mails) })
               : attSize > 0 || attRunning ? t("tab.att_sub")
                 : t("tab.att_find")}
             onClick={() => onOpen("attachments")} />
@@ -434,7 +434,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
               </span>
               <span className="mt-2 block type-meta text-muted">
                 {t("tab.space_share", { n: space.top.length,
-                  pct: space.pct })}
+                  pct: fmtPct(space.pct) })}
               </span>
             </>
           ) : state ? (
@@ -455,8 +455,8 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
             <>
               <span className="flex items-center gap-2">
                 <Ring frac={trackerPct / 100} px={64}
-                  label={t("tab.trackers_ring", { pct: trackerPct })}>
-                  <b className="type-meta font-semibold">{trackerPct}%</b>
+                  label={t("tab.trackers_ring", { pct: fmtPct(trackerPct) })}>
+                  <b className="type-meta font-semibold">{fmtPct(trackerPct)}</b>
                 </Ring>
                 <span className="min-w-0 type-meta text-muted">
                   {t("tab.trackers_of")}
@@ -532,7 +532,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
                     </span>
                     <span className="block truncate type-meta text-muted">
                       {e.label || actorLabel(e.actor, rules)}
-                      {" · "}{new Date(e.ts * 1000).toLocaleDateString()}
+                      {" · "}{fmtTs(e.ts, getLang(), false)}
                     </span>
                   </span>
                   {failed && <Tag tone="keep">

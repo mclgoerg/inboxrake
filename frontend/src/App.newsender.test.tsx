@@ -143,7 +143,7 @@ test("the New senders row shows a live count; tapping it filters, the "
   expect(screen.getAllByText("1 protected stays unselected").length)
     .toBeGreaterThan(0);
   fireEvent.click(screen.getAllByRole("button",
-    { name: /^Select the 1 match/ })[0]);
+    { name: /^Select the 1\u00a0match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
   expect(screen.getAllByText("The 1 match is selected").length)
     .toBeGreaterThan(0);
@@ -164,6 +164,6 @@ test("the New senders row shows a live count; tapping it filters, the "
   tap();
   expect(screen.queryByText(/^Trash \d+$/)).toBeNull();
   fireEvent.click(screen.getAllByRole("button",
-    { name: /^Select the 1 match/ })[0]);
+    { name: /^Select the 1\u00a0match/ })[0]);
   await waitFor(() => expect(screen.getByText("Trash 5")).toBeTruthy());
 });

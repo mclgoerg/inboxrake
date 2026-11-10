@@ -565,7 +565,7 @@ test("the admin sees and saves the shared AI section", async () => {
   // "Cleaned (month)": the size is what permanent deletes freed
   // (purged_bytes), never the old move-based `freed`
   const cleaned = screen.getByText(/Cleaned \(month\)/).textContent!;
-  expect(cleaned).toContain("4 KB");
+  expect(cleaned).toContain("4\u00a0KB");
   expect(cleaned).not.toContain("2 KB");
   fireEvent.change(screen.getAllByLabelText(/^Model/)[0],
     { target: { value: "claude-opus-5" } });
@@ -694,9 +694,9 @@ test("the new-sender window defaults from config and is included in Save",
     render(<Settings cfg={cfg} account="default" section="general" />);
     const field = screen.getByRole("spinbutton", { name: /badge stays for/ });
     expect(field.getAttribute("aria-valuenow")).toBe("7");
-    expect(field.textContent).toBe("7 days");
+    expect(field.textContent).toBe("7\u00a0days");
     step(/badge stays for/, "ArrowDown", 4);
-    expect(field.textContent).toBe("3 days");
+    expect(field.textContent).toBe("3\u00a0days");
     fireEvent.click(screen.getByText("Save"));
     expect(saveCalls[0].new_sender_window_days).toBe(3);
   });

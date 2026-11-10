@@ -383,7 +383,7 @@ describe("DetailPanel", () => {
     expect(screen.getByRole("button", { name: /Protect this sender/ })
       .getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: "Block sender" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Move 2 mails to Trash" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Move 2\u00a0mails to Trash" })).toBeTruthy();
     expect(screen.queryByText("Trash this mail")).toBeNull();
   });
 
@@ -406,7 +406,7 @@ describe("DetailPanel", () => {
     async () => {
     const { unmount } = renderPanel([mkMail(1, { pinned: true }),
       mkMail(2, { pinned: true }), mkMail(3), mkMail(4)]);
-    await screen.findByRole("button", { name: "Move 2 mails to Trash" });
+    await screen.findByRole("button", { name: "Move 2\u00a0mails to Trash" });
     unmount();
     renderPanel([mkMail(1, { pinned: true }), mkMail(2, { pinned: true })]);
     await waitFor(() => screen.getByText("Mail 1"));
@@ -416,14 +416,14 @@ describe("DetailPanel", () => {
   it("with a selection the group footer gives way to the selection bar "
     + "(never two red buttons)", async () => {
     renderPanel([mkMail(1), mkMail(2)], { onBlock: vi.fn() });
-    await screen.findByRole("button", { name: "Move 2 mails to Trash" });
+    await screen.findByRole("button", { name: "Move 2\u00a0mails to Trash" });
     fireEvent.click(document.querySelectorAll('input[type="checkbox"]')[0]);
     await screen.findByText(/Trash selected/);
     expect(screen.queryByRole("button", { name: /Move \d+ mails? to Trash/ })).toBeNull();
     // (Block is not destructive: it stays in the action row)
     expect(screen.getByRole("button", { name: "Block sender" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    await screen.findByRole("button", { name: "Move 2 mails to Trash" });
+    await screen.findByRole("button", { name: "Move 2\u00a0mails to Trash" });
   });
 
   describe("message view footer", () => {
@@ -452,7 +452,7 @@ describe("DetailPanel", () => {
       await pressDialog("Move to Trash (1)");
       await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
         [["INBOX", 1]], "trash", "", false));
-      await screen.findByRole("button", { name: "Move 1 mail to Trash" });
+      await screen.findByRole("button", { name: "Move 1\u00a0mail to Trash" });
       expect(screen.queryByText("Mail 1")).toBeNull();
     });
 
@@ -584,7 +584,7 @@ describe("DetailPanel", () => {
     const onClose = vi.fn();
     renderPanel([mkMail(1)], { onTrash, onClose });
     await waitFor(() => screen.getByText("Mail 1"));
-    fireEvent.click(screen.getByRole("button", { name: "Move 1 mail to Trash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move 1\u00a0mail to Trash" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onTrash).toHaveBeenCalled();
   });
@@ -908,7 +908,7 @@ describe("DetailPanel header and action row", () => {
     const tile = (label: string) =>
       screen.getAllByText(label)[0].parentElement!.textContent;   // (the "Mails" heading follows its tile)
     expect(tile("Mails")).toBe("Mails4");
-    expect(tile("Size")).toBe("Size2 KB");
+    expect(tile("Size")).toBe("Size2\u00a0KB");
     expect(tile("Opened")).toBe("Opened75%");     // 100 - 25 % unread
     expect(screen.getByText(/replied/)).toBeTruthy();
     expect(screen.getByText(/4 KB/)).toBeTruthy();   // attachments
@@ -991,7 +991,7 @@ describe("DetailPanel header and action row", () => {
       await pick(onMove);
       await findPicker();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(screen.queryByRole("dialog", { name: /^Move \d+ mails?$/ })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: /^Move \d+\u00a0mails?$/ })).toBeNull();
       expect(onMove).not.toHaveBeenCalled();
       expect(deleteMessages).not.toHaveBeenCalled();
     });

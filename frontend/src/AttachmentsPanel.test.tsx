@@ -140,7 +140,7 @@ test("Show repeats keeps only repeated files; kind and age filter",
   // ts 1e9 is 2001 (older than 5 years), ts 2e8 is 1976; both old, so use
   // the newest mail's date: everything here is older than 1 year
   fireEvent.click(screen.getByRole("button", { name: /Older than/ }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "5 years" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "5\u00a0years" }));
   expect(screen.getByText("scan.pdf")).toBeTruthy();
 });
 
@@ -152,7 +152,7 @@ test("age filter hides files with a recent mail", async () => {
   show();
   await screen.findByText("new.pdf");
   fireEvent.click(screen.getByRole("button", { name: /Older than/ }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "1 year" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "1\u00a0year" }));
   expect(screen.queryByText("new.pdf")).toBeNull();
   expect(screen.getByText("old.pdf")).toBeTruthy();
 });
@@ -344,7 +344,7 @@ test("the age filter reads the UI clock, not the machine's", async () => {
   show();
   await screen.findByText("mid.pdf");
   fireEvent.click(screen.getByRole("button", { name: /Older than/ }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "1 year" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "1\u00a0year" }));
   // on the demo clock the mail is not even a year old yet
   expect(screen.queryByText("mid.pdf")).toBeNull();
 });

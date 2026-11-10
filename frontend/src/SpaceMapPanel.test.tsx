@@ -59,7 +59,7 @@ afterEach(() => {
 test("header total and tile labels name size and mails", () => {
   show();
   expect(screen.getByText("1.2 GB in 375 mails · by sender domain")).toBeTruthy();
-  expect(tile("big.example, 900.0 MB, 320 mails, 1 protected sender"))
+  expect(tile("big.example, 900.0\u00a0MB, 320\u00a0mails, 1 protected sender"))
     .toBeTruthy();
 });
 
@@ -175,7 +175,7 @@ test("tiles are native, focusable buttons with a full label", () => {
   for (const t of tiles) {
     expect(t.tagName).toBe("BUTTON");
     expect(t.tabIndex).toBeGreaterThanOrEqual(0);
-    expect(t.getAttribute("aria-label")).toMatch(/, \d.*, \d+ mails?/);
+    expect(t.getAttribute("aria-label")).toMatch(/, \d.*, \d+\u00a0mails?/);
   }
   tiles[0].focus();
   expect(document.activeElement).toBe(tiles[0]);
@@ -185,9 +185,9 @@ test("the accessible list names the biggest of the level", () => {
   show();
   const rows = within(list()).getAllByRole("listitem");
   expect(rows[0].textContent).toContain("big.example");
-  expect(rows[0].textContent).toContain("900.0 MB");
-  expect(rows[0].textContent).toContain("75 %");
-  expect(rows[0].textContent).toContain("320 mails");
+  expect(rows[0].textContent).toContain("900.0\u00a0MB");
+  expect(rows[0].textContent).toContain("75%");
+  expect(rows[0].textContent).toContain("320\u00a0mails");
 });
 
 test("empty mailbox: a hint instead of a map", () => {
@@ -222,13 +222,13 @@ test("headline: a sentence with the share and MB per colour", () => {
     g("b@mid.example", 100 * MB, { engagement: 50 }),
     g("c@busy.example", 300 * MB, { engagement: 90 })));
   const head = within(screen.getByRole("region", { name: "Space by colour" }));
-  expect(head.getByText("60 %")).toBeTruthy();
+  expect(head.getByText("60%")).toBeTruthy();
   expect(head.getByText("of your space is mail you barely engage with")).toBeTruthy();
   const legend = screen.getByRole("list", { name: "Color legend" });
   expect(within(legend).getByText("Low engagement").parentElement!.textContent)
-    .toContain("600.0 MB");
+    .toContain("600.0\u00a0MB");
   expect(within(legend).getByText("High engagement").parentElement!.textContent)
-    .toContain("300.0 MB");
+    .toContain("300.0\u00a0MB");
   fireEvent.click(screen.getByRole("tab", { name: "Age of last mail" }));
   expect(screen.getByText(/of your space is mail with no new message in over 2 years/))
     .toBeTruthy();
@@ -248,7 +248,7 @@ test("the AI headline reads the verdict", () => {
     g("b@y.example", 250 * MB)));
   fireEvent.click(screen.getByRole("tab", { name: "AI verdict" }));
   const head = within(screen.getByRole("region", { name: "Space by colour" }));
-  expect(head.getByText("75 %")).toBeTruthy();
+  expect(head.getByText("75%")).toBeTruthy();
   expect(head.getByText("of your space is mail the AI rates safe to delete"))
     .toBeTruthy();
 });
@@ -264,7 +264,7 @@ test("a tap shows details: size, share, opened, last mail, AI, actions", () => {
   expect(within(d).getByText("x.example")).toBeTruthy();
   expect(within(d).getByText("2 senders · 40 mails")).toBeTruthy();
   expect(within(d).getByText("850.0 MB")).toBeTruthy();
-  expect(within(d).getByText("85 % of your mailbox")).toBeTruthy();
+  expect(within(d).getByText("85% of your mailbox")).toBeTruthy();
   expect(within(d).getByText("Last mail")).toBeTruthy();
   expect(within(d).getByText("Delete-safe")).toBeTruthy();
   expect(within(d).getByText("30 of 40 mails")).toBeTruthy();
@@ -405,7 +405,7 @@ test("rings: inner ring domains, outer ring their senders, centre = total",
     expect(seg("s:b@big.example")).toBeTruthy();
     expect(screen.getAllByText("1.2 GB").length).toBeGreaterThan(0);
     expect(screen.getByText("375 mails")).toBeTruthy();
-    expect(screen.getByText("17 % low engagement")).toBeTruthy();
+    expect(screen.getByText("17% low engagement")).toBeTruthy();
     // the picture is described; the list next to it is the keyboard route
     expect(rings().getAttribute("aria-label")).toMatch(/list next to it/);
   });
@@ -417,7 +417,7 @@ test("rings: tap = details in the centre + card, Zoom in makes the domain "
   fireEvent.click(seg("d:big.example"));
   expect(within(details()).getByText("3 senders · 320 mails"))
     .toBeTruthy();
-  expect(screen.getAllByText("75 % · 320 mails").length).toBe(2);   // centre + list row
+  expect(screen.getAllByText("75% · 320 mails").length).toBe(2);   // centre + list row
   fireEvent.click(screen.getAllByRole("button", { name: /^Zoom in/ })[0]);
   expect(screen.getByRole("navigation", { name: "Space map path" }).textContent)
     .toContain("big.example");
@@ -467,14 +467,14 @@ test("AI sums add up each sender's own verdict, unrated is its own bucket",
       g("c@mix.example", 100 * MB, { count: 5 })));
     fireEvent.click(screen.getByRole("tab", { name: "AI verdict" }));
     const head = within(screen.getByRole("region", { name: "Space by colour" }));
-    expect(head.getByText("60 %")).toBeTruthy();
+    expect(head.getByText("60%")).toBeTruthy();
     const legend = within(head.getByRole("list", { name: "Color legend" }));
     expect(legend.getByText("Delete-safe").parentElement!.textContent)
-      .toContain("600.0 MB");
+      .toContain("600.0\u00a0MB");
     expect(legend.getByText("Keep").parentElement!.textContent)
-      .toContain("300.0 MB");
+      .toContain("300.0\u00a0MB");
     expect(legend.getByText("Not rated yet").parentElement!.textContent)
-      .toContain("100.0 MB");
+      .toContain("100.0\u00a0MB");
   });
 
 test("Esc closes the card first (focus anywhere), the page only afterwards",

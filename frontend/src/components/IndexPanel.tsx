@@ -3,6 +3,7 @@ import { localIso } from "../activity";
 import { api } from "../api";
 import { getLang, t } from "../i18n";
 import { fmtDate, fmtSizeGb as fmtSize } from "../lib";
+import { fmtPct } from "../numfmt";
 
 import type { BodySearchMode, IndexEstimate, IndexInfo } from "../types";
 import { Button, confirmDialog, ProgressBar, Spinner } from "./ui";
@@ -115,7 +116,7 @@ export function IndexPanel({ account, savedMode, secretKeySet }: {
           <div className="type-meta text-muted">
             <Spinner /> {t("index.building")} {info.job.progress}
             {info.job.total > 0 && (
-              ` (${Math.round(100 * info.job.done / info.job.total)}%)`
+              ` (${fmtPct(Math.round(100 * info.job.done / info.job.total))})`
             )}
           </div>
         </div>

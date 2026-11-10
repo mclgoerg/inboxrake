@@ -50,7 +50,7 @@ describe("still-mailing notice", () => {
     const notice = (await screen.findByText(
       "Still mailing after you unsubscribed")).closest("[role=status]")!;
     expect(notice.textContent)
-      .toContain("4 mails since you unsubscribed on 3 Oct");
+      .toContain("4\u00a0mails since you unsubscribed on 3 Oct");
     // (the footer's own Block button is the same flow, so scope to the notice)
     fireEvent.click(within(notice as HTMLElement)
       .getByRole("button", { name: /Block sender/ }));
@@ -82,7 +82,7 @@ describe("still-mailing notice", () => {
     const notice = (await screen.findByText(
       "Still mailing after you unsubscribed")).closest("[role=status]")!;
     expect(notice.textContent).toContain("a@x.example, b@x.example");
-    expect(notice.textContent).toContain("7 mails from 2 senders");
+    expect(notice.textContent).toContain("7\u00a0mails from 2\u00a0senders");
     expect(within(notice as HTMLElement).queryByRole("button")).toBeNull();
   });
 
@@ -127,7 +127,7 @@ describe("still-mailing notice", () => {
       since_ts: SINCE, addrs: [] } }), { onBlock: vi.fn() });
     const notice = (await screen.findByText(
       "Schreibt nach dem Abbestellen weiter")).closest("[role=status]")!;
-    expect(notice.textContent).toContain("1 Mail, seit du am 3. Okt");
+    expect(notice.textContent).toContain("1\u00a0Mail, seit du am 3. Okt");
     expect(within(notice as HTMLElement)
       .getByRole("button", { name: /Absender blockieren/ })).toBeTruthy();
   });
@@ -142,6 +142,6 @@ describe("StillMailingBadge", () => {
       addrs: [] }} />);
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByRole("dialog").textContent)
-      .toContain("1 mail since you unsubscribed on 3 Oct");
+      .toContain("1\u00a0mail since you unsubscribed on 3 Oct");
   });
 });

@@ -300,7 +300,7 @@ test("phone: the summary sits left of plain Filter / Sort / Select / More "
   const field = screen.getByPlaceholderText("Search or filter…");
   const line = screen.getByRole("button", { name: "Filter" }).parentElement!;
   // same line: summary, Filter, Sort, Select, More - after the field
-  await waitFor(() => expect(line.textContent).toContain("1 group"));
+  await waitFor(() => expect(line.textContent).toContain("1\u00a0group"));
   expect(line.contains(field)).toBe(false);
   for (const name of ["Filter", /^Sort: /, "Select", "More"])
     expect(line.contains(screen.getByRole("button", { name }))).toBe(true);
@@ -323,11 +323,11 @@ test("phone: the summary is the short two-line form", async () => {
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
   const summary = () => screen.getByRole("button", { name: "Filter" })
     .parentElement!.firstElementChild!;
-  await waitFor(() => expect(summary().textContent).toMatch(/^1 group3 mails · /));
+  await waitFor(() => expect(summary().textContent).toMatch(/^1\u00a0group3\u00a0mails · /));
   expect(screen.queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
   fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
     { target: { value: "acme" } });
-  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1 group/));
+  await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1\u00a0group/));
 });
 
 test("phone: Filter opens the sheet; a row filters live, the field shows "

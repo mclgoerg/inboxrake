@@ -222,15 +222,15 @@ describe("undo labels and notices", () => {
     label_params: { n: 2 } };
 
   test("a structured label is worded in the user's language", () => {
-    expect(undoLabel(entry)).toBe("2 mails from Junk");
+    expect(undoLabel(entry)).toBe("2\u00a0mails from Junk");
     expect(undoLabel({ ...entry, label: "1 mail from Junk",
-      label_params: { n: 1 } })).toBe("1 mail from Junk");
+      label_params: { n: 1 } })).toBe("1\u00a0mail from Junk");
     setLang("de");
-    expect(undoLabel(entry)).toBe("2 Mails aus Spam");
-    expect(undoLabel({ ...entry, label: "1 mail from Junk",
-      label_params: { n: 1 } })).toBe("1 Mail aus Spam");
+    expect(undoLabel(entry)).toBe("2\u00a0Mails aus Spam");
+    expect(undoLabel({ ...entry, label: "1\u00a0mail from Junk",
+      label_params: { n: 1 } })).toBe("1\u00a0Mail aus Spam");
     expect(undoLabel({ label: "x", label_key: "undo.from_trash",
-      label_params: { n: 3 } })).toBe("3 Mails aus dem Papierkorb");
+      label_params: { n: 3 } })).toBe("3\u00a0Mails aus dem Papierkorb");
   });
 
   test("an entry without a label key shows its label as it is", () => {
@@ -243,7 +243,7 @@ describe("undo labels and notices", () => {
     const params = { restored: 2, of: 2, label: "2 mails from Junk",
       label_key: "undo.from_junk", label_n: 2 };
     setLang("de");
-    expect(noticeParams(params).label).toBe("2 Mails aus Spam");
+    expect(noticeParams(params).label).toBe("2\u00a0Mails aus Spam");
     expect(noticeParams({ restored: 1, of: 1, label: "Shop News" }).label)
       .toBe("Shop News");
   });

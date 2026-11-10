@@ -8,6 +8,7 @@ import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
 import { openUnsubPage } from "../unsub";
 import { t } from "../i18n";
+import { fmtPct } from "../numfmt";
 import { actionVerb, planMailAction } from "../mailActions";
 import { nowDate } from "../clock";
 import { getLang } from "../i18n";
@@ -802,7 +803,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       <div className="grid grid-cols-3 gap-2 px-4 pt-4">
         <StatTile label={t("detail.mails")} value={group.count} />
         <StatTile label={t("detail.size")} value={fmtSize(group.size)} />
-        <StatTile label={t("detail.opened")} value={`${opened}%`} />
+        <StatTile label={t("detail.opened")} value={fmtPct(opened)} />
       </div>
       {stillCallout}
       {sievePanel}

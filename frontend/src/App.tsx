@@ -2310,7 +2310,7 @@ export default function App() {
             </span>
             <span className="block type-meta text-muted">
               {undoLabel(u)}
-              {fmtAgo(u.ts) && ` · ${fmtAgo(u.ts)}`}
+              {fmtAgo(u.ts) && ` · ${t("scan.ago", { ago: fmtAgo(u.ts) })}`}
             </span>
           </span>
           <Button variant="primary" size="sm" disabled={deleting}

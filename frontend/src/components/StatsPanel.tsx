@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
 import { categoryHues, categoryName } from "../categories";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import type { StatsResp } from "../types";
@@ -362,7 +362,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                   {t("stats.per_mail",
                     { size: fmtSize(Math.round(pSize / pMails)) })}</>}
                 visual={<IconTile tone="accent"><HardDrive size={16} /></IconTile>} />
-              <Kpi value={`${pct(pUnread, pMails)}%`} label={t("stats.unread")}
+              <Kpi value={fmtPct(pct(pUnread, pMails))} label={t("stats.unread")}
                 detail={<>
                   {t("stats.unread_of", { n: fmtNum(pUnread),
                     total: fmtNum(pMails) })}
@@ -550,7 +550,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                     <Ring px={64} frac={stats.senders
                       ? stats.replied_senders / stats.senders : 0}>
                       <span className="type-meta font-semibold">
-                        {pct(stats.replied_senders, stats.senders)}%</span>
+                        {fmtPct(pct(stats.replied_senders, stats.senders))}</span>
                     </Ring>
                     <div className="min-w-0 type-meta text-muted">
                       <span className="type-heading text-body tabular-nums">
@@ -563,7 +563,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                       text-muted">
                       <span>{categoryName("newsletter")} ({fmtNum(stats.bulk)})</span>
                       <span className="font-semibold text-body tabular-nums">
-                        {pct(stats.bulk, stats.mails)}%</span>
+                        {fmtPct(pct(stats.bulk, stats.mails))}</span>
                     </div>
                     <ProgressBar value={stats.bulk} max={stats.mails}
                       label={categoryName("newsletter")} />

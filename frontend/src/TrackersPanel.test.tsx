@@ -64,7 +64,7 @@ test("data: headline share, numbers, senders, hosts and the explainer",
     await screen.findByText("of the mails we checked carry a tracking pixel");
     expect(screen.getByRole("img", { name: "63% of the mails we checked "
       + "carry a tracking pixel" })).toBeTruthy();
-    expect(screen.getByText("63 %")).toBeTruthy();
+    expect(screen.getByText("63%")).toBeTruthy();
     expect(screen.getByText(/remote images never load/)).toBeTruthy();
     expect(screen.getByText("Checked 40 of 40 mails")).toBeTruthy();
     // the three figures say what they count (not a bare "pixel")

@@ -37,6 +37,13 @@ const localeOf = (): string => {
   return f === "de" ? "de-DE" : f === "space" ? "fr-FR" : "en-US";
 };
 
+/** The UI language as registered by i18n.ts ("en" until then). */
+export const uiLang = (): string => langOf();
+
+/** No-break space: keeps a number and its unit ("60 mails", "39,1 MB") on
+ *  one line. Locale strings spell it as \u00a0. */
+export const NBSP = "\u00a0";
+
 /** Decimal and group separator of the effective style. */
 export function numSeparators(): { decimal: string; group: string } {
   const parts = new Intl.NumberFormat(localeOf()).formatToParts(1234567.5);
@@ -65,6 +72,16 @@ export function fmtNum(n: number, opts: { digits?: number; max?: number;
   // number never wraps in the middle (fr-FR already uses it; older ICU
   // versions use U+00A0).
   return nf.format(n).replace(/\u00a0/g, "\u202f");
+}
+
+/** A percentage in the effective style: "30%" in English style, "30 %" (no-break
+ *  space) in German and the space style. `value` is the percent itself (30,
+ *  not 0.3); options as fmtNum. */
+export function fmtPct(value: number, opts: { digits?: number; max?: number }
+  = {}): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  const spaced = localeOf() !== "en-US";
+  return `${fmtNum(value, opts)}${spaced ? NBSP : ""}%`;
 }
 
 /** Parse what a user typed, in the chosen style (also tolerant: a lone "," or
