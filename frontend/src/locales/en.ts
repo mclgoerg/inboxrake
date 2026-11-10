@@ -473,8 +473,6 @@ export const EN: Record<string, string> = {
   "note.ai_truncated": " (first {n} mails only)",
   "note.background": "{verb} - running in the background…",
   "show_more": "Show {n} more · {hidden} left",
-  "day.today": "Today",
-  "day.yesterday": "Yesterday",
   "ai_done": "AI done ({in} in / {out} out{cost}) · total {total}",
   "done_moved": "Done: {n} mails processed.",
   "done_moved_one": "Done: 1 mail processed.",

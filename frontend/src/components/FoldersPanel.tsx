@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { accountGuard } from "../accountGuard";
 import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
-import { dayHeading, groupByDate } from "../dayGroups";
+import { groupByDate, monthHeading } from "../dayGroups";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
@@ -407,19 +407,24 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
       </Button>
     </span>
   );
-  // Trash on phones: the mails under Today / Yesterday / date headings.
+  // Trash / Junk mails on phones: under month headings with the month's
+  // count (the list is in date order; the dates are the mails' own).
   const mailRows = (list: Mail[], row: (m: Mail) => ReactNode) => {
     if (wide) return list.map(row);
-    return groupByDate(list, (m) => m.date || "", 10).map((g) => (
-      <section key={g.key || "none"}
-        aria-label={dayHeading(g.key) || undefined}>
-        {g.key && (
-          <h3 className="border-b border-line/60 bg-panel2 px-4 py-1.5
-            type-section text-muted">{dayHeading(g.key)}</h3>
-        )}
-        {g.items.map(row)}
-      </section>
-    ));
+    return groupByDate(list, (m) => m.date || "", 7).map((g) => {
+      const title = monthHeading(g.key);
+      return (
+        <section key={g.key || "none"} aria-label={title || undefined}>
+          {title && (
+            <h3 className="border-b border-line/60 bg-panel2 px-4 py-1.5
+              type-section text-muted">
+              {title} · {t("n.mails", { n: g.items.length })}
+            </h3>
+          )}
+          {g.items.map(row)}
+        </section>
+      );
+    });
   };
   return (
     <Modal onClose={onClose} size="lg" full>

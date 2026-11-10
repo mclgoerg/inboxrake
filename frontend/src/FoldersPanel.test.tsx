@@ -163,9 +163,7 @@ test("rows are MailRows; Select mode shows the boxes, the restore pop-up needs a
     panel();
     await screen.findByText("Deleted elsewhere");
     expect(screen.getByText("old@gone.example · 1 KB")).toBeTruthy();
-    // (on a phone the day also heads its group: the row's date is the <time>)
-    expect(screen.getAllByText("2 Jan").find((e) => e.tagName === "TIME")!
-      .getAttribute("title")).toBe("2026-01-02");
+    expect(screen.getByText("2 Jan").getAttribute("title")).toBe("2026-01-02");
     expect(screen.getByText("unread")).toBeTruthy();   // seen: false
     expect(screen.queryByRole("checkbox")).toBeNull();  // only in Select mode
     await selectMode();
@@ -681,29 +679,22 @@ test("two ambiguous roles get one combined notice with one button, and a "
   expect(empty.getAttribute("title")).toBeNull();
 });
 
-test("Trash on a phone: mails under Today / Yesterday / date, one icon "
-  + "restore per row that names its mail", async () => {
-  const day = (back: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - back);
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+test("Trash on a phone: mails under month headings with their counts, one "
+  + "icon restore per row that names its mail", async () => {
   const mail = (uid: number, date: string, subject: string) => ({
     uid, folder: "Trash", date, ts: uid, subject, addr: "a@b.example",
     size: 700, seen: true, ai: null });
   foldersPanel.mockResolvedValue({ folder: "Trash", uv: 1, total: 3, max_uid: 9,
-    mails: [mail(3, day(0), "Fresh one"), mail(2, day(1), "Older one"),
+    mails: [mail(3, "2026-10-20", "Fresh one"), mail(2, "2026-10-02", "Older one"),
       mail(1, "2025-03-02", "Ancient one")],
     senders: [] });
   trashRestore.mockResolvedValue({ restored: 1, rescan: false });
   panel();
   await screen.findByText("Fresh one");
   expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
-    .toEqual(["Today", "Yesterday", "2 Mar 2025"]);
+    .toEqual(["October 2026 · 2 mails", "March 2025 · 1 mail"]);
   // the same restore as before, named after its mail (the word is for
   // screen readers on a phone)
-  const btn = screen.getByRole("button", { name: "Restore: Older one" });
-  fireEvent.click(btn);
+  fireEvent.click(screen.getByRole("button", { name: "Restore: Older one" }));
   await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([2], "INBOX", 1));
 });

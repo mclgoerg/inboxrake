@@ -1,10 +1,8 @@
-/* Date headings for long mail lists: months (sender detail) and days
- * (Trash on phones). Dates are the leading YYYY-MM-DD of the mail's ISO date,
+/* Date headings for long mail lists: months (sender detail, Trash and Junk
+ * on phones). Dates are the leading YYYY-MM-DD of the mail's ISO date,
  * like `fmtDate`; a mail without a parsable date lands in a group of its own
  * without a heading. */
-import { nowDate } from "./clock";
-import { getLang, t } from "./i18n";
-import { fmtDate } from "./lib";
+import { getLang } from "./i18n";
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 
@@ -40,16 +38,4 @@ export function monthHeading(key: string): string {
   d.setUTCFullYear(Number(m[1]), Number(m[2]) - 1, 1);
   return new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB",
     { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
-}
-
-/** "Today" / "Yesterday" / the app's short date. */
-export function dayHeading(key: string, now: Date = nowDate()): string {
-  if (!DATE.test(key)) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  const ymd = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (key === ymd(now)) return t("day.today");
-  if (key === ymd(yesterday)) return t("day.yesterday");
-  return fmtDate(key, now, { lang: getLang() });
 }
