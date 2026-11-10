@@ -101,6 +101,6 @@ test("count and size of an account never split across lines", () => {
   // "1,623 mails · 238 MB" is one unbreakable unit: a wrapped line breaks
   // after the dot before it, so "227.4 MB" never sits alone
   const unit = [...card.querySelectorAll("span.whitespace-nowrap")]
-    .find((s) => s.textContent!.includes("1,623 mails"))!;
-  expect(unit.textContent).toMatch(/^1,623 mails · [\d.]+ MB$/);
+    .find((s) => s.textContent!.includes("1,623\u00a0mails"))!;
+  expect(unit.textContent).toMatch(/^1,623\u00a0mails · [\d.]+\u00a0MB$/);
 });

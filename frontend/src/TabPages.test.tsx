@@ -71,7 +71,7 @@ test("Clean up: the Trash tile adds the size to its sub-line once known",
   expect(trash()).toBe("Trashmails70");           // 70 is the big number, once
   rerender(<CleanupPage {...cleanupProps({
     state: state({ trash_size: 2.3 * MB }) })} />);
-  expect(trash()).toBe("Trashmails · 2.3 MB70");
+  expect(trash()).toBe("Trashmails · 2.3\u00a0MB70");
 });
 
 test("Clean up: Ready to clean is built from the quick wins, no double count",
