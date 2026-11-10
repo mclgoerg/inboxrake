@@ -88,6 +88,9 @@ def test_preview_mirrors_the_runs_skips(mailbox, monkeypatch):
     r = client.post("/api/unsubscribe_bulk", json={
         "grouping": "sender", "keys": [SHOP, DHL, GADGET]}).json()
     assert r["queued"] == 1 and r["skipped_protected"] == 1
+    # the run is a worker thread that writes the unsub store: let it finish
+    # before the test ends (it must not outlive the test's isolated store)
+    wait_unsub_done()
 
 
 def test_preview_counts_groups_without_a_header(mailbox):

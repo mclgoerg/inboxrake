@@ -77,6 +77,22 @@ test("settings: add account, digest and AI key are disabled with the hint", () =
   expect(screen.getByText(HINT)).toBeTruthy();
 });
 
+test("settings: the demo notice is one shared notice at the top of its "
+  + "section, not grey text inside the group", () => {
+  setDemo(true);
+  for (const section of ["digest", "ai", "signin"] as const) {
+    settings(section);
+    const notices = screen.getAllByText(HINT).filter((e) =>
+      e.closest("[role=status]"));
+    expect(notices.length, section).toBeGreaterThan(0);
+    for (const n of notices) {
+      // not inside a group of rows
+      expect(n.closest("[role=group]"), section).toBeNull();
+    }
+    cleanup();
+  }
+});
+
 test("settings: shared AI key and SSO login are disabled in the demo", () => {
   setDemo(true);
   settings("signin");

@@ -1948,10 +1948,16 @@ export function Notice({ children, icon, onClose, tone = "neutral",
 }
 
 /** The "not available in the demo" reason, visible (not just a tooltip, which
- *  touch screens lack). Renders nothing outside demo mode. */
+ *  touch screens lack): one shared `Notice` wherever it appears - put it at the
+ *  top of the section it applies to, not inside a group of rows. Renders
+ *  nothing outside demo mode. */
 export function DemoHint({ className = "" }: { className?: string }) {
   if (!useDemo()) return null;
-  return <p className={`type-meta text-muted ${className}`}>{demoHint()}</p>;
+  return (
+    <Notice icon={<Info size={16} aria-hidden />} className={className}>
+      {demoHint()}
+    </Notice>
+  );
 }
 
 /** Disables a group of controls in demo mode. Outside the demo it renders

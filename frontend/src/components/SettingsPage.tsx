@@ -1186,7 +1186,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       <SettingsRow label={t("smart.min_label")} sub={t("smart.min_help")}>
         <Stepper min={2} max={50}
           value={Math.min(50, Math.max(2, Math.round(+f.smartMin) || 10))}
-          format={(n) => t("settings.n_senders", { n })}
+          format={(n) => t("settings.n_mails", { n })}
           onChange={(n) => put("smartMin", String(n))} />
       </SettingsRow>
       <SettingsRow label={t("body_search.label")}>
@@ -1238,9 +1238,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   );
 
   const digestBody = (<>
+    <DemoHint className="mb-3" />
     <DemoFieldset>
       <SettingsGroup footnote={t("digest.help")}>
-        <DemoHint className="px-4 py-2.5" />
         {scopeRow}
         <SettingsRow label={t("digest.schedule")}>
           <PopupSelect name={t("digest.schedule")} value={f.digestSchedule}
@@ -1374,10 +1374,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         </div>
       </div>
     </SettingsGroup>
+    <DemoHint className="mb-3" />
     <DemoFieldset>
     <SettingsGroup header={t("AI review (optional)")}
       footnote={t("ai.data_note")}>
-      <DemoHint className="px-4 py-2.5" />
       <SettingsRow label={t("Provider")}>
         <PopupSelect name={t("Provider")} value={f.provider}
           onChange={(v) => put("provider", v as Form["provider"])}
@@ -1413,16 +1413,16 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       )}
     </SettingsGroup>
     <SettingsGroup header={t("ai.prices")}>
-      <SettingsRow label={t("ai.price_in")}
-        sub={t("ai.price_auto", { n: pi })}>
+      <SettingsRow label={t("ai.price_in")}>
         <DecimalInput className="w-28"
           aria-label={t("ai.price_in")} value={f.priceIn}
+          placeholder={t("ai.price_auto", { n: pi })}
           onChange={(v) => put("priceIn", v)} />
       </SettingsRow>
-      <SettingsRow label={t("ai.price_out")}
-        sub={t("ai.price_auto", { n: po })}>
+      <SettingsRow label={t("ai.price_out")}>
         <DecimalInput className="w-28"
           aria-label={t("ai.price_out")} value={f.priceOut}
+          placeholder={t("ai.price_auto", { n: po })}
           onChange={(v) => put("priceOut", v)} />
       </SettingsRow>
       <SettingsRow label={t("budget.label")}>
@@ -1522,9 +1522,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsGroup>
     )}
 
+    <DemoHint className="mb-3" />
     <DemoFieldset>
     <SettingsGroup header={t("shared.section")} footnote={t("shared.help")}>
-      <DemoHint className="px-4 py-2.5" />
       <SettingsRow label={t("shared.enabled")}>
         <Switch checked={f.sharedEnabled}
           onChange={(on) => put("sharedEnabled", on)} />
@@ -1563,9 +1563,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         <p className="px-4 py-3 type-meta text-danger-fg">{tenantStatsErr}</p>
       )}
       {tenantStats?.map((u) => {
+        // A small stat grid: label over value, so no figure runs on from
+        // the previous one or lands alone on a line.
         const stat = (label: string, value: ReactNode) => (
-          <span className="mr-4 inline-block">
-            {label} <span className="text-body">{value}</span>
+          <span className="block min-w-0">
+            <span className="block">{label}</span>
+            <span className="block text-body">{value}</span>
           </span>
         );
         return (
@@ -1578,11 +1581,14 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
               )}
               {u.label || u.id}
             </span>}
-            sub={<>
+            sub={<span className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-2
+              sm:grid-cols-3 lg:grid-cols-5">
               {stat(t("usage.mails"), <>{fmtNum(u.mails)}
                 {" "}· {fmtSize(u.size)}</>)}
+              {/* the same cleaning as Activity: Trash + archive + moves */}
               {stat(t("usage.cleaned"), <>
-                {fmtNum(u.actions_month.trash)}
+                {fmtNum(u.actions_month.trash + u.actions_month.archive
+                  + u.actions_month.move)}
                 {(u.actions_month.purged_bytes ?? 0) > 0
                   && <> · {fmtSize(u.actions_month.purged_bytes ?? 0)}</>}
               </>)}
@@ -1593,7 +1599,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
                   ? ` (${t("usage.shared")})` : ""}</>)}
               {stat(t("usage.last_scan"), (fmtAgo(u.last_scan_ts) && t("scan.ago", { ago: fmtAgo(u.last_scan_ts) })) || "-")}
               {stat(t("usage.disk"), fmtSize(u.disk_bytes))}
-            </>} />
+            </span>} />
         );
       })}
     </SettingsGroup>

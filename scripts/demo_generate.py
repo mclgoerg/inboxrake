@@ -9,6 +9,7 @@ the FakeIMAP servers by host. `NOW` is the instant the mail dates derive from
 
 from __future__ import annotations
 
+import calendar
 import datetime
 import json
 import os
@@ -898,7 +899,6 @@ def generate() -> dict:
                 {"trash": 61, "archive": 5, "move": 0, "mark_read": 12,
                  "freed": 15_000_000},
         }}
-    Path(os.environ["STATS_HISTORY_PATH"]).write_text(json.dumps(history))
     # Audit entries (the cleanup card of Your year in mail): unsubscribes and
     # rule runs in 2026 + 2025, at varied times of day, in date order. The
     # rules that ran carry the same run as their last run (Rules panel).
@@ -938,6 +938,39 @@ def generate() -> dict:
                                "skipped_protected": 0, "skipped_pinned": 0,
                                "preview": [], "error": ""})
             rules._save(stored)
+    # "This month" must read the same on Activity (audit log), Statistics
+    # (history) and Sign-in & users (history, all accounts). The history above
+    # is the figure; the log gets the user's own moves to make up what the
+    # month's rule runs do not already cover (and the history grows to match
+    # if a rule run alone exceeds it - the rule runs fall in this calendar
+    # month on some days of the month only).
+    _ym = time.strftime("%Y-%m", time.gmtime(NOW))
+    _month_start = calendar.timegm(
+        time.strptime(_ym + "-01", "%Y-%m-%d"))
+    _rule_action = {sweep["name"]: "trash", parcels["name"]: "archive",
+                    lapsed["name"]: "trash"}
+    _labels = {"trash": ["Old newsletters", "Expired promotions",
+                         "Past order updates"],
+               "archive": ["Receipts to keep", "Travel confirmations"]}
+    for _acct in ("proton", "icloud"):
+        _month = history["accounts"][_acct]["actions"][_ym]
+        for _action in ("trash", "archive"):
+            _have = sum(e[3] for e in _au
+                        if e[0] == _acct and e[1] == "rule_execute"
+                        and time.strftime("%Y-%m", time.gmtime(e[2])) == _ym
+                        and _rule_action[e[6]] == _action)
+            _rest = _month[_action] - _have
+            if _rest < 0:
+                _month[_action] = _have
+                continue
+            _parts = [_rest // 3, _rest // 3, _rest - 2 * (_rest // 3)]
+            for _i, (_n, _frac) in enumerate(zip(_parts, (0.2, 0.55, 0.85))):
+                if _n > 0:
+                    _au.append((_acct, _action,
+                                int(_month_start + (NOW - _month_start) * _frac),
+                                _n, "ok", "user",
+                                _labels[_action][_i % len(_labels[_action])]))
+    Path(os.environ["STATS_HISTORY_PATH"]).write_text(json.dumps(history))
     _au.sort(key=lambda e: e[2])
     Path(os.environ["AUDIT_LOG_PATH"]).write_text("".join(
         json.dumps({"ts": ts, "account": acct, "actor": actor,

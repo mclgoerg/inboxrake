@@ -6,7 +6,7 @@ export const DE: Record<string, string> = {
   "confirm.empty_trash_protection": "Auch Mails geschützter Absender und angeheftete Mails im Papierkorb werden endgültig gelöscht.",
   "smart.first_use": "Smart fasst kleine Absender nach Unternehmen oder Art zusammen; große Absender behalten eigene Zeilen. Öffne eine Gruppe und prüfe ihre Absender vor dem Aufräumen.",
   "confirm.b_space": "Das Verschieben in den Papierkorb gibt erst nach dem endgültigen Löschen Speicher auf dem Server frei.",
-  "notice.rule_queued": "Regel \"{name}\": {queued}\u00a0Mails eingereiht. Der Abschluss wird im Aktionsfortschritt angezeigt.",
+  "notice.rule_queued": "Regel „{name}“: {queued}\u00a0Mails eingereiht. Der Abschluss wird im Aktionsfortschritt angezeigt.",
   "ferr.protected_sender_selected": "Einige ausgewählte Mails gehören zu einem geschützten Absender. Hebe dessen Schutz in der Gruppe auf, bevor du diese Mails verschiebst.",
   "rule.queued": "{n}\u00a0Mails eingereiht; der Abschluss wird im Aktionsfortschritt angezeigt.",
   "ferr.undo_copy_unknown": "Einige verschobene Kopien konnten nicht sicher erkannt werden. Der Rückgängig-Eintrag bleibt erhalten; öffne den Zielordner und stelle diese Mails dort manuell wieder her.",
@@ -277,8 +277,8 @@ export const DE: Record<string, string> = {
   "tab.rules_none": "noch nie gelaufen",
   "tab.per_month": "{n} im Monat",
   "tab.open_details": "Tippen für Details",
-  "tab.space_share": "Die {n} größten Absender = {pct}",
-  "tab.space_share_one": "Größter Absender = {pct}",
+  "tab.space_share": "Die {n}\u00a0größten Absender belegen {pct} des Speichers.",
+  "tab.space_share_one": "Der größte Absender belegt {pct} des Speichers.",
   "tab.trackers_ring": "{pct} der geprüften Mails enthalten ein Tracking-Pixel",
   "tab.trackers_of": "der geprüften Mails melden das Öffnen",
   "tab.trackers_senders": "{n}\u00a0Absender tracken dich",
@@ -314,8 +314,8 @@ export const DE: Record<string, string> = {
   "tracker.senders": "Absender mit Tracking",
   "tracker.top_senders": "Am meisten Tracking",
   "tracker.top_hosts": "Wer beobachtet dich",
-  "tracker.sender_meta": "{n} von {of}\u00a0Mails mit Tracking",
-  "tracker.sender_meta_one": "1 von {of}\u00a0Mails mit Tracking",
+  "tracker.sender_meta": "{tracked} von {of}\u00a0Mails mit Tracking",
+  "tracker.sender_meta_one": "{tracked} von {of}\u00a0Mail mit Tracking",
   "tracker.n_senders": "{n}\u00a0Absender",
   "tracker.n_senders_one": "1\u00a0Absender",
   "tracker.tag_pixel": "Öffnungen",
@@ -676,7 +676,7 @@ export const DE: Record<string, string> = {
   "saved_filter.name_prompt": "Name für diese Vorlage",
   "saved_filter.edit_tip": "Filter dieser Vorlage bearbeiten",
   "saved_filter.editing": '„{name}“ wird bearbeitet',
-  "saved_filter.confirm_delete": 'Vorlage "{name}" löschen?',
+  "saved_filter.confirm_delete": 'Vorlage „{name}“ löschen?',
   "Clear filter": "Filter leeren",
   "Edit": "Bearbeiten",
   "Delete": "Löschen",
@@ -1553,13 +1553,13 @@ export const DE: Record<string, string> = {
   "account.rename_title": "Konto umbenennen",
   "account.rename_confirm": "Umbenennen",
   "account.err_empty": "Bitte einen Namen eingeben.",
-  "account.err_dup": 'Ein Konto namens "{name}" gibt es schon.',
+  "account.err_dup": 'Ein Konto namens „{name}“ gibt es schon.',
   "account.remove_title": "Konto entfernen",
   "account.remove_help":
     "Entfernt dieses Konto aus Inboxrake. Mails auf dem Server bleiben "
     + "unangetastet.",
-  "account.delete": 'Konto "{name}" löschen…',
-  "account.delete_title": 'Konto "{name}" löschen',
+  "account.delete": 'Konto „{name}“ löschen…',
+  "account.delete_title": 'Konto „{name}“ löschen',
   "account.delete_data":
     "Inboxrake löscht die Anmeldedaten und Verbindungseinstellungen, "
     + "Scan-Ergebnisse, den lokalen Suchindex, gespeicherte Filter, Pins, "
@@ -1586,7 +1586,7 @@ export const DE: Record<string, string> = {
   "pull.release": "Loslassen zum Scannen",
   "login.section": "Anmeldung (optional)",
   "login.help":
-    "Schützt die API mit einem Login. \"Keine\" vertraut dem Netzwerk "
+    "Schützt die API mit einem Login. „Keine“ vertraut dem Netzwerk "
     + "bzw. einer Reverse-Proxy-Anmeldung. Passwort = ein gemeinsames "
     + "Passwort. SSO/OIDC = Anmeldung über einen OpenID-Connect-Anbieter "
     + "(Pocket ID, Authentik, Keycloak, …); die App dort vorher mit der "
@@ -1688,8 +1688,8 @@ export const DE: Record<string, string> = {
   "numfmt.auto": "Automatisch",
   "settings.n_days": "{n}\u00a0Tage",
   "settings.n_days_one": "{n}\u00a0Tag",
-  "settings.n_senders": "{n}\u00a0Absender",
-  "settings.n_senders_one": "{n}\u00a0Absender",
+  "settings.n_mails": "{n}\u00a0Mails",
+  "settings.n_mails_one": "{n}\u00a0Mail",
   "settings.n_min": "{n}\u00a0Min.",
   "settings.every_h": "{n}\u00a0Std.",
   "settings.every_min": "{n}\u00a0Min.",
@@ -1790,8 +1790,8 @@ export const DE: Record<string, string> = {
   "account.smtp_row": "Sendeserver (Abmelde-Mails)",
   "account.same_as_imap": "Wie IMAP",
   "folders.discover_row": "Ordner erkennen",
-  "account.rename_prompt": 'Neuer Name für Konto "{name}":',
-  "account.renamed": 'Konto umbenannt in "{name}".',
+  "account.rename_prompt": 'Neuer Name für Konto „{name}“:',
+  "account.renamed": 'Konto umbenannt in „{name}“.',
   "folders.title": "Zu scannende Ordner - Konto \u201e{name}\u201c",
   "folders.discover": "Erkennen",
   "folders.discover_tip":
@@ -1869,7 +1869,7 @@ export const DE: Record<string, string> = {
   "search.try_senders_one": "1\u00a0Absender",
   "search.try_mails": "{n}\u00a0Mails",
   "search.try_mails_one": "1\u00a0Mail",
-  "search.try_note": "„Ausprobieren“ öffnet Absender mit dem passenden Filter - ein Tipp, dort editierbar.",
+  "search.try_note": "„Ausprobieren“ öffnet Absender mit dem passenden Filter - dort kannst du ihn noch anpassen.",
   "search.more_hint": "Nicht das Gesuchte?",
   "search.more_action": "Auch im Mailtext suchen",
   "search.more_server": "fragt den Mail-Server, dauert ein paar Sekunden.",
@@ -1947,7 +1947,7 @@ export const DE: Record<string, string> = {
     "Achtung: das passt möglicherweise nicht auf den Datenträger.",
   "index.delete_title": "Den lokalen Index löschen",
   "index.delete_body":
-    "Der Wortindex des Kontos \"{name}\" wird entfernt. Du kannst ihn jederzeit "
+    "Der Wortindex des Kontos „{name}“ wird entfernt. Du kannst ihn jederzeit "
     + "neu aufbauen.",
   "notice.index_cancelled":
     "Indexierung abgebrochen - bereits Indexiertes bleibt erhalten.",

@@ -53,7 +53,7 @@ vi.mock("./api", () => ({
       id: "alice_x.example_ab12cd34", label: "", is_admin_workspace: false,
       accounts: 1, mails: 42, size: 1048576, scans: 3,
       last_scan_ts: Date.now() / 1000 - 3600, rules: 0, verdicts: 5,
-      actions_month: { trash: 7, archive: 0, move: 0, mark_read: 0,
+      actions_month: { trash: 7, archive: 5, move: 2, mark_read: 0,
         freed: 2048, purge: 3, purged_bytes: 4096 },
       ai: { source: "shared" as const, runs: 2, input_tokens: 100,
         output_tokens: 10, cost: 0.5, month_cost: 0.5, budget_usd: 5 },
@@ -379,9 +379,9 @@ test("the German delete-account confirm tells the same truth: mail rules stay, p
     setLang("de");
     saveCalls.length = 0;
     renderWithDialogs();
-    fireEvent.click(screen.getByText('Konto "default" löschen…'));
+    fireEvent.click(screen.getByText("Konto „default“ löschen…"));
     const dlg = await findDialog();
-    expect(dlg.textContent).toContain('Konto "default" löschen');
+    expect(dlg.textContent).toContain('Konto „default“ löschen');
     expect(dlg.textContent).toContain("Mails auf dem Server bleiben unangetastet.");
     // ties the German text to the backend (`rules.drop_account`): mail rules
     // keep the account name but stop running, only the account's Junk /
@@ -564,9 +564,17 @@ test("the admin sees and saves the shared AI section", async () => {
   expect(screen.getByText(/\$0.50/)).toBeTruthy();
   // "Cleaned (month)": the size is what permanent deletes freed
   // (purged_bytes), never the old move-based `freed`
-  const cleaned = screen.getByText(/Cleaned \(month\)/).textContent!;
-  expect(cleaned).toContain("4\u00a0KB");
-  expect(cleaned).not.toContain("2 KB");
+  const cleaned = screen.getByText("Cleaned (month)").parentElement!;
+  expect(cleaned.textContent).toContain("4\u00a0KB");
+  expect(cleaned.textContent).not.toContain("2 KB");
+  // the same cleaning as Activity: Trash + archive + moves (7 + 5 + 2)
+  expect(cleaned.textContent).toContain("14");
+  // a stat grid: every figure is a label over its value, none runs on
+  const mails = screen.getByText("Mails (all accounts)").parentElement!;
+  expect(mails.children).toHaveLength(2);
+  expect(mails.children[1].textContent).toContain("42");
+  expect(screen.getByText("Disk").nextElementSibling!.textContent)
+    .toBe("4\u00a0KB");
   fireEvent.change(screen.getAllByLabelText(/^Model/)[0],
     { target: { value: "claude-opus-5" } });
   fireEvent.click(screen.getByText("Save"));
@@ -819,6 +827,20 @@ test("the Smart threshold defaults to 10 and saves clamped to 2-50", () => {
     expect(saveCalls[0].imap.smart_min, key).toBe(sent);
     cleanup();
   }
+});
+
+test("the Smart threshold stepper counts mails, not senders (en + de)", () => {
+  const name = "Own row from N mails";
+  render(<Settings cfg={cfg} account="default" section="general" />);
+  expect(screen.getByRole("spinbutton", { name }).textContent)
+    .toContain("10\u00a0mails");
+  cleanup();
+  setLang("de");
+  render(<Settings cfg={cfg} account="default" section="general" />);
+  const de = screen.getByRole("spinbutton",
+    { name: "Eigene Zeile ab N Mails" });
+  expect(de.textContent).toContain("10\u00a0Mails");
+  expect(de.textContent).not.toContain("Absender");
 });
 
 test("the Smart threshold is read from the account being edited", () => {
@@ -1508,11 +1530,20 @@ test("sign-in: the demo hint sits inside its section, texts without 'as before' 
   expect(await screen.findByText(/Mails \(all accounts\)/)).toBeTruthy();
 });
 
-test("AI review: the price rows say 'auto' once (no second copy as placeholder)", () => {
+test("AI review: the automatic prices are the fields' placeholders, not a "
+  + "line under the label", () => {
   render(<Settings cfg={cfg} account="default" section="ai" />);
-  expect(screen.getAllByText("auto: 2")).toHaveLength(1);
-  const input = screen.getByLabelText("Input price ($ per 1M tokens)");
-  expect(input.getAttribute("placeholder")).toBeFalsy();
+  const input = screen.getByLabelText("Input price ($ per 1M tokens)") as
+    HTMLInputElement;
+  const output = screen.getByLabelText("Output price ($ per 1M tokens)") as
+    HTMLInputElement;
+  expect(input.placeholder).toBe("auto: 2");
+  expect(output.placeholder).toBe("auto: 10");
+  expect(input.value).toBe("");
+  // said once: no text line of it anywhere
+  expect(screen.queryAllByText(/auto: /)).toHaveLength(0);
+  expect((screen.getByLabelText(/^Monthly AI budget/) as HTMLInputElement)
+    .placeholder).toBe("no cap");
 });
 
 test("special folders: the role is a label with an icon, the folder its value (no 'Trash Trash')", async () => {

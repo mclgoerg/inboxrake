@@ -86,12 +86,16 @@ def isolate(tmp_path, monkeypatch):
     accountsmod.reset()
     yield
     # Undo/restore kick off a background scan; let it land before the
-    # monkeypatched paths (snapshot dir, ...) are restored under it.
+    # monkeypatched paths (snapshot dir, ...) are restored under it. A bulk
+    # unsubscribe a test started and did not wait for must land too: its
+    # worker saves into the unsub store, and one that outlives the test would
+    # write the old test's records into the next test's fresh store.
     import time
     end = time.time() + 5
     while time.time() < end and any(
             a.state["status"] == "scanning"
             or a.state["index"]["status"] == "running"
+            or a.state["unsub"]["status"] == "running"
             for a in accountsmod.all_instantiated()):
         time.sleep(0.01)
     verdictstore._mails_cache.clear()

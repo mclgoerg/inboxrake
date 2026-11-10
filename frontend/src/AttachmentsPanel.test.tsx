@@ -313,6 +313,27 @@ test("a tile ticked behind Show more is not acted on after a filter keeps it "
   expect(screen.queryByRole("button", { name: "Move to Trash" })).toBeNull();
 });
 
+test("Show more tapped right after the list appears is not undone", async () => {
+  attachments.mockResolvedValue(many());
+  summary.mockResolvedValue(SUMMARY);
+  const { container } = show();
+  // the tap lands in the same task as the commit that shows the tiles - the
+  // moment a busy runner can reach before React has run its after-commit work
+  await new Promise<void>((resolve) => {
+    const watch = new MutationObserver(() => {
+      const more = screen.queryByRole("button", { name: "Show 11 more" });
+      if (!more) return;
+      watch.disconnect();
+      fireEvent.click(more);
+      resolve();
+    });
+    watch.observe(container, { childList: true, subtree: true });
+  });
+  expect(await screen.findByText("f65.pdf")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText("f65.pdf")).toBeTruthy());
+  expect(screen.queryByRole("button", { name: /Show \d+ more/ })).toBeNull();
+});
+
 test("Show more keeps what was ticked on the pages already shown", async () => {
   attachments.mockResolvedValue(many());
   summary.mockResolvedValue(SUMMARY);
