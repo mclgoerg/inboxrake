@@ -17,7 +17,6 @@ vi.mock("./api", () => ({
 
 import { Overview, type OverviewProps } from "./components/Overview";
 import { setLang } from "./i18n";
-import { fmtDate } from "./lib";
 import { saveVisit, loadVisit } from "./overview";
 import type { AuditEntry, Group, OverviewResp, OverviewWindow } from
   "./types";
@@ -185,12 +184,59 @@ test("a floored cleaned total says at least; week dates sit under the columns",
     .toContain("at least"));
   expect(card.getByText(/^≥ \d/)).toBeTruthy();
   const d = new Date((NOW - 8 * 7 * DAY) * 1000);
-  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")
-    }-${String(d.getDate()).padStart(2, "0")}`;
-  expect(within(cols[0]).getByText(fmtDate(iso))).toBeTruthy();
+  expect(within(cols[0]).getByText(new Intl.DateTimeFormat("en-GB",
+    { day: "numeric", month: "short" }).format(d))).toBeTruthy();
   expect(within(cols[7]).getByText("this week")).toBeTruthy();
   // phones: the span in one line below the columns
   expect(card.getByText("8 weeks ago")).toBeTruthy();
+});
+
+test("week labels never carry a year, even around New Year", async () => {
+  const jan = Math.floor(Date.UTC(2027, 0, 12, 12) / 1000);
+  overview.mockResolvedValue(resp({ now: jan }));
+  show();
+  const cols = await columns();
+  // the first week starts mid-November, the third one in late December
+  expect(within(cols[2]).getByText(/^\d{1,2} Dec$/)).toBeTruthy();
+  cols.slice(0, 7).forEach((c) =>
+    expect(c.textContent).not.toMatch(/20\d\d/));
+});
+
+test("a week with only cleanups, and a mailbox with no activity at all",
+  async () => {
+  overview.mockResolvedValue(resp({ weeks: [10, 20, 30, 25, 15, 20, 0, 81],
+    weeks_in_mailbox: [10, 20, 30, 25, 15, 20, 0, 81] }));
+  audit.mockResolvedValue({ total: 1, entries: [entry(NOW - 12 * DAY, 5)] });
+  show();
+  let cols = await columns();
+  await waitFor(() => expect(cols[6].getAttribute("aria-label"))
+    .toContain("5 cleaned"));
+  // arrived 0: its row shows the faint line, the cleaned row the full bar
+  expect(cols[6].querySelectorAll(".h-0\\.5")).toHaveLength(1);
+  expect(bars(cols[6])).toEqual(["100%"]);
+  cleanup();
+  overview.mockResolvedValue(resp({ weeks: [0, 0, 0, 0, 0, 0, 0, 0],
+    weeks_in_mailbox: [0, 0, 0, 0, 0, 0, 0, 0],
+    week: win({ mails: 0 }) }));
+  audit.mockResolvedValue({ total: 0, entries: [] });
+  show();
+  const card = await chart();
+  cols = await columns();
+  await waitFor(() => expect(cols[0].getAttribute("aria-label"))
+    .toContain("0 cleaned"));
+  cols.forEach((c) => {
+    expect(bars(c)).toEqual([]);                       // no bar, no NaN
+    expect(c.querySelectorAll(".h-0\\.5")).toHaveLength(2);
+  });
+  expect(card.getAllByText("0")).toHaveLength(2);
+});
+
+test("without next steps the kinds card spans both columns", async () => {
+  show({ groups: [rest] });
+  const kinds = await screen.findByRole("region",
+    { name: "What fills your inbox" });
+  expect(screen.queryByRole("region", { name: "Next steps" })).toBeNull();
+  expect(kinds.parentElement!.className).toContain("xl:col-span-2");
 });
 
 test("German chart words", async () => {

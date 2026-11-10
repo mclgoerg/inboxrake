@@ -276,10 +276,19 @@ export function Overview(p: OverviewProps) {
               onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
               onOpenAi={p.onOpenAiVerdicts} />
           </div>
-          <div className="max-xl:order-3">
+          {cards.length > 0 && (
+            <div className="max-xl:order-3">
+              <KindsCard data={data} failed={failed} onRetry={retry} />
+            </div>
+          )}
+        </div>
+        {/* without Next steps the left column is just the balance: the kinds
+            card takes the second row across both columns */}
+        {cards.length === 0 && (
+          <div className="max-xl:order-3 xl:col-span-2">
             <KindsCard data={data} failed={failed} onRetry={retry} />
           </div>
-        </div>
+        )}
       </div>
 
       <Section title={t("overview.biggest")}>

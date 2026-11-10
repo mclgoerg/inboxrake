@@ -5,10 +5,10 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLang, t } from "../i18n";
 import { fmtNum } from "../numfmt";
-import { fmtDate, fmtSize } from "../lib";
+import { fmtSize } from "../lib";
 import { WEEK_S } from "../activity";
 import { categoryHues, categoryName } from "../categories";
-import { nowDate, nowMs } from "../clock";
+import { nowMs } from "../clock";
 import { kindShares, type Trend, windowTerm } from "../overview";
 import { TOP_CARDS, type QuickWinCard } from "../quickwins";
 import type { OverviewResp } from "../types";
@@ -86,15 +86,14 @@ const weekLabel = (i: number, weeks: number): string =>
     : t("overview.days_ago_range",
       { from: (weeks - 1 - i) * 7 + 1, to: (weeks - i) * 7 });
 
-/** First day of the column's 7 days as a short date ("27 Jul"); the last
- *  column is "this week". */
-const weekDate = (i: number, weeks: number, now: number): string => {
-  if (i === weeks - 1) return t("overview.balance_this_week");
-  const d = new Date((now - (weeks - i) * WEEK_S) * 1000);
-  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")
-    }-${String(d.getDate()).padStart(2, "0")}`;
-  return fmtDate(iso, nowDate(), { lang: getLang() });
-};
+/** First day of the column's 7 days as day + month ("27 Jul", never a year:
+ *  the label must fit its column in late December too); the last column is
+ *  "this week". */
+const weekDate = (i: number, weeks: number, now: number): string =>
+  i === weeks - 1 ? t("overview.balance_this_week")
+    : new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB",
+      { day: "numeric", month: "short" })
+      .format(new Date((now - (weeks - i) * WEEK_S) * 1000));
 
 /** Height of a bar in percent of its row; a non-zero value keeps a sliver. */
 const pct = (v: number, max: number): number =>
@@ -176,8 +175,11 @@ function BalanceChart({ arrived, cleaned, estimated, tips, labels, active,
                         style={{ height: `${pct(c, maxC)}%` }} />
                     ) : <span className={zero} />}
                   </span>
-                  <span aria-hidden className={`hidden h-5 text-center
-                    type-caption whitespace-nowrap sm:block ${i === active
+                  {/* the last label ("diese Woche") may wrap: it is longer
+                      than its column in German */}
+                  <span aria-hidden className={`hidden min-h-5 text-center
+                    type-caption sm:block ${i === tips.length - 1
+                    ? "" : "whitespace-nowrap"} ${i === active
                     ? "font-semibold text-accent" : "text-muted"}`}>
                     {labels[i]}</span>
                 </button>
