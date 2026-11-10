@@ -234,15 +234,25 @@ test("the drawer has one label column; phones get a grouped form", () => {
     "run"]);
   expect(screen.queryByRole("group", { name: "Which mail" })).toBeNull();
   cleanup();
+  // a tablet-sized modal keeps the label column (the filter builder pops
+  // over the form there; a grouped list would clip it)
+  renderNew();
+  expect(screen.queryByRole("group", { name: "Which mail" })).toBeNull();
+  expect(document.querySelectorAll("div.grid > span.py-1\\.5").length)
+    .toBeGreaterThan(5);
+  cleanup();
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: true, media: q,
+    addEventListener() {}, removeEventListener() {} }));
   renderNew();
   const which = screen.getByRole("group", { name: "Which mail" });
-  expect(which.textContent).toMatch(/When a.*in.*matches/);
+  expect(which.textContent).toMatch(/Grouped by.*in.*matches/);
   const what = screen.getByRole("group", { name: "What happens" });
   expect(what.textContent).toMatch(/then.*apply to.*run/);
   // every field is still there, the preview and the report-mode note too
   for (const f of ["Name", "Filter"]) expect(screen.getByLabelText(f)).toBeTruthy();
   expect(screen.getByText("Preview")).toBeTruthy();
   expect(screen.getByText("Starts in report mode")).toBeTruthy();
+  vi.unstubAllGlobals();
 });
 
 const at = (y: number, mo: number, d: number, h: number, mi: number) =>

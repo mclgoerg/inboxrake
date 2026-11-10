@@ -9,7 +9,7 @@ import type { AppState, Grouping, Rule, RuleScope } from "../types";
 import { QueryBuilder } from "./QueryBuilder";
 import { Avatar, Button, confirmDialog, EmptyState, Input, LINK_ACCENT, Menu,
   MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented, SettingsGroup,
-  SettingsRow, Spinner, Tag, useIsPage } from "./ui";
+  SettingsRow, Spinner, Tag, useIsPage, useMediaQuery } from "./ui";
 
 /** The rules section of the docs (cap, report mode, protected senders). */
 const RULES_DOCS_URL = "https://inboxrake.com/docs/features/#rules-and-scheduler";
@@ -173,8 +173,8 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
  *  control starts at the same edge. */
 function FormRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    // 5.5rem: wide enough for "apply to"; a longer label wraps
-    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3">
+    // 7rem: the longest label ("Gruppen nach", "anwenden auf") on one line
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] items-start gap-x-3">
       <span className="py-1.5 type-body text-muted">{label}</span>
       <div className="flex min-w-0 flex-wrap items-center gap-2">{children}</div>
     </div>
@@ -478,7 +478,10 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     setEditing(true);
   };
 
-  const grouped = !onPage;      // phones / tablets: a grouped form
+  // Phones get a grouped form; tablets keep the label column (the filter
+  // builder opens as a popover there, which a grouped list would clip).
+  const phone = useMediaQuery("(max-width: 639px)");
+  const grouped = !onPage && phone;
   const nameInput = <Input className="w-full" placeholder={t("rule.name")}
     aria-label={t("rule.f_name")} autoFocus={onPage}
     value={form.name} onChange={set("name")} />;
@@ -583,7 +586,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
         {grouped ? <>
           <SettingsGroup header={t("rule.grp_which")}
             footnote={purge ? t("rule.purge_filter_help") : undefined}>
-            <SettingsRow label={t("rule.row_when")}>{groupingCtl}</SettingsRow>
+            <SettingsRow label={t("rule.row_grouped")}>{groupingCtl}</SettingsRow>
             <SettingsRow label={t("rule.row_in")}>{scopeCtl}</SettingsRow>
             <SettingsRow label={t("rule.row_matches")} stack>{filterCtl}</SettingsRow>
           </SettingsGroup>

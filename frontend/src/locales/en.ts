@@ -876,6 +876,7 @@ export const EN: Record<string, string> = {
     "When {grouping} groups in {scope} match {filter} then {action}{retention}\u00a0· {schedule}",
   "rule.row_when": "When a",
   "rule.mid_in": "group in",
+  "rule.row_grouped": "Grouped by",
   "rule.row_in": "in",
   "rule.row_matches": "matches",
   "rule.grp_which": "Which mail",
