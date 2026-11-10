@@ -131,7 +131,7 @@ test("filter row, Select all matches banner, Clear, row again to clear", async (
   await pick();
   await expect(box).toHaveValue("age:>6m");
   await expect(page.getByTestId("filter-token")).toContainText("Inactive 6+ months");
-  await page.getByRole("button", { name: /^Select (all \d+\u00a0matches|the 1\u00a0match)/ }).click();
+  await page.getByRole("button", { name: /^Select (all \d+ matches|the 1 match)/ }).click();
   await expect(page.getByRole("region", { name: "Selection actions" })).toBeVisible();
   // (the table and the phone card list each render one; only one is laid out)
   await expect(page.getByTestId("select-matches").filter({ visible: true }))
