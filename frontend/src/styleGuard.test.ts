@@ -11,8 +11,6 @@ const HUES = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|"
 const HUE_NAMES = ["violet", "teal", "cyan", "lime", "indigo", "fuchsia"];
 const AVATAR_HUES = new Set([
   ...HUE_NAMES.map((h) => `"bg-${h}-900 text-${h}-300",`),
-  // storage-bar fills: bright on dark, saturated on light
-  ...HUE_NAMES.map((h) => `"bg-${h}-300 light:bg-${h}-900",`),
 ]);
 
 // The only `!important` utilities allowed (each has a comment in code).

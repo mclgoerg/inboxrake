@@ -37,6 +37,14 @@
   --color-attach-fg: #cf8cff;
   --color-new-bg: rgb(79 209 197 / 0.14);
   --color-new-fg: #4fd1c5;
+  /* Category / chart palette (ui.tsx hueFillAt): six clearly different hues,
+     softened on dark; each >= 3:1 on the panel (index.contrast.test.ts). */
+  --color-cat-1: #b08be0;
+  --color-cat-2: #e07fae;
+  --color-cat-3: #45b5a5;
+  --color-cat-4: #6ba3e6;
+  --color-cat-5: #e49a5c;
+  --color-cat-6: #9bbf5f;
   --color-danger: #c9302c;       /* solid destructive button, white text */
   --color-danger-h: #cf332b;
   --color-danger-fg: #ff7b70;    /* error / destructive text */
@@ -222,6 +230,12 @@ html[data-theme="light"] {
   --color-attach-fg: #7a35b0;
   --color-new-bg: rgb(11 107 99 / 0.11);
   --color-new-fg: #0b6b63;
+  --color-cat-1: #7a35b0;
+  --color-cat-2: #c24b8b;
+  --color-cat-3: #0b6b63;
+  --color-cat-4: #1a5fb8;
+  --color-cat-5: #b85c14;
+  --color-cat-6: #5c7316;
   --color-danger-h: #b3241f;
   --color-danger-fg: #b3261c;
   --color-overlay: rgb(40 30 20 / 0.25);

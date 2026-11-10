@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtSize } from "../api";
+import { categoryName } from "../categories";
 import { t } from "../i18n";
 import { fmtNum } from "../numfmt";
 import {
@@ -167,7 +168,7 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
           </Tag>
         )}
         {g.new && <Tag tone="new">🆕 {t("New")}</Tag>}
-        {g.tags.slice(0, 3).map((x) => <Tag key={x}>{x}</Tag>)}
+        {g.tags.slice(0, 3).map((x) => <Tag key={x}>{categoryName(x)}</Tag>)}
         <span className="ml-auto type-meta text-muted">
           <ShortDate iso={g.last} />
         </span>

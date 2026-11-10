@@ -22,7 +22,14 @@ vi.mock("./api", () => ({
 }));
 
 const thisMonth = new Date().toISOString().slice(0, 7);
-afterEach(() => { cleanup(); setLang("en"); extra = {}; });
+afterEach(() => {
+  cleanup(); setLang("en"); extra = {}; vi.unstubAllGlobals();
+});
+/** jsdom has no matchMedia: the page renders its phone layout. This makes it
+ *  a >= 640 px screen (tables instead of stacked rows). */
+const wideScreen = () => vi.stubGlobal("matchMedia", (q: string) => ({
+  matches: q.includes("min-width"), media: q, addEventListener() {},
+  removeEventListener() {} }));
 
 test("freed is shown from purged_bytes only; old months show no figure",
   async () => {
@@ -32,26 +39,43 @@ test("freed is shown from purged_bytes only; old months show no figure",
         freed: 7777, purge: 3, purged_bytes: 1234 },
     };
     render(<StatsPanel onClose={() => {}} />);
-    await screen.findByText("moved to Trash this month");
+    await screen.findByText("moved to Trash");
     expect(screen.getByText(
       "permanently deleted this month: 3 mails · 1234 B freed")).toBeTruthy();
     // the old move-based figures are never presented as freed space
     expect(document.body.textContent).not.toContain("9999");
     expect(document.body.textContent).not.toContain("7777");
-    expect(document.body.textContent).toContain(
-      "4 moved to Trash · 1 archived · 0 moved · 0 marked read");
-    expect(document.body.textContent).toContain(
-      "2 moved to Trash · 0 archived · 0 moved · 0 marked read · 3 deleted "
-      + "permanently (1234 B freed)");
+    // phones: one row per month, the Trash count at the right, details below
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Jan 20264 to Trash1 archived");
+    expect(text).toContain("2 to Trash3 deleted · 1234 B freed");
     // the old month has no "freed" at all
-    expect(document.body.textContent?.match(/freed\)/g)).toHaveLength(1);
+    expect(document.body.textContent?.match(/1234 B freed/g)).toHaveLength(2);
+  });
+
+test("cleaned up per month: a table on a wide screen, zero as a dash",
+  async () => {
+    wideScreen();
+    actions = {
+      "2026-01": { trash: 4, archive: 1, move: 0, mark_read: 0, freed: 9999 },
+      "2025-12": { trash: 2, archive: 0, move: 3, mark_read: 5, freed: 0,
+        purge: 3, purged_bytes: 1234 },
+    };
+    render(<StatsPanel onClose={() => {}} />);
+    await screen.findByRole("table", { name: "Cleaned up per month" });
+    const heads = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(heads).toEqual(expect.arrayContaining(["Month", "To Trash",
+      "Archived", "Moved", "Marked read", "Deleted"]));
+    const rows = screen.getAllByRole("row").map((r) => r.textContent);
+    expect(rows).toContain("Jan 202641---");
+    expect(rows).toContain("Dec 20252-353 · 1234 B freed");
   });
 
 test("a month without permanent deletes shows no freed line", async () => {
   actions = { [thisMonth]: { trash: 5, archive: 0, move: 0, mark_read: 0,
     freed: 5000 } };
   render(<StatsPanel onClose={() => {}} />);
-  await screen.findByText("moved to Trash this month");
+  await screen.findByText("moved to Trash");
   expect(document.body.textContent).not.toContain("freed");
 });
 
@@ -60,10 +84,10 @@ test("German labels", async () => {
   actions = { [thisMonth]: { trash: 1, archive: 0, move: 0, mark_read: 0,
     freed: 0, purge: 1, purged_bytes: 20 } };
   render(<StatsPanel onClose={() => {}} />);
-  await screen.findByText("diesen Monat in den Papierkorb verschoben");
+  await screen.findByText("in den Papierkorb");
   expect(screen.getByText(
     "diesen Monat endgültig gelöscht: 1 Mail · 20 B frei")).toBeTruthy();
-  expect(document.body.textContent).toContain("1 endgültig gelöscht (20 B frei)");
+  expect(document.body.textContent).toContain("1 gelöscht · 20 B frei");
 });
 
 test("the header offers 'Your year in mail' when the host wires it", async () => {
@@ -75,7 +99,7 @@ test("the header offers 'Your year in mail' when the host wires it", async () =>
   expect(onWrapped).toHaveBeenCalledTimes(1);
   cleanup();
   render(<StatsPanel onClose={() => {}} />);
-  await screen.findByText("moved to Trash this month");
+  await screen.findByText("moved to Trash");
   expect(screen.queryByRole("button", { name: "Your year in mail" })).toBeNull();
 });
 
@@ -122,8 +146,9 @@ test("the figures of the old page are all still there", async () => {
   render(<StatsPanel onClose={() => {}} />);
   await screen.findByText("Mails per year");
   const txt = () => document.body.textContent ?? "";
-  for (const s of ["10%", "10% newsletters (1)", "oldest mail:", "2025-01-01",
-    "100 B per mail", "Top domains by size", "x.example", "senders you replied to (of 2)"])
+  for (const s of ["10%", "newsletters (1)", "oldest mail:", "1 Jan 2025",
+    "100 B per mail", "Top domains", "by size · all time", "x.example",
+    "senders you replied to (of 2)", "from 1 Jan 2025"])
     expect(txt().toLowerCase()).toContain(s.toLowerCase());
 });
 
@@ -142,11 +167,13 @@ test("the period switch re-scopes the chart and the period KPIs", async () => {
   render(<StatsPanel onClose={() => {}} />);
   await screen.findByRole("tablist", { name: "Period" });
   // default 12 months: 12 buckets are the newest of months_all (both here)
-  expect(screen.getByText("Mails per month (last 12)")).toBeTruthy();
+  expect(screen.getByText("Mails per month")).toBeTruthy();
+  expect(document.body.textContent).not.toContain("(last 12)");
+  expect(document.body.textContent).not.toContain("hover or focus");
   fireEvent.click(screen.getByRole("tab", { name: "30 days" }));
   expect(screen.getByText("Mails per day (last 30)")).toBeTruthy();
-  expect(screen.getByText("2 senders overall")).toBeTruthy();
-  expect(screen.getByText("last 30 days · 10 B per mail")).toBeTruthy();
+  expect(screen.getByText("2 senders", { exact: false })).toBeTruthy();
+  expect(document.body.textContent).toContain("last 30 days · 10 B per mail");
   expect(screen.getByText("30 B")).toBeTruthy();
   expect(screen.getByText("100%")).toBeTruthy();              // unread 3 of 3
   fireEvent.click(screen.getByRole("tab", { name: "All time" }));
@@ -202,7 +229,7 @@ test("12 months = the last 12 calendar months, gaps zero, future ignored",
       .toBe(12);
     expect(screen.getAllByRole("button", { name: /· 0 mails · 0 B/ }).length)
       .toBe(10);
-    expect(document.body.textContent).toContain("mails · last 12 months");
+    expect(document.body.textContent).toContain("last 12 months · 2 senders");
     expect(screen.getByText("6")).toBeTruthy();            // 4 + 2 mails
   });
 
@@ -215,3 +242,97 @@ test("an All-time axis across years labels the year", async () => {
   fireEvent.click(await screen.findByRole("tab", { name: "All time" }));
   expect(screen.getByText("Jan ’24")).toBeTruthy();
 });
+
+test("categories show translated names, the rest is a grey 'Other'", async () => {
+  actions = {};
+  extra = { categories: [{ tag: "newsletter", count: 30, size: 900 },
+    { tag: "dev/cloud", count: 12, size: 90 },
+    { tag: "insurance", count: 10, size: 100 }] };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByRole("img", { name: "By category" });
+  for (const n of ["Newsletters", "Dev / cloud", "Insurance"])
+    expect(screen.getByText(n)).toBeTruthy();
+  expect(screen.getByText("A mail can carry more than one category."))
+    .toBeTruthy();
+  cleanup();
+  setLang("de");
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByText("Entwicklung & Cloud");
+  expect(screen.getByText("Newsletter")).toBeTruthy();
+});
+
+test("mails per year: horizontal bars with 'so far' and 'from <date>'",
+  async () => {
+    actions = {};
+    const y = new Date().getFullYear();
+    extra = { oldest: `${y - 1}-11-30`,
+      years: [{ year: String(y - 1), count: 3, size: 30 },
+        { year: String(y), count: 7, size: 70 }] };
+    render(<StatsPanel onClose={() => {}} />);
+    await screen.findByText("Mails per year");
+    expect(screen.getByText("7 mails · so far")).toBeTruthy();
+    expect(screen.getByText(`3 mails · from 30 Nov ${y - 1}`)).toBeTruthy();
+    // newest year first
+    const rows = screen.getAllByText(/^\d{4}$/).map((e) => e.textContent);
+    expect(rows).toEqual([String(y), String(y - 1)]);
+  });
+
+test("top domains and senders: the head, then 'Show all N'", async () => {
+  actions = {};
+  extra = {
+    top_domains: Array.from({ length: 8 }, (_, i) => (
+      { domain: `d${i}.example`, count: 8 - i, size: 10 })),
+    top_senders: Array.from({ length: 9 }, (_, i) => (
+      { key: `s${i}@x.example`, label: `Sender ${i}`, count: 9 - i, size: 5 })),
+  };
+  wideScreen();
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByText("d0.example");
+  expect(screen.queryByText("d5.example")).toBeNull();
+  expect(screen.queryByText("Sender 6")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show all 8" }));
+  expect(screen.getByText("d7.example")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+  expect(screen.queryByText("d7.example")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show all 9" }));
+  expect(screen.getByText("Sender 8")).toBeTruthy();
+});
+
+test("AI verdicts: a stacked bar, a legend and the one-by-one line",
+  async () => {
+    actions = {};
+    extra = { ai_groups: { delete_safe: 6, review: 3, keep: 3, unrated: 135 },
+      rated_mails: { delete_safe: 10, review: 20, keep: 15 } };
+    render(<StatsPanel onClose={() => {}} />);
+    await screen.findByText("6 safe to delete");
+    for (const s of ["3 review", "3 keep", "135 unrated",
+      "45 mails rated one by one (10 safe to delete)"])
+      expect(screen.getByText(s)).toBeTruthy();
+  });
+
+test("recent scans: a table with the app's date format", async () => {
+  actions = {};
+  const ts = (iso: string) => new Date(iso).getTime() / 1000;
+  extra = { scans: [{ ts: ts("2020-03-05T14:13:00"), mails: 1200, senders: 14,
+    size: 500 }, { ts: ts("2020-03-12T09:05:00"), mails: 1300, senders: 15,
+    size: 600 }] };
+  wideScreen();
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByRole("table", { name: "Recent scans" });
+  const rows = screen.getAllByRole("row").map((r) => r.textContent ?? "");
+  // newest first, "12 Mar 2020, 09:05" (never the US "3/12/2020, 9:05:00 AM")
+  const i = rows.findIndex((r) => r.startsWith("12 Mar 2020, 09:05"));
+  expect(i).toBeGreaterThan(0);
+  expect(rows[i]).toContain("1,300");
+  expect(rows[i + 1].startsWith("5 Mar 2020, 14:13")).toBe(true);
+  expect(document.body.textContent).not.toMatch(/AM|PM/);
+});
+
+test("the KPI tiles share one shape: figure, label, one detail line",
+  async () => {
+    actions = { [thisMonth]: { trash: 7, archive: 2, move: 0, mark_read: 0 } };
+    render(<StatsPanel onClose={() => {}} />);
+    await screen.findByText("moved to Trash");
+    for (const s of ["received", "unread", "this month · 2 archived"])
+      expect(document.body.textContent).toContain(s);
+  });

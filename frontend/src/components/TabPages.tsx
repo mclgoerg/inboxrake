@@ -16,7 +16,7 @@ import type { AppState, AuditEntry, DupSummary, Group, StatsResp, TrackerReport,
 import { actorLabel, tOr } from "./AuditLogPanel";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
-import { Avatar, Button, hueFillAt, hueIndex, MiniBars, Ring, Tag }
+import { Avatar, Button, hueFillAt, MiniBars, Ring, Tag }
   from "./ui";
 
 /* The Clean up / Insights tab pages (below 1024 px): a "what is waiting"
@@ -417,16 +417,13 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
           {space ? (
             <>
               <span aria-hidden className="relative block h-24">
-                {space.rects.map((r) => {
-                  const g = space.top.find((x) => x.key === r.key);
-                  return (
-                    <span key={r.key} className={`absolute rounded-badge
-                      border border-panel
-                      ${hueFillAt(hueIndex(g?.label ?? ""))}`}
-                      style={{ left: `${r.x / 2.4}%`, top: `${r.y}%`,
-                        width: `${r.w / 2.4}%`, height: `${r.h}%` }} />
-                  );
-                })}
+                {/* one palette hue per tile by rank, so neighbours differ */}
+                {space.rects.map((r, i) => (
+                  <span key={r.key} className={`absolute rounded-badge
+                    border border-panel ${hueFillAt(i)}`}
+                    style={{ left: `${r.x / 2.4}%`, top: `${r.y}%`,
+                      width: `${r.w / 2.4}%`, height: `${r.h}%` }} />
+                ))}
               </span>
               <span className="mt-2 block type-meta text-muted">
                 {t("tab.space_share", { n: space.top.length,

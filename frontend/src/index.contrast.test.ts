@@ -143,22 +143,29 @@ for (const [name, tk] of Object.entries(themes)) {
   });
 }
 
-// Storage-bar segments (ui.tsx HUE_FILLS): the bright palette tone on the
-// dark panel, the saturated one on the light panel, both >= 3:1.
-const hex = (v: string): Rgba => parse(v);
-const FILLS: Record<string, [string, string]> = {   // [300, 900] (Tailwind)
-  violet: ["#c4b5fd", "#4c1d95"], teal: ["#5eead4", "#134e4a"],
-  cyan: ["#67e8f9", "#164e63"], lime: ["#bef264", "#365314"],
-  indigo: ["#a5b4fc", "#312e81"], fuchsia: ["#f0abfc", "#701a75"],
-};
-test("storage-bar hue fills reach 3:1 on the panel in both themes", () => {
-  for (const [hue, [bright, deep]] of Object.entries(FILLS)) {
-    expect(ratio(hex(bright), themes.dark.panel), `dark ${hue}`)
-      .toBeGreaterThanOrEqual(3);
-    expect(ratio(hex(deep), themes.light.panel), `light ${hue}`)
-      .toBeGreaterThanOrEqual(3);
-  }
-  // "Everyone else" (bg-faint) stays quieter than the bright dark fills
-  for (const [bright] of Object.values(FILLS))
-    expect(lum(themes.dark.faint)).toBeLessThan(lum(hex(bright)));
-});
+// Chart / category palette (index.css --color-cat-N, ui.tsx HUE_FILLS):
+// every fill reaches 3:1 on the panel of its theme, and the six hues stay
+// clearly apart from one another (no near-identical purples / teals).
+const CATS = [1, 2, 3, 4, 5, 6].map((n) => `cat-${n}`);
+const rgbDist = (a: Rgba, b: Rgba) => Math.hypot(a[0] - b[0], a[1] - b[1],
+  a[2] - b[2]);
+for (const [name, tk] of Object.entries(themes)) {
+  test(`${name}: category fills reach 3:1 on the panel`, () => {
+    for (const c of CATS) {
+      expect(ratio(tk[c], tk.panel), `${name} ${c}`).toBeGreaterThanOrEqual(3);
+    }
+    // "Other" (bg-faint) stays quieter than the dark fills
+    if (name === "dark") {
+      for (const c of CATS) expect(lum(tk.faint)).toBeLessThan(lum(tk[c]));
+    }
+  });
+
+  test(`${name}: the six category hues are clearly different`, () => {
+    for (let i = 0; i < CATS.length; i++) {
+      for (let j = i + 1; j < CATS.length; j++) {
+        expect(rgbDist(tk[CATS[i]], tk[CATS[j]]),
+          `${name} ${CATS[i]} vs ${CATS[j]}`).toBeGreaterThanOrEqual(70);
+      }
+    }
+  });
+}

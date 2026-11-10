@@ -3,6 +3,7 @@ import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
   Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { accountGuard } from "../accountGuard";
+import { categoryName } from "../categories";
 import { api } from "../api";
 import { demoHint, useDemo } from "../demoMode";
 import { openUnsubPage } from "../unsub";
@@ -496,7 +497,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
             <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1
               type-meta text-muted">
               {group.tags.map((tag) => (
-                <Tag key={tag} tone="category">{tag}</Tag>
+                <Tag key={tag} tone="category">{categoryName(tag)}</Tag>
               ))}
               {since && <span>{t("detail.since", { date: since })}</span>}
             </div>

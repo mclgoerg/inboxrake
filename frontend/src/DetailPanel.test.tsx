@@ -903,7 +903,7 @@ describe("DetailPanel header and action row", () => {
     await waitFor(() => screen.getByText("Mail 1"));
     expect(screen.getByRole("heading", { name: "Acme" })).toBeTruthy();
     expect(screen.getByText("news@acme.example")).toBeTruthy();
-    expect(screen.getByText("newsletter")).toBeTruthy();
+    expect(screen.getByText("Newsletters")).toBeTruthy();
     expect(screen.getByText(/^since /)).toBeTruthy();
     const tile = (label: string) =>
       screen.getAllByText(label)[0].parentElement!.textContent;   // (the "Mails" heading follows its tile)
