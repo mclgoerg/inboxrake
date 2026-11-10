@@ -41,3 +41,13 @@ test("other categories take a hue nobody else in the chart has", () => {
   expect(new Set(few).size).toBe(3);
   expect(categoryHues(["insurance"])).toEqual(categoryHues(["insurance"]));
 });
+
+test("a category named like an Object member is just a name", () => {
+  for (const k of ["constructor", "valueOf", "toString", "__proto__"]) {
+    expect(categoryName(k)).toBe(k.charAt(0).toUpperCase() + k.slice(1));
+  }
+  const h = categoryHues(["constructor", "valueOf", "newsletter"]);
+  expect(h[2]).toBe(0);
+  expect(h.every((x) => Number.isInteger(x) && x >= 0 && x < 6)).toBe(true);
+  expect(new Set(h).size).toBe(3);
+});

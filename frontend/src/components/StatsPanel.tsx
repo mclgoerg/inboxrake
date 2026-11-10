@@ -78,7 +78,8 @@ function DataTable({ caption, cols, rows }: {
           <tr key={r.key} className="border-t border-line/60">
             {r.cells.map((c, i) => (
               <td key={i} className={`py-2 tabular-nums ${
-                cols[i].right ? "text-right text-muted" : "pr-2 text-body"}`}>
+                cols[i].right ? "text-right text-muted"
+                  : "break-all pr-2 text-body"}`}>
                 {c}</td>
             ))}
           </tr>
@@ -346,8 +347,12 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
               <Kpi value={fmtNum(pMails)} label={t("mails")}
                 detail={<>
-                  {inPeriod && <span className="max-sm:hidden">{pName} · </span>}
-                  {fmtNum(stats.senders)} {t("stats.senders")}</>}
+                  {/* phones: the period names the figures of all four tiles,
+                      the sender count (also on the Senders tab) steps aside */}
+                  {inPeriod && <span>{pName}<span className="max-sm:hidden">
+                    {" · "}</span></span>}
+                  <span className={inPeriod ? "max-sm:hidden" : ""}>
+                    {fmtNum(stats.senders)} {t("stats.senders")}</span></>}
                 visual={buckets.length > 1 && (
                   <MiniBars values={buckets.map((m) => m.count)} />)} />
               <Kpi value={fmtSize(pSize)}
@@ -556,12 +561,12 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                   <div className="mt-4">
                     <div className="mb-1 flex justify-between gap-2 type-meta
                       text-muted">
-                      <span>{t("stats.newsletters")} ({fmtNum(stats.bulk)})</span>
+                      <span>{categoryName("newsletter")} ({fmtNum(stats.bulk)})</span>
                       <span className="font-semibold text-body tabular-nums">
                         {pct(stats.bulk, stats.mails)}%</span>
                     </div>
                     <ProgressBar value={stats.bulk} max={stats.mails}
-                      label={t("stats.newsletters")} />
+                      label={categoryName("newsletter")} />
                   </div>
                   <div className="mt-4 type-meta text-muted">
                     {t("stats.oldest")}:{" "}
