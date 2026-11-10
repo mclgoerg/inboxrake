@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState,
 import { createPortal } from "react-dom";
 import { api } from "../api";
 import { t } from "../i18n";
+import { fmtNum } from "../numfmt";
 import { fmtAgo } from "../lib";
 import { nowMs } from "../clock";
 import { useLayer } from "../backStack";
@@ -321,7 +322,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
         </span>
         {opts.count !== undefined && (
           <span className="shrink-0 type-body tabular-nums text-muted">
-            {opts.count.toLocaleString()}
+            {fmtNum(opts.count)}
           </span>
         )}
         {on && <Check size={16} aria-hidden className="shrink-0 text-accent" />}

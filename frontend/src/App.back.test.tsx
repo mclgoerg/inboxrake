@@ -247,7 +247,7 @@ test("a dirty draft: Back asks first and stays when cancelled (Triage)", async (
   await settle();
   fireEvent.click(within(dlg).getByRole("button", { name: /Trash/ }));
   await back();
-  expect((await findDialog()).textContent).toContain("Discard 1 decision?");
+  expect((await findDialog()).textContent).toContain("Discard 1\u00a0decision?");
   await cancelDialog();
   await settle();
   expect(screen.getByRole("dialog", { name: "Triage" })).toBeTruthy();

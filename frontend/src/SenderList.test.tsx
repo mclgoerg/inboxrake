@@ -399,7 +399,7 @@ describe("File in Smart as...", () => {
     mountFile(pair);
     tickAndFile("amy@acme.example");
     pickKind("Newsletters");
-    await pressDialog("The whole company (2 senders)");
+    await pressDialog("The whole company (2\u00a0senders)");
     await waitFor(() => expect(onFile).toHaveBeenCalledWith(
       [{ key: "co:acme.example", kind: "newsletter" }], 1));
   });
@@ -411,7 +411,7 @@ describe("File in Smart as...", () => {
     fireEvent.click(row("solo@solo.example"));
     fireEvent.click(fileItem());
     pickKind("Job applications");
-    await pressDialog("The whole company (2 senders)");
+    await pressDialog("The whole company (2\u00a0senders)");
     await waitFor(() => expect(onFile).toHaveBeenCalled());
     expect(onFile.mock.calls[0][0]).toEqual([
       { key: "co:acme.example", kind: "jobs" },

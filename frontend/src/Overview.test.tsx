@@ -101,15 +101,15 @@ test("the balance card: size, counts, trend pill and 8 labelled columns",
   expect(card.getByText("in 60 mails from 3 senders")).toBeTruthy();
   expect(card.getByText("proton · me@proton.example")).toBeTruthy();
   expect(card.getByTestId("ov-trend").textContent)
-    .toBe("38.0 MB less than a month ago");
+    .toBe("38.0\u00a0MB less than a month ago");
   const cols = await columns();
   expect(cols).toHaveLength(8);
   // the audit log feeds the cleaned side, bucketed like the arrivals
   await waitFor(() => expect(cols[7].getAttribute("aria-label"))
-    .toBe("Last 7 days: 81 arrived · 4 cleaned"));
+    .toBe("Last 7\u00a0days: 81 arrived · 4 cleaned"));
   expect(cols[5].getAttribute("aria-label"))
-    .toBe("15-21 days ago: 20 arrived · 3 cleaned");
-  expect(cols[0].getAttribute("aria-label")).toContain("50-56 days ago");
+    .toBe("15-21\u00a0days ago: 20 arrived · 3 cleaned");
+  expect(cols[0].getAttribute("aria-label")).toContain("50-56\u00a0days ago");
   // the newest column is spelled out; hovering / tapping another one moves it
   expect(cols[7].getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(cols[1]);
@@ -272,7 +272,7 @@ test("estimated weeks say so: in their text, and in the footnote", async () => {
   const card = await chart();
   const cols = await columns();
   expect(cols[0].getAttribute("aria-label"))
-    .toContain("50-56 days ago: about 10 arrived");
+    .toContain("50-56\u00a0days ago: about 10 arrived");
   expect(cols[7].getAttribute("aria-label")).not.toContain("about");
   expect(card.getByText(/Lighter bars are estimates/)).toBeTruthy();
 });
@@ -283,13 +283,13 @@ test("the trend says its real age when the history is young, and more / same",
     trend: { ts: NOW - 9 * DAY, size: 50 * MB, mails: 5 } }));
   show();
   expect((await screen.findByTestId("ov-trend")).textContent)
-    .toBe("12.0 MB more than 9 days ago");
+    .toBe("12.0\u00a0MB more than 9\u00a0days ago");
   cleanup();
   overview.mockResolvedValue(resp({
     trend: { ts: NOW - 1 * DAY, size: 62 * MB, mails: 5 } }));
   show();
   expect((await screen.findByTestId("ov-trend")).textContent)
-    .toBe("Same size as 1 day ago");
+    .toBe("Same size as 1\u00a0day ago");
   cleanup();
   overview.mockResolvedValue(resp({ trend: null }));
   show();
@@ -465,8 +465,8 @@ test("What fills your inbox: shares of the last 30 days that add up to 100 %",
     { name: "What fills your inbox" }));
   const rows = await card.findAllByRole("listitem");
   expect(rows.map((li) => li.textContent)).toEqual([
-    "Newsletters45 %", "Shopping22 %", "Notifications18 %", "Finance6 %",
-    "Other9 %"]);
+    "Newsletters45%", "Shopping22%", "Notifications18%", "Finance6%",
+    "Other9%"]);
   expect(card.getByText("mails of the last 30 days, by kind")).toBeTruthy();
   cleanup();
 
@@ -495,7 +495,7 @@ test("a failing audit log only leaves the cleaned side empty", async () => {
   audit.mockRejectedValue(new Error("nope"));
   show();
   const cols = await columns();
-  expect(cols[7].getAttribute("aria-label")).toBe("Last 7 days: 81 arrived");
+  expect(cols[7].getAttribute("aria-label")).toBe("Last 7\u00a0days: 81 arrived");
 });
 
 test("the biggest senders keep the storage bar legend and the list", async () => {
@@ -526,7 +526,7 @@ test("German", async () => {
   expect(card.getByText("24 neue KI-Urteile")).toBeTruthy();
   expect(card.getByRole("tab", { name: "Seit letztem Besuch" })).toBeTruthy();
   expect(screen.getByTestId("ov-trend").textContent)
-    .toBe("38,0 MB weniger als vor einem Monat");
+    .toBe("38,0\u00a0MB weniger als vor einem Monat");
   expect(screen.getByRole("region", { name: "Nächste Schritte" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "2 ansehen" })).toBeTruthy();
   expect(screen.getByText("Newsletter")).toBeTruthy();
@@ -588,7 +588,7 @@ test("a counted week says how many of its mails are no longer in the mailbox",
   show();
   const cols = await columns();
   expect(cols[7].getAttribute("aria-label")).toContain(
-    "Last 7 days: 120 arrived (incl. 39 no longer in your mailbox)");
+    "Last 7\u00a0days: 120 arrived (incl. 39 no longer in your mailbox)");
   expect(cols[6].getAttribute("aria-label")).not.toContain("no longer");
   // an estimate is the index's own number: nothing to add
   cleanup();

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
   isModalOpen, type SwipeAction, type TagTone } from "./ui";
@@ -169,7 +169,7 @@ const VERDICT_PILL: Record<string, TagTone> = {
  *  never inside "zuletzt 25. Nov. 2025" (which ran into the count column). */
 const Stats = ({ g }: { g: Group }) => (
   <>
-    <span className="whitespace-nowrap">{unreadPct(g)}% {t("unread")} ·</span>
+    <span className="whitespace-nowrap">{fmtPct(unreadPct(g))} {t("unread")} ·</span>
     {" "}
     <span className="whitespace-nowrap">
       {t("row.last")} <ShortDate iso={g.last} />

@@ -114,7 +114,7 @@ test("the hero shows what can go and Remove N copies is exactly all-but-newest "
   await screen.findByText("4 KB");
   expect(screen.getByText(/can go - 2 identical copies/)).toBeTruthy();
   expect(screen.getByText(/keeps the newest copy of each set/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove 2\u00a0copies" }));
   const dlg = await findDialog();
   expect(dlg.textContent).toContain("Move to Trash");
   expect(dlg.textContent).toContain("2 selected mails");
@@ -122,7 +122,7 @@ test("the hero shows what can go and Remove N copies is exactly all-but-newest "
   await expectNoDialog();
   expect(deleteMessages).not.toHaveBeenCalled();
 
-  fireEvent.click(screen.getByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove 2\u00a0copies" }));
   await pressDialog(/Move to Trash \(2\)/);
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
     [["Archive", 2], ["INBOX", 1]], "trash"));
@@ -136,7 +136,7 @@ test("the one-tap never takes versions or possible sets", async () => {
     versions: 1, possible: 1 }));
   deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
   show();
-  fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
   await pressDialog(/Move to Trash \(2\)/);
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledTimes(1));
   expect(deleteMessages.mock.calls[0][0]).toEqual([["Archive", 2], ["INBOX", 1]]);
@@ -150,12 +150,12 @@ test("pinned or protected sets are left out of the one-tap, and said so",
     duplicatesSummary.mockResolvedValue(summaryOf({ sets: 2, wasted: 6144 }));
     deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
     show();
-    await screen.findByRole("button", { name: "Remove 2 copies" });
+    await screen.findByRole("button", { name: "Remove 2\u00a0copies" });
     expect(screen.getByText(/1 set with protected senders or pinned mails is left alone/))
       .toBeTruthy();
     // the tag, plus a pin on each pinned copy
     expect(screen.getAllByText("pinned")).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "Remove 2 copies" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove 2\u00a0copies" }));
     await pressDialog(/Move to Trash \(2\)/);
     await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
       [["Archive", 2], ["INBOX", 1]], "trash"));
@@ -179,7 +179,7 @@ test("the selection is re-read right before the confirm and names the fresh coun
     duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
     deleteMessages.mockResolvedValue({ ok: true, queued: 1 });
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
     const dlg = await findDialog();
     expect(dlg.textContent).toContain('"Invoice"');   // one mail: named
     expect(dlg.textContent).not.toContain("2 selected");
@@ -193,7 +193,7 @@ test("if the re-read before the confirm fails, nothing is confirmed or moved",
     duplicates.mockResolvedValueOnce([ident()]).mockRejectedValue(new Error("offline"));
     duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
     await screen.findByText(/Error: offline/);
     await expectNoDialog();
     expect(deleteMessages).not.toHaveBeenCalled();
@@ -226,7 +226,7 @@ test("when the fresh data has nothing left to remove, no confirm opens",
     duplicates.mockResolvedValueOnce([ident()]).mockResolvedValue([]);
     duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096 }));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
     await screen.findByText(/Nothing left to remove - the list was updated/);
     await expectNoDialog();
     expect(deleteMessages).not.toHaveBeenCalled();
@@ -242,7 +242,7 @@ test("a new reloadKey (scan, Undo) fetches the lists again", async () => {
   const { rerender } = render(ui("1:0"));
   await screen.findByText("No duplicates found");
   rerender(ui("2:0"));
-  await screen.findByRole("button", { name: "Remove 2 copies" });
+  await screen.findByRole("button", { name: "Remove 2\u00a0copies" });
 });
 
 test("Show hidden also dismisses the lingering Hidden toast", async () => {
@@ -263,10 +263,10 @@ test("a refused move (a pinned copy slipped in) shows the error and keeps the "
   identicalWorld();
   deleteMessages.mockRejectedValue(new Error("contains pinned mails"));
   show();
-  fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
   await pressDialog(/Move to Trash \(2\)/);
   await screen.findByText(/contains pinned mails/);
-  expect(screen.getByRole("button", { name: "Remove 2 copies" })
+  expect(screen.getByRole("button", { name: "Remove 2\u00a0copies" })
     .hasAttribute("disabled")).toBe(false);
 });
 
@@ -433,7 +433,7 @@ test("after a one-tap run every list and the counts refresh, even if versions "
   jobState.mockResolvedValue({ delete: { status: "done", error: "" } });
   const onDeleted = vi.fn();
   show({ onDeleted });
-  fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
   await pressDialog(/Move to Trash \(2\)/);
   await screen.findByText("No duplicates found", {}, { timeout: 2500 });
   expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
@@ -699,7 +699,7 @@ test("German wording", async () => {
   duplicatesSummary.mockResolvedValue(summaryOf({ sets: 1, wasted: 4096,
     possible: 1 }));
   show();
-  await screen.findByRole("button", { name: "2 Kopien entfernen" });
+  await screen.findByRole("button", { name: "2\u00a0Kopien entfernen" });
   expect(screen.getByRole("button", { name: "Einzeln prüfen" })).toBeTruthy();
   expect(screen.getAllByRole("tab").map((x) => x.textContent))
     .toEqual(["Identisch 1", "Versionen 0", "Mögliche 1"]);
@@ -729,7 +729,7 @@ test("Remove N copies: an account switch during the re-read moves nothing",
   async () => {
     identicalWorld();
     show();
-    const btn = await screen.findByRole("button", { name: "Remove 2 copies" });
+    const btn = await screen.findByRole("button", { name: "Remove 2\u00a0copies" });
     let release!: (v: unknown) => void;
     duplicates.mockReturnValueOnce(new Promise((r) => { release = r; }));
     fireEvent.click(btn);
@@ -744,7 +744,7 @@ test("Remove N copies: an account switch while the confirm is open moves "
   identicalWorld();
   deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
   show();
-  fireEvent.click(await screen.findByRole("button", { name: "Remove 2 copies" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 2\u00a0copies" }));
   await findDialog();
   noteAccountSwitch();
   await pressDialog(/Move to Trash \(2\)/);
@@ -757,7 +757,7 @@ test("a double click on Remove N copies opens one confirm, not two",
     identicalWorld();
     deleteMessages.mockResolvedValue({ ok: true, queued: 2 });
     show();
-    const btn = await screen.findByRole("button", { name: "Remove 2 copies" });
+    const btn = await screen.findByRole("button", { name: "Remove 2\u00a0copies" });
     fireEvent.click(btn);
     fireEvent.click(btn);
     await findDialog();

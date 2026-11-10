@@ -7,7 +7,7 @@ import { fmtSize } from "../api";
 import { categoryName } from "../categories";
 import { t } from "../i18n";
 import { SIDEBAR_QUERY } from "../nav";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import {
   buildDeck, can, dragDecision, planOf, summarize, type Decision,
   type TriagePlan,
@@ -151,7 +151,7 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
         {[
           [g.count, t("triage.mails")],
           [fmtSize(g.size), t("triage.size")],
-          [`${unreadPct(g)}%`, t("unread")],
+          [fmtPct(unreadPct(g)), t("unread")],
         ].map(([v, label]) => (
           <div key={label} className="min-w-0 rounded-card bg-chip px-2 py-2">
             <div className="truncate type-heading tabular-nums lg:type-title2">{v}</div>

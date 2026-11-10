@@ -324,7 +324,7 @@ test("unverified Junk mails are reported as still being in Trash", async () => {
   await pickDelete();
   await pressDialog("Delete permanently (2)");
   const msg = await screen.findByText(/Nothing was deleted permanently/);
-  expect(msg.textContent).toContain("Moved 2 mails to Trash, but could not "
+  expect(msg.textContent).toContain("Moved 2\u00a0mails to Trash, but could not "
     + "verify them for permanent deletion");
   // not a success toast: an alert that stays, with Undo for the move
   const toast = msg.closest("[data-variant]")!;
@@ -347,7 +347,7 @@ test("unverified in German says nothing was deleted permanently", async () => {
     /^Endgültig löschen/);
   await pressDialog("Endgültig löschen (2)");
   const msg = await screen.findByText(/Es wurde nichts endgültig gelöscht/);
-  expect(msg.textContent).toContain("1 Mail in den Papierkorb verschoben");
+  expect(msg.textContent).toContain("1\u00a0Mail in den Papierkorb verschoben");
   expect(msg.closest("[data-variant]")!.getAttribute("data-variant"))
     .toBe("error");
 });

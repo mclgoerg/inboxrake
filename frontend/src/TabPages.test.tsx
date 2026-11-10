@@ -82,10 +82,10 @@ test("Clean up: Ready to clean is built from the quick wins, no double count",
   ];
   render(<CleanupPage {...cleanupProps({ groups: gs, deckSize: 2 })} />);
   const card = screen.getByRole("region", { name: "Ready to clean" });
-  expect(card.textContent).toContain("14.0 MB");
-  expect(card.textContent).toContain("in 65 mails");
+  expect(card.textContent).toContain("14.0\u00a0MB");
+  expect(card.textContent).toContain("in 65\u00a0mails");
   expect(screen.getByRole("button", { name: /^Triage/ }).textContent)
-    .toContain("2 senders waiting");
+    .toContain("2\u00a0senders waiting");
 });
 
 test("Clean up: gated tools stay disabled before a scan; AI hidden when off",
@@ -115,7 +115,7 @@ test("Insights: widgets show real data and open their tools", async () => {
   render(<InsightsPage groups={[mk("a@x.example"), mk("b@x.example")]}
     state={state()} onOpen={onOpen} />);
   await screen.findByText("240 mails");
-  expect(screen.getByRole("img", { name: /30 %/ })).toBeTruthy();
+  expect(screen.getByRole("img", { name: /30%/ })).toBeTruthy();
   expect(screen.getByText("4 senders track you")).toBeTruthy();
   expect(screen.getByText("Failed")).toBeTruthy();
   expect(audit).toHaveBeenCalledWith(0, 3);
@@ -229,10 +229,10 @@ test("Clean up: Duplicates shows the server's result, Attachments its last run",
   render(<CleanupPage {...cleanupProps({ state: st })} />);
   const dup = screen.getByRole("button", { name: /^Duplicates/ });
   await waitFor(() => expect(dup.textContent).toContain("2 duplicate sets"));
-  expect(dup.textContent).toContain("3.0 MB");
+  expect(dup.textContent).toContain("3.0\u00a0MB");
   expect(dup.textContent).not.toContain("Check");
   const att = screen.getByRole("button", { name: /^Attachments/ });
-  expect(att.textContent).toContain("12 mails");
+  expect(att.textContent).toContain("12\u00a0mails");
   expect(att.textContent).not.toContain("Check");
 });
 

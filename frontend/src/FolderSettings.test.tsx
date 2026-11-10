@@ -150,7 +150,7 @@ test("an ambiguous role shows the candidates with counts and a Select", () => {
   expect(pop.textContent).toContain("Not confirmed yet - choose…");  // unconfirmed
   fireEvent.click(pop);
   const opts = screen.getAllByRole("menuitemradio").map((o) => o.textContent);
-  expect(opts).toEqual(["Deleted Items (3 mails)", "Trash (1 mail)"]);
+  expect(opts).toEqual(["Deleted Items (3\u00a0mails)", "Trash (1\u00a0mail)"]);
   expect(screen.getByText(/the one permanent actions will use/)).toBeTruthy();
 });
 
@@ -247,10 +247,10 @@ test("moving a look-alike: confirm with the count, then a toast with Undo",
     expect(within(dlg).getByText("Move 3 mails to Trash?")).toBeTruthy();
     expect(within(dlg).getByText(/not deleted/)).toBeTruthy();
     // a reversible move: the confirm is not the red, destructive kind
-    expect(within(dlg).getByRole("button", { name: "Move 3 mails" })
+    expect(within(dlg).getByRole("button", { name: "Move 3\u00a0mails" })
       .className).not.toMatch(/danger/);
     expect(moveLookalike).not.toHaveBeenCalled();
-    await pressDialog("Move 3 mails");
+    await pressDialog("Move 3\u00a0mails");
     await waitFor(() => expect(moveLookalike)
       .toHaveBeenCalledWith("Deleted Items", 7, 12, "default"));   // exactly what was counted
     expect(await screen.findByText("Moved 3 mails to Trash.")).toBeTruthy();
@@ -330,7 +330,7 @@ test("every call is pinned to the account being edited", async () => {
   mount(withLookalike(), new Set(), "icloud");
   fireEvent.click(screen.getByRole("button",
     { name: "Move contents to Trash" }));
-  await pressDialog("Move 2 mails");
+  await pressDialog("Move 2\u00a0mails");
   await waitFor(() => expect(moveLookalike)
     .toHaveBeenCalledWith("Deleted Items", 3, 4, "icloud"));
   expect(lookalike).toHaveBeenCalledWith("Deleted Items", "icloud");

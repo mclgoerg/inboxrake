@@ -17,9 +17,9 @@ const g = (over: Partial<Group> = {}): Group => ({
 
 describe("formatters", () => {
   it("fmtSize", () => {
-    expect(fmtSize(500)).toBe("500 B");
-    expect(fmtSize(2048)).toBe("2 KB");
-    expect(fmtSize(3 * 1048576)).toBe("3.0 MB");
+    expect(fmtSize(500)).toBe("500\u00a0B");
+    expect(fmtSize(2048)).toBe("2\u00a0KB");
+    expect(fmtSize(3 * 1048576)).toBe("3.0\u00a0MB");
   });
   it("fmtUsd", () => {
     expect(fmtUsd(0.0034)).toBe("$0.0034");
@@ -325,6 +325,14 @@ describe("fmtAgo", () => {
     expect(fmtAgo(now - 600, now)).toBe("10m");
     expect(fmtAgo(now - 7200, now)).toBe("2h");
     expect(fmtAgo(now - 3 * 86400, now)).toBe("3d");
+  });
+  it("uses German units in German: Min., Std., Tag(en)", () => {
+    const de = (s: number) => fmtAgo(now - s, now, "de");
+    expect(de(30)).toBe("1\u00a0Min.");
+    expect(de(600)).toBe("10\u00a0Min.");
+    expect(de(7200)).toBe("2\u00a0Std.");
+    expect(de(86400)).toBe("1\u00a0Tag");
+    expect(de(15 * 86400)).toBe("15\u00a0Tagen");
   });
   it("is empty for missing or future timestamps", () => {
     expect(fmtAgo(null, now)).toBe("");

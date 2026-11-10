@@ -232,7 +232,7 @@ test("an account switch while the Duplicates confirm is open moves nothing",
   dupSets = [{ key: "<r@x.example>", wasted: 2048, locked: null,
     mails: [copy(2, "INBOX"), copy(1, "Archive")] }];
   mount();
-  fireEvent.click(await screen.findByRole("button", { name: "Remove 1 copy" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove 1\u00a0copy" }));
   await findDialog();
   await switchToWork();
   await pressDialog(/Move to Trash \(1\)/);

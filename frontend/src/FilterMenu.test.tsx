@@ -254,7 +254,7 @@ test("SelectMatches: select, then 'All N matches selected' with Clear", () => {
   const { rerender } = render(<SelectMatches n={14} skipped={1}
     allSelected={false} onSelect={onSelect} onClear={onClear} />);
   expect(screen.getByText("1 protected stays unselected")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /Select all 14 matches/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select all 14\u00a0matches/ }));
   expect(onSelect).toHaveBeenCalled();
   rerender(<SelectMatches n={14} skipped={0} allSelected
     onSelect={onSelect} onClear={onClear} />);

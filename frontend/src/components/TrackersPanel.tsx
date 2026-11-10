@@ -1,7 +1,7 @@
 import { ChevronRight, Eye, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
 import type { TrackerReport } from "../types";
 import { Avatar, Button, confirmDialog, EmptyState, Loading, Modal, PanelHeader,
@@ -125,9 +125,9 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
         <div className="space-y-4 rounded-card bg-panel2 p-4">
           <div className="flex items-center gap-4">
             <Ring frac={share / 100} px={96} label={rep.pixel > 0
-              ? t("tracker.headline", { pct: share })
+              ? t("tracker.headline", { pct: fmtPct(share) })
               : t("tracker.headline_none")}>
-              <span className="type-title2 tabular-nums">{share} %</span>
+              <span className="type-title2 tabular-nums">{fmtPct(share)}</span>
             </Ring>
             <div className="min-w-0 flex-1 type-heading">
               {rep.pixel > 0 ? t("tracker.ring_title")

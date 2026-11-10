@@ -89,7 +89,7 @@ test("the throttle says the minutes, in a calm tone", async () => {
   type("x");
   submit();
   const alert = await screen.findByRole("alert");
-  expect(alert.textContent).toBe("Too many tries. Wait 3 minutes, then sign in again.");
+  expect(alert.textContent).toBe("Too many tries. Wait 3\u00a0minutes, then sign in again.");
   expect(alert.className).toContain("bg-review-bg");
 });
 
@@ -99,7 +99,7 @@ test("one minute uses the singular text", async () => {
   type("x");
   submit();
   expect((await screen.findByRole("alert")).textContent)
-    .toBe("Too many tries. Wait 1 minute, then sign in again.");
+    .toBe("Too many tries. Wait 1\u00a0minute, then sign in again.");
 });
 
 test("German: the same codes come out in German", async () => {

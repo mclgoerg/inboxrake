@@ -1,12 +1,12 @@
 import { ChevronRight, Users, X, ZoomIn } from "lucide-react";
 import { useState, type ReactNode, type Ref } from "react";
 import { engagementTier, fmtDate } from "../lib";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
 import { domainOf, fmtBig, monthsSince, openedPct, pct, tickState, toneOf,
   type ColorBy, type MapItem } from "../spacemap";
 import { Avatar, Button, Checkbox, SectionLabel } from "./ui";
-import { fmtPct, nameOf, ProtectedMark, TONE_BAR, TONE_TEXT, toneText }
+import { nameOf, ProtectedMark, TONE_BAR, TONE_TEXT, toneText }
   from "./spaceUi";
 
 const MAX_LIST = 20;
@@ -71,7 +71,7 @@ export function SpaceDetails({ item, hasAi, totalSize, canShow, docked,
         {/* the colour of "engagement" mode: the score, built from the read
             share, replies, newsletter status and how recent the last mail is */}
         <Cell label={t("space.d_opened")} value={t(`space.d_eng_${tier}`)}
-          sub={[t("eng.read", { n: openedPct(item) }),
+          sub={[t("eng.read", { pct: fmtPct(openedPct(item)) }),
             t(item.replied ? "eng.replied" : "eng.never_replied")].join(" · ")} />
         <Cell label={t("space.d_last")}
           value={item.last ? fmtDate(item.last) : "-"}

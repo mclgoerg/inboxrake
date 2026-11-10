@@ -163,7 +163,7 @@ test("Empty Trash uses the Trash page's LIVE total, not the stale state count",
   trashTotal = 9;                       // state.trash_count still says 5
   await mount();
   fireEvent.click(await openTrashPanel(9));
-  expect((await findDialog()).textContent).toContain("9 mails in Trash");
+  expect((await findDialog()).textContent).toContain("9\u00a0mails in Trash");
   await pressDialog("Delete permanently (9)");
   await waitFor(() => expect(emptyTrash).toHaveBeenCalledOnce());
 });
@@ -173,7 +173,7 @@ test("a single mail reads 'The 1 mail', not '1 mails'", async () => {
   await mount();
   fireEvent.click(await openTrashPanel(1));
   const text = (await findDialog()).textContent!;
-  expect(text).toContain("The 1 mail in Trash");
+  expect(text).toContain("The 1\u00a0mail in Trash");
   expect(text).not.toContain("1 mails");
   await cancelDialog();
 });
@@ -194,7 +194,7 @@ test("the Trash panel footer offers the same Empty Trash confirm",
   await mount();
   fireEvent.click(await openTrashPanel());
   const dlg = await findDialog();
-  expect(dlg.textContent).toContain("5 mails in Trash");
+  expect(dlg.textContent).toContain("5\u00a0mails in Trash");
   expect(dlg.textContent).toContain("cannot be undone");
   await pressDialog("Delete permanently (5)");
   await waitFor(() => expect(emptyTrash).toHaveBeenCalledOnce());

@@ -195,7 +195,7 @@ test("keys typed in a pane control are not list shortcuts", async () => {
   expect(paneTitle()).toBe("Alpha");            // neither followed nor closed
   // ...and a pane button keeps Enter / # for itself, only j/k pass through
   const btn = within(pane() as HTMLElement)
-    .getByRole("button", { name: /Move \d+ mails? to Trash/ });
+    .getByRole("button", { name: /Move \d+\u00a0mails? to Trash/ });
   key("#", btn);
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -206,12 +206,12 @@ test("Trash all in the pane moves on to the next group, then closes",
   mount(true, { [A.key]: A, [B.key]: B });
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  fireEvent.click(await screen.findByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await pressDialog("Move to Trash (30)");
   await waitFor(() => expect(deleteGroups).toHaveBeenCalled());
   await waitFor(() => expect(paneTitle()).toBe("Bravo"));
   // (the mocked state still lists both groups; the focus outline follows)
-  fireEvent.click(await screen.findByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await pressDialog("Move to Trash (20)");
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledTimes(2));
   // Bravo's neighbour is Alpha (still in the stale mock list): moves there
@@ -223,7 +223,7 @@ test("a ConfirmDialog from the pane is a modal on top of it; Esc closes " +
   mount();
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  fireEvent.click(await screen.findByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await findDialog();
   key("Escape");
   await expectNoDialog();
@@ -245,7 +245,7 @@ test("Esc contract: the topmost Modal marks the Esc as used", async () => {
   mount();
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  fireEvent.click(await screen.findByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await findDialog();
   expect(esc().defaultPrevented).toBe(true);
   await expectNoDialog();
@@ -341,7 +341,7 @@ test("keyboard: Enter on the focused row opens the pane AND focuses it; " +
   key("Enter");
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
   await waitFor(() => expect(document.activeElement).toBe(pane()));
-  within(pane() as HTMLElement).getByRole("button", { name: /Move \d+ mails? to Trash/ })
+  within(pane() as HTMLElement).getByRole("button", { name: /Move \d+\u00a0mails? to Trash/ })
     .focus();
   key("j", document.activeElement!);
   await waitFor(() => expect(paneTitle()).toBe("Bravo"));
@@ -353,14 +353,14 @@ test("a list selection hides the pane's group actions (one red scope)",
   mount();
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  expect(screen.getByRole("button", { name: "Move 3 mails to Trash" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Move 3\u00a0mails to Trash" })).toBeTruthy();
   const box = (await row("Charlie")).querySelector("input[type=checkbox]")!;
   fireEvent.click(box);
   expect(screen.queryByRole("button", { name: "Move 3 mails to Trash" })).toBeNull();
   // Block is not destructive: it stays reachable in the action row
   expect(screen.getByRole("button", { name: "Block sender" })).toBeTruthy();
   fireEvent.click(box);
-  expect(screen.getByRole("button", { name: "Move 3 mails to Trash" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Move 3\u00a0mails to Trash" })).toBeTruthy();
 });
 
 test("resizing across 1280 px swaps pane and modal, keeping the open group",
@@ -388,7 +388,7 @@ test("Trash all on the only group closes the pane", async () => {
   mount(true, { [A.key]: A });
   fireEvent.click(await row("Alpha"));
   await waitFor(() => expect(paneTitle()).toBe("Alpha"));
-  fireEvent.click(await screen.findByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await pressDialog("Move to Trash (30)");
   await waitFor(() => expect(pane()).toBeNull());
 });

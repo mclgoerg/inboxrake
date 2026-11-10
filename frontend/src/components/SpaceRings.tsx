@@ -1,11 +1,11 @@
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
 import { childTiles, fmtBig, pct, tickState, toneOf, type ColorBy,
   type MapItem } from "../spacemap";
 import { arcCentre, arcPath, layoutRings } from "../sunburst";
-import { fmtPct, itemLabel, nameOf, TONE_FILL, TONE_STROKE } from "./spaceUi";
+import { itemLabel, nameOf, TONE_FILL, TONE_STROKE } from "./spaceUi";
 
 // Drawing space: a 400 x 400 box around the centre. The hole holds the text.
 const HOLE = 88, MID = 140, EDGE = 198, GAP_RING = 2;

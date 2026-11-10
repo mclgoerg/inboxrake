@@ -110,7 +110,7 @@ test("month columns are keyboard reachable and spell out mails and size",
       { month: "2026-09", count: 40, size: 11300 }] };
     render(<StatsPanel onClose={() => {}} />);
     const col = await screen.findByRole("button",
-      { name: "Sep 2026 · 40 mails · 11300 B" });
+      { name: "Sep 2026 · 40\u00a0mails · 11300 B" });
     fireEvent.focus(col);
     // focusing shows the tooltip line (the column's name carries it too)
     expect(screen.getByText("Sep 2026 · 40 mails · 11300 B")).toBeTruthy();
@@ -170,10 +170,10 @@ test("the period switch re-scopes the chart and the period KPIs", async () => {
   expect(screen.getByText("Mails per month")).toBeTruthy();
   expect(document.body.textContent).not.toContain("(last 12)");
   expect(document.body.textContent).not.toContain("hover or focus");
-  fireEvent.click(screen.getByRole("tab", { name: "30 days" }));
+  fireEvent.click(screen.getByRole("tab", { name: "30\u00a0days" }));
   expect(screen.getByText("Mails per day (last 30)")).toBeTruthy();
   expect(screen.getByText("2 senders", { exact: false })).toBeTruthy();
-  expect(document.body.textContent).toContain("last 30 days · 10 B per mail");
+  expect(document.body.textContent).toContain("last 30\u00a0days · 10 B per mail");
   expect(screen.getByText("30 B")).toBeTruthy();
   expect(screen.getByText("100%")).toBeTruthy();              // unread 3 of 3
   fireEvent.click(screen.getByRole("tab", { name: "All time" }));
@@ -206,7 +206,7 @@ test("a single month still gets its chart", async () => {
   actions = {};
   extra = { months: [{ month: "2026-01", count: 3, size: 30 }] };
   render(<StatsPanel onClose={() => {}} />);
-  await screen.findByRole("button", { name: "Jan 2026 · 3 mails · 30 B" });
+  await screen.findByRole("button", { name: "Jan 2026 · 3\u00a0mails · 30 B" });
 });
 
 const ym = (back: number) => {
@@ -225,11 +225,11 @@ test("12 months = the last 12 calendar months, gaps zero, future ignored",
     };
     render(<StatsPanel onClose={() => {}} />);
     await screen.findByRole("tablist", { name: "Period" });
-    expect(screen.getAllByRole("button", { name: /· \d+ mails? · / }).length)
+    expect(screen.getAllByRole("button", { name: /· \d+\u00a0mails? · / }).length)
       .toBe(12);
-    expect(screen.getAllByRole("button", { name: /· 0 mails · 0 B/ }).length)
+    expect(screen.getAllByRole("button", { name: /· 0\u00a0mails · 0 B/ }).length)
       .toBe(10);
-    expect(document.body.textContent).toContain("last 12 months · 2 senders");
+    expect(document.body.textContent).toContain("last 12\u00a0months · 2 senders");
     expect(screen.getByText("6")).toBeTruthy();            // 4 + 2 mails
   });
 

@@ -707,7 +707,7 @@ test("Trash on a phone: mails under month headings with their counts, one "
   panel();
   await screen.findByText("Fresh one");
   expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
-    .toEqual(["October 2026 · 2 mails", "March 2025 · 1 mail"]);
+    .toEqual(["October 2026 · 2\u00a0mails", "March 2025 · 1\u00a0mail"]);
   // the same restore as before, named after its mail (the word is for
   // screen readers on a phone)
   fireEvent.click(screen.getByRole("button", { name: "Restore: Older one" }));
@@ -725,5 +725,5 @@ test("Trash on a phone: the oldest month has no count when older mails "
   panel();
   await screen.findByText("Mail 3");
   expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
-    .toEqual(["October 2026 · 2 mails", "March 2025"]);
+    .toEqual(["October 2026 · 2\u00a0mails", "March 2025"]);
 });

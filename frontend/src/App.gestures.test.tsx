@@ -161,7 +161,7 @@ test("a full swipe left on a Senders row asks the Trash confirm - nothing is mov
   swipe(body("Alpha"), FULL_LEFT);
   const dlg = await findDialog();
   expect(dlg.textContent).toContain("Move to Trash");
-  expect(dlg.textContent).toContain("30 mails from Alpha");
+  expect(dlg.textContent).toContain("30\u00a0mails from Alpha");
   expect(deleteGroups).not.toHaveBeenCalled();
   await pressDialog(/^Move to Trash \(30\)/);
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());

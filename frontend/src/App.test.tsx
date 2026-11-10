@@ -407,9 +407,9 @@ test("the detail panel's Trash button confirms, trashes the whole group " +
   "and closes the panel", async () => {
   renderWithOneSenderGroup();
   await openDetail();
-  fireEvent.click(screen.getByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(screen.getByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   const dlg = await findDialog();
-  expect(dlg.textContent).toContain("3 mails from DHL Paket");
+  expect(dlg.textContent).toContain("3\u00a0mails from DHL Paket");
   await pressDialog("Move to Trash (3)");
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledWith(
     "sender", [groupFixture.key], "trash", "", false, null, null));
@@ -422,7 +422,7 @@ test("declining the detail panel's Trash confirmation leaves it open and " +
   "never calls api.deleteGroups", async () => {
   renderWithOneSenderGroup();
   await openDetail();
-  fireEvent.click(screen.getByRole("button", { name: "Move 3 mails to Trash" }));
+  fireEvent.click(screen.getByRole("button", { name: "Move 3\u00a0mails to Trash" }));
   await cancelDialog();
   await expectNoDialog();
   expect(deleteGroups).not.toHaveBeenCalled();
@@ -448,7 +448,7 @@ const moveTo = async (dest: string) => {
 test("the detail's Move sends the whole group to the group path", async () => {
   renderMovable();
   await moveTo("Archive");
-  expect((await findDialog()).textContent).toContain("3 mails from DHL Paket");
+  expect((await findDialog()).textContent).toContain("3\u00a0mails from DHL Paket");
   await pressDialog(/^Move/);
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledWith(
     "sender", [groupFixture.key], "move", "Archive", false, null, null));
@@ -525,7 +525,7 @@ test("a quick filter row filters (tap again = off); the banner adds the "
 
   // Banner: selects every match (select mode on).
   fireEvent.click(screen.getAllByRole("button",
-    { name: /^Select (all \d+ matches|the 1 match)/ })[0]);
+    { name: /^Select (all \d+\u00a0matches|the 1\u00a0match)/ })[0]);
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
   expect(screen.getAllByTestId("select-matches")[0].textContent)
     .toMatch(/selected/);
@@ -551,7 +551,7 @@ test("a TYPED filter gets the banner too, and 'Select all' keeps what was "
     { target: { value: "dhl" } });
   expect(screen.queryByTestId("filter-token")).toBeNull();   // typed = text
   fireEvent.click(screen.getAllByRole("button",
-    { name: /^Select (all \d+ matches|the 1 match)/ })[0]);
+    { name: /^Select (all \d+\u00a0matches|the 1\u00a0match)/ })[0]);
   await waitFor(() => expect(screen.getByText(/^Trash \d+$/)).toBeTruthy());
 });
 

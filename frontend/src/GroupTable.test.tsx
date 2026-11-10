@@ -351,7 +351,7 @@ describe("GroupTable rows and header", () => {
     expect(num.className).toContain("whitespace-nowrap");
     expect(num.children[0].textContent).toBe("76");
     expect(num.children[0].className).toContain("font-semibold");
-    expect(num.children[1].textContent).toBe("7.2 MB");
+    expect(num.children[1].textContent).toBe("7.2\u00a0MB");
   });
 
   it("phone cards: the address has its own line, the stats share one with the pill", () => {
@@ -376,7 +376,7 @@ describe("GroupTable rows and header", () => {
     const g = { ...mk(0), sub: "2 mails, 1 sender" };
     const { container } = renderTable({ groups: [g], rowNote: () => "why" });
     const td = container.querySelector("tbody td:nth-child(3)")!;
-    expect(td.textContent).toContain("2 mails, 1 sender·0% unread");
+    expect(td.textContent).toContain("2\u00a0mails, 1\u00a0sender·0% unread");
     expect(td.querySelectorAll("div").length).toBe(3);   // name line, note, meta
   });
 
@@ -693,12 +693,12 @@ describe("localizedSub", () => {
   afterEach(() => setLang("en"));
   it("translates the backend's thread / subject summaries, leaves addresses alone", () => {
     setLang("de");
-    expect(localizedSub("2 mails, 1 sender")).toBe("2 Mails, 1 Absender");
-    expect(localizedSub("1 mail, 3 senders")).toBe("1 Mail, 3 Absender");
-    expect(localizedSub("4 senders")).toBe("4 Absender");
+    expect(localizedSub("2 mails, 1 sender")).toBe("2\u00a0Mails, 1\u00a0Absender");
+    expect(localizedSub("1 mail, 3 senders")).toBe("1\u00a0Mail, 3\u00a0Absender");
+    expect(localizedSub("4 senders")).toBe("4\u00a0Absender");
     expect(localizedSub("news@shop.example")).toBe("news@shop.example");
     setLang("en");
-    expect(localizedSub("1 mail, 3 senders")).toBe("1 mail, 3 senders");
+    expect(localizedSub("1 mail, 3 senders")).toBe("1\u00a0mail, 3\u00a0senders");
   });
 });
 

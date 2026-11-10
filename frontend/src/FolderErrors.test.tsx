@@ -78,7 +78,7 @@ test("a refused look-alike move reads in the interface language, with its " +
     { name: "Inhalt nach „Papierkorb“ verschieben" }));
   await pressDialog(/verschieben/);
   await waitFor(() => expect(document.body.textContent).toContain(
-    "Der Server hat das Verschieben abgelehnt. (1 Mail wurde vor dem Fehler "
+    "Der Server hat das Verschieben abgelehnt. (1\u00a0Mail wurde vor dem Fehler "
     + "verschoben)"));
 });
 

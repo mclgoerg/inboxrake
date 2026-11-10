@@ -1,7 +1,7 @@
 /* Pure helpers - kept dependency-free so they are unit-testable. */
 
 import { nowDate, nowMs } from "./clock";
-import { fmtNum } from "./numfmt";
+import { fmtNum, NBSP, uiLang } from "./numfmt";
 import type { AuthMethod, Grouping, Group, ImapAccount } from "./types";
 
 /** How an account signs in. Older backends send no `auth`: they used
@@ -18,12 +18,13 @@ export const hasCredentials = (
   ? !!im.oauth?.connected : !!im.password_set);
 
 export const fmtSize = (b: number): string =>
-  b >= 1048576 ? `${fmtNum(b / 1048576, { digits: 1 })} MB`
-  : b >= 1024 ? `${fmtNum(Math.round(b / 1024))} KB` : `${fmtNum(b)} B`;
+  b >= 1048576 ? `${fmtNum(b / 1048576, { digits: 1 })}${NBSP}MB`
+  : b >= 1024 ? `${fmtNum(Math.round(b / 1024))}${NBSP}KB`
+  : `${fmtNum(b)}${NBSP}B`;
 
 /** fmtSize plus a GB step (volumes and big mailboxes outgrow 1000 MB). */
 export const fmtSizeGb = (b: number): string =>
-  b >= 1073741824 ? `${fmtNum(b / 1073741824, { digits: 1 })} GB` : fmtSize(b);
+  b >= 1073741824 ? `${fmtNum(b / 1073741824, { digits: 1 })}${NBSP}GB` : fmtSize(b);
 
 /** Short locale date for display: "6 Oct" / "6. Okt." this year, with the
  *  year ("6 Oct 2024") otherwise; `time` appends the wall-clock HH:MM of
@@ -69,15 +70,19 @@ export const fmtUsd = (c: number): string =>
 export const mailKey = (m: { folder: string; uid: number }): string =>
   `${m.folder} ${m.uid}`;
 
-/** Compact relative age: "3m", "2h", "5d" (empty for missing/future). */
+/** Compact relative age for "{ago} ago" / "vor {ago}" texts: "3m", "2h", "5d"
+ *  in English, "3 Min.", "2 Std.", "5 Tagen" in German (empty for
+ *  missing/future). */
 export const fmtAgo = (ts: number | null | undefined,
-                       now = nowMs() / 1000): string => {
+                       now = nowMs() / 1000, lang = uiLang()): string => {
   if (!ts || ts > now) return "";
   const s = now - ts;
-  if (s < 90) return "1m";
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${Math.round(s / 3600)}h`;
-  return `${Math.round(s / 86400)}d`;
+  const [n, unit] = s < 90 ? [1, "m"] : s < 3600 ? [Math.round(s / 60), "m"]
+    : s < 86400 ? [Math.round(s / 3600), "h"] : [Math.round(s / 86400), "d"];
+  if (lang !== "de") return `${n}${unit}`;
+  const de = unit === "m" ? "Min." : unit === "h" ? "Std."
+    : n === 1 ? "Tag" : "Tagen";   // "vor 1 Tag", "vor 15 Tagen"
+  return `${n}${NBSP}${de}`;
 };
 
 /** Merge a slim SSE status message into the current state. Returns the

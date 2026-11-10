@@ -51,7 +51,7 @@ test("desktop: the next five cards and '+ N more' sit beside the card", () => {
   expect(rows).toHaveLength(5);
   expect(rows[0].textContent).toContain("Sender 1");
   expect(rows[4].textContent).toContain("Sender 5");
-  expect(rows[0].textContent).toContain("99 mails");
+  expect(rows[0].textContent).toContain("99\u00a0mails");
   expect(within(next).getByText("+ 3 more")).toBeTruthy();
   expect(within(dlg).getByText(/Drag the card left or right, or use the arrow keys\. Nothing changes until you apply/))
     .toBeTruthy();
@@ -103,7 +103,7 @@ test("desktop: counters with words follow the decisions", () => {
   expect(within(dlg).getByText("1 protected")).toBeTruthy();
   // the words are decoration; the status line still says it
   expect(within(dlg).getByRole("status").textContent)
-    .toMatch(/^Trash 1 group · .+ · Protect 1$/);
+    .toMatch(/^Trash 1\u00a0group · .+ · Protect 1$/);
 });
 
 test("desktop: Backspace and the Undo button restore the list and counters", () => {

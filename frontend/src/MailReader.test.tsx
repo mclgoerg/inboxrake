@@ -136,7 +136,7 @@ test("quoted history is folded with its line count", async () => {
   await screen.findByText(/Sounds good\./);
   expect(screen.queryByText(/Can we meet/)).toBeNull();
   const toggle = screen.getByRole("button", { name: /Show quoted text/ });
-  expect(toggle.textContent).toContain("3 lines");
+  expect(toggle.textContent).toContain("3\u00a0lines");
   fireEvent.click(toggle);
   expect(screen.getByText(/Can we meet/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Hide quoted text/ }));
@@ -350,7 +350,7 @@ test("the conversation button shows the count and opens the thread", async () =>
     mails: [mk(1), mk(2, { addr: "other@shop.example" })] });
   await open();
   const btn = screen.getByRole("button", { name: "Read conversation" });
-  expect(btn.textContent).toContain("3 mails");
+  expect(btn.textContent).toContain("3\u00a0mails");
   fireEvent.click(btn);
   await screen.findByText("2 mails");
   expect(screen.getByRole("heading", { name: "Plan" })).toBeTruthy();

@@ -1,10 +1,11 @@
 import { Check, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../i18n";
+import { fmtPct } from "../numfmt";
 import { fmtBig, labelFits, labelLevel, pct, shortName, tickState, toneOf, type ColorBy,
   type MapItem } from "../spacemap";
 import { squarify } from "../treemap";
-import { fmtPct, itemLabel, nameOf, TONE_BG } from "./spaceUi";
+import { itemLabel, nameOf, TONE_BG } from "./spaceUi";
 
 const MAP_W_FALLBACK = 600;
 /** Space between tiles; each tile is inset by half of it on every side. */

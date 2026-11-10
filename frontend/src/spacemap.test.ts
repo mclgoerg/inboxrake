@@ -147,9 +147,9 @@ describe("colour + size helpers", () => {
   });
 
   test("fmtBig steps up to GB", () => {
-    expect(fmtBig(512)).toBe("512 B");
-    expect(fmtBig(5 * MB)).toBe("5.0 MB");
-    expect(fmtBig(1.2 * 1024 * MB)).toBe("1.2 GB");
+    expect(fmtBig(512)).toBe("512\u00a0B");
+    expect(fmtBig(5 * MB)).toBe("5.0\u00a0MB");
+    expect(fmtBig(1.2 * 1024 * MB)).toBe("1.2\u00a0GB");
   });
 });
 

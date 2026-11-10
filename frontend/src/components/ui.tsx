@@ -13,7 +13,8 @@ import { getLang, t } from "../i18n";
 import { EDGE_PX, GESTURE_SLOP, prefersReducedMotion, useCoarsePointer,
   useEdgeBack } from "../gestures";
 import { engagementTier, fmtDate } from "../lib";
-import { decimalToInput, inputToDecimal, isBadDecimal } from "../numfmt";
+import { decimalToInput, fmtPct, inputToDecimal, isBadDecimal }
+  from "../numfmt";
 import type { GroupAi, GroupTrackers, StillMailing } from "../types";
 
 /** One-time consent: what metadata the AI features transmit. */
@@ -260,7 +261,7 @@ export function EngagementMeter({ g, labelled = false }: {
   const lit = { low: 1, medium: 2, high: 3 }[tier];
   const readPct = g.count ? Math.round(100 * (1 - g.unread / g.count)) : 0;
   const parts = [
-    t("eng.read", { n: readPct }),
+    t("eng.read", { pct: fmtPct(readPct) }),
     t(g.replied ? "eng.replied" : "eng.never_replied"),
     ...(g.bulk ? [t("eng.bulk")] : []),
     ...(g.last ? [t("eng.last", { year: g.last.slice(0, 4) })] : []),

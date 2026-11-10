@@ -36,7 +36,7 @@ test("a card per account shows address, status, mails and size", () => {
   expect(card.getAttribute("aria-current")).toBe("true");
   expect(card.textContent).toContain("a@one.example");
   expect(card.textContent).toContain("Signed in");
-  expect(card.textContent).toContain("1,623 mails");
+  expect(card.textContent).toContain("1,623\u00a0mails");
   expect(screen.getByRole("button", { name: /beta/ }).textContent)
     .toContain("not scanned yet");
 });
@@ -71,7 +71,7 @@ test("a scanning account says Scanning…; one mail is singular", () => {
   expect(screen.getByRole("button", { name: /beta/ }).textContent)
     .not.toContain("not scanned yet");
   expect(screen.getByRole("button", { name: /alpha/ }).textContent)
-    .toContain("1 mail · 2 KB");
+    .toContain("1\u00a0mail · 2\u00a0KB");
 });
 
 test("Add account, Appearance, Settings and Activity call their handlers", () => {

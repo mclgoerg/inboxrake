@@ -2,7 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 
 /** The open FolderPicker ("Move N mails"). */
 export const findPicker = () =>
-  screen.findByRole("dialog", { name: /^(Move|Restore) (\d+ mails|1 mail)$/ });
+  screen.findByRole("dialog", { name: /^(Move|Restore) (\d+\u00a0mails|1\u00a0mail)$/ });
 
 /** Tick `folder` in the open picker (by its row's name) and press Move. */
 export async function pickFolder(folder: string): Promise<void> {

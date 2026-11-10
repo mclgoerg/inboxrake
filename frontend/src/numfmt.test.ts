@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang, t } from "./i18n";
 import { fmtSize, fmtSizeGb, fmtUsd } from "./lib";
-import { decimalToInput, fmtNum, inputToDecimal, isBadDecimal, parseDecimal,
-  parseNum, setNumFormat, type NumFormat,
+import { decimalToInput, fmtNum, fmtPct, inputToDecimal, isBadDecimal, NBSP,
+  parseDecimal, parseNum, setNumFormat, type NumFormat,
 } from "./numfmt";
 
 afterEach(() => { setNumFormat("auto"); setLang("en"); });
@@ -11,12 +11,38 @@ afterEach(() => { setNumFormat("auto"); setLang("en"); });
 describe("number format", () => {
   it("follows the language by default", () => {
     expect(fmtNum(1732)).toBe("1,732");
-    expect(fmtSize(11.3 * 1048576)).toBe("11.3 MB");
+    expect(fmtSize(11.3 * 1048576)).toBe("11.3\u00a0MB");
     setLang("de");
     expect(fmtNum(1732)).toBe("1.732");
-    expect(fmtSize(11.3 * 1048576)).toBe("11,3 MB");
-    expect(fmtSizeGb(2.5 * 1073741824)).toBe("2,5 GB");
+    expect(fmtSize(11.3 * 1048576)).toBe("11,3\u00a0MB");
+    expect(fmtSizeGb(2.5 * 1073741824)).toBe("2,5\u00a0GB");
     expect(fmtUsd(0.5)).toBe("$0,50");
+  });
+
+  it("never splits a size from its unit", () => {
+    expect(fmtSize(500)).toBe(`500${NBSP}B`);
+    expect(fmtSize(2048)).toBe(`2${NBSP}KB`);
+    expect(fmtSizeGb(3 * 1073741824)).toBe(`3.0${NBSP}GB`);
+    for (const s of [fmtSize(7), fmtSize(5e5), fmtSize(5e8), fmtSizeGb(5e10)])
+      expect(s).not.toMatch(/ /);
+  });
+
+  it("writes percentages per style: 30% in English, 30 % in German", () => {
+    expect(fmtPct(30)).toBe("30%");
+    setLang("de");
+    expect(fmtPct(30)).toBe(`30${NBSP}%`);
+    expect(fmtPct(12.5, { max: 1 })).toBe(`12,5${NBSP}%`);
+    setNumFormat("en");
+    expect(fmtPct(30)).toBe("30%");
+    setNumFormat("space");
+    expect(fmtPct(1500)).toBe(`1\u202f500${NBSP}%`);
+  });
+
+  it("keeps a count and its unit together in the locale strings", () => {
+    expect(t("n.mails", { n: 60 })).toBe(`60${NBSP}mails`);
+    setLang("de");
+    expect(t("n.mails", { n: 60 })).toBe(`60${NBSP}Mails`);
+    expect(t("n.mails", { n: 1 })).toBe(`1${NBSP}Mail`);
   });
 
   it("can be pinned independent of the language", () => {
@@ -33,7 +59,7 @@ describe("number format", () => {
   it("formats numeric t() params but not years", () => {
     setLang("de");
     expect(t("tab.year_stories", { year: 2025, n: 1500 }))
-      .toBe("2025 in 1.500 Geschichten");
+      .toBe("2025 in 1.500\u00a0Geschichten");
   });
 
   it("parses what the chosen format allows", () => {

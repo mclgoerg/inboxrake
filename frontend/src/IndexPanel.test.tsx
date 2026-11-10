@@ -79,9 +79,9 @@ test("first build asks for consent, then starts the job", async () => {
   expect(asked).toMatch(/no readable text/);
   // the storage the user is agreeing to, up front
   expect(asked).toContain("1,000 scanned mails");
-  expect(asked).toContain("roughly 5.9 MB of disk space");
-  expect(asked).toContain("up to 11.7 MB");
-  expect(asked).toContain("500.0 MB are free");
+  expect(asked).toContain("roughly 5.9\u00a0MB of disk space");
+  expect(asked).toContain("up to 11.7\u00a0MB");
+  expect(asked).toContain("500.0\u00a0MB are free");
   expect(asked).not.toContain("may not fit");
   expect(indexBuild).not.toHaveBeenCalled();     // nothing starts before OK
   await pressDialog("Build index");

@@ -150,7 +150,7 @@ test("Review: Sender tab, exactly the non-protected senders selected, Trash "
     .toBeTruthy());
   fireEvent.click(screen.getByText("Trash 42"));
   const dlg = await findDialog();
-  expect(dlg.textContent).toContain("42 mails from a@big.example, b@big.example");
+  expect(dlg.textContent).toContain("42\u00a0mails from a@big.example, b@big.example");
   await cancelDialog();
   await expectNoDialog();
   expect(deleteGroups).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { ShieldCheck } from "lucide-react";
-import { fmtNum } from "../numfmt";
+import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
 import { fmtBig, pct, toneSums, type ColorBy, type MapItem, type Tone }
   from "../spacemap";
@@ -67,9 +67,6 @@ export const toneText = (tone: Tone, by: ColorBy): string => {
 
 export const nameOf = (it: MapItem): string =>
   it.kind === "other" ? t("space.other", { n: it.children.length }) : it.label;
-
-/** "<n> %" (the figure itself comes from `pct`). */
-export const fmtPct = (p: number): string => `${fmtNum(p)} %`;
 
 /** The shield mark of a tile / row holding protected senders. */
 export function ProtectedMark({ n, className = "" }: {
