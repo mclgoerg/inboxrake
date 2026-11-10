@@ -839,14 +839,18 @@ export const EN: Record<string, string> = {
   "notice.rule_executed":
     'Rule "{name}" completed: {acted} mails affected ({groups} groups).',
   "rules.help":
-    "A rule saves a group filter (same syntax as the filter box) plus an "
-    + "action. New rules only REPORT what they would do; switch to execute "
-    + "after checking a report. Runs are capped at 500 mails, protected "
-    + "senders are skipped, and everything lands in Trash/undo as usual.",
+    "A rule runs a saved filter with an action - at most 500 mails per run, "
+    + "protected senders skipped, everything undoable from Trash.",
+  "rules.how": "How rules work",
+  "rules.sub": "{n} rules · new rules only report until you switch them to Active",
+  "rules.sub_one": "1 rule · new rules only report until you switch them to Active",
   "rules.empty": "No rules yet - create one below.",
   "rule.never_ran": "never ran",
-  "rule.run_report": "report: {groups} groups · {mails} mails would be affected",
-  "rule.run_executed": "completed: {acted} mails affected ({groups} groups, {mails} matched)",
+  "rule.last_run": "Last run {date}",
+  "rule.run_failed": "failed",
+  "rule.run_done": "completed: {mails} in {groups}",
+  "rule.run_would": "report: {mails} in {groups} would be affected",
+  "rule.run_matched": "{n} matched",
   "rule.capped": "{n} mails beyond the per-run cap",
   "rule.capped_one": "1 mail beyond the per-run cap",
   "rule.protected_skipped": "{n} protected skipped",
@@ -860,7 +864,7 @@ export const EN: Record<string, string> = {
   "rule.new_title": "New rule",
   "rule.name": "Rule name",
   "rule.create": "Create rule (report only)",
-  "rule.see_report": "See last report",
+  "rule.see_report": "Last report",
   "rule.report_title": "Last report",
   "rule.report_senders": "Top senders",
   "rule.f_mode": "Mode",
@@ -870,7 +874,12 @@ export const EN: Record<string, string> = {
     "When {grouping} groups match {filter} then {action}{retention}\u00a0· {schedule}",
   "rule.sent_purge":
     "When {grouping} groups in {scope} match {filter} then {action}{retention}\u00a0· {schedule}",
-  "rule.ed_when": "When {grouping} groups in {scope}",
+  "rule.row_when": "When a",
+  "rule.mid_in": "group in",
+  "rule.row_in": "in",
+  "rule.row_matches": "matches",
+  "rule.grp_which": "Which mail",
+  "rule.grp_what": "What happens",
   "rule.ed_older": "if older than {n} days",
   "rule.s_all_senders": "all senders",
   "rule.act_trash": "move to Trash",

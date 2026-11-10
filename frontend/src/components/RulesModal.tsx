@@ -1,15 +1,18 @@
-import { Archive, CalendarClock, ClipboardList, FolderInput, MailOpen, MoreHorizontal, Pin, Plus, Shield,
-  Trash2, TriangleAlert, X } from "lucide-react";
+import { Archive, CalendarClock, ClipboardList, FileText, FolderInput, Info, MailOpen,
+  MoreHorizontal, Pencil, Pin, Play, Plus, Shield, Trash2, TriangleAlert, X } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { fmtNum } from "../numfmt";
-import { t } from "../i18n";
-import { matchGroup, parseFilter } from "../lib";
+import { getLang, t } from "../i18n";
+import { fmtTs, matchGroup, parseFilter } from "../lib";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
 import { QueryBuilder } from "./QueryBuilder";
-import { Avatar, Button, confirmDialog, EmptyState, Field, Input, Menu, MenuItem,
-  Modal, Notice, PanelHeader, PopupSelect, Segmented, Spinner, Tag, useIsPage }
-  from "./ui";
+import { Avatar, Button, confirmDialog, EmptyState, Input, LINK_ACCENT, Menu,
+  MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented, SettingsGroup,
+  SettingsRow, Spinner, Tag, useIsPage } from "./ui";
+
+/** The rules section of the docs (cap, report mode, protected senders). */
+const RULES_DOCS_URL = "https://inboxrake.com/docs/features/#rules-and-scheduler";
 
 const EMPTY = {
   name: "", scope: "mail" as RuleScope, grouping: "sender" as Grouping,
@@ -35,32 +38,49 @@ function RunSummary({ rule, preview = true }: {
 }) {
   const r = rule.last_run;
   if (!r) return <span className="text-muted">{t("rule.never_ran")}</span>;
-  if (r.error) return <span className="text-danger-fg">{errorText(r.error)}</span>;
   if (r.pending) return <span className="text-muted">{t("rule.queued", { n: r.queued ?? 0 })}</span>;
-  const purge = isPurge(rule.scope);
+  const when = <span className="whitespace-nowrap">
+    {t("rule.last_run", { date: fmtTs(r.ts, getLang()) })}</span>;
+  // The facts of the run, joined with " · "; a failed run is its status, and
+  // its error text stays in full underneath.
+  const facts: ReactNode[] = [];
+  if (r.error) {
+    facts.push(<span key="st" className="text-danger-fg">{t("rule.run_failed")}</span>);
+  } else {
+    const purge = isPurge(rule.scope);
+    const mails = (n: number) => t("n.mails", { n });
+    const groups = (n: number) => t("n.groups", { n });
+    facts.push(<Fragment key="run">{purge
+      ? r.mode === "execute"
+        ? t("rule.purge_run_exec", { n: r.acted, matched: r.mails })
+        : t("rule.purge_run_report", { n: r.mails, groups: r.groups })
+      : r.mode === "execute"
+        ? t("rule.run_done", { mails: mails(r.acted), groups: groups(r.groups) })
+        : t("rule.run_would", { mails: mails(r.mails), groups: groups(r.groups) })}
+    </Fragment>);
+    if (!purge && r.mode === "execute" && r.mails !== r.acted)
+      facts.push(<Fragment key="matched">{t("rule.run_matched", { n: r.mails })}</Fragment>);
+    if (purge && !rule.query.trim())
+      facts.push(<Fragment key="all">{t("rule.purge_all_short")}</Fragment>);
+    if ((r.unverified ?? 0) > 0)
+      facts.push(<Fragment key="unv">{t("rule.purge_unverified", { n: r.unverified ?? 0 })}</Fragment>);
+    if (r.capped > 0)
+      facts.push(<Fragment key="cap">{t("rule.capped", { n: r.capped })}</Fragment>);
+    if (r.skipped_protected > 0)
+      facts.push(<span key="prot" className="inline-flex items-center gap-1">
+        <Shield size={14} aria-hidden />
+        {t("rule.protected_skipped", { n: r.skipped_protected })}</span>);
+    if (r.skipped_pinned > 0)
+      facts.push(<span key="pin" className="inline-flex items-center gap-1">
+        <Pin size={14} aria-hidden />
+        {t("rule.pinned_skipped", { n: r.skipped_pinned })}</span>);
+  }
   return (
     <>
-      {new Date(r.ts * 1000).toLocaleString()} -{" "}
-      {purge
-        ? r.mode === "execute"
-          ? t("rule.purge_run_exec", { n: r.acted, matched: r.mails })
-          : t("rule.purge_run_report", { n: r.mails, groups: r.groups })
-        : t(r.mode === "execute" ? "rule.run_executed" : "rule.run_report", {
-          groups: r.groups, mails: r.mails, acted: r.acted })}
-      {purge && !rule.query.trim() && <> · {t("rule.purge_all_short")}</>}
-      {(r.unverified ?? 0) > 0 &&
-        <> · {t("rule.purge_unverified", { n: r.unverified ?? 0 })}</>}
-      {r.capped > 0 && <> · {t("rule.capped", { n: r.capped })}</>}
-      {r.skipped_protected > 0 &&
-        <span className="inline-flex items-center gap-1">
-          {" "}· <Shield size={14} />
-          {t("rule.protected_skipped", { n: r.skipped_protected })}
-        </span>}
-      {r.skipped_pinned > 0 &&
-        <span className="inline-flex items-center gap-1">
-          {" "}· <Pin size={14} />
-          {t("rule.pinned_skipped", { n: r.skipped_pinned })}
-        </span>}
+      {when}
+      {facts.map((f, i) => <Fragment key={i}> · {f}</Fragment>)}
+      {r.error && (
+        <span className="block text-danger-fg">{errorText(r.error)}</span>)}
       {preview && r.preview.length > 0 && (
         <span className="block text-muted">
           {r.preview.map((p) => `${p.label} (${fmtNum(p.count)})`).join(" · ")}
@@ -75,8 +95,8 @@ function Part({ children, tone = "neutral" }: {
   children: ReactNode; tone?: "neutral" | "danger";
 }) {
   return (
-    <span className={`inline-block rounded-control px-2 py-0.5 type-body
-      font-medium ${tone === "danger" ? "bg-review-bg text-review-fg"
+    <span className={`inline-block max-w-full rounded-control px-2 py-0.5
+      type-body font-medium break-words ${tone === "danger" ? "bg-review-bg text-review-fg"
       : "bg-chip text-body"}`}>{children}</span>
   );
 }
@@ -149,6 +169,18 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
   );
 }
 
+/** One row of the rule drawer: a label column, then the controls - every
+ *  control starts at the same edge. */
+function FormRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    // 5.5rem: wide enough for "apply to"; a longer label wraps
+    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3">
+      <span className="py-1.5 type-body text-muted">{label}</span>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
 function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete }: {
@@ -194,8 +226,9 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
             scope: purge ? <Part tone="danger">
               {t(`rule.scope_${rule.scope}`)}</Part> : null,
             filter: rule.query
-              ? <code className="rounded-control bg-chip px-2 py-0.5 type-meta
-                  text-chiptext">{rule.query}</code>
+              ? <code className="inline-block max-w-full rounded-control bg-chip
+                  px-2 py-0.5 type-meta text-chiptext
+                  break-words">{rule.query}</code>
               : <Part>{t(purge ? "rule.s_all_senders" : "rule.s_everything")}</Part>,
             action: <Part tone={danger ? "danger" : "neutral"}>
               {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
@@ -226,20 +259,28 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
       {error && (
         <div role="alert" className="mt-2 type-meta text-danger-fg">{error}</div>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t
+        border-line pt-3">
         <Button size="sm"
           variant={purge && rule.mode === "report" ? "primary" : "secondary"}
           onClick={onRun} disabled={busy}>
-          {busy ? <Spinner />
-            : t(purge && rule.mode === "report"
+          {busy ? <Spinner /> : <>
+            <Play size={14} aria-hidden className="mr-1 inline align-text-bottom" />
+            {t(purge && rule.mode === "report"
               ? "rule.run_report_btn" : "rule.run_now")}
+          </>}
         </Button>
-        <Button variant="secondary" size="sm" onClick={onEdit}>{t("Edit")}</Button>
         {rule.last_run && !rule.last_run.pending && (
           <Button variant="secondary" size="sm" onClick={onReport}>
+            <FileText size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
             {t("rule.see_report")}
           </Button>
         )}
+        <Button variant="secondary" size="sm" onClick={onEdit}>
+          <Pencil size={14} aria-hidden className="mr-1 inline align-text-bottom" />
+          {t("Edit")}
+        </Button>
         <Menu variant="quiet" icon label={t("rule.more", { name: rule.name })}
           className="ml-auto" trigger={<MoreHorizontal size={18} aria-hidden />}>
           <MenuItem danger onClick={onDelete}>{t("Delete")}</MenuItem>
@@ -437,6 +478,78 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     setEditing(true);
   };
 
+  const grouped = !onPage;      // phones / tablets: a grouped form
+  const nameInput = <Input className="w-full" placeholder={t("rule.name")}
+    aria-label={t("rule.f_name")} autoFocus={onPage}
+    value={form.name} onChange={set("name")} />;
+  const groupingCtl = purge
+    ? <Part>{t("Sender")}</Part>
+    : <PopupSelect value={form.grouping} onChange={pick("grouping")}
+        name={t("rule.f_grouping")} options={(
+          ["sender", "domain", "subject", "thread"] as Grouping[])
+          .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />;
+  const scopeCtl = <PopupSelect value={form.scope} onChange={setScope}
+    name={t("rule.f_scope")} options={[
+      { value: "mail", label: t("rule.scope_mail") },
+      { value: "junk", label: t("rule.scope_junk") },
+      { value: "trash", label: t("rule.scope_trash") }]} />;
+  // The builder stays outside the label: its popover holds controls of its own.
+  const filterCtl = <>
+    <div className="relative flex items-center gap-2">
+      <Input className="min-w-0 flex-1"
+        placeholder="tag:shipping age:>1y is:noreply-ever …"
+        aria-label={t("rule.f_filter")}
+        value={form.query} onChange={set("query")}
+        aria-invalid={filterErr ? true : undefined} />
+      <QueryBuilder value={form.query} senderOnly={purge}
+        onChange={(q) => setForm({ ...form, query: q })} />
+    </div>
+    {filterErr && (
+      <div role="alert" className="mt-1 type-meta text-danger-fg">
+        {filterErr}
+      </div>
+    )}
+  </>;
+  const actionCtl = purge
+    ? <PopupSelect value="purge" onChange={() => {}} disabled
+        name={t("rule.f_action")}
+        options={[{ value: "purge", label: t("rule.act_purge") }]} />
+    : <PopupSelect value={form.action} onChange={pick("action")}
+        name={t("rule.f_action")} options={[
+          { value: "trash", label: t("rule.act_trash") },
+          { value: "archive", label: t("rule.act_archive") },
+          { value: "move", label: t("rule.act_move_pick") },
+          { value: "mark_read", label: t("rule.act_mark_read") }]} />;
+  const destCtl = <PopupSelect value={form.dest || null} onChange={pick("dest")}
+    name={t("rule.f_dest")} placeholder={t("Move to folder…")}
+    options={(state.folders_raw ?? []).map((f, i) =>
+      ({ value: f, label: state.folders[i] ?? f }))} />;
+  const applyCtl = purge
+    ? <Sentence template={t("rule.ed_older")}
+        className="flex flex-wrap items-center gap-2 type-body text-muted"
+        parts={{ n: <Input className="w-24" type="number" min={1}
+          max={36500} aria-label={t("rule.purge_age_label")}
+          placeholder={t("retention.n_placeholder")}
+          value={form.retentionN} onChange={set("retentionN")} /> }} />
+    : <>
+        <PopupSelect value={form.retention} onChange={pick("retention")}
+          name={t("rule.f_apply")} options={[
+            { value: "none", label: t("rule.apply_none") },
+            { value: "keep_latest", label: t("rule.apply_keep") },
+            { value: "older_than_days", label: t("rule.apply_older") }]} />
+        {form.retention !== "none" && (
+          <Input className="w-24" type="number" min={1}
+            aria-label={t("rule.f_retention_n")}
+            placeholder={t("retention.n_placeholder")}
+            value={form.retentionN} onChange={set("retentionN")} />
+        )}
+      </>;
+  const scheduleCtl = <PopupSelect value={form.schedule} onChange={pick("schedule")}
+    name={t("rule.f_schedule")} options={[
+      { value: "manual", label: t("sched.manual") },
+      { value: "daily", label: t("sched.daily") },
+      { value: "weekly", label: t("sched.weekly") }]} />;
+
   const panelBox = useRef<HTMLDivElement>(null);
   const editor = (
     <div ref={panelBox} onKeyDown={(e) => {
@@ -457,112 +570,53 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           onClick={closeEditor}><X size={18} /></Button>
       </div>
       <div className="space-y-4 p-4 sm:p-5">
-        <Field label={t("rule.f_name")}>
-          <Input className="w-full" placeholder={t("rule.name")}
-            autoFocus={onPage}
-            value={form.name} onChange={set("name")} />
-        </Field>
-        {/* The sentence builder: every field of the rule as a pop-up. */}
-        <div className="space-y-3">
-          <Sentence template={t("rule.ed_when")}
-            className="flex flex-wrap items-center gap-2 type-body text-muted"
-            parts={{
-              grouping: purge
-                ? <Part>{t("Sender")}</Part>
-                : <PopupSelect value={form.grouping} onChange={pick("grouping")}
-                    name={t("rule.f_grouping")} options={(
-                      ["sender", "domain", "subject", "thread"] as Grouping[])
-                      .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />,
-              scope: <PopupSelect value={form.scope} onChange={setScope}
-                name={t("rule.f_scope")} options={[
-                  { value: "mail", label: t("rule.scope_mail") },
-                  { value: "junk", label: t("rule.scope_junk") },
-                  { value: "trash", label: t("rule.scope_trash") }]} />,
-            }} />
-          {purge && (
-            <Notice tone="danger" icon={<TriangleAlert size={16} />}>
-              {t("rule.purge_warning")}
-            </Notice>
-          )}
-          <div>
-            {/* The builder stays outside the <label>: its popover holds
-                controls of its own. */}
-            <div className="relative flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <Field label={t("rule.f_filter")}>
-                  <Input className="w-full"
-                    placeholder="tag:shipping age:>1y is:noreply-ever …"
-                    value={form.query} onChange={set("query")}
-                    aria-invalid={filterErr ? true : undefined} />
-                </Field>
-              </div>
-              <QueryBuilder value={form.query} senderOnly={purge}
-                onChange={(q) => setForm({ ...form, query: q })} />
-            </div>
-            {filterErr && (
-              <div role="alert" className="mt-1 type-meta text-danger-fg">
-                {filterErr}
-              </div>
-            )}
-            {purge && (
-              <div className="mt-1 type-meta text-muted">
-                {t("rule.purge_filter_help")}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="type-body text-muted">{t("rule.s_then")}</span>
-            {purge
-              ? <PopupSelect value="purge" onChange={() => {}} disabled
-                  name={t("rule.f_action")}
-                  options={[{ value: "purge",
-                    label: t("rule.act_purge") }]} />
-              : <PopupSelect value={form.action} onChange={pick("action")}
-                  name={t("rule.f_action")} options={[
-                    { value: "trash", label: t("rule.act_trash") },
-                    { value: "archive", label: t("rule.act_archive") },
-                    { value: "move", label: t("rule.act_move_pick") },
-                    { value: "mark_read", label: t("rule.act_mark_read") }]} />}
+        {grouped ? (
+          <SettingsGroup padded>{nameInput}</SettingsGroup>
+        ) : (
+          <FormRow label={t("rule.f_name")}>{nameInput}</FormRow>
+        )}
+        {purge && (
+          <Notice tone="danger" icon={<TriangleAlert size={16} />}>
+            {t("rule.purge_warning")}
+          </Notice>
+        )}
+        {grouped ? <>
+          <SettingsGroup header={t("rule.grp_which")}
+            footnote={purge ? t("rule.purge_filter_help") : undefined}>
+            <SettingsRow label={t("rule.row_when")}>{groupingCtl}</SettingsRow>
+            <SettingsRow label={t("rule.row_in")}>{scopeCtl}</SettingsRow>
+            <SettingsRow label={t("rule.row_matches")} stack>{filterCtl}</SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup header={t("rule.grp_what")}>
+            <SettingsRow label={t("rule.s_then")}>{actionCtl}</SettingsRow>
             {!purge && form.action === "move" && (
-              <PopupSelect value={form.dest || null} onChange={pick("dest")}
-                name={t("rule.f_dest")} placeholder={t("Move to folder…")}
-                options={(state.folders_raw ?? []).map((f, i) =>
-                  ({ value: f, label: state.folders[i] ?? f }))} />
-            )}
+              <SettingsRow label={t("rule.f_dest")}>{destCtl}</SettingsRow>)}
+            <SettingsRow label={t("rule.s_apply")}>{applyCtl}</SettingsRow>
+            <SettingsRow label={t("rule.s_run")}>{scheduleCtl}</SettingsRow>
+          </SettingsGroup>
+        </> : (
+          <div className="space-y-3">
+            <FormRow label={t("rule.row_when")}>
+              {groupingCtl}
+              <span className="type-body text-muted">{t("rule.mid_in")}</span>
+              {scopeCtl}
+            </FormRow>
+            <FormRow label={t("rule.row_matches")}>
+              <div className="w-full">
+                {filterCtl}
+                {purge && (
+                  <div className="mt-1 type-meta text-muted">
+                    {t("rule.purge_filter_help")}</div>
+                )}
+              </div>
+            </FormRow>
+            <FormRow label={t("rule.s_then")}>
+              {actionCtl}{!purge && form.action === "move" && destCtl}
+            </FormRow>
+            <FormRow label={t("rule.s_apply")}>{applyCtl}</FormRow>
+            <FormRow label={t("rule.s_run")}>{scheduleCtl}</FormRow>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!purge && <span className="type-body text-muted">
-              {t("rule.s_apply")}</span>}
-            {purge ? (
-              <Sentence template={t("rule.ed_older")}
-                className="flex flex-wrap items-center gap-2 type-body text-muted"
-                parts={{ n: <Input className="w-24" type="number" min={1}
-                  max={36500} aria-label={t("rule.purge_age_label")}
-                  placeholder={t("retention.n_placeholder")}
-                  value={form.retentionN} onChange={set("retentionN")} /> }} />
-            ) : <>
-              <PopupSelect value={form.retention} onChange={pick("retention")}
-                name={t("rule.f_apply")} options={[
-                  { value: "none", label: t("rule.apply_none") },
-                  { value: "keep_latest", label: t("rule.apply_keep") },
-                  { value: "older_than_days", label: t("rule.apply_older") }]} />
-              {form.retention !== "none" && (
-                <Input className="w-24" type="number" min={1}
-                  aria-label={t("rule.f_retention_n")}
-                  placeholder={t("retention.n_placeholder")}
-                  value={form.retentionN} onChange={set("retentionN")} />
-              )}
-            </>}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="type-body text-muted">{t("rule.s_run")}</span>
-            <PopupSelect value={form.schedule} onChange={pick("schedule")}
-              name={t("rule.f_schedule")} options={[
-                { value: "manual", label: t("sched.manual") },
-                { value: "daily", label: t("sched.daily") },
-                { value: "weekly", label: t("sched.weekly") }]} />
-          </div>
-        </div>
+        )}
 
         {!purge && <div className="rounded-card bg-panel2 p-3" aria-live="polite">
           <div className="type-body font-medium">{t("rule.preview")}</div>
@@ -626,13 +680,20 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       <PanelHeader title={<span className="inline-flex items-center gap-2">
         <ClipboardList size={18} /> {t("Rules")}
       </span>} onClose={onClose}
+        sub={rules.length ? t("rules.sub", { n: rules.length }) : undefined}
         actions={<Button size="sm" onClick={openNew}>
           <Plus size={16} aria-hidden className="mr-1 inline align-text-bottom" />
           {t("rule.new_btn")}
         </Button>} />
       <div className="lg:flex lg:items-start">
         <div className="min-w-0 flex-1 space-y-4 p-4 sm:p-5">
-          <p className="type-meta text-muted">{t("rules.help")}</p>
+          <p className="flex items-start gap-2 type-meta text-muted">
+            <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1">{t("rules.help")}</span>
+            <a href={RULES_DOCS_URL} target="_blank" rel="noopener noreferrer"
+              className={`shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
+              {t("rules.how")}</a>
+          </p>
           {rules.map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
@@ -646,7 +707,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
             list; otherwise a full-screen sheet over it. */}
         {editing && onPage && (
           <aside aria-label={editId ? t("rule.edit_title") : t("rule.new_title")}
-            className="w-104 shrink-0 border-l border-line">{editor}</aside>
+            className="w-104 shrink-0 border-l border-line xl:w-120">{editor}</aside>
         )}
       </div>
       {rules.some((r) => r.id === reportId && r.last_run) && (

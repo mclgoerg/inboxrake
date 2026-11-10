@@ -54,6 +54,15 @@ export function fmtDate(iso: string, now: Date = nowDate(),
   }).format(dt);
 }
 
+/** fmtDate for an epoch-seconds timestamp, in the user's own time zone
+ *  ("31 Aug, 03:30"; `time: false` drops the clock). */
+export const fmtTs = (ts: number, lang: "en" | "de", time = true): string => {
+  const d = new Date(ts * 1000);
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return fmtDate(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    + `T${p2(d.getHours())}:${p2(d.getMinutes())}`, nowDate(), { lang, time });
+};
+
 export const fmtUsd = (c: number): string =>
   `$${fmtNum(c, { digits: c < 0.1 ? 4 : 2 })}`;
 
