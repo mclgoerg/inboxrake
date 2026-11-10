@@ -698,3 +698,17 @@ test("Trash on a phone: mails under month headings with their counts, one "
   fireEvent.click(screen.getByRole("button", { name: "Restore: Older one" }));
   await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([2], "INBOX", 1));
 });
+
+test("Trash on a phone: the oldest month has no count when older mails "
+  + "were not listed", async () => {
+  const mail = (uid: number, date: string) => ({
+    uid, folder: "Trash", date, ts: uid, subject: `Mail ${uid}`,
+    addr: "a@b.example", size: 700, seen: true, ai: null });
+  foldersPanel.mockResolvedValue({ folder: "Trash", uv: 1, total: 5000,
+    max_uid: 9, mails: [mail(3, "2026-10-20"), mail(2, "2026-10-02"),
+      mail(1, "2025-03-02")], senders: [] });
+  panel();
+  await screen.findByText("Mail 3");
+  expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
+    .toEqual(["October 2026 · 2 mails", "March 2025"]);
+});

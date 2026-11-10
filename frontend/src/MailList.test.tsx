@@ -93,6 +93,15 @@ describe("MailRows", () => {
       expect(screen.getAllByText(/^Mail \d+$/)).toHaveLength(250);
     });
 
+    it("stops revealing selected mails at 500 rows", () => {
+      const ms = many(900);
+      render(<MailRows mails={ms} pageSize={100} byMonth onToggle={noop}
+        onOpen={noop} sel={new Set(ms.map(mailKey))} />);
+      expect(screen.getAllByText(/^Mail \d+$/)).toHaveLength(500);
+      expect(screen.getByRole("button", { name: /Show 100 more/ })
+        .textContent).toBe("Show 100 more · 400 left");
+    });
+
     it("has no headings unless asked (size sort, other lists)", () => {
       render(<MailRows mails={many(5)} sel={new Set()} onToggle={noop}
         onOpen={noop} />);

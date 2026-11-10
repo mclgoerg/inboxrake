@@ -401,24 +401,29 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
         aria-label={t("fp.row_action", {
           action: t("fp.restore"), who: m.subject || t("(no subject)") })}
         onClick={() => void restore(inbox!, [m.uid], true)}>
-        <Undo2 size={14} aria-hidden
-          className="inline align-text-bottom sm:mr-1 max-sm:size-[18px]" />
+        <Undo2 size={wide ? 14 : 18} aria-hidden
+          className="inline align-text-bottom sm:mr-1" />
         <span className="sr-only sm:not-sr-only">{t("fp.restore")}</span>
       </Button>
     </span>
   );
   // Trash / Junk mails on phones: under month headings with the month's
   // count (the list is in date order; the dates are the mails' own).
-  const mailRows = (list: Mail[], row: (m: Mail) => ReactNode) => {
-    if (wide) return list.map(row);
-    return groupByDate(list, (m) => m.date || "", 7).map((g) => {
+  // Only the newest 1000 mails are listed: the oldest month may continue
+  // beyond them, so its count is left off.
+  const mailRows = (rows: Mail[], row: (m: Mail) => ReactNode) => {
+    if (wide) return rows.map(row);
+    const partial = !!list && list.total > list.mails.length;
+    const groups = groupByDate(rows, (m) => m.date || "", 7);
+    return groups.map((g, i) => {
       const title = monthHeading(g.key);
       return (
         <section key={g.key || "none"} aria-label={title || undefined}>
           {title && (
             <h3 className="border-b border-line/60 bg-panel2 px-4 py-1.5
               type-section text-muted">
-              {title} · {t("n.mails", { n: g.items.length })}
+              {partial && i === groups.length - 1 ? title
+                : `${title} · ${t("n.mails", { n: g.items.length })}`}
             </h3>
           )}
           {g.items.map(row)}
@@ -636,6 +641,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
               </p>
             )}
           </div>
+          {/* footer grid, phones: "older than" keeps its width and the Empty
+              button takes the rest on one line (50/50 wrapped it in German) */}
           {list && list.total > 0 && (
             <div className="grid grid-cols-[auto_1fr] gap-2 border-t border-line
               px-4 py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]

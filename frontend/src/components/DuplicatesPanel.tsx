@@ -379,10 +379,14 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     return (
       <div key={s.key} role="group" aria-label={subject}
         className="overflow-hidden rounded-card border border-line bg-panel">
-        <div className="flex items-start gap-3 p-3 sm:p-4">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2 p-3 sm:p-4">
           <Avatar name={head.addr || "?"} size="md"
             className="max-sm:hidden" />
-          <div className="min-w-0 flex-1">
+          {/* phones: Compare / Keep all sit under the text of versions and
+              possible sets (two buttons would squeeze it); one button fits
+              beside an identical set's */}
+          <div className={`min-w-0 flex-1 ${kind === "identical"
+            ? "" : "max-sm:basis-full"}`}>
             <div className="truncate type-body font-semibold">{subject}</div>
             <div className="break-words type-meta text-muted">{meta}</div>
             {((kind === "identical" && !s.locked) || s.locked) && (
@@ -401,7 +405,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className={`flex shrink-0 items-center gap-1 ${kind === "identical"
+            ? "" : "max-sm:w-full max-sm:justify-end"}`}>
             {kind !== "identical" && (
               <Button size="sm" variant="tinted"
                 aria-label={t("dups.compare_named", { subject })}

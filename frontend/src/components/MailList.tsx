@@ -123,8 +123,9 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   spread?: boolean;
 }) {
   const [cap, setCap] = useState(pageSize);
-  // A selected mail is always on screen: a preset ("All", "Older than a
-  // year") that picks mails beyond the rendered part shows them too.
+  // A selected mail is on screen: a preset ("All", "Older than a year") that
+  // picks mails beyond the rendered part shows them too, up to the old cap of
+  // 500 rows (the selection bar counts the ones still not shown).
   const reach = useMemo(() => {
     if (paged || sel.size === 0) return 0;
     let last = -1;
@@ -132,7 +133,9 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
     return last + 1;
   }, [mails, sel, paged]);
   useEffect(() => {
-    if (reach > cap) setCap(Math.ceil(reach / pageSize) * pageSize);
+    const want = Math.min(Math.ceil(reach / pageSize) * pageSize,
+      Math.max(RENDER_CAP, pageSize));
+    if (want > cap) setCap(want);
   }, [reach, cap, pageSize]);
   const swipeActions = (m: Mail) => {
     if (!swipe) return { leading: [], trailing: [] };
