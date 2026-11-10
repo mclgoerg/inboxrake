@@ -64,6 +64,21 @@ test("Clean up: live numbers where known, Check where a run is needed", async ()
     .toContain("70");
 });
 
+test("Clean up: the Trash tile says how many mails and, once known, how much",
+  () => {
+  const { rerender } = render(<CleanupPage {...cleanupProps()} />);
+  const trash = () => screen.getByRole("button", { name: /^Trash/ }).textContent!;
+  expect(trash()).toContain("70 mails");
+  expect(trash()).not.toContain("MB");
+  rerender(<CleanupPage {...cleanupProps({
+    state: state({ trash_size: 2.3 * MB }) })} />);
+  expect(trash()).toContain("70 mails · 2.3 MB");
+  // an empty Trash keeps the plain sub-line
+  rerender(<CleanupPage {...cleanupProps({
+    state: state({ trash_count: 0, trash_size: 0 }) })} />);
+  expect(trash()).not.toContain("0 mails");
+});
+
 test("Clean up: Ready to clean is built from the quick wins, no double count",
   () => {
   const gs = [

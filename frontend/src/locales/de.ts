@@ -296,12 +296,12 @@ export const DE: Record<string, string> = {
   "tracker.title": "Tracker",
   "tracker.sub": "Wer deine Öffnungen und Klicks verfolgt",
   "tracker.ring_title": "der geprüften Mails tragen ein Tracking-Pixel",
-  "tracker.pixel_short": "Pixel",
-  "tracker.click_short": "Klick-Tracking",
+  "tracker.pixel_short": "Mails mit Pixel",
+  "tracker.click_short": "Mails mit Tracking-Links",
   "tracker.safe_line":
     "Mails in Inboxrake zu lesen ist sicher - Bilder aus dem Netz werden nie geladen, Pixel feuern also nie.",
   "tracker.hosts_hint": "Tracker-Dienste",
-  "tracker.show_all": "Alle in Absender anzeigen",
+  "tracker.show_all": "Alle in Absender",
   "tracker.explainer":
     "Ein Tracking-Pixel verrät dem Absender, wann und wo du die Mail "
     + "geöffnet hast. Inboxrake lädt niemals Bilder aus dem Netz nach.",
@@ -313,7 +313,7 @@ export const DE: Record<string, string> = {
   "tracker.with_pixel": "mit Tracking-Pixel",
   "tracker.with_click": "mit Klick-Tracking",
   "tracker.senders": "Absender mit Tracking",
-  "tracker.top_senders": "Absender mit dem meisten Tracking",
+  "tracker.top_senders": "Am meisten Tracking",
   "tracker.top_hosts": "Wer beobachtet dich",
   "tracker.sender_meta": "{n} von {of} Mails mit Tracking",
   "tracker.sender_meta_one": "1 von {of} Mails mit Tracking",
@@ -1580,6 +1580,7 @@ export const DE: Record<string, string> = {
   "update.available": "Eine neue Version von Inboxrake ist verfügbar.",
   "update.reload": "Neu laden",
   "menu.version": "v{version} (Build {id})",
+  "menu.version_only": "v{version}",
   "scan.age": "gescannt vor {ago}",
   "scan.progress": "Scanne… {done} von {total} Mails",
   "scan.progress_folder": "Scanne {folder}… {done} von {total}",

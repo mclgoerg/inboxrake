@@ -2468,6 +2468,18 @@ def _group_unsub(rec: dict, entries: dict[str, dict], acc) -> dict | None:
     return out
 
 
+def _trash_size(acc) -> int | None:
+    """Bytes in Trash, from the Trash role index - only while that index is
+    as long as the folder's counted mails (it is refreshed when the Trash
+    page is opened, so a stale or never-read one says nothing). Call with
+    `acc.lock` held."""
+    index = acc.role_index.get("trash")
+    count = acc.state["trash_count"]
+    if not index or count is None or len(index) != count:
+        return None
+    return sum(int(m.get("size") or 0) for m in index.values())
+
+
 def public_state(acc=None) -> dict:
     """One account's state for the API: group records without the internal
     UID lists, plus each group's per-mail rating summary."""
@@ -2490,6 +2502,7 @@ def public_state(acc=None) -> dict:
         tmemo = trackers.GroupMemo(acc, tmap, tsig)
         out = {k: v for k, v in acc.state.items() if k != "groups"}
         out["account"] = acc.name
+        out["trash_size"] = _trash_size(acc)
         out["groups"] = {
             g: {k: {**{kk: vv for kk, vv in rec.items() if kk != "folders"},
                     "ratings": _rating_counts(rec, verdict_of, acc),
@@ -2529,6 +2542,7 @@ def public_status(acc=None) -> dict:
         out = json.loads(json.dumps(
             {k: v for k, v in acc.state.items() if k != "groups"}))
         out["account"] = acc.name
+        out["trash_size"] = _trash_size(acc)
         return out
 
 

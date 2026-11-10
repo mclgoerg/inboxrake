@@ -603,6 +603,22 @@ test("promptDialog validates, submits the value, and cancels with null", async (
   expect(await p).toBeNull();
 });
 
+test("Modal fit = lg that shrinks to its content; bare drops the surface", () => {
+  const panel = () => screen.getByText("body").closest<HTMLElement>("[role=dialog]")!;
+  render(<Modal fit onClose={() => {}}>body</Modal>);
+  expect(panel().className).toContain("sm:max-w-3xl");
+  expect(panel().className).toContain("sm:h-auto");
+  expect(panel().className).toContain("sm:max-h-[88vh]");
+  expect(panel().className).not.toContain("sm:h-[88vh]");
+  // the children own the scrolling (no wrapper scroll box around them)
+  expect(panel().querySelector(".overflow-y-auto")).toBeNull();
+  expect(panel().className).toContain("sm:border");
+  cleanup();
+  render(<Modal full bare onClose={() => {}}>body</Modal>);
+  expect(panel().className).toContain("sm:bg-transparent");
+  expect(panel().className).not.toContain("sm:border");
+});
+
 test("Modal sizes map to 448 / 672 / 768 px, full = lg at fixed height", () => {
   const panel = () => screen.getByText("body").closest<HTMLElement>("[role=dialog]")!;
   const sizes: [Parameters<typeof Modal>[0]["size"], string][] = [

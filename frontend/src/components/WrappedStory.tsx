@@ -474,9 +474,12 @@ export function WrappedStory({ onClose }: { onClose: () => void }) {
     max-sm:focus-visible:z-20 sm:shrink-0`;
   const cur = cards[idx];
   return (
-    <Modal full onClose={onClose} label={t("wrapped.menu")}>
+    <Modal full bare onClose={onClose} label={t("wrapped.menu")}>
+      {/* The card is the frame: beside it the scrim shows, and a click
+          there closes like a click on the scrim of any dialog. */}
       <div className="flex min-h-0 flex-1 items-center justify-center
-        sm:gap-3 sm:p-4">
+        sm:gap-3 sm:p-4"
+        onClick={(e) => e.target === e.currentTarget && onClose()}>
         <Button variant="secondary" size="icon" label={t("wrapped.back")}
           className={`${arrow} max-sm:focus-visible:left-4`} disabled={idx === 0} onClick={back}>
           <ChevronLeft size={18} />

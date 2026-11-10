@@ -11,7 +11,7 @@ import { fmtBig, pct, toneSums, type ColorBy, type MapItem, type Tone }
  *  page colour in the light theme (>= 1.5:1 with the line). Every entry has
  *  a border so the sizes stay equal. */
 export const TONE_BG: Record<Tone, string> = {
-  strong: "border border-transparent bg-accent text-on-accent",
+  strong: "border border-transparent bg-heat text-on-accent",
   mid: "border border-transparent bg-accent/45 text-body",
   quiet: "border border-faint bg-chiph text-body",
   delete_safe: "border border-transparent bg-safe-bg text-safe-fg",
@@ -21,7 +21,7 @@ export const TONE_BG: Record<Tone, string> = {
 };
 /** The same colours as an SVG fill (ring segments) ... */
 export const TONE_FILL: Record<Tone, string> = {
-  strong: "fill-accent",
+  strong: "fill-heat",
   mid: "fill-accent/45",
   quiet: "fill-chiph",
   delete_safe: "fill-safe-bg",
@@ -38,7 +38,7 @@ export const TONE_STROKE: Record<Tone, string> = {
 };
 /** And as the bar of a list row / the stacked bar (needs to show on a chip). */
 export const TONE_BAR: Record<Tone, string> = {
-  strong: "bg-accent",
+  strong: "bg-heat",
   mid: "bg-accent/45",
   quiet: "bg-faint",
   delete_safe: "bg-safe-fg",

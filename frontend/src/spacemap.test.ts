@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { MAX_TILES, buildDomains, childTiles, dominantVerdict, fmtBig, heatOf,
-  labelLevel, levelTiles, monthsSince, openedPct, pct, senderIndex, shortName,
+  labelFits, labelLevel, levelTiles, monthsSince, openedPct, pct, senderIndex, shortName,
   soleSender, tickState, toggleItem, toneOf, toneSums } from "./spacemap";
 import type { Group } from "./types";
 
@@ -194,6 +194,15 @@ describe("pct", () => {
     expect(pct(1, 1000)).toBe(1);
     expect(pct(0, 100)).toBe(0);
     expect(pct(5, 0)).toBe(0);
+  });
+});
+
+describe("labelFits", () => {
+  test("a short name shows whole, a long one needs its first 8 letters", () => {
+    expect(labelFits("acme", 60)).toBe(true);      // 4 letters: 28 + 32
+    expect(labelFits("acme", 59)).toBe(false);
+    expect(labelFits("chirper-news", 88)).toBe(true);
+    expect(labelFits("chirper-news", 87)).toBe(false);
   });
 });
 

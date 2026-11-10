@@ -457,6 +457,9 @@ export interface AppState {
   atts: AttsState;
   unsub: UnsubState;
   trash_count: number | null;
+  /** Bytes in Trash; null until the Trash page has listed it (or when the
+   *  listing is older than the folder's count). */
+  trash_size?: number | null;
   junk_count?: number | null;
   notice: { key: string; params: Record<string, string | number> } | null;
   undo: UndoEntry[];

@@ -5,12 +5,14 @@ import { api, mailKey } from "../api";
 import { t } from "../i18n";
 import { actionVerb, itemsOf, planMailAction } from "../mailActions";
 import type { AppState, Mail } from "../types";
+import { FilterField } from "./FilterMenu";
 import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
+import { QueryBuilder } from "./QueryBuilder";
 import { SortControl } from "./SortControl";
 import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
-  useToast }
+  useMediaQuery, useToast }
   from "./ui";
 
 type MailSort = "date" | "size" | "sender";
@@ -58,6 +60,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [view, setView] = useState<Mail | null>(null);
   const toast = useToast();
+  const phone = useMediaQuery("(width < 48rem)");
+  const filterRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [moveDest, setMoveDest] = useState("");
   // What the list on screen was loaded for: a rescan/deletion (groups_rev)
@@ -216,7 +220,35 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     else if (v) act(v);
   };
 
-  const filterControls = (<>
+  const selectAll = () => setSel(sel.size === mails.length
+    ? new Set() : new Set(mails.map(mailKey)));
+  const selectLabel = sel.size === mails.length
+    ? t("Clear selection") : t("mails.select_loaded", { n: mails.length });
+  const sortControl = (
+    <SortControl options={SORTS} value={sortK} dir={dir} plain={phone}
+      onValue={(k) => { setSortK(k); setDir(naturalDir(k)); }}
+      onDir={setDir} />
+  );
+  // Phones follow the Senders toolbar: the field with its magnifier and the
+  // filter builder inside, the counts as the subtitle, plain accent icons.
+  const filterControls = phone ? (<>
+      <div className="relative min-w-0 flex-1 basis-full">
+        <FilterField value={q} onChange={setQ} token={null}
+          inputRef={filterRef} placeholder={t("mails.filter")}
+          hint={t("mails.filter_tip")}
+          builder={<QueryBuilder value={q} onChange={setQ} plain
+            label={t("qb.title")} />} />
+      </div>
+      <div className="min-w-0 flex-1 type-meta text-muted">
+        <div>{t("mails.count", { n: mails.length, total })}</div>
+        {mails.length > 0 && (
+          <button className={`${LINK} coarse:min-h-11`} onClick={selectAll}>
+            {selectLabel}
+          </button>
+        )}
+      </div>
+      {sortControl}
+  </>) : (<>
       <div className="relative min-w-0 flex-1 md:min-w-70">
         <Input className="w-full pr-9 coarse:pr-10" value={q}
           placeholder={t("mails.filter")}
@@ -232,9 +264,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
           </span>
         )}
       </div>
-      <SortControl options={SORTS} value={sortK} dir={dir}
-        onValue={(k) => { setSortK(k); setDir(naturalDir(k)); }}
-        onDir={setDir} />
+      {sortControl}
   </>);
   const filterRow = <div className={FILTER_ROW}>{filterControls}</div>;
 
@@ -242,19 +272,15 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     <div>
       {toolbarSlot !== null && (toolbarSlot
         ? createPortal(filterControls, toolbarSlot) : filterRow)}
-      <div className="mb-2 flex min-h-5 flex-wrap items-center gap-x-3
-        type-meta text-muted">
-        <span>{t("mails.count", { n: mails.length, total })}</span>
-        {mails.length > 0 && (
-          <button className={LINK}
-            onClick={() => setSel(sel.size === mails.length
-              ? new Set() : new Set(mails.map(mailKey)))}>
-            {sel.size === mails.length
-              ? t("Clear selection")
-              : t("mails.select_loaded", { n: mails.length })}
-          </button>
-        )}
-      </div>
+      {!phone && (
+        <div className="mb-2 flex min-h-5 flex-wrap items-center gap-x-3
+          type-meta text-muted">
+          <span>{t("mails.count", { n: mails.length, total })}</span>
+          {mails.length > 0 && (
+            <button className={LINK} onClick={selectAll}>{selectLabel}</button>
+          )}
+        </div>
+      )}
       {ignored.length > 0 && (
         <p className="mb-2 type-meta text-muted">
           {t("mails.ignored", { list: ignored.join(" ") })}
@@ -319,7 +345,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
 
       {view && (
         // The reader owns the history entry (MessageView), not this shell.
-        <Modal onClose={() => setView(null)} full backLayer={false}>
+        <Modal onClose={() => setView(null)} fit backLayer={false}>
           <MessageView mail={view} onBack={() => setView(null)}
             actions={readerActions} backLabel={t("nav.all_mail")}
             nav={{ list: mails, onOpen: setView }} />

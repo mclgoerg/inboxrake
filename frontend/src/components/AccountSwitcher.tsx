@@ -1,6 +1,6 @@
 import { Check, ChevronRight, Plus, ScrollText, Settings as SettingsIcon, Star,
   Power } from "lucide-react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { t } from "../i18n";
 import { fmtAgo, fmtSize } from "../lib";
 import type { AccountSummary, Config } from "../types";
@@ -71,6 +71,8 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
           const broken = status !== "ok";
           const active = name === account;
           const sum = summary?.[name];
+          // Each bit stays whole on a wrapped line ("227.4 MB" never sits
+          // alone; "1,623 mails · 227.4 MB" breaks only after the dot).
           const bits = [
             t(`settings.status.${status}`),
             sum?.status === "scanning" ? t("account.scan_running")
@@ -102,7 +104,14 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
                   </span>
                   {!broken && (
                     <span className="block type-meta text-muted">
-                      {bits.join(" · ")}
+                      {bits.map((b, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && " "}
+                          <span className="whitespace-nowrap">
+                            {b}{i < bits.length - 1 && " ·"}
+                          </span>
+                        </Fragment>
+                      ))}
                     </span>
                   )}
                 </span>

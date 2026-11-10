@@ -1498,10 +1498,17 @@ function useSheetSwipe(enabled: boolean, dialog: RefObject<HTMLDivElement | null
 
 /** Dialog shell. `sm` (448) is a bottom sheet on phones, `md` (672) /
  *  `lg` (768) are full-screen there. `full` = `lg` at a fixed 88vh; other
- *  modals shrink to their content. `label` / `labelledBy` / `describedBy` name it for AT. */
-export function Modal({ children, onClose, full = false, size, label,
-  labelledBy, describedBy, edgeBack = false, backLayer = true }: {
-  children: ReactNode; onClose: () => void; full?: boolean;
+ *  modals shrink to their content. `fit` = `lg` that shrinks to its content
+ *  (at most 88vh) like a normal modal, but whose children own the scrolling
+ *  (the mail reader: header fixed, short mails get a short dialog).
+ *  `bare` drops the dialog's own surface and border from `sm` up, for content
+ *  that is a framed card itself (the Year-in-mail story). `label` /
+ *  `labelledBy` / `describedBy` name it for AT. */
+export function Modal({ children, onClose, full = false, fit = false,
+  bare = false, size, label, labelledBy, describedBy, edgeBack = false,
+  backLayer = true }: {
+  children: ReactNode; onClose: () => void; full?: boolean; fit?: boolean;
+  bare?: boolean;
   size?: "sm" | "md" | "lg"; label?: string;
   labelledBy?: string; describedBy?: string;
   /** The open modal owns a history entry, so Back closes it (`useLayer`;
@@ -1512,7 +1519,7 @@ export function Modal({ children, onClose, full = false, size, label,
    *  installed app a drag from the left edge calls `onClose` (`useEdgeBack`). */
   edgeBack?: boolean;
 }) {
-  const sz = size ?? (full ? "lg" : "md");
+  const sz = size ?? (full || fit ? "lg" : "md");
   const presentation = useContext(PresentationContext);
   const slot = presentation === "slot";
   const tool = presentation === "tool";
@@ -1602,7 +1609,7 @@ export function Modal({ children, onClose, full = false, size, label,
   // padding of the dialog stays put (a scrolling dialog would carry it away).
   // iPhone (viewport-fit=cover): full-screen modals keep their header below
   // the status bar.
-  const scrolls = (sz !== "sm" || slot) && !full;
+  const scrolls = (sz !== "sm" || slot) && !full && !fit;
   // Full panels place their own footers above the home indicator.
   const inset = sz === "sm" ? "" : " max-sm:pt-[env(safe-area-inset-top)]"
     + (scrolls ? " max-sm:pb-[env(safe-area-inset-bottom)]" : "");
@@ -1629,8 +1636,9 @@ export function Modal({ children, onClose, full = false, size, label,
           // A page: fills the content column, scrolls inside like a `full`
           // panel.
           ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden"
-          : `relative flex w-full flex-col overflow-hidden border-line bg-panel outline-none
-        sm:rounded-dialog sm:border ${MODAL_WIDTH[sz]} ${shape}${inset}`}>
+          : `relative flex w-full flex-col overflow-hidden border-line outline-none
+        sm:rounded-dialog ${bare ? "bg-panel sm:bg-transparent"
+          : "bg-panel sm:border"} ${MODAL_WIDTH[sz]} ${shape}${inset}`}>
         {/* Grabber: phones only (the sheet presentation); also the drag
             handle, with a bigger touch area than it looks. */}
         {sheet && <div aria-hidden data-sheet-grabber

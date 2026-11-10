@@ -21,6 +21,19 @@ def trashed(bridge):
     return bridge
 
 
+def test_trash_size_follows_the_listing_only_while_it_matches(trashed):
+    """The Clean up tile says "70 mails · 2.3 MB": the size comes from the
+    Trash role index and is only given while that index matches the count."""
+    assert client.get("/api/state").json()["trash_size"] is None   # never read
+    client.get("/api/trash")
+    st = client.get("/api/state").json()
+    assert st["trash_count"] == 2 and st["trash_size"] == 1500
+    assert mailops.public_status()["trash_size"] == 1500
+    mailops.STATE["trash_count"] = 3            # a mail was trashed since
+    assert client.get("/api/state").json()["trash_size"] is None
+    assert mailops.public_status()["trash_size"] is None
+
+
 def test_trash_list_and_restore(trashed):
     r = client.get("/api/trash").json()
     assert r["total"] == 2 and r["folder"] == "Trash" and r["uv"] == 1

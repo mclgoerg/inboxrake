@@ -703,26 +703,31 @@ function JunkSenderRow({ g, known, blocked, canBlock, busy, selecting, checked,
   const act = (action: string) => t("fp.row_action", { action, who: g.addr });
   return (
     <div className="flex items-start gap-3 border-b border-line/60 px-3 py-3
-      last:border-b-0">
+      last:border-b-0 md:items-center">
       {selecting && (
         <Checkbox round checked={checked} onChange={onToggle}
-          className="mt-1.5"
+          className="mt-1.5 md:mt-0"
           aria-label={t("select.named", { subject: g.addr })} />
       )}
-      <Avatar name={g.addr} size="md" className="mt-0.5" />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={onOpen}
-            className="min-w-0 cursor-pointer truncate text-left type-body
-              font-semibold hover:underline">{g.addr}</button>
-          {known && <Tag tone="info" className="shrink-0">
-            {t("fp.known_tag")}</Tag>}
+      <Avatar name={g.addr} size="md" className="mt-0.5 md:mt-0" />
+      {/* From md the actions sit at the right edge of the row (like Trash's
+          Restore); below it they stay under the text. */}
+      <div className="min-w-0 flex-1 md:flex md:items-center md:gap-3">
+        <div className="min-w-0 md:flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" onClick={onOpen}
+              className="min-w-0 cursor-pointer truncate text-left type-body
+                font-semibold hover:underline">{g.addr}</button>
+            {known && <Tag tone="info" className="shrink-0">
+              {t("fp.known_tag")}</Tag>}
+          </div>
+          <div className="type-meta text-muted">{meta}</div>
         </div>
-        <div className="type-meta text-muted">{meta}</div>
         {!selecting && (
           // Block / Trash are icon-only below sm so the three fit one line at
           // 390 (the aria-labels name them)
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2 md:mt-0 md:shrink-0
+            md:flex-nowrap">
             <Button size="sm" variant={known ? "tinted" : "secondary"}
               disabled={busy} aria-label={act(t("fp.not_junk"))}
               onClick={onNotJunk}>

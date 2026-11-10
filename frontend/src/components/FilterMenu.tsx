@@ -367,13 +367,18 @@ export function FilterToken({ label, onRemove, onEdit }: {
  *  magnifier, the filter text (or, while the box equals a quick / inactive /
  *  saved filter, its token) and `builder` (the QueryBuilder's trigger) as the
  *  trailing control. */
-export function FilterField({ value, onChange, token, inputRef, builder }: {
+export function FilterField({ value, onChange, token, inputRef, builder,
+  placeholder, hint }: {
   value: string;
   onChange: (v: string) => void;
   /** Label of the quick / saved filter the value equals. */
   token: string | null;
   inputRef: RefObject<HTMLInputElement | null>;
   builder: ReactNode;
+  /** Placeholder / syntax hint when the field filters something other than
+   *  the sender groups (All mails). */
+  placeholder?: string;
+  hint?: string;
 }) {
   // The token stands in for the raw text until it is tapped (or the field is
   // focused any other way, e.g. the "/" shortcut); leaving the field puts it
@@ -404,8 +409,8 @@ export function FilterField({ value, onChange, token, inputRef, builder }: {
       <Input ref={inputRef} tabIndex={tokenShown ? -1 : undefined}
         className={`min-w-0 flex-1 !border-0 pl-1 pr-1
           focus-visible:outline-0 ${tokenShown ? "sr-only" : ""}`}
-        placeholder={t("filter.placeholder")}
-        title={t("filter.syntax_hint")}
+        placeholder={placeholder ?? t("filter.placeholder")}
+        title={hint ?? t("filter.syntax_hint")}
         value={value}
         onFocus={() => setEditing(true)}
         onBlur={() => setEditing(false)}

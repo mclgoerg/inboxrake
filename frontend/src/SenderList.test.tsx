@@ -95,7 +95,9 @@ describe("the list", () => {
       + "the other senders of co.example.")).toBeTruthy();
     expect(screen.getByText("Nothing in its mails says what it is about."))
       .toBeTruthy();
-    expect(screen.getByText(/14% unread · last/)).toBeTruthy();
+    // two unbreakable halves: "14% unread ·" and "last <date>"
+    expect(screen.getByText("14% unread ·").parentElement!.textContent)
+      .toMatch(/^14% unread · last /);
     expect(screen.getByText("7")).toBeTruthy();
     expect(screen.getByRole("button", { name: "a" })).toBeTruthy();
   });

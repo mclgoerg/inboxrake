@@ -268,6 +268,21 @@ test("Junk: one row per sender with count, size and first seen",
     expect(screen.getByText("2 mails · 1 KB · first seen 2 Jan")).toBeTruthy();
   });
 
+test("Junk rows: from md the three actions sit at the right edge of the row",
+  async () => {
+    panel({ initialRole: "junk" });
+    await screen.findByText("win@lottery.example");
+    const actions = screen.getByRole("button",
+      { name: "Not junk: win@lottery.example" }).parentElement!;
+    const text = screen.getByText("win@lottery.example").parentElement!
+      .parentElement!;
+    // one flex line at md (text grows, actions keep their size), stacked below
+    expect(actions.parentElement!.className).toContain("md:flex");
+    expect(text.className).toContain("md:flex-1");
+    expect(actions.className).toContain("md:shrink-0");
+    expect(actions.className).toContain("mt-2");
+  });
+
 test("Junk rows: Not junk, Block and Trash act on that sender's exact UIDs",
   async () => {
     const onBlock = vi.fn().mockResolvedValue(true);

@@ -225,6 +225,12 @@ export type LabelLevel = "full" | "short" | "none";
 export const labelLevel = (w: number, h: number): LabelLevel =>
   w >= 120 && h >= 52 ? "full" : w >= 56 && h >= 30 ? "short" : "none";
 
+/** Does a short tile label have room? A tile is padded (8 px each side) and
+ *  keeps 16 px for its tick / shield; the name must show in full or at least
+ *  its first 8 letters (about 7 px each at the meta size) - not "fina...". */
+export const labelFits = (name: string, tileW: number): boolean =>
+  tileW - 32 >= Math.min(name.length, 8) * 7;
+
 const SECOND_LEVEL = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
 
 /** The recognisable bit of a name: `chirper` for `news@chirper.example` and

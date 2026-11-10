@@ -170,10 +170,14 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
           p-4 text-left transition-colors disabled:cursor-not-allowed
           disabled:opacity-60">
         <span aria-hidden className="relative size-14 shrink-0">
-          <span className="absolute inset-0 rotate-6 rounded-card bg-panel2" />
-          <span className="absolute inset-0 -rotate-6 rounded-card bg-panel" />
+          {/* A hairline on every card: without it the white cards melt into
+              the tinted tile in the light theme. */}
+          <span className="absolute inset-0 rotate-6 rounded-card border
+            border-line bg-panel2" />
+          <span className="absolute inset-0 -rotate-6 rounded-card border
+            border-line bg-panel" />
           <span className="absolute inset-0 flex items-center justify-center
-            rounded-card bg-panel">
+            rounded-card border border-line bg-panel">
             {groups[0] ? <Avatar name={groups[0].label} size="md" />
               : <Layers size={18} className="text-muted" />}
           </span>
@@ -247,7 +251,12 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<Trash2 size={18} aria-hidden />}
             tone="bg-keep-bg text-keep-fg" label={t("role.trash")}
-            value={state?.trash_count ?? null} sub={t("tab.trash_sub")}
+            value={state?.trash_count ?? null}
+            sub={state?.trash_count != null && state.trash_count > 0
+              ? [t("n.mails", { n: state.trash_count }),
+                ...(state.trash_size != null ? [fmtSize(state.trash_size)] : [])]
+                .join(" · ")
+              : t("tab.trash_sub")}
             onClick={() => onOpen("trash")} />
         </li>
       </ul>

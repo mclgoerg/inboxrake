@@ -137,6 +137,20 @@ test("demo: AI filter, AI review and Add account are disabled with the hint",
   expect(add.textContent).toContain(HINT);
 });
 
+test("demo: the account menu shows the version only, no build id", async () => {
+  probeDemo = true;
+  await mount();
+  fireEvent.click(screen.getByLabelText(/^Account:/));
+  await screen.findByText(/^v[\d.]+$/);
+  expect(screen.queryByText(/build/i)).toBeNull();
+});
+
+test("no demo: the account menu names the build too", async () => {
+  await mount();
+  fireEvent.click(screen.getByLabelText(/^Account:/));
+  await screen.findByText(/^v[\d.]+ \(build v1\)$/);
+});
+
 test("demo: the bulk bar's AI review option is disabled with the hint",
   async () => {
   probeDemo = true;
