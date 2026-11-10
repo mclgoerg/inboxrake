@@ -180,6 +180,7 @@ test.each([
   ["sso_no_admin", "SSO isn't fully set up: no administrator is configured yet. Ask the person who runs this server.",
     "bg-keep-bg"],
   ["sso_expired", "The sign-in took too long or was interrupted. Try again.", "bg-keep-bg"],
+  ["login_sso_off", "SSO sign-in is not switched on.", "bg-keep-bg"],
   ["whatever", "Sign-in failed. Try again.", "bg-keep-bg"],
 ])("?login_error=%s is worded on the SSO page and removed from the URL",
   (code, text, tone) => {
@@ -206,7 +207,7 @@ test("every SSO refusal code has a German text", () => {
   setLang("de");
   const seen = new Set<string>();
   for (const code of ["email_unverified", "idp_unavailable", "sso_rejected",
-    "sso_not_allowed", "sso_no_admin", "sso_expired"]) {
+    "sso_not_allowed", "sso_no_admin", "sso_expired", "login_sso_off"]) {
     window.history.replaceState(null, "", `/?login_error=${code}`);
     const { unmount } = render(<Login mode="oidc" onLogin={() => {}} />);
     const text = screen.getByRole("alert").textContent!;
@@ -215,7 +216,7 @@ test("every SSO refusal code has a German text", () => {
     seen.add(text);
     unmount();
   }
-  expect(seen.size).toBe(6);
+  expect(seen.size).toBe(7);
 });
 
 test("no error, no alert", () => {

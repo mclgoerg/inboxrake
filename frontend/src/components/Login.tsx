@@ -20,6 +20,8 @@ const SSO_REFUSALS = ["email_unverified", "sso_rejected", "sso_not_allowed",
 function ssoRefusal(code: string): LoginError {
   if (code === "idp_unavailable")
     return { text: errorText(code), tone: "warn", code };
+  if (code === "login_sso_off")
+    return { text: errorText(code), tone: "danger", code };
   return {
     text: t(SSO_REFUSALS.includes(code) ? `login.err.${code}`
       : "login.err.generic"),
@@ -107,7 +109,8 @@ export function Login({ mode, idpHost, onLogin }: {
               </label>
               <div className="relative">
                 <Input id="login-password" ref={field} className="w-full pr-11
-                  aria-invalid:border-danger-fg aria-invalid:focus:border-danger-fg"
+                  aria-invalid:border-danger-fg aria-invalid:focus:border-danger-fg
+                  aria-invalid:outline-danger-fg"
                   type={show ? "text" : "password"} autoFocus
                   autoComplete="current-password"
                   value={password}
@@ -116,7 +119,8 @@ export function Login({ mode, idpHost, onLogin }: {
                   onChange={(e) => setPassword(e.target.value)} />
                 <Button type="button" variant="quiet" size="icon"
                   label={t("login.show_password")} aria-pressed={show}
-                  className="absolute inset-y-0 right-0 text-muted"
+                  className="absolute inset-y-0 right-0 text-muted after:absolute
+                    after:content-[''] coarse:after:-inset-0.5"
                   onClick={() => setShow(!show)}>
                   {show ? <EyeOff size={18} aria-hidden />
                     : <Eye size={18} aria-hidden />}

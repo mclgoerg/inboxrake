@@ -354,7 +354,8 @@ class LoginBody(BaseModel):
 @app.get("/api/auth")
 def get_auth(request: Request):
     """Public probe for the login screen; identity for the header."""
-    mode = cfgmod.load_server()["auth"]["mode"]
+    auth_cfg = cfgmod.load_server()["auth"]
+    mode = auth_cfg["mode"]
     sub = _session_sub(request)
     if mode == "oidc" and sub == "password":
         sub = None
@@ -364,8 +365,7 @@ def get_auth(request: Request):
         # the login page names where "Continue with SSO" goes; the host is
         # public anyway (the browser is redirected there)
         try:
-            host = urlparse(cfgmod.load_server()["auth"]["oidc"]
-                            .get("issuer") or "").hostname
+            host = urlparse(auth_cfg["oidc"].get("issuer") or "").hostname
         except ValueError:          # a malformed issuer URL
             host = None
         if host:
@@ -374,7 +374,7 @@ def get_auth(request: Request):
         out["demo"] = True      # the UI disables what the demo can't do
     if authed:
         # The middleware already resolved the tenant for this request.
-        out["sub"] = (cfgmod.load_server()["auth"].get("identity_labels", {}).get(sub, sub)
+        out["sub"] = (auth_cfg.get("identity_labels", {}).get(sub, sub)
                       if mode == "oidc" else "")
         out["is_admin"] = tenants.current().is_default
         if mode == "oidc":
@@ -453,7 +453,7 @@ def _login_refused(code: str) -> RedirectResponse:
 def get_oidc_login(request: Request):
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "oidc":
-        raise HTTPException(400, mailops.LOGIN_SSO_OFF)
+        return _login_refused(mailops.LOGIN_SSO_OFF)
     redirect = _external_base(request) + "/api/oidc/callback"
     verifier = authmod.make_verifier()
     try:
@@ -478,7 +478,7 @@ def get_oidc_callback(request: Request, code: str = Query(""),
                       error_description: str = Query("")):
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "oidc":
-        raise HTTPException(400, mailops.LOGIN_SSO_OFF)
+        return _login_refused(mailops.LOGIN_SSO_OFF)
     if error:      # the IdP rejected the authorization request
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login rejected by the IdP: %s (%s)",

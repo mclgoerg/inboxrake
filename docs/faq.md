@@ -97,23 +97,25 @@ name set `INBOXRAKE_ALLOWED_HOSTS`. Details in [Security & privacy](security.md)
 </details>
 
 <details class="faq-q">
-<summary><h3 id="forgot-the-password">I forgot the sign-in password - how do I reset it?</h3><span class="faq-short">Change <code>AUTH_PASSWORD</code> and restart, or delete the saved <code>auth</code> entry in <code>server.json</code>. There is no reset by mail.</span></summary>
+<summary><h3 id="forgot-the-password">I forgot the sign-in password - how do I reset it?</h3><span class="faq-short">Set a new <code>AUTH_PASSWORD</code> and delete the saved <code>auth</code> entry in <code>server.json</code>. There is no reset by mail.</span></summary>
 
 Inboxrake has one shared login and no account recovery by mail, so the reset
-happens on the server. Which way depends on where the password lives:
+happens on the server. Changing `AUTH_PASSWORD` alone is not enough once
+Inboxrake has saved its sign-in settings: a saved `auth` entry in
+`server.json` (in the data folder: `/data/server.json`, unless `SERVER_PATH`
+says otherwise) wins over the environment. That entry is created by the
+first save of Settings -> Sign-in & users, the first save of the shared AI
+settings and every SSO sign-in - so on most servers it exists, even if you
+only ever set the password in the environment.
 
-- **Set with `AUTH_PASSWORD` and never saved in Settings:** set a new
-  `AUTH_PASSWORD` and restart the container.
-- **Saved in Settings -> Sign-in & users:** a saved login wins over the
-  environment (as soon as `server.json` has an `auth` entry), so changing
-  `AUTH_PASSWORD` changes nothing. Stop the container, open `server.json` in
-  the data folder (`/data/server.json`, unless `SERVER_PATH` says otherwise)
-  and delete the `"auth"` entry - leave the rest. For a Docker volume:
-  `docker run --rm -it -v <volume>:/data alpine vi /data/server.json`. Start
-  Inboxrake again: the login now comes from `AUTH_MODE` / `AUTH_PASSWORD` /
-  `OIDC_*` if they are set. Without them the login is **off** until you
-  switch it on again in Settings -> Sign-in & users, so do that straight away
-  and while nobody else can reach the port (localhost, or an SSH tunnel).
+1. Stop the container.
+2. Set the new `AUTH_PASSWORD` (and `AUTH_MODE=password`) in its environment.
+3. Open `server.json` and delete the `"auth"` entry - leave the rest. For a
+   Docker volume:
+   `docker run --rm -it -v <volume>:/data alpine vi /data/server.json`.
+   If the file has no `"auth"` entry, there is nothing to delete.
+4. Start the container. The login now comes from the environment, so the new
+   password works at once and the login is never off.
 
 **SSO** (the page says "Trouble signing in?"): "The sign-in provider isn't
 reachable" means the container could not reach your provider - check the
@@ -122,9 +124,10 @@ no verified email address" means the provider did not confirm the address -
 verify it there. "This account isn't allowed to sign in here" means the
 account is not in the allowed users (`OIDC_ALLOWED`, or Settings -> Sign-in &
 users), and "no administrator is configured yet" means the SSO administrator
-(`OIDC_ADMIN`) is still unset. If the provider is gone for good, use the `server.json`
-steps above and set `AUTH_MODE=password` with an `AUTH_PASSWORD` to get back
-in.
+(`OIDC_ADMIN`) is still unset. If the provider is gone for good, use the
+steps above with `AUTH_MODE=password` and an `AUTH_PASSWORD`. Deleting the
+`"auth"` entry also drops the saved SSO administrator, so set `OIDC_ADMIN` (or
+choose the administrator again in Settings) before you switch back to SSO.
 
 </details>
 

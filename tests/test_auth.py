@@ -52,9 +52,11 @@ def test_password_mode_locks_the_api():
     # login screen probes stay public
     assert c.get("/api/auth").json() == {"mode": "password", "authed": False}
     # the other login endpoints of the method that is off refuse by code
-    assert c.get("/api/oidc/login", follow_redirects=False).json() \
-        == {"detail": "login_sso_off"}
-    assert c.get("/api/oidc/callback").json() == {"detail": "login_sso_off"}
+    # (plain links: they land on the login page with the code)
+    for path in ("/api/oidc/login", "/api/oidc/callback"):
+        r = c.get(path, follow_redirects=False)
+        assert r.status_code in (302, 307)
+        assert r.headers["location"] == "/?login_error=login_sso_off"
     # SPA bundle stays public (it renders the login screen)
     assert c.get("/").status_code == 200
 
