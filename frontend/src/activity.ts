@@ -32,6 +32,12 @@ const monthKey = (d: Date) => d.getFullYear() * 12 + d.getMonth();
  *  undo label "N mails from Junk|Trash". That is rescuing, not cleaning. */
 const FROM_ROLE = /^\d+ mails? from (Junk|Trash)$/;
 
+/** The folder a rescue moved mails out of (`from_role`, or the label text on
+ *  old entries). */
+const rescueRole = (e: AuditEntry): "junk" | "trash" | "" =>
+  e.from_role ?? (FROM_ROLE.exec(e.label)?.[1].toLowerCase() as
+    "junk" | "trash" | undefined) ?? "";
+
 /** Rescue = a move out of Junk / Trash: `from_role` on newer entries, the
  *  label text only as the fallback for old ones. */
 const isRescue = (e: AuditEntry): boolean =>
@@ -184,12 +190,16 @@ export interface EntryText { title: string; who: string; detail: string }
 const ruleName = (e: AuditEntry, rules: Rule[]): string => {
   const id = e.actor.slice(5);
   return rules.find((r) => r.id === id)?.name || (e.action.startsWith("rule_")
-    ? e.label : "") || id;
+    ? e.label : "");
 };
 
 /** Who did it: the rule, or "by you". */
 export const whoLine = (e: AuditEntry, rules: Rule[]): string =>
-  isRuleActor(e.actor) ? t("audit.rule", { name: ruleName(e, rules) })
+  isRuleActor(e.actor)
+    // a move entry does not carry the rule's name: without the rule it
+    // cannot be named
+    ? ruleName(e, rules) ? t("audit.rule", { name: ruleName(e, rules) })
+      : t("audit.rule_gone")
     : e.actor === "user" ? t("audit.by_you")
     : t("audit.by", { actor: t(e.actor) });
 
@@ -217,22 +227,27 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
   const failed = e.outcome === "error" || e.outcome === "failed";
   let label = e.label;
   // A move out of Junk / Trash stores an English label: word it ourselves.
-  if (e.from_role) label = t(`undo.from_${e.from_role}`, { n });
+  const role = e.action === "trash" || e.action === "move" ? rescueRole(e) : "";
+  if (role) label = t(`undo.from_${role}`, { n });
   const counted = (key: string) =>
     n > 0 ? t(`audit.h.${key}`, { n }) : tOr("audit.act", e.action);
   let title: string;
   let detail = label;
   switch (e.action) {
     case "trash":
-      title = e.from_role === "junk" && n > 0
-        ? t("audit.h.trash_junk", { n }) : counted("trash");
+      if (role === "junk" && n > 0) {
+        title = t("audit.h.trash_junk", { n });
+        detail = "";   // the headline names the source
+      } else title = counted("trash");
       break;
     case "archive": case "mark_read": case "purge":
       title = counted(e.action);
       break;
     case "move":
-      title = e.from_role === "junk" && n > 0
-        ? t("audit.h.move_junk", { n }) : counted("move");
+      if (role === "junk" && n > 0) {
+        title = t("audit.h.move_junk", { n });
+        detail = "";
+      } else title = counted("move");
       break;
     case "move_contents": {
       const [from, to] = label.split(" \u2192 ");
@@ -248,7 +263,7 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
     case "rule_execute": {
       // the entry is about the rule; the move it caused is its own entry
       const rule = rules.find((r) => `rule:${r.id}` === e.actor);
-      const name = ruleName(e, rules);
+      const name = ruleName(e, rules) || e.actor.slice(5);
       title = n > 0 ? t("audit.h.rule_execute", { name, n })
         : t("audit.h.rule_execute_none", { name });
       // what the rule does, when it still exists; the name is in the title

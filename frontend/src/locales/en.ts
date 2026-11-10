@@ -609,6 +609,7 @@ export const EN: Record<string, string> = {
   "activity.at_least": "at least {n}",
   "activity.month_empty": "Nothing cleaned this month yet.",
   "activity.week": "Week {n}",
+  "activity.at_least_n": "{n}+",
   "activity.by_rules": "By rules",
   "activity.by_you": "By you",
   "activity.unsubscribed": "Unsubscribed",
@@ -1803,6 +1804,7 @@ export const EN: Record<string, string> = {
   "audit.entries_one": "1 entry · everything Inboxrake did, newest first",
   "audit.rule": "Rule “{name}”",
   "audit.by_you": "by you",
+  "audit.rule_gone": "by a deleted rule",
   "audit.why": "Why?",
   // One headline per recorded action (activity.ts entryText)
   "audit.h.trash": "Moved {n} mails to Trash",

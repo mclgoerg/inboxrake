@@ -150,6 +150,76 @@ test("a failed entry says Failed and its stored error opens behind Why?",
     reset();
   });
 
+test("Why? does not point at an element that is not there", async () => {
+  audit.mockResolvedValue({ total: 1, entries: [
+    mk({ outcome: "error", error: "boom" })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  const why = await screen.findByRole("button", { name: "Why?" });
+  expect(why.hasAttribute("aria-controls")).toBe(false);
+  reset();
+});
+
+test("an outcome this release does not know gets a neutral status", async () => {
+  audit.mockResolvedValue({ total: 1, entries: [mk({ outcome: "weird" })] });
+  const { container } = render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("weird"));
+  expect(container.querySelector(".lucide-ban")).toBeNull();
+  expect(container.querySelector(".lucide-circle")).toBeTruthy();
+  reset();
+});
+
+test("a rule's move entry whose rule is gone says so, not the id", async () => {
+  audit.mockResolvedValue({ total: 1, entries: [
+    mk({ actor: "rule:deadbeef01", label: "a@x.example" })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText(/by a deleted rule/));
+  expect(screen.queryByText(/deadbeef01/)).toBeNull();
+  cleanup();
+  setLang("de");
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText(/von einer gelöschten Regel/));
+  reset();
+});
+
+test("a rule-triggered move entry names its rule on the second line",
+  async () => {
+    audit.mockResolvedValue({ total: 1, entries: [
+      mk({ actor: "rule:r1", count: 3, label: "a@x.example" })] });
+    render(<AuditLogPanel rules={[{ id: "r1", name: "Sweep",
+      action: "trash" } as any]} onClose={() => {}} />);
+    await waitFor(() => screen.getByText("Moved 3 mails to Trash"));
+    expect(screen.getByText(/· Rule “Sweep”/)).toBeTruthy();
+    reset();
+  });
+
+test("a move out of Junk is worded from from_role or the old label and " +
+  "the source is not repeated", async () => {
+  audit.mockResolvedValue({ total: 2, entries: [
+    mk({ action: "move", count: 3, from_role: "junk", label: "3 mails from Junk" }),
+    mk({ action: "trash", count: 2, label: "2 mails from Junk" })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("Moved 3 mails from Junk to the inbox"));
+  expect(screen.getByText("Moved 2 mails from Junk to Trash")).toBeTruthy();
+  expect(screen.queryByText("3 mails from Junk")).toBeNull();
+  expect(screen.queryByText("2 mails from Junk")).toBeNull();
+  reset();
+});
+
+test("a history cut short by the page cap marks the week and split values " +
+  "as at least", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  audit.mockImplementation(() => Promise.resolve({ total: 100,
+    entries: [mk({ ts: now, count: 5 })] }));
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  const card = await screen.findByRole("region", { name: "This month" });
+  await waitFor(() => expect(within(card).getByText("at least 20")).toBeTruthy());
+  expect(within(card).getAllByText("20+").length).toBe(2);   // bar + by you
+  expect(within(card).getByText("By rules").closest("li")!.textContent)
+    .toMatch(/0$/);
+  audit.mockReset();
+  reset();
+});
+
 test("an entry without an error has no Why?", async () => {
   render(<AuditLogPanel rules={[]} onClose={() => {}} />);
   await waitFor(() => screen.getByText(/item 1/));

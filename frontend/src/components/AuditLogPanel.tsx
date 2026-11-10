@@ -1,8 +1,8 @@
 import { Archive, BellOff, Ban, ChevronLeft, ChevronRight, CircleAlert,
   CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, ListChecks,
-  Mail, MailCheck, ScrollText, Send, Trash2, Undo2, type LucideIcon }
+  Circle, Mail, MailCheck, ScrollText, Send, Trash2, Undo2, type LucideIcon }
   from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
   weekRanges } from "../activity";
 import { nowDate } from "../clock";
@@ -59,6 +59,9 @@ const STATUS_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   failed: { icon: CircleX, tone: "text-danger-fg" },
 };
 
+/** An outcome this release does not know (a newer one): neutral. */
+const STATUS_FALLBACK = { icon: Circle, tone: "text-muted" };
+
 const monthName = (ts: number): string => {
   const d = new Date(ts * 1000);
   const sameYear = d.getFullYear() === nowDate().getFullYear();
@@ -78,6 +81,9 @@ function MonthCard({ recent, rules }: {
   if (!sum) return null;
   const max = Math.max(1, ...sum.weeks);
   const now = nowDate();
+  // a history cut short by the page cap may hold more than it shows
+  const count = (n: number): string => !recent!.complete && n > 0
+    ? t("activity.at_least_n", { n }) : String(n);
   const month = new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB",
     { month: "short" }).format(now);
   const split: { icon: LucideIcon; label: string; n: number }[] = [
@@ -109,7 +115,7 @@ function MonthCard({ recent, rules }: {
             return (
               <li key={i} className="flex flex-col items-stretch gap-1">
                 <span aria-hidden className="text-center type-meta
-                  font-medium tabular-nums">{v || "–"}</span>
+                  font-medium tabular-nums">{v ? count(v) : "–"}</span>
                 <div className="flex h-16 items-end">
                   <div className="w-full rounded-badge bg-accent/70"
                     // bar height = this week's share of the busiest week
@@ -131,7 +137,7 @@ function MonthCard({ recent, rules }: {
           <li key={label} className="flex items-center gap-2 type-body">
             <Icon size={16} aria-hidden className="shrink-0 text-muted" />
             <span className="flex-1">{label}</span>
-            <span className="font-semibold tabular-nums">{n}</span>
+            <span className="font-semibold tabular-nums">{count(n)}</span>
           </li>
         ))}
       </ul>
@@ -148,12 +154,11 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
 }) {
   const look = ACTION_LOOK[e.action] ?? FALLBACK_LOOK;
   const Icon = look.icon;
-  const status = STATUS_LOOK[e.outcome] ?? STATUS_LOOK.cancelled;
+  const status = STATUS_LOOK[e.outcome] ?? STATUS_FALLBACK;
   const StatusIcon = status.icon;
   const failed = e.outcome === "error" || e.outcome === "failed";
   const text = entryText(e, rules);
   const [why, setWhy] = useState(false);
-  const whyId = useId();
   // Grid: icon | headline + second line | date + status. On phones the date
   // and status drop under the headline so it keeps the full width.
   return (
@@ -190,7 +195,7 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
           {tOr("audit.outcome", e.outcome)}
           {e.error && (<>
             <span aria-hidden className="text-muted">·</span>
-            <button type="button" aria-expanded={why} aria-controls={whyId}
+            <button type="button" aria-expanded={why}
               onClick={() => setWhy((v) => !v)}
               className="rounded-control px-1 text-accent hover:underline
                 focus-visible:ring-2 focus-visible:ring-accent
@@ -203,7 +208,7 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
       <span className="col-start-2 row-start-3 min-w-0 empty:hidden
         sm:row-start-2">
         {why && e.error && (
-          <span id={whyId} className={`block type-meta ${failed
+          <span className={`block type-meta ${failed
             ? "text-danger-fg" : "text-muted"}`}>{errorText(e.error)}</span>
         )}
         {undone > 0 && (
