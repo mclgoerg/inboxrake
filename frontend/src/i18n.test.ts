@@ -70,4 +70,9 @@ describe("i18n", () => {
       .filter(([k, v]) => !notYou.has(k) && formal.test(v)).map(([k]) => k);
     expect(hits).toEqual([]);
   });
+  it("German quotes a name with „…“, not straight quotes", () => {
+    const straight = Object.entries(DE).filter(([, v]) => v.includes('"'))
+      .map(([k]) => k);
+    expect(straight).toEqual([]);
+  });
 });

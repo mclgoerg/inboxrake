@@ -151,7 +151,13 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     page.flatMap((f) => f.mails.map(mailKey))), [page]);
   const visibleKeys = useMemo(() => new Set(
     visible.flatMap((f) => f.mails.map(mailKey))), [visible]);
-  useEffect(() => { setShown(PAGE); }, [visibleKeys]);
+  // (Reset while rendering, not in an effect: an effect runs after the commit,
+  // so a "Show more" tapped before it ran was undone by it.)
+  const [shownFor, setShownFor] = useState(visibleKeys);
+  if (shownFor !== visibleKeys) {
+    setShownFor(visibleKeys);
+    setShown(PAGE);
+  }
   useEffect(() => {
     setSel((s) => {
       const keep = [...s].filter((k) => pageKeys.has(k));

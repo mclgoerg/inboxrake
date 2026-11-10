@@ -45,6 +45,9 @@ out = {"clock": time.time()}
 for acct in ("proton", "icloud"):
     out[acct] = {"state": c.get("/api/state", params={"account": acct}).json(),
                  "stats": c.get("/api/stats", params={"account": acct}).json()}
+    if os.environ.get("DUMP_AUDIT"):
+        out[acct]["audit"] = c.get("/api/audit", params={
+            "account": acct, "limit": 500}).json()["entries"]
 print(json.dumps(out, sort_keys=True))
 """
 
@@ -92,6 +95,30 @@ def test_the_seed_serves_the_same_state_and_stats(seed):
     assert generated["proton"]["state"]["notice"]            # not vacuous
     assert scrub(served) == scrub(generated)
     assert generated["proton"]["state"]["groups"]["sender"]   # not vacuous
+
+
+@pytest.mark.parametrize("stamp", [
+    "2026-10-02 12:00", "2026-10-10 12:00", "2026-10-28 12:00"])
+def test_this_month_reads_the_same_on_activity_and_statistics(stamp):
+    # The audit log (Activity) and the statistics history (Statistics, Sign-in
+    # & users) are seeded separately; whatever day of the month it is - rule
+    # runs 9-21 days back fall in this month or the last - what the demo
+    # says it cleaned this month is one number.
+    import calendar
+    now = calendar.timegm(time.strptime(stamp, "%Y-%m-%d %H:%M"))
+    month = time.strftime("%Y-%m", time.gmtime(now))
+    d = dump(run_demo(env={**ENV, "DEMO_NOW": str(now), "PIN_CLOCK": str(now),
+                           "DUMP_AUDIT": "1"}))
+    for acct in ("proton", "icloud"):
+        acts = d[acct]["stats"]["actions"][month]
+        stats_total = acts["trash"] + acts["archive"] + acts["move"]
+        log_total = sum(
+            e["count"] for e in d[acct]["audit"]
+            if time.strftime("%Y-%m", time.gmtime(e["ts"])) == month
+            and e["action"] in ("trash", "archive", "move", "rule_execute")
+            and e["outcome"] == "ok")
+        assert stats_total > 0
+        assert log_total == stats_total, (acct, stamp)
 
 
 def test_the_seed_layout_and_determinism(seed, tmp_path):

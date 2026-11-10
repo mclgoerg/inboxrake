@@ -7,6 +7,9 @@ import type { TrackerReport } from "../types";
 import { Avatar, Button, confirmDialog, EmptyState, Loading, Modal, PanelHeader,
   ProgressBar, Ring, SectionLabel, Spinner, Tag } from "./ui";
 
+/** Senders listed before "Show all N". */
+const TOP_SENDERS = 6;
+
 const pct = (n: number, of: number) => (of ? Math.round((100 * n) / of) : 0);
 
 function Figure({ value, label }: { value: ReactNode; label: string }) {
@@ -33,6 +36,7 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
 }) {
   const [rep, setRep] = useState<TrackerReport | null>(null);
   const [error, setError] = useState("");
+  const [showAllSenders, setShowAllSenders] = useState(false);
   const alive = useRef(true);
 
   const load = useCallback(() => {
@@ -193,37 +197,40 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
               </button>
             </div>
             <ul>
-              {rep.top_senders.map((s) => (
+              {(showAllSenders ? rep.top_senders
+                : rep.top_senders.slice(0, TOP_SENDERS)).map((s) => (
                 <li key={s.key} className="border-b border-line last:border-0">
                   <button type="button" onClick={() => onPickSender(s.key)}
                     aria-label={t("tracker.pick", { name: s.label })}
-                    className="flex w-full cursor-pointer flex-wrap items-center
-                      gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-chip
-                      sm:flex-nowrap coarse:min-h-11">
+                    className="flex w-full cursor-pointer items-center gap-3
+                      px-3 py-2 text-left hover:bg-chip coarse:min-h-11">
                     <Avatar name={s.label} size="md" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate">{s.label}</span>
-                      <span className="block type-meta text-muted">
-                        {t("tracker.sender_meta",
-                          { n: s.tracked, of: s.checked })}
+                      {/* Name and its chips share the first line (the chips
+                          used to take a line of their own on phones). */}
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 truncate">{s.label}</span>
+                        {s.pixel > 0 && (
+                          <Tag tone="review" className="shrink-0">
+                            {t("tracker.tag_pixel")}</Tag>
+                        )}
+                        {s.click > 0 && (
+                          <Tag tone="info" className="shrink-0">
+                            {t("tracker.tag_click")}</Tag>
+                        )}
                       </span>
-                      {s.hosts.length > 0 && (
-                        <span className="block truncate type-meta text-muted">
-                          {s.hosts.join(", ")}
+                      <span className="flex gap-1 type-meta text-muted">
+                        <span className="shrink-0">
+                          {t("tracker.sender_meta", { tracked: s.tracked,
+                            of: s.checked, count: s.checked })}
                         </span>
-                      )}
-                    </span>
-                    {/* Phones: the pills take their own line under the text
-                        instead of squeezing it. */}
-                    <span className="flex shrink-0 flex-wrap justify-end gap-1
-                      max-sm:order-last max-sm:basis-full max-sm:justify-start
-                      max-sm:pl-13">
-                      {s.pixel > 0 && (
-                        <Tag tone="review">{t("tracker.tag_pixel")}</Tag>
-                      )}
-                      {s.click > 0 && (
-                        <Tag tone="info">{t("tracker.tag_click")}</Tag>
-                      )}
+                        {s.hosts.length > 0 && (<>
+                          <span aria-hidden className="shrink-0">·</span>
+                          <span className="min-w-0 truncate">
+                            {s.hosts.join(", ")}
+                          </span>
+                        </>)}
+                      </span>
                     </span>
                     <ChevronRight size={16} aria-hidden
                       className="shrink-0 text-faint" />
@@ -231,6 +238,15 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
                 </li>
               ))}
             </ul>
+            {rep.top_senders.length > TOP_SENDERS && (
+              <div className="px-3 pt-1">
+                <Button variant="plain" size="sm" aria-expanded={showAllSenders}
+                  onClick={() => setShowAllSenders((v) => !v)}>
+                  {showAllSenders ? t("stats.show_less")
+                    : t("stats.show_all", { n: rep.top_senders.length })}
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {rep.top_senders.length === 0 && (

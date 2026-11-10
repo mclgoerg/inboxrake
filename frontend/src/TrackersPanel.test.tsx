@@ -81,6 +81,57 @@ test("data: headline share, numbers, senders, hosts and the explainer",
       .toBeNull();
   });
 
+const many = (n: number) => Array.from({ length: n }, (_, i) => ({
+  key: `s${i}@track.example`, label: `Sender ${i + 1}`, checked: 3,
+  tracked: 3, pixel: 3, click: i === 0 ? 2 : 0, hosts: ["pix.example"] }));
+
+test("the senders list shows the top 6 and a Show all N for the rest",
+  async () => {
+    trackers.mockResolvedValue(rep({ top_senders: many(9) }));
+    show();
+    await screen.findByText("Sender 1");
+    expect(screen.getByText("Sender 6")).toBeTruthy();
+    expect(screen.queryByText("Sender 7")).toBeNull();
+    const all = screen.getByRole("button", { name: "Show all 9" });
+    expect(all.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(all);
+    expect(screen.getByText("Sender 9")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.queryByText("Sender 7")).toBeNull();
+  });
+
+test("six senders or fewer: no Show all", async () => {
+  trackers.mockResolvedValue(rep({ top_senders: many(6) }));
+  show();
+  await screen.findByText("Sender 6");
+  expect(screen.queryByRole("button", { name: /^Show all \d/ })).toBeNull();
+});
+
+test("a sender row keeps its chips on the name line and reads the plural "
+  + "from the total", async () => {
+  trackers.mockResolvedValue(rep({ top_senders: [
+    { key: "a@one.example", label: "One Mail", checked: 1, tracked: 1,
+      pixel: 1, click: 1, hosts: ["pix.example"] },
+    { key: "b@two.example", label: "Two Mails", checked: 5, tracked: 1,
+      pixel: 1, click: 0, hosts: [] }] }));
+  show();
+  const row = (await screen.findByRole("button",
+    { name: "Show mails from One Mail" }));
+  // chips beside the name, the count line is one line with the hosts
+  const nameLine = screen.getByText("One Mail").parentElement!;
+  expect(nameLine.textContent).toContain("opens");
+  expect(nameLine.textContent).toContain("clicks");
+  expect(row.textContent).toContain("1 of 1\u00a0mail tracked");
+  expect(screen.getByRole("button", { name: "Show mails from Two Mails" })
+    .textContent).toContain("1 of 5\u00a0mails tracked");
+  setLang("de");
+  cleanup();
+  show();
+  expect((await screen.findByRole("button",
+    { name: "Mails von One Mail anzeigen" })).textContent)
+    .toContain("1 von 1\u00a0Mail mit Tracking");
+});
+
 test("tapping a sender hands its address to the caller", async () => {
   trackers.mockResolvedValue(rep());
   show();
