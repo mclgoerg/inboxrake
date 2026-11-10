@@ -258,6 +258,14 @@ html[data-theme="light"] {
   }
 }
 
+/* Hatched fill of an estimated bar (Overview balance chart): lighter than
+   the solid accent, never colour alone. */
+@utility bar-estimate {
+  background-image: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--color-accent) 55%, transparent) 0 4px,
+    color-mix(in srgb, var(--color-accent) 32%, transparent) 4px 8px);
+}
+
 /* Covers body's top padding strip (safe area + 8px): the scroll container
    is body, so the sticky table header sticks below that strip and rows
    would show above it. Fixed + click-through, so it never blocks taps; the

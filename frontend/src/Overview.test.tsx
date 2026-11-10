@@ -120,6 +120,151 @@ test("the balance card: size, counts, trend pill and 8 labelled columns",
   
 });
 
+const bars = (col: HTMLElement) => Array.from(
+  col.querySelectorAll<HTMLElement>("span[style]")).map((b) => b.style.height);
+
+test("two rows, each on its own scale: arrived on top, cleaned below",
+  async () => {
+  audit.mockResolvedValue({ total: 2, entries: [
+    entry(NOW - 1 * DAY, 4), entry(NOW - 20 * DAY, 3)] });
+  show();
+  const card = await chart();
+  const cols = await columns();
+  await waitFor(() => expect(cols[7].getAttribute("aria-label"))
+    .toContain("4 cleaned"));
+  // the biggest arrival fills its row, the biggest cleanup fills its own
+  expect(bars(cols[7])).toEqual(["100%", "100%"]);
+  expect(bars(cols[5]).map(parseFloat)[0]).toBeCloseTo(24.69, 1);
+  expect(bars(cols[5])[1]).toBe("75%");
+  // a week without a cleanup is a short faint line, not a bar
+  expect(bars(cols[0]).map(parseFloat)[0]).toBeCloseTo(12.35, 1);
+  expect(bars(cols[0])).toHaveLength(1);
+  expect(cols[0].querySelector(".h-0\\.5")).not.toBeNull();
+  // the left labels carry each row's total
+  expect(card.getByText("241")).toBeTruthy();
+  expect(card.getByText("7")).toBeTruthy();
+  expect(card.getByText("arrived")).toBeTruthy();
+  expect(card.getByText("cleaned")).toBeTruthy();
+  expect(card.queryByText("you cleaned")).toBeNull();
+});
+
+test("estimated arrivals are hatched and the arrived total says ~", async () => {
+  overview.mockResolvedValue(resp({ weeks_estimated: [true, true, true, true,
+    true, true, false, false] }));
+  show();
+  const card = await chart();
+  const cols = await columns();
+  expect(cols[0].querySelector(".bar-estimate")).not.toBeNull();
+  expect(cols[7].querySelector(".bar-estimate")).toBeNull();
+  expect(card.getByText("~241")).toBeTruthy();
+  // the note keeps its second sentence
+  expect(card.getByText(/^Lighter bars are estimates from the mails still in your mailbox\. Mails you cleaned before the weekly count started are missing\.$/))
+    .toBeTruthy();
+});
+
+test("the cleaned row stays empty while the audit log is missing", async () => {
+  audit.mockRejectedValue(new Error("nope"));
+  show();
+  const card = await chart();
+  const cols = await columns();
+  expect(bars(cols[7])).toEqual(["100%"]);
+  expect(cols[7].querySelectorAll(".h-0\\.5")).toHaveLength(0);
+  expect(card.getByText("–")).toBeTruthy();
+});
+
+test("a floored cleaned total says at least; week dates sit under the columns",
+  async () => {
+  audit.mockImplementation((offset: number, limit: number) => Promise.resolve({
+    total: 100000, entries: Array.from({ length: limit }, (_, i) =>
+      entry(NOW - DAY - offset - i, 1)) }));
+  show();
+  const card = await chart();
+  const cols = await columns();
+  await waitFor(() => expect(cols[0].getAttribute("aria-label"))
+    .toContain("at least"));
+  expect(card.getByText(/^≥ \d/)).toBeTruthy();
+  const d = new Date((NOW - 8 * 7 * DAY) * 1000);
+  expect(within(cols[0]).getByText(new Intl.DateTimeFormat("en-GB",
+    { day: "numeric", month: "short" }).format(d))).toBeTruthy();
+  expect(within(cols[7]).getByText("this week")).toBeTruthy();
+  // phones: the span in one line below the columns
+  expect(card.getByText("8 weeks ago")).toBeTruthy();
+});
+
+test("week labels never carry a year, even around New Year", async () => {
+  const jan = Math.floor(Date.UTC(2027, 0, 12, 12) / 1000);
+  overview.mockResolvedValue(resp({ now: jan }));
+  show();
+  const cols = await columns();
+  // the first week starts mid-November, the third one in late December
+  expect(within(cols[2]).getByText(/^\d{1,2} Dec$/)).toBeTruthy();
+  cols.slice(0, 7).forEach((c) =>
+    expect(c.textContent).not.toMatch(/20\d\d/));
+});
+
+test("a week with only cleanups, and a mailbox with no activity at all",
+  async () => {
+  overview.mockResolvedValue(resp({ weeks: [10, 20, 30, 25, 15, 20, 0, 81],
+    weeks_in_mailbox: [10, 20, 30, 25, 15, 20, 0, 81] }));
+  audit.mockResolvedValue({ total: 1, entries: [entry(NOW - 12 * DAY, 5)] });
+  show();
+  let cols = await columns();
+  await waitFor(() => expect(cols[6].getAttribute("aria-label"))
+    .toContain("5 cleaned"));
+  // arrived 0: its row shows the faint line, the cleaned row the full bar
+  expect(cols[6].querySelectorAll(".h-0\\.5")).toHaveLength(1);
+  expect(bars(cols[6])).toEqual(["100%"]);
+  cleanup();
+  overview.mockResolvedValue(resp({ weeks: [0, 0, 0, 0, 0, 0, 0, 0],
+    weeks_in_mailbox: [0, 0, 0, 0, 0, 0, 0, 0],
+    week: win({ mails: 0 }) }));
+  audit.mockResolvedValue({ total: 0, entries: [] });
+  show();
+  const card = await chart();
+  cols = await columns();
+  await waitFor(() => expect(cols[0].getAttribute("aria-label"))
+    .toContain("0 cleaned"));
+  cols.forEach((c) => {
+    expect(bars(c)).toEqual([]);                       // no bar, no NaN
+    expect(c.querySelectorAll(".h-0\\.5")).toHaveLength(2);
+  });
+  expect(card.getAllByText("0")).toHaveLength(2);
+});
+
+test("without next steps the kinds card spans both columns", async () => {
+  show({ groups: [rest] });
+  const kinds = await screen.findByRole("region",
+    { name: "What fills your inbox" });
+  expect(screen.queryByRole("region", { name: "Next steps" })).toBeNull();
+  expect(kinds.parentElement!.className).toContain("xl:col-span-2");
+});
+
+test("German chart words", async () => {
+  setLang("de");
+  show();
+  const card = within(await screen.findByRole("region",
+    { name: "Postfach-Bilanz" }));
+  expect(card.getByText("angekommen")).toBeTruthy();
+  expect(card.getByText("aufgeräumt")).toBeTruthy();
+  expect(card.getByText("Letzte 8 Wochen")).toBeTruthy();
+  expect(card.getByText("vor 8 Wochen")).toBeTruthy();
+});
+
+test("Last week and What fills your inbox share a column, as do the balance"
+  + " and the next steps; the page is not narrower than its header", async () => {
+  const { container } = show();
+  const last = (await screen.findByRole("region", { name: "Last week" }));
+  const kinds = screen.getByRole("region", { name: "What fills your inbox" });
+  const bal = screen.getByRole("region", { name: "Mailbox balance" });
+  const steps = screen.getByRole("region", { name: "Next steps" });
+  const col = (e: HTMLElement) => e.closest(".xl\\:flex-col");
+  expect(col(last)).not.toBeNull();
+  expect(col(last)).toBe(col(kinds));
+  expect(col(bal)).toBe(col(steps));
+  expect(col(bal)).not.toBe(col(last));
+  expect(container.querySelector(".max-w-5xl")).toBeNull();
+});
+
 test("estimated weeks say so: in their text, and in the footnote", async () => {
   overview.mockResolvedValue(resp({ weeks_estimated: [true, true, true, true,
     true, true, false, false] }));

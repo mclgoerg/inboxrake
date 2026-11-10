@@ -248,25 +248,47 @@ export function Overview(p: OverviewProps) {
   const biggest = top[0]?.size || 1;
 
   return (
-    <div className="mx-auto max-w-5xl pb-6">
+    <div className="pb-6">
+      {/* From 1280 two columns that stack on their own (so a short card
+          leaves no gap under it); below, one column in the order Balance,
+          Last week, Next steps, Kinds (the wrappers vanish, `order` sorts). */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4
-        xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <BalanceCard accountLine={p.accountLine} size={totals.size}
-          mails={totals.mails} senders={totals.senders} trend={trend}
-          data={data} cleaned={cleaned} cleanedFloor={cleanedFloor}
-          failed={failed} onRetry={retry} />
-        <LastWeekCard data={data} since={since} range={range}
-          onRange={setRange} junk={p.junk} failed={failed} onRetry={retry}
-          onOpenAllMail={p.onOpenAllMail} onOpenNew={p.onOpenNewSenders}
-          onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
-          onOpenAi={p.onOpenAiVerdicts} />
-        {cards.length > 0 && (
-          <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
-            onReview={p.onReview} onReviewMany={p.onReviewMany}
-            onCleanUp={p.onCleanUp} />
+        xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-start">
+        <div className="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
+          <BalanceCard accountLine={p.accountLine} size={totals.size}
+            mails={totals.mails} senders={totals.senders} trend={trend}
+            data={data} cleaned={cleaned} cleanedFloor={cleanedFloor}
+            failed={failed} onRetry={retry} />
+          {cards.length > 0 && (
+            <div className="max-xl:order-2">
+              <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
+                onReview={p.onReview} onReviewMany={p.onReviewMany}
+                onCleanUp={p.onCleanUp} />
+            </div>
+          )}
+        </div>
+        <div className="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
+          <div className="max-xl:order-1">
+            <LastWeekCard data={data} since={since} range={range}
+              onRange={setRange} junk={p.junk} failed={failed}
+              onRetry={retry}
+              onOpenAllMail={p.onOpenAllMail} onOpenNew={p.onOpenNewSenders}
+              onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
+              onOpenAi={p.onOpenAiVerdicts} />
+          </div>
+          {cards.length > 0 && (
+            <div className="max-xl:order-3">
+              <KindsCard data={data} failed={failed} onRetry={retry} />
+            </div>
+          )}
+        </div>
+        {/* without Next steps the left column is just the balance: the kinds
+            card takes the second row across both columns */}
+        {cards.length === 0 && (
+          <div className="max-xl:order-3 xl:col-span-2">
+            <KindsCard data={data} failed={failed} onRetry={retry} />
+          </div>
         )}
-        <KindsCard data={data} failed={failed} onRetry={retry}
-          className={cards.length > 0 ? "" : "xl:col-span-2"} />
       </div>
 
       <Section title={t("overview.biggest")}>

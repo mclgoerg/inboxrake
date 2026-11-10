@@ -134,8 +134,8 @@ test("the suggestions list the cards, the hero the union size", async () => {
   const cards = screen.getAllByTestId("qw-card");
   expect(cards).toHaveLength(2);
   expect(cards[0].textContent).toContain("Quiet senders");   // 10 MB first
-  expect(cards[0].textContent).toContain("30 mails - 10.0 MB");
-  expect(cards[1].textContent).toContain("20 mails - 6.0 MB");
+  expect(cards[0].textContent).toContain("30 mails · 10.0 MB");
+  expect(cards[1].textContent).toContain("20 mails · 6.0 MB");
   expect(cards[0].textContent).toContain("1 protected skipped");
   expect(screen.getByText(/Up to 16\.0 MB can go/)).toBeTruthy();
 });
@@ -243,7 +243,7 @@ test("phones: Suggestions are a compact list; the row is Review, More holds " +
     await ready();
     const rows = screen.getAllByTestId("qw-card");
     expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toContain("30 mails - 10.0 MB");
+    expect(rows[0].textContent).toContain("30 mails · 10.0 MB");
     expect(within(rows[0]).queryByRole("button", { name: "Not now" })).toBeNull();
     fireEvent.click(within(rows[0]).getByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Not now" }));
