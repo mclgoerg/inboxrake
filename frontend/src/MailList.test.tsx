@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "./i18n";
 import type { Mail } from "./types";
+import { mailKey } from "./api";
 
 import { MailRows } from "./components/MailList";
 
@@ -52,5 +53,50 @@ describe("MailRows", () => {
     ]} sel={new Set()} onToggle={noop} onOpen={noop} />);
     expect(screen.getByText("INBOX · 1,000 B")).toBeTruthy();
     expect(screen.getByText("Archive · 1,000 B")).toBeTruthy();
+  });
+
+  describe("paging and month headings (sender detail)", () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => mk(i + 1, {
+      date: i < 3 ? "2026-09-20" : "2026-08-10" }));
+
+    it("heads each month with its count, counting mails not shown yet", () => {
+      render(<MailRows mails={many(150)} pageSize={100} byMonth
+        sel={new Set()} onToggle={noop} onOpen={noop} />);
+      expect(screen.getByText("September 2026 · 3 mails")).toBeTruthy();
+      // August has 147 mails, 97 of them rendered
+      expect(screen.getByText("August 2026 · 147 mails")).toBeTruthy();
+      expect(screen.getAllByText(/^Mail \d+$/)).toHaveLength(100);
+    });
+
+    it("shows 100 at a time and says how many are left", () => {
+      render(<MailRows mails={many(250)} pageSize={100} byMonth
+        sel={new Set()} onToggle={noop} onOpen={noop} />);
+      const more = () => screen.getByRole("button",
+        { name: /Show \d+ more/ });
+      expect(more().textContent).toBe("Show 100 more · 150 left");
+      fireEvent.click(more());
+      expect(screen.getAllByText(/^Mail \d+$/)).toHaveLength(200);
+      expect(more().textContent).toBe("Show 50 more · 50 left");
+      fireEvent.click(more());
+      expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
+    });
+
+    it("renders a selected mail beyond the first page, so no selection "
+      + "is out of sight", () => {
+      const ms = many(250);
+      const { rerender } = render(<MailRows mails={ms} pageSize={100} byMonth
+        sel={new Set()} onToggle={noop} onOpen={noop} />);
+      expect(screen.queryByText("Mail 230")).toBeNull();
+      rerender(<MailRows mails={ms} pageSize={100} byMonth onToggle={noop}
+        onOpen={noop} sel={new Set(ms.map(mailKey))} />);
+      expect(screen.getByText("Mail 230")).toBeTruthy();
+      expect(screen.getAllByText(/^Mail \d+$/)).toHaveLength(250);
+    });
+
+    it("has no headings unless asked (size sort, other lists)", () => {
+      render(<MailRows mails={many(5)} sel={new Set()} onToggle={noop}
+        onOpen={noop} />);
+      expect(screen.queryByRole("heading")).toBeNull();
+    });
   });
 });

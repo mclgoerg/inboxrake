@@ -155,7 +155,7 @@ test("the account menu has no Empty Trash (it lives on the Trash page)",
 
 const openTrashPanel = async (n = 5) => {
   openTool("Clean up", /^Trash/);
-  return screen.findByRole("button", { name: `Empty Trash · ${n}` });
+  return screen.findByRole("button", { name: `Empty Trash (${n})` });
 };
 
 test("Empty Trash uses the Trash page's LIVE total, not the stale state count",

@@ -881,7 +881,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         {!shown && !error && <Loading />}
         {shown && (
           <MailRows mails={shown} sel={sel} onToggle={toggle}
-            onOpen={setView} onPin={togglePin}
+            onOpen={setView} onPin={togglePin} pageSize={100} spread
+            byMonth={sortBy === "date"}
             swipe={{ trash: (m) => actOn([m], "trash", "", true),
               read: (m) => actOn([m], "mark_read", "", true) }} />
         )}

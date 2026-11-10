@@ -1,9 +1,10 @@
 import { Ban, Inbox, RefreshCw, Search, ShieldAlert, Trash2, TriangleAlert,
   Undo2, UserCheck } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { accountGuard } from "../accountGuard";
 import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
+import { dayHeading, groupByDate } from "../dayGroups";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
@@ -391,6 +392,35 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   const title = junk ? t("Junk") : t("Trash");
   const hasRows = !!list && list.total > 0;
   const rowBtn = "max-sm:min-h-11 max-sm:coarse:min-h-11";
+  // Restore: an icon on phones (the aria-label names the mail), icon + word
+  // from sm up.
+  const restoreButton = (m: Mail) => (
+    <span className="flex items-center max-sm:pr-1">
+      <Button size="sm" variant="tinted" disabled={busy}
+        className="max-sm:size-11 max-sm:rounded-full max-sm:p-0"
+        aria-label={t("fp.row_action", {
+          action: t("fp.restore"), who: m.subject || t("(no subject)") })}
+        onClick={() => void restore(inbox!, [m.uid], true)}>
+        <Undo2 size={14} aria-hidden
+          className="inline align-text-bottom sm:mr-1 max-sm:size-[18px]" />
+        <span className="sr-only sm:not-sr-only">{t("fp.restore")}</span>
+      </Button>
+    </span>
+  );
+  // Trash on phones: the mails under Today / Yesterday / date headings.
+  const mailRows = (list: Mail[], row: (m: Mail) => ReactNode) => {
+    if (wide) return list.map(row);
+    return groupByDate(list, (m) => m.date || "", 10).map((g) => (
+      <section key={g.key || "none"}
+        aria-label={dayHeading(g.key) || undefined}>
+        {g.key && (
+          <h3 className="border-b border-line/60 bg-panel2 px-4 py-1.5
+            type-section text-muted">{dayHeading(g.key)}</h3>
+        )}
+        {g.items.map(row)}
+      </section>
+    ));
+  };
   return (
     <Modal onClose={onClose} size="lg" full>
       <PanelHeader
@@ -581,7 +611,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       meta={[t("n.mails", { n: g.count }), fmtSize(g.size)]
                         .join(" · ")} />
                   ))
-                  : shownMails?.map((m) => (
+                  : mailRows(shownMails ?? [], (m) => (
                     <MailRow key={mailKey(m)} checked={sel.has(m.uid)}
                       onToggle={selecting ? () => toggle([m.uid]) : undefined}
                       onOpen={() => setView(m)}
@@ -590,18 +620,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       selectLabel={t("select.named",
                         { subject: m.subject || t("(no subject)") })}
                       meta={[m.addr, fmtSize(m.size)].join(" · ")}
-                      trailing={!junk && inbox && !selecting ? (
-                        <span>
-                          <Button size="sm" variant="tinted" disabled={busy}
-                            aria-label={t("fp.row_action", {
-                              action: t("fp.restore"),
-                              who: m.subject || t("(no subject)") })}
-                            onClick={() => void restore(inbox, [m.uid], true)}>
-                            <Undo2 size={14} className="mr-1 inline align-text-bottom" />
-                            {t("fp.restore")}
-                          </Button>
-                        </span>
-                      ) : undefined} />
+                      trailing={!junk && inbox && !selecting
+                        ? restoreButton(m) : undefined} />
                   ))}
               </div>
             )}
@@ -612,8 +632,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             )}
           </div>
           {list && list.total > 0 && (
-            <div className="grid grid-cols-2 gap-2 border-t border-line px-4
-              py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
+            <div className="grid grid-cols-[auto_1fr] gap-2 border-t border-line
+              px-4 py-2 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]
               sm:flex sm:justify-end">
               {blocked && (
                 <p id="fp-ambiguous-reason" className="col-span-2 type-meta
@@ -622,19 +642,22 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                 </p>
               )}
               <Button variant="secondary" disabled={busy || blocked}
-                className={rowBtn} aria-describedby={describedBy}
+                className={`${rowBtn} whitespace-nowrap`}
+                aria-describedby={describedBy}
                 onClick={() => void purgeOlder()}>
                 {t("fp.older")}
               </Button>
               {junk ? (
                 <Button variant="danger-tint" disabled={busy || blocked}
-                  className={rowBtn} aria-describedby={describedBy}
+                  className={`${rowBtn} whitespace-nowrap`}
+                  aria-describedby={describedBy}
                   onClick={() => void purge({ everything: true })}>
                   {t("fp.empty_junk", { n: list.total })}
                 </Button>
               ) : (
                 <Button variant="danger-tint" disabled={busy || blocked}
-                  className={rowBtn} aria-describedby={describedBy}
+                  className={`${rowBtn} whitespace-nowrap`}
+                  aria-describedby={describedBy}
                   onClick={async () => {
                     if (await onEmptyTrash(list)) load();
                   }}>

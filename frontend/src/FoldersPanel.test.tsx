@@ -146,7 +146,7 @@ test("the bottom bar's Empty Trash runs the shared handler and reloads the list"
     panel({ state: { ...state, trash_count: 1 } as AppState, onEmptyTrash });
     await screen.findByText("Deleted elsewhere");
     // the panel's own listing total, not the (possibly stale) state count
-    fireEvent.click(screen.getByRole("button", { name: "Empty Trash · 7" }));
+    fireEvent.click(screen.getByRole("button", { name: "Empty Trash (7)" }));
     await waitFor(() => expect(onEmptyTrash).toHaveBeenCalledWith(
       expect.objectContaining({ total: 7, uv: 1, max_uid: 77 })));
   });
@@ -163,7 +163,9 @@ test("rows are MailRows; Select mode shows the boxes, the restore pop-up needs a
     panel();
     await screen.findByText("Deleted elsewhere");
     expect(screen.getByText("old@gone.example · 1 KB")).toBeTruthy();
-    expect(screen.getByText("2 Jan").getAttribute("title")).toBe("2026-01-02");
+    // (on a phone the day also heads its group: the row's date is the <time>)
+    expect(screen.getAllByText("2 Jan").find((e) => e.tagName === "TIME")!
+      .getAttribute("title")).toBe("2026-01-02");
     expect(screen.getByText("unread")).toBeTruthy();   // seen: false
     expect(screen.queryByRole("checkbox")).toBeNull();  // only in Select mode
     await selectMode();
@@ -245,7 +247,7 @@ test("the page follows the route: initialRole switches the folder", async () => 
   expect(foldersPanel).toHaveBeenLastCalledWith("junk");
   // Empty Trash belongs to Trash only
   expect(screen.queryByRole("button", { name: /Empty Trash/ })).toBeNull();
-  expect(screen.getByRole("button", { name: "Empty Junk · 3" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Empty Junk (3)" })).toBeTruthy();
 });
 
 test("Junk: one row per sender with count, size and first seen",
@@ -677,4 +679,31 @@ test("two ambiguous roles get one combined notice with one button, and a "
   const empty = screen.getByRole("button", { name: /Empty Junk/ });
   expect(empty.getAttribute("aria-describedby")).toBe(reason.id);
   expect(empty.getAttribute("title")).toBeNull();
+});
+
+test("Trash on a phone: mails under Today / Yesterday / date, one icon "
+  + "restore per row that names its mail", async () => {
+  const day = (back: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - back);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  const mail = (uid: number, date: string, subject: string) => ({
+    uid, folder: "Trash", date, ts: uid, subject, addr: "a@b.example",
+    size: 700, seen: true, ai: null });
+  foldersPanel.mockResolvedValue({ folder: "Trash", uv: 1, total: 3, max_uid: 9,
+    mails: [mail(3, day(0), "Fresh one"), mail(2, day(1), "Older one"),
+      mail(1, "2025-03-02", "Ancient one")],
+    senders: [] });
+  trashRestore.mockResolvedValue({ restored: 1, rescan: false });
+  panel();
+  await screen.findByText("Fresh one");
+  expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
+    .toEqual(["Today", "Yesterday", "2 Mar 2025"]);
+  // the same restore as before, named after its mail (the word is for
+  // screen readers on a phone)
+  const btn = screen.getByRole("button", { name: "Restore: Older one" });
+  fireEvent.click(btn);
+  await waitFor(() => expect(trashRestore).toHaveBeenCalledWith([2], "INBOX", 1));
 });

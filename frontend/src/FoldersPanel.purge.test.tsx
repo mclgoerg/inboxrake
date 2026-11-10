@@ -257,7 +257,7 @@ test("bottom bar: Empty Junk · n next to Delete older than, Trash keeps Empty T
     panel("junk");
     await screen.findByText("win@lottery.example");
     expect(screen.queryByRole("button", { name: /Empty Trash/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Empty Junk · 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Empty Junk (3)" }));
     await waitFor(() => expect(purgePreview).toHaveBeenCalledWith("junk",
       { everything: true }));
     const dlg = await findDialog();
@@ -267,7 +267,7 @@ test("bottom bar: Empty Junk · n next to Delete older than, Trash keeps Empty T
       "junk", [40, 41, 42], 4, "Spam", "Trash"));
     cleanup();
     panel("trash");
-    expect(await screen.findByRole("button", { name: "Empty Trash · 3" }))
+    expect(await screen.findByRole("button", { name: "Empty Trash (3)" }))
       .toBeTruthy();
     expect(screen.queryByRole("button", { name: /Empty Junk/ })).toBeNull();
   });
@@ -432,7 +432,7 @@ test("German strings", async () => {
     skipped_pinned: 1 }));
   panel("junk");
   await screen.findByText("win@lottery.example");
-  expect(screen.getByRole("button", { name: "Spam leeren · 3" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Spam leeren (3)" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Ältere löschen…" })).toBeTruthy();
   await pick("win@lottery.example auswählen");
   popupPick(screen.getByRole("button", { name: "Aktion…" }),

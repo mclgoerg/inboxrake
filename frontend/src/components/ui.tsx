@@ -2384,16 +2384,20 @@ export function ShortDate({ iso, className = "", time = false }: {
  *  for rows without selection. */
 export function MailRow({ checked = false, onToggle, unread = false, subject,
   meta, dateIso, dateTime = false, trailing, onOpen, selected = false,
-  pinned = false, selectLabel }: {
+  pinned = false, selectLabel, spread = false }: {
   checked?: boolean; onToggle?: () => void; unread?: boolean;
   subject: ReactNode; meta?: ReactNode; dateIso?: string; dateTime?: boolean;
   trailing?: ReactNode;
   onOpen?: () => void; selected?: boolean; pinned?: boolean;
   selectLabel?: string;
+  /** Tablet widths (640-1023 px): date and meta at the right edge on the
+   *  subject's line instead of a second line under it. */
+  spread?: boolean;
 }) {
   const text = (
-    <>
-      <span className="flex min-w-0 items-center gap-1.5">
+    <span className={spread ? "block sm:max-lg:flex sm:max-lg:items-center sm:max-lg:gap-4" : "contents"}>
+      <span className={`flex min-w-0 items-center gap-1.5 ${spread
+        ? "sm:max-lg:flex-1" : ""}`}>
         {unread && (
           <>
             <span aria-hidden className="inline-block size-2 shrink-0
@@ -2407,8 +2411,8 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
           : "font-medium md:font-medium"}`}>{subject}</span>
       </span>
       {(!!dateIso || (meta != null && meta !== "")) && (
-        <span className="mt-0.5 flex min-w-0 items-center gap-1.5 type-meta
-          text-muted">
+        <span className={`mt-0.5 flex min-w-0 items-center gap-1.5 type-meta
+          text-muted ${spread ? "sm:max-lg:mt-0 sm:max-lg:shrink-0" : ""}`}>
           {!!dateIso && <ShortDate iso={dateIso} time={dateTime} />}
           {!!dateIso && meta != null && meta !== "" && (
             <span aria-hidden>·</span>
@@ -2417,7 +2421,7 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
             ? <span className="min-w-0 truncate">{meta}</span> : meta}
         </span>
       )}
-    </>
+    </span>
   );
   return (
     <div data-pinned={pinned ? "true" : undefined}
