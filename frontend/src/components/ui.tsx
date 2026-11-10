@@ -247,9 +247,12 @@ export function PinButton({ on, onClick, className = "", showLabel }: {
  *  hover, and the bars alone don't say what they are. The title tooltip
  *  stays for desktop hover. Neutral accent tint on purpose - the emerald/
  *  amber/rose hues mean delete-safe/review/keep elsewhere. */
-export function EngagementMeter({ g }: {
+export function EngagementMeter({ g, labelled = false }: {
   g: { engagement: number; count: number; unread: number; replied: boolean;
        bulk: boolean; last: string };
+  /** A pill that names the tier ("Low engagement") instead of the lone bars;
+   *  the tip moves to the tooltip / description, the popover is the same. */
+  labelled?: boolean;
 }) {
   const { open, setOpen, alignRight, ref, pop } = usePopover();
   const tier = engagementTier(g.engagement);
@@ -266,18 +269,27 @@ export function EngagementMeter({ g }: {
     parts: parts.join(", ") });
   return (
     <span ref={ref} className="relative inline-block">
-      <button type="button" title={tip} aria-label={tip} aria-expanded={open}
-        data-eng={tier}
+      <button type="button" title={tip} aria-label={labelled ? undefined : tip}
+        aria-expanded={open} data-eng={tier}
         // Rows are tap targets themselves (open the detail view) - this
         // one only explains the score.
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="inline-flex min-h-6 min-w-6 cursor-pointer items-end
-          gap-0.5 rounded px-0.5 pb-1 hover:bg-chip">
-        {[1, 2, 3].map((i) => (
-          <span key={i} data-lit={i <= lit ? "true" : "false"}
-            style={{ height: `${4 + i * 3}px` }}
-            className={`w-1 rounded-sm ${i <= lit ? "bg-accent" : "bg-chip"}`} />
-        ))}
+        className={labelled
+          ? `inline-flex min-h-6 cursor-pointer items-center gap-1.5
+            rounded-full bg-chip px-2 py-0.5 type-caption text-body
+            hover:bg-chiph`
+          : `inline-flex min-h-6 min-w-6 cursor-pointer items-end gap-0.5
+            rounded px-0.5 pb-1 hover:bg-chip`}>
+        <span aria-hidden={labelled || undefined}
+          className="inline-flex items-end gap-0.5">
+          {[1, 2, 3].map((i) => (
+            <span key={i} data-lit={i <= lit ? "true" : "false"}
+              style={{ height: `${4 + i * 3}px` }}
+              className={`w-1 rounded-sm ${i <= lit ? "bg-accent"
+                : labelled ? "bg-faint" : "bg-chip"}`} />
+          ))}
+        </span>
+        {labelled && t(`eng.tag_${tier}`)}
       </button>
       {open && (
         <div ref={pop} role="dialog" onClick={(e) => e.stopPropagation()}
