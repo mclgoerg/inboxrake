@@ -180,3 +180,20 @@ test("closing the popover returns focus to the trigger (Done and Esc)", () => {
   expect(screen.queryByText("Build a filter")).toBeNull();
   expect(document.activeElement).toBe(screen.getByTitle(/Build a filter/));
 });
+
+test("mailOnly offers only what the per-mail parser applies", () => {
+  const onChange = vi.fn();
+  render(<QueryBuilder value="" onChange={onChange} mailOnly open
+    onOpenChange={() => {}} />);
+  // no group-level conditions: tag, AI verdict, unread share, group flags
+  for (const name of ["Category", "AI verdict", "Unread ≥", "Only groups…",
+    "with unsubscribe link", "new senders"])
+    expect(screen.queryByText(name)).toBeNull();
+  // per-mail ones are there and add per-mail tokens
+  for (const name of ["Older than", "Size ≥", "Attachments ≥", "Only mails…"])
+    expect(screen.getByText(name)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "unread" }));
+  expect(onChange).toHaveBeenLastCalledWith("is:unread");
+  fireEvent.click(screen.getAllByRole("button", { name: "Add" })[1]);   // size
+  expect(onChange).toHaveBeenLastCalledWith("size:>5m");
+});

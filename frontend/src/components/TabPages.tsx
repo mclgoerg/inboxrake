@@ -252,10 +252,8 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
           <Tile icon={<Trash2 size={18} aria-hidden />}
             tone="bg-keep-bg text-keep-fg" label={t("role.trash")}
             value={state?.trash_count ?? null}
-            sub={state?.trash_count != null && state.trash_count > 0
-              ? [t("n.mails", { n: state.trash_count }),
-                ...(state.trash_size != null ? [fmtSize(state.trash_size)] : [])]
-                .join(" · ")
+            // The big number is the count: the sub-line adds the size.
+            sub={state?.trash_size ? `${t("tab.trash_sub")} · ${fmtSize(state.trash_size)}`
               : t("tab.trash_sub")}
             onClick={() => onOpen("trash")} />
         </li>

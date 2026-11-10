@@ -205,7 +205,7 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
                       <span className="block truncate">{s.label}</span>
                       <span className="block type-meta text-muted">
                         {t("tracker.sender_meta",
-                          { n: fmtNum(s.tracked), of: fmtNum(s.checked) })}
+                          { n: s.tracked, of: s.checked })}
                       </span>
                       {s.hosts.length > 0 && (
                         <span className="block truncate type-meta text-muted">

@@ -236,7 +236,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
         <FilterField value={q} onChange={setQ} token={null}
           inputRef={filterRef} placeholder={t("mails.filter")}
           hint={t("mails.filter_tip")}
-          builder={<QueryBuilder value={q} onChange={setQ} plain
+          builder={<QueryBuilder value={q} onChange={setQ} plain mailOnly
             label={t("qb.title")} />} />
       </div>
       <div className="min-w-0 flex-1 type-meta text-muted">
