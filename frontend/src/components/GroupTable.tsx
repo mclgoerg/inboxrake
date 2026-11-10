@@ -10,7 +10,7 @@ import { t } from "../i18n";
 import { fmtNum, fmtPct } from "../numfmt";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
-  isModalOpen, type SwipeAction, type TagTone } from "./ui";
+  isModalOpen, Meta, type SwipeAction, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
   | "engagement";
@@ -165,16 +165,14 @@ const VERDICT_PILL: Record<string, TagTone> = {
   delete_safe: "safe", review: "review", keep: "keep",
 };
 
-/** Two unbreakable halves: on a narrow row the line breaks after the dot,
- *  never inside "zuletzt 25. Nov. 2025" (which ran into the count column). */
+/** Two unbreakable halves (`Meta`): on a narrow row the line breaks between
+ *  them, never inside "zuletzt 25. Nov. 2025" (which ran into the count
+ *  column) and never after the dot. */
 const Stats = ({ g }: { g: Group }) => (
-  <>
-    <span className="whitespace-nowrap">{fmtPct(unreadPct(g))} {t("unread")} ·</span>
-    {" "}
-    <span className="whitespace-nowrap">
-      {t("row.last")} <ShortDate iso={g.last} />
-    </span>
-  </>
+  <Meta items={[
+    `${fmtPct(unreadPct(g))} ${t("unread")}`,
+    <>{t("row.last")} <ShortDate iso={g.last} /></>,
+  ]} />
 );
 
 /** The desktop row's one meta line: the sub (address, Smart summary...)

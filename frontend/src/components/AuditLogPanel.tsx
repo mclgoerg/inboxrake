@@ -199,10 +199,11 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
               onClick={() => setWhy((v) => !v)}
               className="rounded-control px-1 text-accent hover:underline
                 focus-visible:ring-2 focus-visible:ring-accent
-                coarse:min-h-11">
+                coarse:-my-3 coarse:min-h-11">
               {t("audit.why")}
             </button>
           </>)}
+          {retry}
         </span>
       </span>
       <span className="col-start-2 row-start-3 min-w-0 empty:hidden
@@ -219,7 +220,6 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
             </Tag>
           </span>
         )}
-        {retry}
       </span>
     </li>
   );
@@ -281,7 +281,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
       ? retryableGroup(groups, e.label) : null;
     if (!g) return null;
     return (
-      <Button variant="secondary" size="sm" className="mt-2 coarse:min-h-11"
+      <Button variant="tinted" size="sm" className="coarse:-my-3 coarse:min-h-11"
         disabled={retrying}
         onClick={async () => {
           setRetrying(true);

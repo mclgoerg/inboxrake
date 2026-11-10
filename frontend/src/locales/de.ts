@@ -585,9 +585,9 @@ export const DE: Record<string, string> = {
   "rule.seg_report": "Nur Bericht",
   "rule.seg_active": "Aktiv",
   "rule.sent_mail":
-    "Wenn Gruppen nach {grouping} zu {filter} passen, dann {action}{retention}\u00a0· {schedule}",
+    "Wenn Gruppen nach {grouping} zu {filter} passen, dann {action}{retention} {schedule}",
   "rule.sent_purge":
-    "Wenn Gruppen nach {grouping} im {scope} zu {filter} passen, dann {action}{retention}\u00a0· {schedule}",
+    "Wenn Gruppen nach {grouping} im {scope} zu {filter} passen, dann {action}{retention} {schedule}",
   "rule.row_when": "Gruppen nach",
   "rule.mid_in": "im",
   "rule.row_grouped": "Gruppiert nach",
@@ -1574,8 +1574,6 @@ export const DE: Record<string, string> = {
   "menu.done": "Fertig",
   "menu.signin_failed": "Anmeldung fehlgeschlagen - beheben",
   "menu.signin_missing": "Nicht angemeldet - einrichten",
-  "menu.mails_size": "{n}\u00a0Mails · {size}",
-  "menu.mails_size_one": "1\u00a0Mail · {size}",
   "update.available": "Eine neue Version von Inboxrake ist verfügbar.",
   "update.reload": "Neu laden",
   "menu.version": "v{version} (Build {id})",

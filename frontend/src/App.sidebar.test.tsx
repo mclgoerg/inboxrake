@@ -365,8 +365,9 @@ test(">= 1024: Senders has the page header - title, scanned subtitle, "
   for (const seg of ["Sender", "Smart", "Subject", "Thread"])
     expect(inHeader.getByRole("tab", { name: seg })).toBeTruthy();
   // the status line keeps its counts, without repeating when it was scanned
-  const line = await screen.findByText(/^\d+ groups? · /);
-  expect(line.textContent).not.toMatch(/scanned/);
+  const first = await screen.findByText(/^\d+ groups?$/);
+  expect(first.parentElement!.textContent).toMatch(/^\d+\u00a0groups? · /);
+  expect(first.parentElement!.textContent).not.toMatch(/scanned/);
 });
 
 test("keyboard shortcuts act only on the senders page", async () => {

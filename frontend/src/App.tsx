@@ -4,7 +4,8 @@ import { Archive, BellOff, ChevronDown, ChevronsUpDown,
   MoreHorizontal, RefreshCw, Search, Sparkles, Star,
   Undo2, User, Wand2, X }
   from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode }
+  from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
@@ -49,7 +50,7 @@ import { focusSpecialFolders } from "./components/FolderSettings";
 import { FoldersPanel } from "./components/FoldersPanel";
 import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
-  Menu, MenuItem, Modal, Notice, ProgressBar,
+  Menu, MenuItem, Meta, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
   PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
@@ -1756,7 +1757,7 @@ export default function App() {
     : null;
 
   // Persistent summary only: results and errors are toasts.
-  const summary = (): string => {
+  const summary = (): ReactNode => {
     if (!state) return "";
     if (filter && !groups.length && allGroups.length)
       return t("status.filter_none", { n: allGroups.length });
@@ -1764,11 +1765,13 @@ export default function App() {
       const mails = groups.reduce((n, g) => n + g.count, 0);
       const size = groups.reduce((n, g) => n + g.size, 0);
       const ago = fmtAgo(state.scanned_ts);
-      return `${t("n.groups", { n: groups.length })} · ${t("n.mails", { n: mails })}`
-        + ` · ${fmtSize(size)}` + (filter ? ` ${t("(filtered)")}` : "")
+      return <Meta items={[
+        t("n.groups", { n: groups.length }), t("n.mails", { n: mails }),
+        filter ? `${fmtSize(size)} ${t("(filtered)")}` : fmtSize(size),
         // (the page header / top bar already says when it was scanned)
-        + (ago && !(phone && sendersToolbar) && !wide
-          ? ` · ${t("scan.age", { ago })}` : "");
+        ago && !(phone && sendersToolbar) && !wide
+          ? t("scan.age", { ago }) : "",
+      ]} />;
     }
     // the setup card is the guidance while there is no account or the
     // connection is unconfirmed
@@ -1810,7 +1813,7 @@ export default function App() {
           {n > 0 && (
             <span data-testid="cached-verdicts" className="text-faint"
               title={t("notice.cached_verdicts", { n })}>
-              {" · "}{t("status.cached_verdicts", { n })}
+              {" ·\u00a0"}{t("status.cached_verdicts", { n })}
             </span>
           )}
         </>
@@ -2198,8 +2201,7 @@ export default function App() {
         ? t("status.groups_of", { n: groups.length, total: allGroups.length })
         : t("n.groups", { n: groups.length })}</div>
       {/* a narrow phone breaks after the dot, never inside "227,4 MB" */}
-      <div><span className="whitespace-nowrap">{t("n.mails", { n: mails })} ·
-        </span>{" "}<span className="whitespace-nowrap">{fmtSize(size)}</span></div>
+      <div><Meta items={[t("n.mails", { n: mails }), fmtSize(size)]} /></div>
     </>);
   };
   const allMatchesSelected = matchKeys.length > 0

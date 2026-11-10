@@ -239,9 +239,12 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
                 ? <>{t("rule.ret_pre")}<Part>
                     {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
                 : null,
-            schedule: <Part><CalendarClock size={14} aria-hidden
-              className="mr-1 inline align-text-bottom" />
-              {t(`sched.${rule.schedule}`)}</Part>,
+            // the dot travels with the schedule: it never ends a line
+            schedule: <span className="whitespace-nowrap">
+              <span aria-hidden>{"·\u00a0"}</span>
+              <Part><CalendarClock size={14} aria-hidden
+                className="mr-1 inline align-text-bottom" />
+                {t(`sched.${rule.schedule}`)}</Part></span>,
           }} />
       </p>
       {!!rule.filter_invalid?.length && (
@@ -679,7 +682,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   );
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} full>
       <PanelHeader title={<span className="inline-flex items-center gap-2">
         <ClipboardList size={18} /> {t("Rules")}
       </span>} onClose={onClose}
@@ -690,11 +693,14 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
         </Button>} />
       <div className="lg:flex lg:items-start">
         <div className="min-w-0 flex-1 space-y-4 p-4 sm:p-5">
-          <p className="flex items-start gap-2 type-meta text-muted">
+          {/* phones: the docs link sits under the text, so the text keeps
+              the full width */}
+          <p className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2 gap-y-1
+            type-meta text-muted sm:flex sm:items-start">
             <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1">{t("rules.help")}</span>
             <a href={RULES_DOCS_URL} target="_blank" rel="noopener noreferrer"
-              className={`shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
+              className={`col-start-2 shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
               {t("rules.how")}</a>
           </p>
           {rules.map((rule) => (

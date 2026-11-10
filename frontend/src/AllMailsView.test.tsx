@@ -79,18 +79,31 @@ test("lists mails with folder and sender on every row and an x-of-y count",
     renderView();
     await screen.findByText("Subject 1");
     expect(screen.getByText("2 of 250 mails")).toBeTruthy();
-    expect(screen.getByText(/INBOX · s1@x.example/)).toBeTruthy();
-    expect(screen.getByText(/Archive · s2@x.example/)).toBeTruthy();
+    expect(document.body.textContent).toContain("INBOX · s1@x.example");
+    expect(document.body.textContent).toContain("Archive · s2@x.example");
     expect(mails).toHaveBeenCalledWith(
       { offset: 0, limit: 100, sort: "date", dir: "desc", q: "" });
   });
+
+test("while the first page loads there are placeholder rows and a centred "
+  + "loading state, no count", async () => {
+  let finish: (r: MailsResp) => void = () => {};
+  mails.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+  const { container } = renderView();
+  expect(container.querySelector("[aria-busy] ul")!.children).toHaveLength(8);
+  expect(screen.queryByText(/of 0\u00a0mails/)).toBeNull();
+  finish(resp([mk(1)]));
+  await screen.findByText("Subject 1");
+  expect(container.querySelector("[aria-busy]")).toBeNull();
+});
 
 test("a single-folder list still shows the folder (detailed rows)",
   async () => {
     mails.mockResolvedValue(resp([mk(1), mk(3, { addr: "s1@x.example" })]));
     renderView();
     await screen.findByText("Subject 1");
-    expect(screen.getAllByText(/INBOX · s1@x.example/)).toHaveLength(2);
+    expect(document.body.textContent!.split("INBOX · s1@x.example"))
+      .toHaveLength(3);
   });
 
 test("load more appends the next page and then goes away", async () => {

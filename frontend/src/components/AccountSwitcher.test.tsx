@@ -98,9 +98,12 @@ test("in a menu the cards and rows are menu items; no Empty Trash", () => {
 test("count and size of an account never split across lines", () => {
   mount();
   const card = screen.getByRole("button", { name: /alpha/ });
-  // "1,623 mails · 238 MB" is one unbreakable unit: a wrapped line breaks
-  // after the dot before it, so "227.4 MB" never sits alone
-  const unit = [...card.querySelectorAll("span.whitespace-nowrap")]
-    .find((s) => s.textContent!.includes("1,623\u00a0mails"))!;
-  expect(unit.textContent).toMatch(/^1,623\u00a0mails · [\d.]+\u00a0MB$/);
+  // each bit is one unbreakable unit and carries its dot in front: a wrapped
+  // line may start with a dot but never ends with one, and "227.4 MB"
+  // never splits
+  const units = [...card.querySelectorAll("span.whitespace-nowrap")]
+    .map((s) => s.textContent!);
+  expect(units).toContain("· 1,623\u00a0mails");
+  expect(units.some((u) => /^· [\d.]+\u00a0MB$/.test(u))).toBe(true);
+  expect(units.some((u) => u.endsWith("·"))).toBe(false);
 });

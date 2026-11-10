@@ -294,7 +294,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 <input ref={input} autoFocus type="search" value={q}
                   aria-label={t("Search")}
                   className="min-h-12 w-full rounded-card border border-line
-                    bg-panel2 pl-11 pr-11 type-heading focus:border-accent
+                    bg-panel2 pl-11 pr-11 type-heading placeholder:font-normal
+                    focus:border-accent
                     [&::-webkit-search-cancel-button]:appearance-none"
                   placeholder={bodyOn
                     ? t("search.placeholder_body") : t("search.placeholder")}
@@ -310,7 +311,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Segmented<Scope> value={scope} label={t("search.scope")}
-                  role="radio" onChange={pickScope}
+                  role="radio" phoneFill onChange={pickScope}
                   options={[
                     { value: "meta", label: t("search.scope_meta") },
                     { value: "body", label: t("search.scope_body"),

@@ -11,7 +11,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
-  MenuGroup, MenuHeading, PopupSelect, SettingsGroup, SettingsRow, MenuItem, Modal, Notice, ProgressBar, Segmented, ToastProvider,
+  MenuGroup, MenuHeading, PopupSelect, SettingsGroup, SettingsRow, MenuItem, Modal, Meta, Notice, ProgressBar, Segmented, ToastProvider,
   confirmDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
@@ -1747,4 +1747,34 @@ test("the desktop sort menu has Sort by / Order groups with short keys", () => {
   expect(within(screen.getByRole("group", { name: "Order" }))
     .getAllByRole("menuitemradio").map((o) => o.textContent))
     .toEqual(["Descending", "Ascending"]);
+});
+
+test("Segmented `phoneFill` is full width below 640 px only", () => {
+  const opts = [{ value: "a", label: "A" }, { value: "b", label: "B" }];
+  render(<Segmented label="View" value="a" onChange={() => {}} options={opts}
+    phoneFill />);
+  const list = screen.getByRole("tablist", { name: "View" });
+  expect(list.className).toContain("max-sm:w-full");
+  expect(list.className).not.toMatch(/(^| )w-full/);
+  expect(screen.getByRole("tab", { name: "A" }).className)
+    .toContain("max-sm:flex-auto");
+});
+
+test("Meta keeps every item whole with its dot in front, never behind", () => {
+  const { container } = render(
+    <Meta items={["1,623 mails", "", null, false, "227.4 MB", "scanned 1m ago"]} />);
+  expect(container.textContent).toBe("1,623 mails · 227.4 MB · scanned 1m ago");
+  const units = [...container.querySelectorAll(".whitespace-nowrap")]
+    .map((u) => u.textContent);
+  expect(units).toEqual(["1,623 mails", "· 227.4 MB", "· scanned 1m ago"]);
+});
+
+test("Meta `shrink`: only that item truncates, the others keep their dots", () => {
+  const { container } = render(
+    <Meta items={["INBOX", "long@sender.example", "12 KB"]} shrink={1} />);
+  expect(container.textContent).toBe("INBOX · long@sender.example · 12 KB");
+  const [a, b, c] = [...container.firstElementChild!.children];
+  expect(a.className).toContain("shrink-0");
+  expect(b.className).toContain("truncate");
+  expect(c.className).toContain("shrink-0");
 });

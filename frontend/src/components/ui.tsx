@@ -1786,12 +1786,12 @@ export function Chip({ on = false, children, className = "", ...rest }:
 /** Segmented control for mutually exclusive views (tablist), iOS look: a
  *  tinted track, the selected segment a raised pill (`segment-on` + small
  *  shadow, semibold), no accent ring, no dividers. `fill` makes
- *  the row full-width, segments sized to their content (`flex-auto`).
+ *  the row full-width (`phoneFill`: on phones only), segments sized to their content (`flex-auto`).
  *  `equal` gives every segment the width of the widest one (a short label
  *  next to a long one no longer looks small). */
 export function Segmented<T extends string>({ value, onChange, options,
-  label, fill = false, tall = false, equal = false, className = "",
-  idPrefix, role = "tab" }: {
+  label, fill = false, phoneFill = false, tall = false, equal = false,
+  className = "", idPrefix, role = "tab" }: {
   value: T | null;
   onChange: (v: T) => void;
   /** `disabled` greys one segment out (a state the user cannot pick yet). */
@@ -1800,6 +1800,9 @@ export function Segmented<T extends string>({ value, onChange, options,
     describedBy?: string }[];
   label: string;
   fill?: boolean;
+  /** Full width below 640 px only (a control on a row of its own); from
+   *  there on it fits its content. */
+  phoneFill?: boolean;
   /** 44 px tall segments (phone sheets with big touch targets). */
   tall?: boolean;
   /** Equal-width segments (grid columns of 1fr). */
@@ -1835,7 +1838,7 @@ export function Segmented<T extends string>({ value, onChange, options,
       onKeyDown={onKey}
       className={`${equal ? "inline-grid grid-flow-col auto-cols-fr"
         : "inline-flex items-stretch"} gap-0.5 rounded-control bg-chip p-0.5
-        ${fill ? "w-full" : ""} ${className}`}>
+        ${fill ? "w-full" : phoneFill ? "max-sm:w-full" : ""} ${className}`}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -1853,7 +1856,8 @@ export function Segmented<T extends string>({ value, onChange, options,
               px-1.5 transition-colors type-meta md:type-body md:px-2 lg:px-3
               focus-visible:-outline-offset-2 enabled:active:translate-y-px
               rounded-badge disabled:cursor-not-allowed disabled:opacity-50
-              ${fill && !equal ? "flex-auto" : ""}
+              ${fill && !equal ? "flex-auto"
+                : phoneFill && !equal ? "max-sm:flex-auto" : ""}
               ${on ? "bg-segment-on font-semibold text-body shadow-segment"
                 : "text-muted hover:text-body"}`}>
             {o.label}
@@ -2438,7 +2442,58 @@ export function ShortDate({ iso, className = "", time = false }: {
   return <time dateTime={iso} title={iso} className={cls}>{short}</time>;
 }
 
+/* -------------------------------- meta line -------------------------------- */
+
+/** The one way to join the items of a meta line ("1,623 mails · 227.4 MB").
+ *  Empty items are dropped. Every item stays whole and carries its separator
+ *  in front of it, so a wrapped line may start with "·" but never ends with
+ *  one. `shrink` (an index into the kept items) turns it into one flex line
+ *  where only that item truncates with an ellipsis - the others, and so
+ *  their separators, always stay visible. */
+export function Meta({ items, shrink, className = "" }: {
+  items: ReactNode[]; shrink?: number; className?: string;
+}) {
+  const kept = items.filter((x) => x != null && x !== false && x !== "");
+  if (shrink != null) {
+    return (
+      <span className={`flex min-w-0 ${className}`}>
+        {kept.map((x, i) => (
+          <span key={i} className={i === shrink ? "min-w-0 truncate"
+            : "shrink-0 whitespace-nowrap"}>
+            {i > 0 && <span aria-hidden className="whitespace-pre">{" · "}</span>}{x}
+          </span>
+        ))}
+      </span>
+    );
+  }
+  return (
+    <span className={className}>
+      {kept.map((x, i) => (
+        <Fragment key={i}>
+          {i > 0 && " "}
+          <span className="whitespace-nowrap">{i > 0 && "· "}{x}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 /* --------------------------------- mail row -------------------------------- */
+
+/** The unread marker of a mail row. The 8 px slot is always there (empty for
+ *  a read mail), so read and unread subjects start at the same x. */
+export function UnreadSlot({ unread }: { unread: boolean }) {
+  return (
+    <span data-testid="unread-slot" className="inline-block size-2 shrink-0">
+      {unread && (
+        <>
+          <span aria-hidden className="block size-2 rounded-full bg-accent" />
+          <span className="sr-only">{t("unread")}</span>
+        </>
+      )}
+    </span>
+  );
+}
 
 /** The two-line per-mail row: `[checkbox] [unread dot] subject … trailing`,
  *  then the meta line: `dateIso` as a `<ShortDate>` (full date in the
@@ -2464,13 +2519,7 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
     <span className={spread ? "block sm:max-lg:flex sm:max-lg:items-center sm:max-lg:gap-4" : "contents"}>
       <span className={`flex min-w-0 items-center gap-1.5 ${spread
         ? "sm:max-lg:flex-1" : ""}`}>
-        {unread && (
-          <>
-            <span aria-hidden className="inline-block size-2 shrink-0
-              rounded-full bg-accent" />
-            <span className="sr-only">{t("unread")}</span>
-          </>
-        )}
+        <UnreadSlot unread={unread} />
         <span className={`truncate type-body-mobile md:type-body
           group-hover:underline ${unread
           ? "font-semibold md:font-semibold"

@@ -240,7 +240,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
             label={t("qb.title")} />} />
       </div>
       <div className="min-w-0 flex-1 type-meta text-muted">
-        <div>{t("mails.count", { n: mails.length, total })}</div>
+        <div className="min-h-5">{loading && !mails.length ? ""
+          : t("mails.count", { n: mails.length, total })}</div>
         {mails.length > 0 && (
           <button className={`${LINK} coarse:min-h-11`} onClick={selectAll}>
             {selectLabel}
@@ -275,7 +276,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       {!phone && (
         <div className="mb-2 flex min-h-5 flex-wrap items-center gap-x-3
           type-meta text-muted">
-          <span>{t("mails.count", { n: mails.length, total })}</span>
+          <span>{loading && !mails.length ? ""
+            : t("mails.count", { n: mails.length, total })}</span>
           {mails.length > 0 && (
             <button className={LINK} onClick={selectAll}>{selectLabel}</button>
           )}
@@ -288,7 +290,23 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       )}
 
       {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
-      {loading && !mails.length && !error && <Loading />}
+      {loading && !mails.length && !error && (
+        <div aria-busy>
+          <ul aria-hidden className="pmc-loading">
+            {Array.from({ length: 8 }, (_, i) => (
+              <li key={i} className="flex items-center gap-3 border-b
+                border-line/60 px-3 py-3 md:px-2 md:py-2.5">
+                <span className="size-6 shrink-0 rounded-full bg-panel2" />
+                <span className="min-w-0 flex-1 space-y-2">
+                  <span className="block h-3.5 w-3/4 rounded-control bg-panel2" />
+                  <span className="block h-3 w-1/2 rounded-control bg-panel2" />
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Loading className="py-6" />
+        </div>
+      )}
       {!loading && !error && mails.length === 0 && (
         <EmptyState>
           {dq ? t("mails.none") : t("No scan yet - hit “Scan”.")}

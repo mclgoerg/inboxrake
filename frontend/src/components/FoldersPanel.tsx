@@ -15,7 +15,7 @@ import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { TrashCard } from "./TrashCard";
 import { Avatar, Button, Checkbox, confirmDialog, EmptyState, IconTile, Input,
-  Loading, MailRow, Modal, Notice, PanelHeader, promptDialog, PopupSelect, Segmented,
+  Loading, MailRow, Meta, Modal, Notice, PanelHeader, promptDialog, PopupSelect, Segmented,
   Spinner, Tag, Toolbar, useMediaQuery, useToast } from "./ui";
 
 type Grouping = "sender" | "mails";
@@ -506,7 +506,7 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
             {hasRows && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Segmented value={grouping} label={t("fp.grouping")}
-                  tall={!wide} equal onChange={setGrouping}
+                  tall={!wide} equal phoneFill onChange={setGrouping}
                   options={junk ? [
                     { value: "sender", label: t("fp.by_sender") },
                     { value: "mails", label: t("fp.mails") },
@@ -618,8 +618,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       unread={g.unread > 0} subject={g.addr}
                       dateIso={g.date || ""}
                       selectLabel={t("select.named", { subject: g.addr })}
-                      meta={[t("n.mails", { n: g.count }), fmtSize(g.size)]
-                        .join(" · ")} />
+                      meta={<Meta items={[t("n.mails", { n: g.count }),
+                        fmtSize(g.size)]} shrink={0} />} />
                   ))
                   : mailRows(shownMails ?? [], (m) => (
                     <MailRow key={mailKey(m)} checked={sel.has(m.uid)}
@@ -629,7 +629,8 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
                       dateIso={m.date || ""}
                       selectLabel={t("select.named",
                         { subject: m.subject || t("(no subject)") })}
-                      meta={[m.addr, fmtSize(m.size)].join(" · ")}
+                      meta={<Meta items={[m.addr, fmtSize(m.size)]}
+                        shrink={0} />}
                       trailing={!junk && inbox && !selecting
                         ? restoreButton(m) : undefined} />
                   ))}

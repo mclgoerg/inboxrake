@@ -162,7 +162,7 @@ test("rows are MailRows; Select mode shows the boxes, the restore pop-up needs a
   async () => {
     panel();
     await screen.findByText("Deleted elsewhere");
-    expect(screen.getByText("old@gone.example · 1 KB")).toBeTruthy();
+    expect(document.body.textContent).toContain("old@gone.example · 1 KB");
     expect(screen.getByText("2 Jan").getAttribute("title")).toBe("2026-01-02");
     expect(screen.getByText("unread")).toBeTruthy();   // seen: false
     expect(screen.queryByRole("checkbox")).toBeNull();  // only in Select mode
@@ -184,7 +184,8 @@ test("Trash: the size card says how much the folder holds; no Junk | Trash switc
   async () => {
     panel();
     await screen.findByText("Deleted elsewhere");
-    expect(screen.getByText("1 KB")).toBeTruthy();          // 700 B, fmtSize mocked
+    expect(screen.getByText("1 KB", { selector: ".type-largetitle" }))
+      .toBeTruthy();                                       // 700 B, fmtSize mocked
     expect(screen.getByText("in 1 mail")).toBeTruthy();
     expect(screen.queryByRole("tablist", { name: "Folder" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Junk" })).toBeNull();
