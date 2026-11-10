@@ -114,7 +114,7 @@ for (const [name, tk] of Object.entries(themes)) {
   });
 
   test(`${name}: text on fills`, () => {
-    for (const a of ["accent", "accenth"]) {
+    for (const a of ["accent", "accenth", "heat"]) {
       min(`on-accent on ${a}`, tk["on-accent"], tk[a]);
     }
     for (const d of ["danger", "danger-h"]) min(`white on ${d}`, WHITE, tk[d]);

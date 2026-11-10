@@ -2094,8 +2094,10 @@ export default function App() {
         window.location.reload();
       } : undefined}
       identity={identityLine} admin={auth.is_admin} demo={demo}
-      version={buildId ? t("menu.version",
-        { version: __APP_VERSION__, id: buildId }) : undefined} />
+      // The demo has no build of its own to name: the version alone.
+      version={demo ? t("menu.version_only", { version: __APP_VERSION__ })
+        : buildId ? t("menu.version",
+          { version: __APP_VERSION__, id: buildId }) : undefined} />
   );
   const accountLabel = account ? t("menu.account_switch", { name: account })
     : t("menu.profile");
@@ -2194,7 +2196,9 @@ export default function App() {
       <div>{filter
         ? t("status.groups_of", { n: groups.length, total: allGroups.length })
         : t("n.groups", { n: groups.length })}</div>
-      <div>{t("n.mails", { n: mails })} · {fmtSize(size)}</div>
+      {/* a narrow phone breaks after the dot, never inside "227,4 MB" */}
+      <div><span className="whitespace-nowrap">{t("n.mails", { n: mails })} ·
+        </span>{" "}<span className="whitespace-nowrap">{fmtSize(size)}</span></div>
     </>);
   };
   const allMatchesSelected = matchKeys.length > 0
@@ -2263,10 +2267,10 @@ export default function App() {
   );
   // Acts on the current grouping, so only the sender pages carry it.
   const moreMenu = (
-    <Menu variant={phone && !flat ? "plain" : "secondary"} icon
-      triggerClass={phone && !flat ? "coarse:size-11" : undefined}
+    <Menu variant={phone ? "plain" : "secondary"} icon
+      triggerClass={phone ? "coarse:size-11" : undefined}
       label={t("menu.more")}
-      trigger={phone && !flat ? (
+      trigger={phone ? (
         // The tint stays small (board 10); the button keeps its 44 px hit area.
         <span className="flex size-7 items-center justify-center rounded-full
           bg-accent-tint">
@@ -2811,11 +2815,11 @@ export default function App() {
           </div>
         )}
       </div>
-      {!bare && !(phone && sendersToolbar && !running
+      {!bare && !(phone && !overview && !running
         && !(state?.undo.length)) && <div className="mb-1 flex min-h-5
         items-center justify-between gap-2 type-meta text-muted">
-        {/* Phone Senders pages: the summary sits in the toolbar above. */}
-        <div>{phone && sendersToolbar && !running ? null : statusLine()}</div>
+        {/* Phone Senders / All mails pages: the summary sits in the toolbar above. */}
+        <div>{phone && !overview && !running ? null : statusLine()}</div>
         {(state?.undo.length ?? 0) > 0 && !deleting && (
           <span className="relative shrink-0">
             <Button variant="quiet" size="sm" className="whitespace-nowrap"

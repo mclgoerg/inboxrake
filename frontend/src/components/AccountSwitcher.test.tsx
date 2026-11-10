@@ -94,3 +94,13 @@ test("in a menu the cards and rows are menu items; no Empty Trash", () => {
   expect(screen.getByRole("menuitem", { name: /Settings/ })).toBeTruthy();
   expect(screen.queryByText(/Empty Trash/)).toBeNull();
 });
+
+test("count and size of an account never split across lines", () => {
+  mount();
+  const card = screen.getByRole("button", { name: /alpha/ });
+  // "1,623 mails · 238 MB" is one unbreakable unit: a wrapped line breaks
+  // after the dot before it, so "227.4 MB" never sits alone
+  const unit = [...card.querySelectorAll("span.whitespace-nowrap")]
+    .find((s) => s.textContent!.includes("1,623 mails"))!;
+  expect(unit.textContent).toMatch(/^1,623 mails · [\d.]+ MB$/);
+});

@@ -64,6 +64,16 @@ test("Clean up: live numbers where known, Check where a run is needed", async ()
     .toContain("70");
 });
 
+test("Clean up: the Trash tile adds the size to its sub-line once known",
+  () => {
+  const { rerender } = render(<CleanupPage {...cleanupProps()} />);
+  const trash = () => screen.getByRole("button", { name: /^Trash/ }).textContent!;
+  expect(trash()).toBe("Trashmails70");           // 70 is the big number, once
+  rerender(<CleanupPage {...cleanupProps({
+    state: state({ trash_size: 2.3 * MB }) })} />);
+  expect(trash()).toBe("Trashmails · 2.3 MB70");
+});
+
 test("Clean up: Ready to clean is built from the quick wins, no double count",
   () => {
   const gs = [

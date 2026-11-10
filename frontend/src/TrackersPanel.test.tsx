@@ -67,11 +67,14 @@ test("data: headline share, numbers, senders, hosts and the explainer",
     expect(screen.getByText("63 %")).toBeTruthy();
     expect(screen.getByText(/remote images never load/)).toBeTruthy();
     expect(screen.getByText("Checked 40 of 40 mails")).toBeTruthy();
-    expect(screen.getByText("pixel")).toBeTruthy();
+    // the three figures say what they count (not a bare "pixel")
+    expect(screen.getByText("mails with a pixel")).toBeTruthy();
+    expect(screen.getByText("mails with tracked links")).toBeTruthy();
     expect(screen.getByText("Shop News")).toBeTruthy();
-    expect(screen.getByText(/18 of 20 mails tracked · pix\.example/))
-      .toBeTruthy();
-    expect(screen.getByText("pix.example")).toBeTruthy();
+    // the hosts of a sender get a line of their own (they wrapped 3-5 lines
+    // beside the pills); the host list below shows the same name
+    expect(screen.getByText("18 of 20 mails tracked")).toBeTruthy();
+    expect(screen.getAllByText("pix.example")).toHaveLength(2);
     expect(screen.getByText(/18 mails · 1 sender$/)).toBeTruthy();
     // full coverage: nothing to check
     expect(screen.queryByRole("button", { name: "Check older mails" }))
@@ -176,7 +179,8 @@ test("German", async () => {
   show();
   await screen.findByText("der geprüften Mails tragen ein Tracking-Pixel");
   expect(screen.getByText("40 von 40 Mails geprüft")).toBeTruthy();
-  expect(screen.getByText("Absender mit dem meisten Tracking")).toBeTruthy();
+  expect(screen.getByText("Am meisten Tracking")).toBeTruthy();
+  expect(screen.getByText("Mails mit Pixel")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Mails von Shop News anzeigen" }))
     .toBeTruthy();
 });

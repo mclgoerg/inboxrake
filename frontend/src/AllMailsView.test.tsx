@@ -60,6 +60,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   localStorage.clear();
   vi.restoreAllMocks();
   mails.mockReset();
@@ -374,4 +375,34 @@ test("a new groups_rev refreshes in place keeping the loaded pages",
     await waitFor(() => expect(screen.queryByText("Subject 1")).toBeNull());
     expect(mails).toHaveBeenCalledWith(
       { offset: 0, limit: 100, sort: "date", dir: "desc", q: "" });
+  });
+
+test("phone: the Senders toolbar - field with the filter builder, the counts "
+  + "as a subtitle, plain accent sort icon", async () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: true, media: q, addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  mails.mockResolvedValue(resp([mk(1), mk(2)], 5));
+  renderView();
+  await screen.findByText("Subject 1");
+  // the builder lives inside the field; the typed text still reaches the server
+  expect(screen.getByRole("button", { name: "Build a filter" })).toBeTruthy();
+  expect(screen.getByText("2 of 5 mails")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Select loaded (2)" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Date, descending" }).className)
+    .toContain("text-accent");
+  fireEvent.change(screen.getByPlaceholderText("filter mails…"),
+    { target: { value: "acme" } });
+  await waitFor(() => expect(mails).toHaveBeenLastCalledWith(
+    { offset: 0, limit: 100, sort: "date", dir: "desc", q: "acme" }));
+});
+
+test("a wide screen keeps the plain filter input and the count line",
+  async () => {
+    mails.mockResolvedValue(resp([mk(1)], 1));
+    renderView();
+    await screen.findByText("Subject 1");
+    expect(screen.queryByRole("button", { name: "Build a filter" })).toBeNull();
+    expect(screen.getByText("1 of 1 mails")).toBeTruthy();
   });

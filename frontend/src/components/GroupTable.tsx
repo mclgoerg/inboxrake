@@ -165,8 +165,16 @@ const VERDICT_PILL: Record<string, TagTone> = {
   delete_safe: "safe", review: "review", keep: "keep",
 };
 
+/** Two unbreakable halves: on a narrow row the line breaks after the dot,
+ *  never inside "zuletzt 25. Nov. 2025" (which ran into the count column). */
 const Stats = ({ g }: { g: Group }) => (
-  <>{unreadPct(g)}% {t("unread")} · {t("row.last")} <ShortDate iso={g.last} /></>
+  <>
+    <span className="whitespace-nowrap">{unreadPct(g)}% {t("unread")} ·</span>
+    {" "}
+    <span className="whitespace-nowrap">
+      {t("row.last")} <ShortDate iso={g.last} />
+    </span>
+  </>
 );
 
 /** The desktop row's one meta line: the sub (address, Smart summary...)
@@ -435,7 +443,7 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                   )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1
                     type-meta text-muted">
-                    <span className="whitespace-nowrap"><Stats g={g} /></span>
+                    <span><Stats g={g} /></span>
                     {pill}
                   </div>
                 </div>

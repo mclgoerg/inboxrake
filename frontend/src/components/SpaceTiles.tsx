@@ -1,7 +1,7 @@
 import { Check, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../i18n";
-import { fmtBig, labelLevel, pct, shortName, tickState, toneOf, type ColorBy,
+import { fmtBig, labelFits, labelLevel, pct, shortName, tickState, toneOf, type ColorBy,
   type MapItem } from "../spacemap";
 import { squarify } from "../treemap";
 import { fmtPct, itemLabel, nameOf, TONE_BG } from "./spaceUi";
@@ -51,7 +51,11 @@ export function SpaceTiles({ level, by, wide, sel, selecting, focusId, domainLev
         const gap = Math.min(GAP, 0.3 * Math.min(r.w, r.h));
         const w = r.w - gap, h = r.h - gap;
         const ts = tickState(it, sel);
-        const text = labelLevel(w, h);
+        const short = shortName(it, domainLevel) || nameOf(it);
+        // A tile too small for its short name carries no text (its name is in
+        // the accessible label, the list and the details).
+        const lvl = labelLevel(w, h);
+        const text = lvl === "short" && !labelFits(short, w) ? "none" : lvl;
         const locked = selecting && it.keys.length === 0;
         const focused = focusId === it.id;
         const share = pct(it.size, total);
@@ -85,8 +89,7 @@ export function SpaceTiles({ level, by, wide, sel, selecting, focusId, domainLev
             )}
             {text !== "none" && (
               <span className="block truncate pr-4 type-meta font-medium">
-                {text === "full" ? nameOf(it)
-                  : (shortName(it, domainLevel) || nameOf(it))}
+                {text === "full" ? nameOf(it) : short}
               </span>
             )}
             {text !== "none" && h >= 44 && (

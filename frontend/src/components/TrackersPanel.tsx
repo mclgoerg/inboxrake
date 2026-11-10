@@ -11,7 +11,7 @@ const pct = (n: number, of: number) => (of ? Math.round((100 * n) / of) : 0);
 
 function Figure({ value, label }: { value: ReactNode; label: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="type-heading tabular-nums">{value}</div>
       <div className="type-meta text-muted">{label}</div>
     </div>
@@ -122,23 +122,24 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
     const maxHost = Math.max(1, ...rep.top_hosts.map((h) => h.mails));
     return (
       <div className="space-y-4 p-4 type-body sm:p-5">
-        <div className="flex flex-wrap items-center gap-4 rounded-card
-          bg-panel2 p-4">
-          <Ring frac={share / 100} px={96} label={rep.pixel > 0
-            ? t("tracker.headline", { pct: share })
-            : t("tracker.headline_none")}>
-            <span className="type-title2 tabular-nums">{share} %</span>
-          </Ring>
-          <div className="min-w-0 flex-1 basis-48">
-            <div className="type-heading">
+        <div className="space-y-4 rounded-card bg-panel2 p-4">
+          <div className="flex items-center gap-4">
+            <Ring frac={share / 100} px={96} label={rep.pixel > 0
+              ? t("tracker.headline", { pct: share })
+              : t("tracker.headline_none")}>
+              <span className="type-title2 tabular-nums">{share} %</span>
+            </Ring>
+            <div className="min-w-0 flex-1 type-heading">
               {rep.pixel > 0 ? t("tracker.ring_title")
                 : t("tracker.headline_none")}
             </div>
-            <div className="mt-2 flex gap-5">
-              <Figure value={fmtNum(rep.pixel)} label={t("tracker.pixel_short")} />
-              <Figure value={fmtNum(rep.click)} label={t("tracker.click_short")} />
-              <Figure value={fmtNum(rep.senders)} label={t("tracker.senders")} />
-            </div>
+          </div>
+          {/* Under the ring, on the card's full width: three columns of
+              words that fit (they wrapped one word per line beside it). */}
+          <div className="grid grid-cols-3 gap-4 border-t border-line pt-3">
+            <Figure value={fmtNum(rep.pixel)} label={t("tracker.pixel_short")} />
+            <Figure value={fmtNum(rep.click)} label={t("tracker.click_short")} />
+            <Figure value={fmtNum(rep.senders)} label={t("tracker.senders")} />
           </div>
         </div>
         <div className="flex items-start gap-2 rounded-card bg-safe-bg p-3
@@ -157,7 +158,7 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
           <div className="rounded-card bg-panel2 p-3">
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <SectionLabel>{t("tracker.top_hosts")}</SectionLabel>
-              <span className="type-meta text-muted">
+              <span className="truncate type-meta text-muted">
                 {t("tracker.hosts_hint")}</span>
             </div>
             <ul className="space-y-3">
@@ -186,8 +187,8 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
             <div className="mb-1 flex items-baseline justify-between gap-2 px-3">
               <SectionLabel>{t("tracker.top_senders")}</SectionLabel>
               <button type="button" onClick={onShowAll}
-                className="cursor-pointer type-meta text-accent
-                  hover:underline coarse:min-h-11">
+                className="shrink-0 cursor-pointer whitespace-nowrap type-meta
+                  text-accent hover:underline coarse:min-h-11">
                 {t("tracker.show_all")}
               </button>
             </div>
@@ -196,18 +197,27 @@ export function TrackersPanel({ account, onClose, onPickSender, onShowAll }: {
                 <li key={s.key} className="border-b border-line last:border-0">
                   <button type="button" onClick={() => onPickSender(s.key)}
                     aria-label={t("tracker.pick", { name: s.label })}
-                    className="flex w-full cursor-pointer items-center gap-3
-                      px-3 py-2 text-left hover:bg-chip coarse:min-h-11">
+                    className="flex w-full cursor-pointer flex-wrap items-center
+                      gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-chip
+                      sm:flex-nowrap coarse:min-h-11">
                     <Avatar name={s.label} size="md" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{s.label}</span>
                       <span className="block type-meta text-muted">
                         {t("tracker.sender_meta",
                           { n: s.tracked, of: s.checked })}
-                        {s.hosts.length > 0 && ` · ${s.hosts.join(", ")}`}
                       </span>
+                      {s.hosts.length > 0 && (
+                        <span className="block truncate type-meta text-muted">
+                          {s.hosts.join(", ")}
+                        </span>
+                      )}
                     </span>
-                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                    {/* Phones: the pills take their own line under the text
+                        instead of squeezing it. */}
+                    <span className="flex shrink-0 flex-wrap justify-end gap-1
+                      max-sm:order-last max-sm:basis-full max-sm:justify-start
+                      max-sm:pl-13">
                       {s.pixel > 0 && (
                         <Tag tone="review">{t("tracker.tag_pixel")}</Tag>
                       )}

@@ -15,13 +15,17 @@ const TAGS = ["newsletter", "shipping", "finance", "shopping", "social",
   "travel", "dev/cloud", "automated"];
 
 export function QueryBuilder({ value, onChange, className = "",
-  senderOnly = false, plain = false, label, open: openProp, onOpenChange }: {
+  senderOnly = false, mailOnly = false, plain = false, label, open: openProp, onOpenChange }: {
   value: string;
   onChange: (q: string) => void;
   className?: string;                    // extra classes for the trigger
   /** Only the conditions a Junk / Trash purge rule can answer (sender text,
    *  age, unread share); no tags, AI, attachment or flag conditions. */
   senderOnly?: boolean;
+  /** Only what the flat All-mails list applies per mail (`parse_mail_query`):
+   *  age, size, attachment size, read state, pinned; no tags, AI verdicts,
+   *  unread share or group flags (those are reported back as ignored). */
+  mailOnly?: boolean;
   /** Trigger look: a plain accent icon (inside the filter field) instead of
    *  the boxed secondary button. */
   plain?: boolean;
@@ -67,6 +71,7 @@ export function QueryBuilder({ value, onChange, className = "",
   const [ageUnit, setAgeUnit] = useState<"m" | "y">("y");
   const [unread, setUnread] = useState("80");
   const [att, setAtt] = useState("10");
+  const [size, setSize] = useState("5");
 
   const add = (tok: string) => {
     const q = value.trim();
@@ -123,11 +128,11 @@ export function QueryBuilder({ value, onChange, className = "",
       {/* 6.5rem (not a token): "Attachments ≥" must not wrap on phones. */}
       <div className="mt-3 grid grid-cols-[6.5rem_1fr_auto] sm:grid-cols-[7rem_1fr_auto] items-center
         gap-x-2 gap-y-2">
-        {!senderOnly && row(t("qb.tag"),
+        {!senderOnly && !mailOnly && row(t("qb.tag"),
           <PopupSelect<string> className="min-w-0 flex-1" value={tag}
             onChange={setTag}
             options={TAGS.map((x) => ({ value: x, label: x }))} />, `tag:${tag}`)}
-        {!senderOnly && row(t("qb.ai"),
+        {!senderOnly && !mailOnly && row(t("qb.ai"),
           <PopupSelect<string> className="min-w-0 flex-1" value={ai}
             onChange={setAi}
             options={[
@@ -145,7 +150,12 @@ export function QueryBuilder({ value, onChange, className = "",
               { value: "y", label: t("qb.years") },
             ]} />
         </>, `age:>${+age || 1}${ageUnit}`)}
-        {row(t("qb.unread"), <>
+        {mailOnly && row(t("qb.size"), <>
+          <Input className="w-16 shrink-0 sm:w-20" type="number" min="1"
+            value={size} onChange={(e) => setSize(e.target.value)} />
+          <span className="type-meta text-muted">MB</span>
+        </>, `size:>${+size || 1}m`)}
+        {!mailOnly && row(t("qb.unread"), <>
           <Input className="w-16 shrink-0 sm:w-20" type="number"
             min="1" max="100" value={unread}
             onChange={(e) => setUnread(e.target.value)} />
@@ -157,7 +167,15 @@ export function QueryBuilder({ value, onChange, className = "",
           <span className="type-meta text-muted">MB</span>
         </>, `att:>${+att || 1}m`)}
       </div>
-      {!senderOnly && <>
+      {mailOnly && <>
+      <SectionLabel className="mb-1.5 mt-4">{t("qb.flags_mail")}</SectionLabel>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {flag("is:unread", t("qb.mail_unread"))}
+        {flag("is:read", t("qb.mail_read"))}
+        {flag("has:pinned", t("qb.mail_pinned"))}
+      </div>
+      </>}
+      {!senderOnly && !mailOnly && <>
       <SectionLabel className="mb-1.5 mt-4">{t("qb.flags")}</SectionLabel>
       <div className="flex flex-wrap items-center gap-1.5">
         {flag("is:unsub", t("qb.is_unsub"))}
