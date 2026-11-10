@@ -164,12 +164,14 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
         {g.still_mailing && <StillMailingBadge sm={g.still_mailing} />}
         {g.ai && <AiTag ai={g.ai} />}
         {g.unsubscribed?.status === "done" && (
-          <Tag tone="safe" className="whitespace-nowrap">
-            ✓ {t("Unsubscribed")}
+          <Tag tone="info" dot className="whitespace-nowrap">
+            {t("Unsubscribed")}
           </Tag>
         )}
-        {g.new && <Tag tone="new">🆕 {t("New")}</Tag>}
-        {g.tags.slice(0, 3).map((x) => <Tag key={x}>{categoryName(x)}</Tag>)}
+        {g.new && <Tag tone="new" dot className="whitespace-nowrap">
+          {t("New")}</Tag>}
+        {g.tags.slice(0, 3).map((x) => (
+          <Tag key={x} tone="category">{categoryName(x)}</Tag>))}
         <span className="ml-auto type-meta text-muted">
           <ShortDate iso={g.last} />
         </span>

@@ -64,14 +64,32 @@ test("Clean up: live numbers where known, Check where a run is needed", async ()
     .toContain("70");
 });
 
-test("Clean up: the Trash tile adds the size to its sub-line once known",
+test("Clean up: the Trash tile names the count and adds the size once known",
   () => {
   const { rerender } = render(<CleanupPage {...cleanupProps()} />);
   const trash = () => screen.getByRole("button", { name: /^Trash/ }).textContent!;
-  expect(trash()).toBe("Trashmails70");           // 70 is the big number, once
+  expect(trash()).toBe("Trash70\u00a0mails");           // the count says its unit
   rerender(<CleanupPage {...cleanupProps({
     state: state({ trash_size: 2.3 * MB }) })} />);
-  expect(trash()).toBe("Trashmails · 2.3\u00a0MB70");
+  expect(trash()).toBe("Trash2.3\u00a0MB70\u00a0mails");
+});
+
+test("Clean up: tile numbers carry their unit; two sources never share a colour",
+  () => {
+  render(<CleanupPage {...cleanupProps({ groups: [
+    mk("a@x.example", { engagement: 10, count: 5, size: 3 * MB }),
+    mk("b@x.example", { count: 4, ratings: { delete_safe: 4, review: 0,
+      keep: 0 } })] })} />);
+  expect(screen.getByRole("button", { name: /^Junk/ }).textContent)
+    .toContain("11\u00a0mails");
+  expect(screen.getByRole("button", { name: /^Rules/ }).textContent)
+    .toContain("0\u00a0rules");
+  expect(screen.getByRole("button", { name: /^AI review/ }).textContent)
+    .toContain("4\u00a0mails");
+  const fills = [...screen.getByRole("region", { name: "Ready to clean" })
+    .querySelectorAll("ul li > span[aria-hidden]")].map((e) => e.className);
+  expect(new Set(fills.map((c) => c.match(/bg-[\w-]+/)![0])).size)
+    .toBe(fills.length);
 });
 
 test("Clean up: Ready to clean is built from the quick wins, no double count",
@@ -125,6 +143,41 @@ test("Insights: widgets show real data and open their tools", async () => {
     fireEvent.click(screen.getByRole("button", { name: new RegExp(name) }));
     expect(onOpen).toHaveBeenLastCalledWith(tool);
   }
+});
+
+test("Insights: Recent activity reads like the Activity page", async () => {
+  stats.mockRejectedValue(new Error("x"));
+  trackers.mockRejectedValue(new Error("x"));
+  audit.mockResolvedValue({ total: 2, entries: [
+    { ts: 1700000000, account: "a", actor: "rule:r1", action: "rule_execute",
+      count: 7, bytes: 0, label: "", outcome: "ok", error: "" },
+    { ts: 1699990000, account: "a", actor: "user", action: "unsubscribe",
+      count: 1, bytes: 0, label: "a@x.example", outcome: "failed",
+      error: "x" }] });
+  const st = state({ rules: [{ id: "r1", name: "Sweep", action: "trash" }] } as never);
+  render(<InsightsPage groups={[]} state={st} onOpen={vi.fn()} />);
+  expect(await screen.findByText(/Ran rule “Sweep” · 7/)).toBeTruthy();
+  expect(screen.getByText("Done")).toBeTruthy();
+  // the failed row: a status with its Why? link, not a chip squeezing the text
+  expect(screen.getByText("Failed")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Why?" })).toBeTruthy();
+});
+
+test("Insights: the mini Space map uses the Space map's tones", async () => {
+  stats.mockRejectedValue(new Error("x"));
+  trackers.mockRejectedValue(new Error("x"));
+  audit.mockResolvedValue({ total: 0, entries: [] });
+  // low engagement = the heat tone, high = the calm one (as on the page)
+  const gs = [mk("a@x.example", { size: 9 * MB, engagement: 10 }),
+    mk("b@y.example", { size: 4 * MB, engagement: 90 })];
+  const { container } = render(<InsightsPage groups={gs} state={state()}
+    onOpen={vi.fn()} />);
+  await screen.findByText(/biggest senders take up/);
+  const fills = [...container.querySelectorAll("span.absolute.rounded-badge")]
+    .map((e) => e.className);
+  expect(fills[0]).toContain("bg-heat");
+  expect(fills[1]).toContain("bg-calm");
+  expect(fills.join(" ")).not.toMatch(/bg-cat-/);
 });
 
 test("Insights: a tracker report that is not usable shows Check", async () => {

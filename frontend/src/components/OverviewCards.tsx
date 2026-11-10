@@ -20,10 +20,10 @@ import { Button, Checkbox, hueFillAt, IconTile, Menu, MenuItem, Segmented,
  * fills the inbox. Presentational - Overview.tsx owns the data and the
  * actions. */
 
-const CARD = "rounded-card bg-panel p-5 sm:p-6";
+export const CARD = "rounded-card bg-panel p-5 sm:p-6";
 
 /** Card title (+ muted line under it, + something on the right). */
-function CardHead({ title, sub, right }: {
+export function CardHead({ title, sub, right }: {
   title: string; sub?: ReactNode; right?: ReactNode;
 }) {
   return (

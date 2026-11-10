@@ -675,7 +675,7 @@ describe("GroupTable status pill (one per row, first match wins)", () => {
     const { container } = renderTable({ groups: [{ ...mk(0),
       ai: { verdict: "keep", reason: "r" } as Group["ai"] }] });
     const p = container.querySelector("tbody tr td:nth-child(4) .type-caption")!;
-    expect(p.className).toContain("bg-keep-bg");
+    expect(p.className).toContain("bg-info-bg");  // calm: red is Trash
     expect(p.className).toContain("rounded-full");
   });
 
@@ -789,6 +789,13 @@ describe("tracker badge", () => {
     const { container } = renderBadges({ groups: [tracked(trackers)] });
     expect(container.querySelector(`[aria-label="${label}"]`))
       .not.toBeNull();
+  });
+
+  it("labelled: says it in words (the sender detail header)", () => {
+    const { container } = render(<TrackerBadge labelled g={{ trackers: {
+      checked: 4, pixel: 2, click: 1, hosts: [] } }} />);
+    expect(container.querySelector("button")!.textContent)
+      .toBe("Tracks opens and clicks");
   });
 
   it("tapping it opens a popover with the share and the hosts, and does "

@@ -15,6 +15,9 @@
   --color-on-accent: #1b1206;     /* text/icons ON an accent fill */
   --color-heat: #a87838;          /* the "strong" tone of the space map: the
                                      accent, muted so big blocks are not loud */
+  --color-calm: #5b8ea3;          /* the "quiet" tone of the space map (high
+                                     engagement / recent): a cool counterpart
+                                     of heat, a real fill, not card grey */
   --color-accent-tint: rgb(217 141 43 / 0.16);
   --color-muted: #a19b93;
   --color-body: #f4f0ea;
@@ -212,6 +215,7 @@ html[data-theme="light"] {
   --color-accenth: #7f4a07;
   --color-on-accent: #ffffff;
   --color-heat: #94570a;
+  --color-calm: #2e6a80;
   --color-accent-tint: rgb(148 87 10 / 0.11);
   --color-muted: #6e6862;
   --color-body: #1f1c19;

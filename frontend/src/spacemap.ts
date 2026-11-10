@@ -54,7 +54,7 @@ export function dominantVerdict(
   return best;
 }
 
-const senderItem = (g: Group): MapItem => ({
+export const senderItem = (g: Group): MapItem => ({
   id: `s:${g.key}`, kind: "sender", label: g.key,
   size: g.size, count: g.count, last: g.last || "",
   engagement: g.engagement ?? 0,

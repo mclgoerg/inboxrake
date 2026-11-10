@@ -1,5 +1,5 @@
 import { ArrowUpDown, Ban, BellOff, Check, ChevronLeft, ExternalLink,
-  FolderInput, MessagesSquare, MoreHorizontal, Pencil, Pin, PinOff, Shield,
+  FolderInput, MessagesSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, Shield,
   Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { accountGuard } from "../accountGuard";
@@ -40,7 +40,7 @@ const CELL = "min-w-0 flex-1 basis-16";
 const RATING_FILTERS: { key: string; label: string }[] = [
   { key: "delete_safe", label: "🟢 " + t("v.delete_safe") },
   { key: "review", label: "🟡 " + t("v.review") },
-  { key: "keep", label: "🔴 " + t("v.keep") },
+  { key: "keep", label: "🔵 " + t("v.keep") },
   { key: "unrated", label: t("v.unrated") },
 ];
 
@@ -523,20 +523,22 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
           <span className="type-meta text-muted">{t("v.held_by_you")}</span>
         )}
         {group.ratings && <RatingChips ratings={group.ratings} />}
-        <EngagementMeter g={group} />
-        <TrackerBadge g={group} />
+        <EngagementMeter g={group} labelled />
+        <TrackerBadge g={group} labelled />
         {group.new && (
-          <Tag tone="new">
-            <span title={t("new_sender.tip")}>🆕 {t("New")}</span>
+          <Tag tone="new" dot>
+            <span title={t("new_sender.tip")}>{t("New")}</span>
           </Tag>
         )}
         {group.replied && (
-          <Tag tone="info">
-            <span title={t("replied.tip")}>↩ {t("replied")}</span>
+          <Tag tone="info" dot>
+            <span title={t("replied.tip")}>{cap(t("replied"))}</span>
           </Tag>
         )}
         {group.att_size > 0 && (
-          <Tag tone="attach">📎 {fmtSize(group.att_size)}</Tag>
+          <Tag tone="attach" className="inline-flex items-center gap-1">
+            <Paperclip size={14} aria-hidden /> {fmtSize(group.att_size)}
+          </Tag>
         )}
         {pinnedN > 0 && (
           <span className="inline-flex items-center gap-1 type-meta text-muted"

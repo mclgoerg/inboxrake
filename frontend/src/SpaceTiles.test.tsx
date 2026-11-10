@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 import { SpaceTiles } from "./components/SpaceTiles";
+import { TONE_BAR, TONE_BG, TONE_FILL, TONE_TEXT } from "./components/spaceUi";
 import { buildDomains, labelFits } from "./spacemap";
 import type { Group } from "./types";
 
@@ -41,4 +42,15 @@ test("a tile too narrow for its name carries no label, a wide one does", () => {
     const text = x.el.querySelector("span.truncate")!.textContent!;
     if (x.w < 120) expect(labelFits(text, x.w)).toBe(true);
   }
+});
+
+test("tones: every tone is a real fill, 'keep' is calm (red means Trash)", () => {
+  const css = (o: Record<string, string>) => Object.values(o).join(" ");
+  for (const o of [TONE_BG, TONE_BAR, TONE_FILL]) {
+    // high engagement / recent mail was card grey and looked empty
+    expect(o.quiet).toMatch(/calm/);
+    expect(css(o)).not.toMatch(/keep-/);
+  }
+  expect(TONE_TEXT.keep).toBe("text-info-fg");
+  expect(TONE_BG.keep).toContain("bg-info-bg");
 });

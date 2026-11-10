@@ -7,32 +7,33 @@ import { fmtBig, pct, toneSums, type ColorBy, type MapItem, type Tone }
 /* Shared pieces of the Space map views (tiles, rings, details, lists). */
 
 /** Colour of a tone as a filled tile (background + readable text). The
- *  quiet / unrated ones get a hairline: their fill alone is too close to the
- *  page colour in the light theme (>= 1.5:1 with the line). Every entry has
- *  a border so the sizes stay equal. */
+ *  "quiet" tone (high engagement, recent mail) is the cool `calm` fill, not
+ *  card grey, so it never reads as an empty tile; only unrated ones get a
+ *  hairline (their fill alone is too close to the page colour in the light
+ *  theme). Every entry has a border so the sizes stay equal. */
 export const TONE_BG: Record<Tone, string> = {
   strong: "border border-transparent bg-heat text-on-accent",
   mid: "border border-transparent bg-accent/45 text-body",
-  quiet: "border border-faint bg-chiph text-body",
+  quiet: "border border-transparent bg-calm text-on-accent",
   delete_safe: "border border-transparent bg-safe-bg text-safe-fg",
   review: "border border-transparent bg-review-bg text-review-fg",
-  keep: "border border-transparent bg-keep-bg text-keep-fg",
+  keep: "border border-transparent bg-info-bg text-info-fg",
   none: "border border-faint bg-chiph text-muted",
 };
 /** The same colours as an SVG fill (ring segments) ... */
 export const TONE_FILL: Record<Tone, string> = {
   strong: "fill-heat",
   mid: "fill-accent/45",
-  quiet: "fill-chiph",
+  quiet: "fill-calm",
   delete_safe: "fill-safe-bg",
   review: "fill-review-bg",
-  keep: "fill-keep-bg",
+  keep: "fill-info-bg",
   none: "fill-chiph",
 };
 /** ... and the outline between segments (the page colour; a hairline for the
- *  quiet ones, see TONE_BG). */
+ *  unrated ones, see TONE_BG). */
 export const TONE_STROKE: Record<Tone, string> = {
-  strong: "stroke-panel", mid: "stroke-panel", quiet: "stroke-faint",
+  strong: "stroke-panel", mid: "stroke-panel", quiet: "stroke-panel",
   delete_safe: "stroke-panel", review: "stroke-panel", keep: "stroke-panel",
   none: "stroke-faint",
 };
@@ -40,16 +41,16 @@ export const TONE_STROKE: Record<Tone, string> = {
 export const TONE_BAR: Record<Tone, string> = {
   strong: "bg-heat",
   mid: "bg-accent/45",
-  quiet: "bg-faint",
+  quiet: "bg-calm",
   delete_safe: "bg-safe-fg",
   review: "bg-review-fg",
-  keep: "bg-keep-fg",
+  keep: "bg-info-fg",
   none: "bg-faint",
 };
 
 /** Text colour for a verdict word ("Delete-safe" in the AI colour). */
 export const TONE_TEXT: Partial<Record<Tone, string>> = {
-  delete_safe: "text-safe-fg", review: "text-review-fg", keep: "text-keep-fg",
+  delete_safe: "text-safe-fg", review: "text-review-fg", keep: "text-info-fg",
 };
 
 /** Legend text of a tone in a colour mode. */
