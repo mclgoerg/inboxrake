@@ -109,12 +109,12 @@ test("Trash and Undo through the UI", async () => {
   // (DIALOG_ARM_MS in frontend/src/components/ui.tsx, 500 ms)
   await page.waitForTimeout(700);
   await dialog.getByRole("button", { name: /^Move to Trash \(\d+\)$/ }).click();
-  const toast = page.getByText(/Moved \d+ mails? to Trash/);
+  const toast = page.getByText(/Moved \d+\u00a0mails? to Trash/);
   await expect(toast).toBeVisible();
   // Verify the move before restoring immediately from the result toast.
   expect(Object.keys(await senders()).length).toBeLessThan(Object.keys(before).length);
   await toast.locator("xpath=..").getByRole("button", { name: "Undo" }).click();
-  await expect(page.getByText(/Restored \d+ mails? \(/)).toBeVisible();
+  await expect(page.getByText(/Restored \d+\u00a0mails? \(/)).toBeVisible();
   expect(Object.keys(await senders()).length).toBe(Object.keys(before).length);
 });
 
@@ -131,7 +131,7 @@ test("filter row, Select all matches banner, Clear, row again to clear", async (
   await pick();
   await expect(box).toHaveValue("age:>6m");
   await expect(page.getByTestId("filter-token")).toContainText("Inactive 6+ months");
-  await page.getByRole("button", { name: /^Select (all \d+ matches|the 1 match)/ }).click();
+  await page.getByRole("button", { name: /^Select (all \d+\u00a0matches|the 1\u00a0match)/ }).click();
   await expect(page.getByRole("region", { name: "Selection actions" })).toBeVisible();
   // (the table and the phone card list each render one; only one is laid out)
   await expect(page.getByTestId("select-matches").filter({ visible: true }))

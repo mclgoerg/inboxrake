@@ -150,9 +150,9 @@ export const EN: Record<string, string> = {
     + "browser stays signed in.",
   "confirm.sign_out_all_confirm": "Sign out all",
   "ferr.login_throttled":
-    "Too many tries. Wait {n}\u00a0minutes, then sign in again.",
+    "Too many tries. Wait {n} minutes, then sign in again.",
   "ferr.login_throttled_one":
-    "Too many tries. Wait 1\u00a0minute, then sign in again.",
+    "Too many tries. Wait 1 minute, then sign in again.",
   "ferr.login_wrong_password": "Wrong password. Try again.",
   "ferr.login_password_off": "Password sign-in is not switched on.",
   "ferr.login_sso_off": "SSO sign-in is not switched on.",
@@ -2488,17 +2488,17 @@ export const EN: Record<string, string> = {
   "ferr.target_is_trash": "The target is the Trash folder itself.",
   "ferr.nothing_to_undo": "There is nothing to undo any more.",
   "ferr.deleted_then_failed":
-    "{cause} ({n}\u00a0mails were permanently deleted before the failure)",
+    "{cause} ({n} mails were permanently deleted before the failure)",
   "ferr.deleted_then_failed_one":
-    "{cause} (1\u00a0mail was permanently deleted before the failure)",
+    "{cause} (1 mail was permanently deleted before the failure)",
   "ferr.stranded_then_failed":
-    "{cause} ({n}\u00a0mails were moved to Trash and not deleted)",
+    "{cause} ({n} mails were moved to Trash and not deleted)",
   "ferr.stranded_then_failed_one":
-    "{cause} (1\u00a0mail was moved to Trash and not deleted)",
+    "{cause} (1 mail was moved to Trash and not deleted)",
   "ferr.moved_then_failed":
-    "{cause} ({n}\u00a0mails were moved before the failure)",
+    "{cause} ({n} mails were moved before the failure)",
   "ferr.moved_then_failed_one":
-    "{cause} (1\u00a0mail was moved before the failure)",
+    "{cause} (1 mail was moved before the failure)",
   "ferr.rule_report_first": "Run this rule in report mode first.",
   "ferr.rule_folder_changed":
     "The Junk or Trash folder changed since the last report - the rule is "
@@ -2529,7 +2529,7 @@ export const EN: Record<string, string> = {
     "The filter has parts Inboxrake doesn't understand: {names}. Execute "
     + "runs are skipped until you edit the rule.",
   "ferr.rule_filter_too_long":
-    "This filter is too long (more than {max}\u00a0characters).",
+    "This filter is too long (more than {max} characters).",
   "ferr.request_too_large":
     "The request is too large for the server to accept.",
   "ferr.block_key_invalid":

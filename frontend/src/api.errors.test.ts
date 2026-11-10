@@ -122,15 +122,15 @@ describe("errorText", () => {
 
   test("a count takes the singular form when it is 1", () => {
     expect(errorText("moved_then_failed:n=2,cause=cannot_move")).toBe(
-      "The server refused the move. (2\u00a0mails were moved before the failure)");
+      "The server refused the move. (2 mails were moved before the failure)");
     expect(errorText("moved_then_failed:n=1,cause=cannot_move")).toBe(
-      "The server refused the move. (1\u00a0mail was moved before the failure)");
+      "The server refused the move. (1 mail was moved before the failure)");
     setLang("de");
     expect(errorText("moved_then_failed:n=2,cause=cannot_move")).toBe(
-      "Der Server hat das Verschieben abgelehnt. (2\u00a0Mails wurden vor dem "
+      "Der Server hat das Verschieben abgelehnt. (2 Mails wurden vor dem "
       + "Fehler verschoben)");
     expect(errorText("moved_then_failed:n=1,cause=cannot_move")).toBe(
-      "Der Server hat das Verschieben abgelehnt. (1\u00a0Mail wurde vor dem "
+      "Der Server hat das Verschieben abgelehnt. (1 Mail wurde vor dem "
       + "Fehler verschoben)");
   });
 
@@ -138,16 +138,16 @@ describe("errorText", () => {
     const inner = "stranded_then_failed:n=3,cause=cannot_expunge";
     const outer = `deleted_then_failed:n=5,cause=${enc(inner)}`;
     expect(errorText(outer)).toBe(
-      "The server did not remove the marked mails. (3\u00a0mails were moved to "
-      + "Trash and not deleted) (5\u00a0mails were permanently deleted before "
+      "The server did not remove the marked mails. (3 mails were moved to "
+      + "Trash and not deleted) (5 mails were permanently deleted before "
       + "the failure)");
     setLang("de");
     expect(errorText(outer)).toBe(
-      "Der Server hat die markierten Mails nicht entfernt. (3\u00a0Mails wurden "
-      + "in den Papierkorb verschoben und nicht gelöscht) (5\u00a0Mails wurden "
+      "Der Server hat die markierten Mails nicht entfernt. (3 Mails wurden "
+      + "in den Papierkorb verschoben und nicht gelöscht) (5 Mails wurden "
       + "vor dem Fehler endgültig gelöscht)");
     expect(errorText(`deleted_then_failed:n=2,cause=${enc("socket timeout")}`))
-      .toBe("socket timeout (2\u00a0Mails wurden vor dem Fehler endgültig "
+      .toBe("socket timeout (2 Mails wurden vor dem Fehler endgültig "
         + "gelöscht)");
   });
 
@@ -327,10 +327,10 @@ describe("the unsubscribe codes", () => {
 describe("the login throttle code", () => {
   test("names the minutes in both languages", () => {
     expect(errorText("login_throttled:n=7"))
-      .toBe("Too many tries. Wait 7\u00a0minutes, then sign in again.");
-    expect(errorText("login_throttled:n=1")).toContain("Wait 1\u00a0minute,");
+      .toBe("Too many tries. Wait 7 minutes, then sign in again.");
+    expect(errorText("login_throttled:n=1")).toContain("Wait 1 minute,");
     setLang("de");
-    expect(errorText("login_throttled:n=7")).toContain("7\u00a0Minuten");
+    expect(errorText("login_throttled:n=7")).toContain("7 Minuten");
   });
 });
 

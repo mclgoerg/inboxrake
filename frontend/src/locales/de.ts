@@ -1641,9 +1641,9 @@ export const DE: Record<string, string> = {
     + "anmelden. Dieser Browser bleibt angemeldet.",
   "confirm.sign_out_all_confirm": "Alle abmelden",
   "ferr.login_throttled":
-    "Zu viele Versuche. Warte {n}\u00a0Minuten und melde dich dann erneut an.",
+    "Zu viele Versuche. Warte {n} Minuten und melde dich dann erneut an.",
   "ferr.login_throttled_one":
-    "Zu viele Versuche. Warte 1\u00a0Minute und melde dich dann erneut an.",
+    "Zu viele Versuche. Warte 1 Minute und melde dich dann erneut an.",
   "ferr.login_wrong_password": "Falsches Passwort. Versuch es noch einmal.",
   "ferr.login_password_off": "Die Anmeldung mit Passwort ist nicht eingeschaltet.",
   "ferr.login_sso_off": "Die Anmeldung per SSO ist nicht eingeschaltet.",
@@ -2738,19 +2738,19 @@ export const DE: Record<string, string> = {
   "ferr.nothing_to_undo":
     "Es gibt nichts mehr rückgängig zu machen.",
   "ferr.deleted_then_failed":
-    "{cause} ({n}\u00a0Mails wurden vor dem Fehler endgültig gelöscht)",
+    "{cause} ({n} Mails wurden vor dem Fehler endgültig gelöscht)",
   "ferr.deleted_then_failed_one":
-    "{cause} (1\u00a0Mail wurde vor dem Fehler endgültig gelöscht)",
+    "{cause} (1 Mail wurde vor dem Fehler endgültig gelöscht)",
   "ferr.stranded_then_failed":
-    "{cause} ({n}\u00a0Mails wurden in den Papierkorb verschoben und nicht "
+    "{cause} ({n} Mails wurden in den Papierkorb verschoben und nicht "
     + "gelöscht)",
   "ferr.stranded_then_failed_one":
-    "{cause} (1\u00a0Mail wurde in den Papierkorb verschoben und nicht "
+    "{cause} (1 Mail wurde in den Papierkorb verschoben und nicht "
     + "gelöscht)",
   "ferr.moved_then_failed":
-    "{cause} ({n}\u00a0Mails wurden vor dem Fehler verschoben)",
+    "{cause} ({n} Mails wurden vor dem Fehler verschoben)",
   "ferr.moved_then_failed_one":
-    "{cause} (1\u00a0Mail wurde vor dem Fehler verschoben)",
+    "{cause} (1 Mail wurde vor dem Fehler verschoben)",
   "ferr.rule_report_first":
     "Führe diese Regel zuerst im Berichtsmodus aus.",
   "ferr.rule_folder_changed":
@@ -2789,7 +2789,7 @@ export const DE: Record<string, string> = {
     "Der Filter enthält Teile, die Inboxrake nicht versteht: {names}. "
     + "Ausführungsläufe werden übersprungen, bis du die Regel bearbeitest.",
   "ferr.rule_filter_too_long":
-    "Dieser Filter ist zu lang (mehr als {max}\u00a0Zeichen).",
+    "Dieser Filter ist zu lang (mehr als {max} Zeichen).",
   "ferr.request_too_large":
     "Die Anfrage ist zu groß, als dass der Server sie annehmen könnte.",
   "ferr.block_key_invalid":
