@@ -97,6 +97,35 @@ name set `INBOXRAKE_ALLOWED_HOSTS`. Details in [Security & privacy](security.md)
 </details>
 
 <details class="faq-q">
+<summary><h3 id="forgot-the-password">I forgot the sign-in password - how do I reset it?</h3><span class="faq-short">Change <code>AUTH_PASSWORD</code> and restart, or delete the saved <code>auth</code> entry in <code>server.json</code>. There is no reset by mail.</span></summary>
+
+Inboxrake has one shared login and no account recovery by mail, so the reset
+happens on the server. Which way depends on where the password lives:
+
+- **Set with `AUTH_PASSWORD` and never saved in Settings:** set a new
+  `AUTH_PASSWORD` and restart the container.
+- **Saved in Settings -> Sign-in & users:** a saved login wins over the
+  environment (as soon as `server.json` has an `auth` entry), so changing
+  `AUTH_PASSWORD` changes nothing. Stop the container, open `server.json` in
+  the data folder (`/data/server.json`, unless `SERVER_PATH` says otherwise)
+  and delete the `"auth"` entry - leave the rest. For a Docker volume:
+  `docker run --rm -it -v <volume>:/data alpine vi /data/server.json`. Start
+  Inboxrake again: the login now comes from `AUTH_MODE` / `AUTH_PASSWORD` /
+  `OIDC_*` if they are set. Without them the login is **off** until you
+  switch it on again in Settings -> Sign-in & users, so do that straight away
+  and while nobody else can reach the port (localhost, or an SSH tunnel).
+
+**SSO** (the page says "Trouble signing in?"): "The sign-in provider isn't
+reachable" means the container could not reach your provider - check the
+issuer URL and the container's network, then try again. "Your SSO account has
+no verified email address" means the provider did not confirm the address -
+verify it there. If the provider is gone for good, use the `server.json`
+steps above and set `AUTH_MODE=password` with an `AUTH_PASSWORD` to get back
+in.
+
+</details>
+
+<details class="faq-q">
 <summary><h3 id="cannot-write-to-data">"Cannot write to /data"</h3><span class="faq-short">The image runs as user ID 1000. Give your folder to 1000 and restart.</span></summary>
 
 The image runs as user ID 1000. A host folder you created yourself is

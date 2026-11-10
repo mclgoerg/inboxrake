@@ -53,7 +53,9 @@ setup that should come up configured; they bootstrap **one** account.
 | `OIDC_REDIRECT_BASE` | empty | Only needed when auto-detection through `X-Forwarded-*` headers does not work. The callback is `<base>/api/oidc/callback`. |
 | `OIDC_ADMIN` | empty | Identity that owns the pre-SSO workspace and the server settings. Empty means the first SSO login claims it. |
 
-See [Security & privacy](security.md) for what each mode protects.
+A login saved in Settings -> Sign-in & users wins over these variables; if
+you forgot the password, see [the FAQ](faq.md#forgot-the-password). See
+[Security & privacy](security.md) for what each mode protects.
 
 Behind a reverse proxy, also set uvicorn's `FORWARDED_ALLOW_IPS` (default
 `127.0.0.1,::1`; read by uvicorn, not by Inboxrake) to the proxy's address

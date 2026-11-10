@@ -179,6 +179,9 @@ const ERROR_CODES: Record<string, string> = {
   aifilter_budget: "aif.err.budget",
   // password login throttle (backend/auth.py)
   login_throttled: "ferr.login_throttled",
+  login_wrong_password: "ferr.login_wrong_password",
+  login_password_off: "ferr.login_password_off",
+  login_sso_off: "ferr.login_sso_off",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
 };

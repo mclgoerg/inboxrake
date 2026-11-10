@@ -51,10 +51,15 @@ def test_password_mode_locks_the_api():
     assert c.get("/api/state").status_code == 401
     # login screen probes stay public
     assert c.get("/api/auth").json() == {"mode": "password", "authed": False}
+    # the other login endpoints of the method that is off refuse by code
+    assert c.get("/api/oidc/login", follow_redirects=False).json() \
+        == {"detail": "login_sso_off"}
+    assert c.get("/api/oidc/callback").json() == {"detail": "login_sso_off"}
     # SPA bundle stays public (it renders the login screen)
     assert c.get("/").status_code == 200
 
-    assert c.post("/api/login", json={"password": "wrong"}).status_code == 401
+    r = c.post("/api/login", json={"password": "wrong"})
+    assert r.status_code == 401 and r.json() == {"detail": "login_wrong_password"}
     r = c.post("/api/login", json={"password": "s3cret"})
     assert r.status_code == 200 and "pmc_session" in r.cookies
     assert c.get("/api/state").status_code == 200
@@ -258,3 +263,35 @@ def test_startup_warns_about_open_oidc(caplog):
     with caplog.at_level("WARNING", logger="inboxrake.auth"):
         main._warn_open_oidc()
     assert caplog.text == ""
+
+
+def _oidc_setup(monkeypatch, issuer="https://idp.example"):
+    r = client.post("/api/config", json={"auth": {
+        "mode": "oidc", "admin": "me@corp.example",
+        "oidc": {"issuer": issuer, "client_id": "app",
+                 "client_secret": "sst", "allowed": []}}})
+    assert r.status_code == 200
+    monkeypatch.setattr(authmod, "discovery", lambda issuer: {
+        "authorization_endpoint": "https://idp.example/authorize",
+        "token_endpoint": "https://idp.example/token",
+        "userinfo_endpoint": "https://idp.example/userinfo"})
+
+
+def test_password_login_is_refused_by_code_when_off():
+    client.post("/api/config", json={"auth": {"mode": "none"}})
+    r = client.post("/api/login", json={"password": "x"})
+    assert r.status_code == 400 and r.json() == {"detail": "login_password_off"}
+
+
+def test_the_probe_names_the_idp_host_only_while_signed_out(monkeypatch):
+    _oidc_setup(monkeypatch, issuer="https://user:pw@auth.home.example:8443/realm")
+    c = TestClient(app)
+    # the host only: no credentials, port or path of the issuer URL
+    assert c.get("/api/auth").json() == {
+        "mode": "oidc", "authed": False, "idp_host": "auth.home.example"}
+
+
+def test_the_probe_of_a_malformed_issuer_omits_the_host(monkeypatch):
+    _oidc_setup(monkeypatch, issuer="https://[broken")
+    assert TestClient(app).get("/api/auth").json() == {
+        "mode": "oidc", "authed": False}

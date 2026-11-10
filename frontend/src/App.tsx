@@ -1835,7 +1835,7 @@ export default function App() {
     );
   }
   if (!authOk) {
-    return <Login mode={auth.mode}
+    return <Login mode={auth.mode} idpHost={auth.idp_host}
       onLogin={() => setAuth({ ...auth, authed: true })} />;
   }
 

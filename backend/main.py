@@ -10,6 +10,7 @@ import io
 import json
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 import logging
 import os
@@ -359,6 +360,16 @@ def get_auth(request: Request):
         sub = None
     authed = mode == "none" or sub is not None
     out = {"mode": mode, "authed": authed}
+    if mode == "oidc" and not authed:
+        # the login page names where "Continue with SSO" goes; the host is
+        # public anyway (the browser is redirected there)
+        try:
+            host = urlparse(cfgmod.load_server()["auth"]["oidc"]
+                            .get("issuer") or "").hostname
+        except ValueError:          # a malformed issuer URL
+            host = None
+        if host:
+            out["idp_host"] = host
     if demomod.enabled():
         out["demo"] = True      # the UI disables what the demo can't do
     if authed:
@@ -394,7 +405,7 @@ def get_version():
 async def post_login(body: LoginBody, request: Request):
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "password":
-        raise HTTPException(400, "password login is not enabled")
+        raise HTTPException(400, mailops.LOGIN_PASSWORD_OFF)
     peer = request.client.host if request.client else "?"
     wait = authmod.login_throttle.attempt(peer)   # counts it, before the hash
     if wait:
@@ -409,7 +420,7 @@ async def post_login(body: LoginBody, request: Request):
                                    cfg["auth"]["password_hash"]):
         logging.getLogger("inboxrake.auth").warning("failed login from %s", peer)
         await asyncio.sleep(0.5)          # soften brute force
-        raise HTTPException(401, "wrong password")
+        raise HTTPException(401, mailops.LOGIN_WRONG_PASSWORD)
     authmod.login_throttle.succeeded(peer)
     resp = JSONResponse({"ok": True})
     _set_session(resp, request, "password")
@@ -425,20 +436,25 @@ def post_logout():
 
 
 _PKCE_COOKIE = "pmc_oidc_pkce"
+# the SSO legs are top-level navigations: a refusal lands on the login page
+# as ?login_error=<code> (frontend/src/components/Login.tsx words it)
+_LOGIN_ERROR_URL = "/?login_error=%s"
 
 
 @app.get("/api/oidc/login")
 def get_oidc_login(request: Request):
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "oidc":
-        raise HTTPException(400, "OIDC login is not enabled")
+        raise HTTPException(400, mailops.LOGIN_SSO_OFF)
     redirect = _external_base(request) + "/api/oidc/callback"
     verifier = authmod.make_verifier()
     try:
         url = authmod.auth_url(cfg["auth"]["oidc"], redirect,
                                authmod.make_state(), verifier)
     except Exception as exc:
-        raise _idp_unavailable(exc, "discovery")
+        # opened by a plain link: land on the login page, which words it
+        _log_idp_failure(exc, "discovery")
+        return RedirectResponse(_LOGIN_ERROR_URL % mailops.IDP_UNAVAILABLE)
     resp = RedirectResponse(url)
     # PKCE verifier for the callback leg. Lax still sends it on the IdP's
     # top-level redirect back to us; it never appears in any URL.
@@ -454,7 +470,7 @@ def get_oidc_callback(request: Request, code: str = Query(""),
                       error_description: str = Query("")):
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "oidc":
-        raise HTTPException(400, "OIDC login is not enabled")
+        raise HTTPException(400, mailops.LOGIN_SSO_OFF)
     if error:      # the IdP rejected the authorization request - say why
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login rejected by the IdP: %s (%s)",
@@ -471,13 +487,16 @@ def get_oidc_callback(request: Request, code: str = Query(""),
         claims = authmod.exchange_code(cfg["auth"]["oidc"], redirect, code,
                                        verifier)
     except Exception as exc:
-        raise _idp_unavailable(exc, "token exchange")
+        _log_idp_failure(exc, "token exchange")
+        resp = RedirectResponse(_LOGIN_ERROR_URL % mailops.IDP_UNAVAILABLE)
+        resp.delete_cookie(_PKCE_COOKIE)
+        return resp
     if authmod.email_unverified(claims):
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login refused for %r (email not verified by the IdP)",
             claims.get("email") or claims.get("sub"))
         # a top-level navigation: land on the login page, which words it
-        resp = RedirectResponse("/?login_error=email_unverified")
+        resp = RedirectResponse(_LOGIN_ERROR_URL % "email_unverified")
         resp.delete_cookie(_PKCE_COOKIE)
         return resp
     sub = authmod.allowed_subject(claims,
@@ -709,13 +728,13 @@ _request_line: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_line", default="")
 
 
-def _idp_unavailable(exc: Exception, step: str) -> HTTPException:
-    """The 502 of the public OIDC login legs: the IdP's own error text (it
-    can carry the issuer's URL or response body) goes to the log only."""
+def _log_idp_failure(exc: Exception, step: str) -> None:
+    """An unreachable IdP in the public OIDC login legs: the IdP's own error
+    text (it can carry the issuer's URL or response body) goes to the log
+    only; the browser is sent to the login page with a code."""
     logging.getLogger("inboxrake.auth").error(
         "OIDC %s failed: %s: %s", step, type(exc).__name__, exc,
         exc_info=exc)
-    return HTTPException(502, mailops.coded(mailops.IDP_UNAVAILABLE))
 
 
 def _internal_error(exc: Exception, acc=None) -> HTTPException:
