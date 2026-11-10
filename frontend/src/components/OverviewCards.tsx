@@ -7,11 +7,12 @@ import { getLang, t } from "../i18n";
 import { fmtNum } from "../numfmt";
 import { fmtSize } from "../lib";
 import { WEEK_S } from "../activity";
+import { categoryHues, categoryName } from "../categories";
 import { nowMs } from "../clock";
 import { kindShares, type Trend, windowTerm } from "../overview";
 import { TOP_CARDS, type QuickWinCard } from "../quickwins";
 import type { OverviewResp } from "../types";
-import { Button, cap, Checkbox, DivergingBars, hueFillAt, IconTile, Menu,
+import { Button, Checkbox, DivergingBars, hueFillAt, IconTile, Menu,
   MenuItem, Segmented, Spinner, tabPanelProps, useMediaQuery, type TagTone }
   from "./ui";
 
@@ -445,12 +446,6 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
 
 /* ------------------------- what fills your inbox ------------------------- */
 
-/** Display name of a kind: the three built-in ones in the UI's words, a
- *  category by its own name. */
-const kindName = (kind: string): string =>
-  ["newsletter", "automated", "other"].includes(kind)
-    ? t(`overview.kind.${kind}`) : cap(kind);
-
 /** The last 30 days by kind of sender as a stacked bar + legend with shares. */
 export function KindsCard({ data, failed, onRetry, className = "" }: {
   data: OverviewResp | null; failed: boolean; onRetry: () => void;
@@ -458,6 +453,7 @@ export function KindsCard({ data, failed, onRetry, className = "" }: {
 }) {
   const title = t("overview.kinds");
   const shares = data ? kindShares(data.kinds.items) : [];
+  const hues = categoryHues(shares.map((s) => s.kind));
   return (
     <section aria-label={title} className={`${CARD} ${className}`}>
       <CardHead title={title}
@@ -472,7 +468,7 @@ export function KindsCard({ data, failed, onRetry, className = "" }: {
             rounded-full">
             {shares.map((s, i) => (
               <span key={s.kind} style={{ flexGrow: s.count }}
-                className={`min-w-1 ${s.rest ? "bg-faint" : hueFillAt(i)}`} />
+                className={`min-w-1 ${s.rest ? "bg-faint" : hueFillAt(hues[i])}`} />
             ))}
           </div>
           <ul className="mt-3">
@@ -480,9 +476,9 @@ export function KindsCard({ data, failed, onRetry, className = "" }: {
               <li key={s.kind} className="flex items-center gap-2 py-1.5
                 type-body">
                 <span aria-hidden className={`size-2 shrink-0 rounded-full
-                  ${s.rest ? "bg-faint" : hueFillAt(i)}`} />
+                  ${s.rest ? "bg-faint" : hueFillAt(hues[i])}`} />
                 <span className="min-w-0 flex-1 truncate">
-                  {kindName(s.kind)}</span>
+                  {categoryName(s.kind)}</span>
                 <span className="text-muted tabular-nums">
                   {t("overview.percent", { n: fmtNum(s.pct) })}</span>
               </li>

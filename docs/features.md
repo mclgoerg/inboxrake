@@ -537,12 +537,13 @@ What your mailbox looks like, without changing anything.
 
 <small class="where">Insights → Statistics</small>
 
-Charts with a period
+Four figure tiles and cards all the way down. A period
 switch (30 days / 12 months / all time) for the volume chart and the mail,
-size and unread figures, a category donut, top senders with bars (click one
-to open it), top domains by size, scan history and per-month cleanup tallies
-("moved to Trash" and, for permanent deletes only, "freed"), persisted across
-restarts.
+size and unread figures, a category donut (each category has its own colour,
+the same on the Overview), top senders with bars (click one to open it), top
+domains by size, mails per year, engagement, the AI verdicts, a per-month
+cleanup table ("moved to Trash" and, for permanent deletes only, "freed") and
+the scan history, persisted across restarts.
 
 ### Space map
 

@@ -1110,20 +1110,14 @@ export const hueIndex = (name: string): number => {
 
 const hueOf = (name: string): string => ACCOUNT_HUES[hueIndex(name)];
 
-/* Fills for hue `i` where the avatar's dark tint would vanish: the bright
- * tone on the dark theme, the saturated avatar background on the light one
- * (both >= 3:1 against the panel; index.contrast.test.ts). Same hue order
- * as ACCOUNT_HUES. */
-const HUE_FILLS = [
-  "bg-violet-300 light:bg-violet-900",
-  "bg-teal-300 light:bg-teal-900",
-  "bg-cyan-300 light:bg-cyan-900",
-  "bg-lime-300 light:bg-lime-900",
-  "bg-indigo-300 light:bg-indigo-900",
-  "bg-fuchsia-300 light:bg-fuchsia-900",
-];
+/* Fills for chart hue `i` (donut slices, storage bars, legend dots): the
+ * category palette of index.css, one token per hue, softened on dark and
+ * deep on light (>= 3:1 against the panel; index.contrast.test.ts). Not tied
+ * to the avatar tints above. */
+const HUE_FILLS = ["bg-cat-1", "bg-cat-2", "bg-cat-3", "bg-cat-4", "bg-cat-5",
+  "bg-cat-6"];
 
-/** Storage-bar segments and legend dots in hue number `i`. */
+/** Chart fill (storage-bar segment, donut slice, legend dot) in hue `i`. */
 export const hueFillAt = (i: number): string => HUE_FILLS[i % HUE_COUNT];
 
 /** Letter avatar identifying one account/sender/domain, tinted by a
@@ -1301,8 +1295,12 @@ export function DivergingBars({ up, down, tips, active, onActive,
  *  hole. Slices are masked discs, so no raw colours are needed; the hole is a
  *  disc in `holeClass` (the surface the donut sits on, default `bg-panel2`). */
 export function Donut({ slices, px = 152, label, holeClass = "bg-panel2",
-  children }: {
+  restLast = false, hues, children }: {
   slices: number[]; px?: number; label: string; holeClass?: string;
+  /** hue per slice (`hueFillAt` index); default: slice number */
+  hues?: number[];
+  /** The last slice is the folded "Other": neutral (`bg-faint`), no hue. */
+  restLast?: boolean;
   children?: ReactNode;
 }) {
   const total = slices.reduce((a, b) => a + b, 0) || 1;
@@ -1320,7 +1318,9 @@ export function Donut({ slices, px = 152, label, holeClass = "bg-panel2",
         const mask = `conic-gradient(from ${from}deg, #000 ${span}deg, transparent 0)`;
         return (
           <div key={i}
-            className={`absolute inset-0 rounded-full ${hueFillAt(i)}`}
+            className={`absolute inset-0 rounded-full
+              ${restLast && i === slices.length - 1 ? "bg-faint"
+                : hueFillAt(hues?.[i] ?? i)}`}
             // slice = conic mask over a full disc; colour comes from the class
             style={{ maskImage: mask, WebkitMaskImage: mask }} />
         );
