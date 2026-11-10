@@ -124,6 +124,17 @@ export const EN: Record<string, string> = {
     + "bootstrap, or set the administrator before enabling SSO.",
   "login.err.email_unverified":
     "Your SSO account has no verified email address.",
+  "login.err.sso_rejected":
+    "Your identity provider rejected the sign-in. Try again, or check its "
+    + "settings.",
+  "login.err.sso_not_allowed":
+    "This account isn't allowed to sign in here. Ask the person who runs "
+    + "this server to add it.",
+  "login.err.sso_no_admin":
+    "SSO isn't fully set up: no administrator is configured yet. Ask the "
+    + "person who runs this server.",
+  "login.err.sso_expired":
+    "The sign-in took too long or was interrupted. Try again.",
   "login.err.generic": "Sign-in failed. Try again.",
   "login.sign_out_all": "Sign out all sessions…",
   "login.sign_out_all_help":

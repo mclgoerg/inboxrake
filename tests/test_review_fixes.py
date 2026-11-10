@@ -119,8 +119,9 @@ def test_open_oidc_cannot_bootstrap_admin(monkeypatch):
     config.save_server(server)  # simulate an existing/env-bootstrapped open install
     monkeypatch.setattr(auth, 'exchange_code', lambda *a, **k: {
         'sub': 'u', 'email': 'visitor@x.example', 'email_verified': True})
-    r = TestClient(app).get('/api/oidc/callback', params={'code': 'code', 'state': auth.make_state()})
-    assert r.status_code == 403 and not config.load_server()['auth']['admin']
+    r = TestClient(app).get('/api/oidc/callback', params={'code': 'code', 'state': auth.make_state()}, follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers['location'] == '/?login_error=sso_no_admin'
+    assert 'pmc_session' not in r.cookies and not config.load_server()['auth']['admin']
 
 
 def test_rule_reports_actual_failed_job_not_queued_count(monkeypatch):

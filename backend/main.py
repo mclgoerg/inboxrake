@@ -441,6 +441,14 @@ _PKCE_COOKIE = "pmc_oidc_pkce"
 _LOGIN_ERROR_URL = "/?login_error=%s"
 
 
+def _login_refused(code: str) -> RedirectResponse:
+    """The callback leg ends on the login page with a code - nothing but the
+    code is revealed before sign-in; the reason goes to the log."""
+    resp = RedirectResponse(_LOGIN_ERROR_URL % code)
+    resp.delete_cookie(_PKCE_COOKIE)
+    return resp
+
+
 @app.get("/api/oidc/login")
 def get_oidc_login(request: Request):
     cfg = cfgmod.load_config()
@@ -471,16 +479,13 @@ def get_oidc_callback(request: Request, code: str = Query(""),
     cfg = cfgmod.load_config()
     if cfg["auth"]["mode"] != "oidc":
         raise HTTPException(400, mailops.LOGIN_SSO_OFF)
-    if error:      # the IdP rejected the authorization request - say why
+    if error:      # the IdP rejected the authorization request
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login rejected by the IdP: %s (%s)",
             error, error_description)
-        raise HTTPException(
-            502, f"the identity provider rejected the login: "
-                 f"{error_description or error}")
+        return _login_refused("sso_rejected")
     if not code or not authmod.verify_state(state):
-        raise HTTPException(400, "invalid or expired login state - "
-                            "try signing in again")
+        return _login_refused("sso_expired")
     redirect = _external_base(request) + "/api/oidc/callback"
     verifier = request.cookies.get(_PKCE_COOKIE, "")
     try:
@@ -488,29 +493,28 @@ def get_oidc_callback(request: Request, code: str = Query(""),
                                        verifier)
     except Exception as exc:
         _log_idp_failure(exc, "token exchange")
-        resp = RedirectResponse(_LOGIN_ERROR_URL % mailops.IDP_UNAVAILABLE)
-        resp.delete_cookie(_PKCE_COOKIE)
-        return resp
+        return _login_refused(mailops.IDP_UNAVAILABLE)
     if authmod.email_unverified(claims):
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login refused for %r (email not verified by the IdP)",
             claims.get("email") or claims.get("sub"))
         # a top-level navigation: land on the login page, which words it
-        resp = RedirectResponse(_LOGIN_ERROR_URL % "email_unverified")
-        resp.delete_cookie(_PKCE_COOKIE)
-        return resp
+        return _login_refused("email_unverified")
     sub = authmod.allowed_subject(claims,
                                   cfg["auth"]["oidc"].get("allowed") or [])
     if not sub:
         logging.getLogger("inboxrake.auth").warning(
             "OIDC login rejected for %r (not in allow-list)",
             claims.get("email") or claims.get("sub"))
-        raise HTTPException(403, "this account is not allowed to sign in")
+        return _login_refused("sso_not_allowed")
     # No admin configured yet: the first allowed identity to sign in
     # claims the pre-tenancy workspace (set OIDC_ADMIN to pin it upfront).
     oidc = cfg["auth"]["oidc"]
     if not cfg["auth"].get("admin") and len(oidc.get("allowed") or []) != 1:
-        raise HTTPException(403, "Configure the SSO administrator before signing in, or restrict allowed users to one identity for bootstrap.")
+        logging.getLogger("inboxrake.auth").warning(
+            "OIDC login refused: no SSO administrator is configured and "
+            "the allow-list is not exactly one identity")
+        return _login_refused("sso_no_admin")
     identity = authmod.oidc_identity(claims, oidc["issuer"])
     cfgmod.bind_oidc_admin(identity, sub, str(claims.get("sub") or ""))
     if cfgmod.claim_admin(sub):

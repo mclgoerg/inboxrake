@@ -1613,6 +1613,18 @@ export const DE: Record<string, string> = {
     + "oder setze den Administrator, bevor du SSO aktivierst.",
   "login.err.email_unverified":
     "Dein SSO-Konto hat keine bestätigte E-Mail-Adresse.",
+  "login.err.sso_rejected":
+    "Dein Identity Provider hat die Anmeldung abgelehnt. Versuch es noch "
+    + "einmal oder prüfe seine Einstellungen.",
+  "login.err.sso_not_allowed":
+    "Dieses Konto darf sich hier nicht anmelden. Bitte die Person, die "
+    + "diesen Server betreibt, es hinzuzufügen.",
+  "login.err.sso_no_admin":
+    "SSO ist nicht fertig eingerichtet: Es ist noch kein Administrator "
+    + "festgelegt. Frag die Person, die diesen Server betreibt.",
+  "login.err.sso_expired":
+    "Die Anmeldung hat zu lange gedauert oder wurde unterbrochen. Versuch "
+    + "es noch einmal.",
   "login.err.generic": "Anmeldung fehlgeschlagen. Versuch es noch einmal.",
   "login.sign_out_all": "Alle Sitzungen abmelden…",
   "login.sign_out_all_help":
@@ -1635,8 +1647,8 @@ export const DE: Record<string, string> = {
   "login.submit": "Anmelden",
   "login.sso": "Weiter mit SSO",
   "login.show_password": "Passwort anzeigen",
-  "login.forgot": "Passwort vergessen?",
-  "login.forgot_link": "So setzt du es zurück",
+  "login.forgot": "Zugang verloren?",
+  "login.forgot_link": "So setzt du das Passwort zurück",
   "login.trouble": "Probleme bei der Anmeldung?",
   "login.logout": "Abmelden",
   "login.admin_tip": "Admin - verwaltet die Server-Einstellungen",

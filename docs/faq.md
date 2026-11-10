@@ -119,7 +119,10 @@ happens on the server. Which way depends on where the password lives:
 reachable" means the container could not reach your provider - check the
 issuer URL and the container's network, then try again. "Your SSO account has
 no verified email address" means the provider did not confirm the address -
-verify it there. If the provider is gone for good, use the `server.json`
+verify it there. "This account isn't allowed to sign in here" means the
+account is not in the allowed users (`OIDC_ALLOWED`, or Settings -> Sign-in &
+users), and "no administrator is configured yet" means the SSO administrator
+(`OIDC_ADMIN`) is still unset. If the provider is gone for good, use the `server.json`
 steps above and set `AUTH_MODE=password` with an `AUTH_PASSWORD` to get back
 in.
 

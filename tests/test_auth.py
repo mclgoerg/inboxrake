@@ -102,12 +102,17 @@ def test_oidc_mode_flow(monkeypatch):
     state = loc.split("state=")[1].split("&")[0]
 
     # tampered/expired state is rejected
-    assert c.get("/api/oidc/callback?code=abc&state=bad").status_code == 400
+    r = c.get("/api/oidc/callback?code=abc&state=bad", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_expired"
 
-    # an IdP error redirect surfaces the IdP's reason, not "bad state"
+    # an IdP error redirect is its own code (not "bad state"); the IdP's
+    # reason stays out of the URL
     r = c.get("/api/oidc/callback?error=invalid_request"
-              "&error_description=This+client+requires+PKCE&state=x")
-    assert r.status_code == 502 and "requires PKCE" in r.json()["detail"]
+              "&error_description=This+client+requires+PKCE&state=x",
+              follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_rejected"
 
     # a user NOT on the allow-list is rejected
     monkeypatch.setattr(authmod, "exchange_code",
@@ -115,7 +120,16 @@ def test_oidc_mode_flow(monkeypatch):
                         {"email": "evil@other.example", "sub": "e1", "email_verified": True})
     import urllib.parse
     q = urllib.parse.quote(state)
-    assert c.get(f"/api/oidc/callback?code=abc&state={q}").status_code == 403
+    r = c.get(f"/api/oidc/callback?code=abc&state={q}", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/?login_error=sso_not_allowed"
+    assert "pmc_session" not in r.cookies
+
+    # a refusal ends that attempt (the PKCE cookie is dropped): sign in afresh
+    r = c.get("/api/oidc/login", follow_redirects=False)
+    loc = r.headers["location"]
+    verifier = r.cookies.get("pmc_oidc_pkce")
+    q = urllib.parse.quote(loc.split("state=")[1].split("&")[0])
 
     # allowed user gets a session and lands on /; the token exchange
     # receives the SAME verifier the login leg set

@@ -11,14 +11,20 @@ const RESET_DOCS_URL = "https://inboxrake.com/docs/faq/#forgot-the-password";
 
 type LoginError = { text: string; tone: "danger" | "warn"; code?: string };
 
-/** What the SSO legs (backend/main.py) put in `?login_error=`. Anything else
- *  - an older server, a hand-made link - gets the generic text. */
+/** What the SSO legs (backend/main.py `_login_refused`) put in
+ *  `?login_error=`. Anything else - an older server, a hand-made link - gets
+ *  the generic text. */
+const SSO_REFUSALS = ["email_unverified", "sso_rejected", "sso_not_allowed",
+  "sso_no_admin", "sso_expired"];
+
 function ssoRefusal(code: string): LoginError {
   if (code === "idp_unavailable")
     return { text: errorText(code), tone: "warn", code };
-  if (code === "email_unverified")
-    return { text: t("login.err.email_unverified"), tone: "danger", code };
-  return { text: t("login.err.generic"), tone: "danger", code };
+  return {
+    text: t(SSO_REFUSALS.includes(code) ? `login.err.${code}`
+      : "login.err.generic"),
+    tone: "danger", code,
+  };
 }
 
 const ICON = {

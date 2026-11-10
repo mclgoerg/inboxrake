@@ -173,6 +173,13 @@ test.each([
   ["email_unverified", "Your SSO account has no verified email address.", "bg-keep-bg"],
   ["idp_unavailable", "The sign-in provider isn't reachable. Try again in a moment.",
     "bg-review-bg"],
+  ["sso_rejected", "Your identity provider rejected the sign-in. Try again, or check its settings.",
+    "bg-keep-bg"],
+  ["sso_not_allowed", "This account isn't allowed to sign in here. Ask the person who runs this server to add it.",
+    "bg-keep-bg"],
+  ["sso_no_admin", "SSO isn't fully set up: no administrator is configured yet. Ask the person who runs this server.",
+    "bg-keep-bg"],
+  ["sso_expired", "The sign-in took too long or was interrupted. Try again.", "bg-keep-bg"],
   ["whatever", "Sign-in failed. Try again.", "bg-keep-bg"],
 ])("?login_error=%s is worded on the SSO page and removed from the URL",
   (code, text, tone) => {
@@ -193,6 +200,22 @@ test("?login_error= in German", () => {
   expect(screen.getByRole("alert").textContent)
     .toBe("Der Anmeldedienst ist nicht erreichbar. Versuch es gleich noch einmal.");
   expect(screen.getByRole("link", { name: "Weiter mit SSO" })).toBeTruthy();
+});
+
+test("every SSO refusal code has a German text", () => {
+  setLang("de");
+  const seen = new Set<string>();
+  for (const code of ["email_unverified", "idp_unavailable", "sso_rejected",
+    "sso_not_allowed", "sso_no_admin", "sso_expired"]) {
+    window.history.replaceState(null, "", `/?login_error=${code}`);
+    const { unmount } = render(<Login mode="oidc" onLogin={() => {}} />);
+    const text = screen.getByRole("alert").textContent!;
+    expect(text).not.toBe("Anmeldung fehlgeschlagen. Versuch es noch einmal.");
+    expect(text).not.toMatch(/^login\./);
+    seen.add(text);
+    unmount();
+  }
+  expect(seen.size).toBe(6);
 });
 
 test("no error, no alert", () => {
