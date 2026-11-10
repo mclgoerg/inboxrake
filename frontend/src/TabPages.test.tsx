@@ -107,7 +107,7 @@ test("Insights: widgets show real data and open their tools", async () => {
   await screen.findByText("240 mails");
   expect(screen.getByRole("img", { name: /30 %/ })).toBeTruthy();
   expect(screen.getByText("4 senders track you")).toBeTruthy();
-  expect(screen.getByText("failed")).toBeTruthy();
+  expect(screen.getByText("Failed")).toBeTruthy();
   expect(audit).toHaveBeenCalledWith(0, 3);
   for (const [name, tool] of [["Statistics", "stats"], ["Space map", "space"],
     ["Trackers", "trackers"], ["Your year in mail", "wrapped"],

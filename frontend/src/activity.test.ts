@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { cleanedWeeks, entriesSince, groupByMonth, localIso, monthSummary,
-  undoneCounts, weekBucket } from "./activity";
+  undoneCounts, weekBucket, weekRanges } from "./activity";
 import type { AuditEntry } from "./types";
 
 const at = (y: number, m: number, d: number) =>
@@ -169,4 +169,50 @@ test("the weekly balance subtracts what an undo restored, like the month", () =>
       count: 9 }),
   ], NOW);
   expect(w[7]).toBe(6);
+});
+
+test("splits the month by rules / by you and counts the unsubscribes", () => {
+  const s = monthSummary([
+    e(at(2026, 10, 5), { action: "rule_execute", actor: "rule:r1", count: 7,
+      bytes: 0 }),
+    e(at(2026, 10, 6), { count: 2 }),
+    e(at(2026, 10, 6), { action: "unsubscribe", count: 1, outcome: "done" }),
+    e(at(2026, 10, 7), { action: "unsubscribe", count: 1, outcome: "ok" }),
+    e(at(2026, 10, 7), { action: "unsubscribe", count: 1, outcome: "failed" }),
+    e(at(2026, 10, 8), { action: "unsubscribe", count: 1, outcome: "link" }),
+    e(at(2026, 9, 8), { action: "unsubscribe", count: 1, outcome: "done" }),
+  ], now);
+  expect([s.byRules, s.byYou, s.mails]).toEqual([7, 2, 9]);
+  expect(s.unsubscribed).toBe(2);
+});
+
+test("the week ranges of a month end on its last day", () => {
+  expect(weekRanges(new Date(2026, 1, 10))).toEqual(
+    [[1, 7], [8, 14], [15, 21], [22, 28]]);
+  expect(weekRanges(new Date(2026, 9, 10))[3]).toEqual([22, 31]);
+});
+
+test("the split takes undone mails off and counts a rule's run once", () => {
+  const t0 = at(2026, 10, 5);
+  const s = monthSummary([
+    e(t0, { id: "a", count: 10 }),
+    e(t0, { id: "b", actor: "rule:r1", count: 4 }),
+    // the run entry of the same rule: not a second time
+    e(t0 + 5, { action: "rule_execute", actor: "rule:r1", count: 4,
+      bytes: 0 }),
+    e(t0 + 9, { action: "undo", id: "u1", count: 4, undoes: { id: "a",
+      count: 4 } }),
+    e(t0 + 9, { action: "undo", id: "u2", count: 1, undoes: { id: "b",
+      count: 1 } }),
+  ], now);
+  expect([s.byYou, s.byRules, s.mails]).toEqual([6, 3, 9]);
+});
+
+test("the weekly bars switch on the 8th, 15th and 22nd, the last on the last day", () => {
+  const day = (d: number) => e(at(2026, 10, d), { count: 1 });
+  const s = monthSummary([7, 8, 14, 15, 21, 22, 31].map(day), now);
+  expect(s.weeks).toEqual([1, 2, 2, 2]);
+  const feb = monthSummary([28, 1].map((d) => e(at(2026, 2, d), { count: 1 })),
+    new Date(2026, 1, 10));
+  expect(feb.weeks).toEqual([1, 0, 0, 1]);
 });

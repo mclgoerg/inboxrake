@@ -2323,9 +2323,7 @@ export default function App() {
         </Button>
       )}
     </section>
-  ) : (
-    <p className="px-1 type-meta text-muted">{t("activity.undo_empty")}</p>
-  );
+  ) : null;
 
   // The tool panels: modals below 1024 px, pages in the content column from
   // there (`toolShown`; each panel's own close then leaves the page).
