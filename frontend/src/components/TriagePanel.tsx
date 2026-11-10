@@ -1,11 +1,12 @@
 import {
-  ArrowLeft, ArrowRight, ArrowUp, BellOff, Check, Layers, ShieldCheck, Trash2,
-  Undo2, X,
+  ArrowLeft, ArrowRight, ArrowUp, BellOff, Check, Delete, Layers, ShieldCheck,
+  Trash2, Undo2, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtSize } from "../api";
 import { categoryName } from "../categories";
 import { t } from "../i18n";
+import { SIDEBAR_QUERY } from "../nav";
 import { fmtNum } from "../numfmt";
 import {
   buildDeck, can, dragDecision, planOf, summarize, type Decision,
@@ -120,7 +121,7 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
       onPointerDown={down} onPointerMove={move} onPointerUp={up}
       onPointerCancel={cancel}
       className="relative w-full touch-none select-none rounded-card
-        border border-line bg-panel2 p-4 shadow-popover sm:p-5">
+        border border-line bg-panel2 p-4 shadow-popover sm:p-5 lg:p-6">
       {intent && allowed(intent) && (
         <div aria-hidden style={{ opacity: progress }}
           className={`absolute -top-3 rounded-badge border-2 border-current bg-panel2 px-2
@@ -133,7 +134,7 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
         <Avatar name={g.label || g.key} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h2 className="min-w-0 truncate type-heading">{g.label}</h2>
+            <h2 className="min-w-0 truncate type-heading lg:type-title2">{g.label}</h2>
             {g.protected && (
               <ShieldCheck size={16} aria-label={t("triage.protected_label")}
                 className="shrink-0 text-accent" />
@@ -153,13 +154,13 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
           [`${unreadPct(g)}%`, t("unread")],
         ].map(([v, label]) => (
           <div key={label} className="min-w-0 rounded-card bg-chip px-2 py-2">
-            <div className="truncate type-heading tabular-nums">{v}</div>
+            <div className="truncate type-heading tabular-nums lg:type-title2">{v}</div>
             <div className="truncate type-meta text-muted">{label}</div>
           </div>
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <EngagementMeter g={g} />
+        <EngagementMeter g={g} labelled />
         {g.still_mailing && <StillMailingBadge sm={g.still_mailing} />}
         {g.ai && <AiTag ai={g.ai} />}
         {g.unsubscribed?.status === "done" && (
@@ -190,14 +191,108 @@ function Card({ g, grouping, reduced, onCommit, onIntent }: {
   );
 }
 
+/** A key hint under a button (the key map is the handler in TriagePanel). */
+function KeyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd aria-hidden className="inline-flex min-h-6 min-w-6 items-center
+      justify-center rounded-badge bg-chip px-1.5 font-sans type-caption
+      text-muted">
+      {children}
+    </kbd>
+  );
+}
+
+/** The Undo button and the four decision buttons. `keys` (desktop) puts the
+ *  size up and the key under each button; Protect has no key. */
+function DecisionBar({ g, grouping, canUndo, keys, onUndo, onDecide }: {
+  g: Group; grouping: Grouping; canUndo: boolean; keys: boolean;
+  onUndo: () => void; onDecide: (d: Decision) => void;
+}) {
+  const disc = (extra: string) => `flex items-center justify-center
+    rounded-full transition-transform group-enabled:group-active:scale-95
+    ${keys ? "size-16" : "size-14 sm:size-16"} ${extra}`;
+  const label = keys ? "type-meta font-medium text-body" : "type-caption text-muted";
+  return (
+    <div className={`flex items-start justify-center ${keys ? "gap-6"
+      : "gap-3 sm:gap-5"}`}>
+      <button type="button" aria-label={t("triage.undo")}
+        aria-keyshortcuts="Backspace" disabled={!canUndo} onClick={onUndo}
+        className={`group flex min-w-0 cursor-pointer flex-col items-center
+          gap-1 disabled:cursor-not-allowed ${keys ? "" : "mt-1.5"}`}>
+        <span className={keys ? disc("bg-chip text-body group-disabled:text-faint")
+          : `flex size-11 items-center justify-center rounded-full bg-chip
+            text-body transition-transform group-enabled:group-active:scale-95
+            group-disabled:text-faint`}>
+          <Undo2 size={18} aria-hidden />
+        </span>
+        <span aria-hidden className={label}>{t("triage.undo_short")}</span>
+        {keys && <KeyHint><Delete size={14} /></KeyHint>}
+      </button>
+      {DECISION_BTN.map(({ d, icon: Icon, key, tone, hint }) => (
+        <button key={d} type="button" disabled={!can(d, g, grouping)}
+          title={d === "trash" && g.protected
+            ? t("triage.protected_kept") : undefined}
+          aria-keyshortcuts={hint?.shortcut}
+          onClick={() => onDecide(d)}
+          className="group flex min-w-0 cursor-pointer flex-col items-center
+            gap-1 disabled:cursor-not-allowed">
+          <span className={disc(`${tone} group-disabled:bg-chip
+            group-disabled:text-faint`)}>
+            <Icon size={18} aria-hidden />
+          </span>
+          <span className={label}>{t(key)}</span>
+          {keys && (hint
+            ? <KeyHint><hint.icon size={14} /></KeyHint>
+            : <span aria-hidden className="h-6" />)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The next cards of the deck beside the current one (desktop). */
+function UpNext({ cards, more }: { cards: Group[]; more: number }) {
+  return (
+    <section aria-label={t("triage.next")}>
+      <SectionLabel className="pb-2">{t("triage.next")}</SectionLabel>
+      <div className="overflow-hidden rounded-card border border-line bg-panel">
+        <ul className="divide-y divide-line">
+          {cards.map((c) => (
+            <li key={c.key} className="flex items-center gap-3 px-3 py-2.5">
+              <Avatar name={c.label || c.key} size="md" />
+              <div className="min-w-0">
+                <div className="truncate type-body font-medium">{c.label}</div>
+                <div className="truncate type-meta text-muted">
+                  {t("triage.next_row", { n: fmtNum(c.count),
+                    size: fmtSize(c.size) })}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {more > 0 && (
+          <div className="border-t border-line px-3 py-2.5 type-meta text-muted">
+            {t("triage.next_more", { n: fmtNum(more) })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** Round button colours per decision (disabled falls back to the chip grey). */
 const DECISION_BTN: {
   d: Decision; icon: typeof Trash2; key: string; tone: string;
+  /** The key that decides it (see `handler` in TriagePanel); Protect has none. */
+  hint?: { icon: typeof ArrowUp; shortcut: string };
 }[] = [
-  { d: "trash", icon: Trash2, key: "triage.trash", tone: "bg-keep-bg text-keep-fg" },
-  { d: "unsub", icon: BellOff, key: "triage.unsub", tone: "bg-info-bg text-info-fg" },
+  { d: "trash", icon: Trash2, key: "triage.trash", tone: "bg-keep-bg text-keep-fg",
+    hint: { icon: ArrowLeft, shortcut: "ArrowLeft" } },
+  { d: "unsub", icon: BellOff, key: "triage.unsub", tone: "bg-info-bg text-info-fg",
+    hint: { icon: ArrowUp, shortcut: "ArrowUp" } },
   { d: "protect", icon: ShieldCheck, key: "triage.protect", tone: "bg-chip text-body" },
-  { d: "keep", icon: Check, key: "triage.keep", tone: "bg-safe-bg text-safe-fg" },
+  { d: "keep", icon: Check, key: "triage.keep", tone: "bg-safe-bg text-safe-fg",
+    hint: { icon: ArrowRight, shortcut: "ArrowRight" } },
 ];
 
 /** The direction hints beside the deck (a decision the card does not allow
@@ -233,6 +328,8 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
   const [intent, setIntent] = useState<Intent | null>(null);
   const isPage = useIsPage();
   const reduced = useMediaQuery(REDUCED);
+  // From 1024 px (where Triage is a page): up-next list, key hints, words.
+  const wide = useMediaQuery(SIDEBAR_QUERY);
 
   const finished = idx >= deck.length;
   const summaryOpen = review || finished;
@@ -331,6 +428,22 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
           </Tag>
   </>);
 
+  /** The same counts with words (desktop header). */
+  const tallyWords = (<>
+    {([
+      [Trash2, sum.trash.groups, "keep", "triage.n_trashed"],
+      [Check, sum.keep, "safe", "triage.n_kept"],
+      [BellOff, sum.unsub, "info", "triage.n_unsub"],
+      [ShieldCheck, sum.protect, "neutral", "triage.n_protected"],
+    ] as const).map(([Icon, n, tone, key]) => (
+      <Tag key={key} tone={n ? tone : "neutral"} className="whitespace-nowrap">
+        <Icon size={14} className="mr-1 inline align-text-bottom" />
+        {t(key, { n: fmtNum(n) })}
+      </Tag>
+    ))}
+  </>);
+  const upNext = deck.slice(idx + 1, idx + 6);
+
   return (
     <Modal full label={t("triage.title")} onClose={close}>
       <PanelHeader title={<><Layers size={18} aria-hidden
@@ -338,9 +451,11 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
         sub={summaryOpen ? t("triage.summary_title")
           : t("triage.progress", { n: idx + 1, total: deck.length })}
         actions={!summaryOpen && (<>
-          <span aria-hidden className="mr-2 hidden items-center gap-1.5 lg:flex">
-            {tally}
-          </span>
+          {wide && (
+            <span aria-hidden className="mr-2 flex items-center gap-1.5">
+              {tallyWords}
+            </span>
+          )}
           <Button variant={sum.actions > 0 ? "primary" : "secondary"} size="sm"
             onClick={() => setReview(true)}>
             {sum.actions > 0 ? t("triage.apply_decisions", { n: sum.actions })
@@ -349,10 +464,10 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
         </>)}
         onClose={close} />
       <ProgressBar thin value={idx} max={deck.length} />
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-line
-        px-4 py-2 max-lg:border-b lg:sr-only">
+      <div className={wide ? "sr-only" : `flex flex-wrap items-center gap-1.5
+        border-b border-line px-4 py-2`}>
         <span role="status" className="sr-only">{line}</span>
-        <span aria-hidden className="contents lg:hidden">{tally}</span>
+        {!wide && <span aria-hidden className="contents">{tally}</span>}
       </div>
       {summaryOpen ? (
         <div data-scroll-id="panel" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
@@ -386,6 +501,37 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
               { n: deck.length - idx })}
           </p>
         </div>
+      ) : wide ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">
+          <div className="mx-auto flex w-full max-w-4xl items-start
+            justify-center gap-7 pt-4">
+            <div className="min-w-0 max-w-xl flex-1">
+              {/* A fixed slot: the buttons stay put from card to card. */}
+              <div className="mb-14 min-h-96">
+              <div className="relative">
+                {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
+                  <div key={n} aria-hidden
+                    className="pointer-events-none absolute inset-0 rounded-card
+                      border border-line bg-chiph shadow-popover"
+                    style={{ transform: `translateY(${n * 14}px) scale(${1 - n * 0.04})`,
+                      opacity: 1 - n * 0.25 }} />
+                ))}
+                <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
+                  onCommit={decide} onIntent={setIntent} />
+              </div>
+              </div>
+              <DecisionBar g={g} grouping={grouping} keys canUndo={!!history.length}
+                onUndo={undo} onDecide={decide} />
+            </div>
+            <aside className="w-68 shrink-0 space-y-4">
+              {upNext.length > 0 && (
+                <UpNext cards={upNext}
+                  more={deck.length - idx - 1 - upNext.length} />
+              )}
+              <p className="type-meta text-muted">{t("triage.hint_wide")}</p>
+            </aside>
+          </div>
+        </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col items-center
           justify-center gap-3 overflow-hidden p-4">
@@ -417,56 +563,31 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
             ))}
         </div>
       )}
-      <div className="border-t border-line px-4 py-3 sm:px-5
-        max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        {summaryOpen ? (
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" disabled={busy || !deck.length}
-              onClick={() => {
-                // At the end: reopen the last card, keeping its decision.
-                if (finished) setIdx(deck.length - 1);
-                setReview(false);
-              }}>
-              {t("triage.back")}
-            </Button>
-            <Button disabled={busy || sum.actions === 0} onClick={apply}>
-              {t("triage.apply")}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-start justify-center gap-3 sm:gap-5">
-            <button type="button" aria-label={t("triage.undo")}
-              disabled={!history.length} onClick={undo}
-              className="group mt-1.5 flex min-w-0 cursor-pointer flex-col
-                items-center gap-1 disabled:cursor-not-allowed">
-              <span className="flex size-11 items-center justify-center
-                rounded-full bg-chip text-body transition-transform
-                group-enabled:group-active:scale-95 group-disabled:text-faint">
-                <Undo2 size={18} aria-hidden />
-              </span>
-              <span aria-hidden className="type-caption text-muted">
-                {t("triage.undo_short")}
-              </span>
-            </button>
-            {DECISION_BTN.map(({ d, icon: Icon, key, tone }) => (
-              <button key={d} type="button" disabled={!can(d, g, grouping)}
-                title={d === "trash" && g.protected
-                  ? t("triage.protected_kept") : undefined}
-                onClick={() => decide(d)}
-                className="group flex min-w-0 cursor-pointer flex-col
-                  items-center gap-1 disabled:cursor-not-allowed">
-                <span className={`flex size-14 items-center justify-center
-                  rounded-full transition-transform group-enabled:group-active:scale-95
-                  sm:size-16 ${tone} group-disabled:bg-chip
-                  group-disabled:text-faint`}>
-                  <Icon size={18} aria-hidden />
-                </span>
-                <span className="type-caption text-muted">{t(key)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* On desktops the buttons sit under the card; only the summary keeps
+          a footer there. */}
+      {(summaryOpen || !wide) && (
+        <div className="border-t border-line px-4 py-3 sm:px-5
+          max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          {summaryOpen ? (
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" disabled={busy || !deck.length}
+                onClick={() => {
+                  // At the end: reopen the last card, keeping its decision.
+                  if (finished) setIdx(deck.length - 1);
+                  setReview(false);
+                }}>
+                {t("triage.back")}
+              </Button>
+              <Button disabled={busy || sum.actions === 0} onClick={apply}>
+                {t("triage.apply")}
+              </Button>
+            </div>
+          ) : (
+            <DecisionBar g={g} grouping={grouping} keys={false}
+              canUndo={!!history.length} onUndo={undo} onDecide={decide} />
+          )}
+        </div>
+      )}
     </Modal>
   );
 }
