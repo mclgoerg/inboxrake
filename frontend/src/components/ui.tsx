@@ -2513,9 +2513,11 @@ const swipeOutside = (e: Event) => {
   swipeTouched = e.target as Node;
   document.addEventListener("click", swipeSwallowClick,
     { capture: true, once: true });
-  // (a touch that never clicks - a scroll - must not arm the next tap)
+  // (a touch that never clicks - a scroll - must not arm the next tap). The
+  // document is captured: the timer can outlive a test environment's global.
+  const doc = document;
   setTimeout(() => {
-    document.removeEventListener("click", swipeSwallowClick, { capture: true });
+    doc.removeEventListener("click", swipeSwallowClick, { capture: true });
     swipeTouched = null;
   }, 600);
 };
