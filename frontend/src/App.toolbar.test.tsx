@@ -324,7 +324,8 @@ test("phone: the summary is the short two-line form", async () => {
   const summary = () => screen.getByRole("button", { name: "Filter" })
     .parentElement!.firstElementChild!;
   await waitFor(() => expect(summary().textContent).toMatch(/^1\u00a0group3\u00a0mails · /));
-  expect(screen.queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
+  expect(within(summary().parentElement!)
+    .queryByText(/scanned|filtered/, { selector: "div" })).toBeNull();
   fireEvent.change(screen.getByPlaceholderText("Search or filter…"),
     { target: { value: "acme" } });
   await waitFor(() => expect(summary().textContent).toMatch(/^1 of 1\u00a0group/));

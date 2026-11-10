@@ -271,7 +271,8 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
           {!compact && <th className={`${th} w-44`} />}
           <th className={`${th} w-32 text-right`}
             aria-sort={ariaSort(sortK === "size" ? "size" : "count")}>
-            <span className="group/th inline-flex items-center gap-3">
+            {/* Stacked like the cells below: Mails over Size. */}
+            <span className="group/th inline-flex flex-col items-end">
               {sortBtn("count", t("Mails"), undefined, true)}
               {sortBtn("size", t("Size"), undefined, true)}
             </span>

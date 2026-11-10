@@ -51,7 +51,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuItem, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
-  PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
+  PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
 import { nowMs } from "./clock";
 import { demoHint, setDemo, useDemo } from "./demoMode";
@@ -1766,8 +1766,9 @@ export default function App() {
       const ago = fmtAgo(state.scanned_ts);
       return `${t("n.groups", { n: groups.length })} · ${t("n.mails", { n: mails })}`
         + ` · ${fmtSize(size)}` + (filter ? ` ${t("(filtered)")}` : "")
-        // (phones: the top bar already says when it was scanned)
-        + (ago && !(phone && sendersToolbar) ? ` · ${t("scan.age", { ago })}` : "");
+        // (the page header / top bar already says when it was scanned)
+        + (ago && !(phone && sendersToolbar) && !wide
+          ? ` · ${t("scan.age", { ago })}` : "");
     }
     // the setup card is the guidance while there is no account or the
     // connection is unconfirmed
@@ -2469,6 +2470,29 @@ export default function App() {
     },
   };
 
+  // The grouping segments of the group pages (Senders): in the page header
+  // from 1024 px, in their own row below it on phones.
+  const groupingSegments = (
+    <Segmented label={t("view.group_by")} fill
+      className="md:w-auto"
+      value={flat ? "flat" : mode}
+      options={[
+        ...TAB_GROUPINGS.map((g) =>
+          ({ value: g as Grouping | "flat", label: t(GROUPING_LABEL[g]) })),
+        ...(wide ? [] : [{ value: "flat" as const,
+          label: t("view.all_mails") }]),
+      ]}
+      onChange={(v) => {
+        if (v === "flat") setFlat(true);
+        else { setFlat(false); setMode(v); }
+        setSelected(new Set());
+        setSelectMode(false);
+        setFocusIdx(-1);
+        cancelFollow();
+        setDetail(null);   // a pane would otherwise keep the old grouping's group
+      }} />
+  );
+
   return (
     <ReaderHostProvider value={readerHost}>
     <div className={wide ? "pl-61" : undefined}>
@@ -2483,6 +2507,28 @@ export default function App() {
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
+    )}
+    {/* From 1024 px: the page header (the same one every tool page and
+        Settings use) - title, when it was scanned, the grouping segments
+        (Senders) and Scan. Below it the top bar below carries all of this. */}
+    {wide && !bare && (
+      <PageHeader contain="mx-auto max-w-6xl xl:max-w-360"
+        title={t(overview ? "nav.overview" : flat ? "nav.all_mail"
+          : "nav.senders")}
+        sub={scannedAgo ? t("scan.age", { ago: scannedAgo }) : undefined}
+        actions={<>
+          {!overview && !flat && groupingSegments}
+          {cfg?.setup_needed ? (
+            // no account yet: the primary action is the setup card's
+            <Button onClick={() => setWizard({ mode: "first" })}>
+              {t("wizard.setup_btn")}</Button>
+          ) : (
+            <Button variant="secondary" onClick={startScan}
+              disabled={scanBusy}>
+              {scanning ? <Spinner /> : t("Scan")}
+            </Button>
+          )}
+        </>} />
     )}
     <div className={fullPage
       // A tool page: the column's full height, the panel scrolls inside.
@@ -2553,55 +2599,20 @@ export default function App() {
           no grouping segments, and no toolbar at all on phones (the top bar
           holds its title and Scan). On phones the segments take a line of
           their own. */}
-      {(wide || !overview) && (
+      {!wide && !overview && (
       <div className="mb-2 flex flex-wrap items-center gap-2 border-b
         border-line pb-2">
-        {wide && (
-          <h1 className="mr-2 type-heading">
-            {t(overview ? "nav.overview" : flat ? "nav.all_mail"
-              : "nav.senders")}
-          </h1>
-        )}
         {/* order-last + fill: below 768 the segments get a line of their own. */}
-        <div className={`order-last w-full md:order-none md:w-auto
-          ${overview || (wide && flat) ? "hidden" : ""}`}>
-          <Segmented label={t("view.group_by")} fill
-            className="md:w-auto"
-            value={flat ? "flat" : mode}
-            options={[
-              ...TAB_GROUPINGS.map((g) =>
-                ({ value: g as Grouping | "flat", label: t(GROUPING_LABEL[g]) })),
-              ...(wide ? [] : [{ value: "flat" as const,
-                label: t("view.all_mails") }]),
-            ]}
-            onChange={(v) => {
-              if (v === "flat") setFlat(true);
-              else { setFlat(false); setMode(v); }
-              setSelected(new Set());
-              setSelectMode(false);
-              setFocusIdx(-1);
-              cancelFollow();
-              setDetail(null);   // a pane would otherwise keep the old grouping's group
-            }} />
+        <div className="order-last w-full md:order-none md:w-auto">
+          {groupingSegments}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          {wide && !!scannedAgo && (
-            <span className="type-meta text-muted">
-              {t("scan.age", { ago: scannedAgo })}
-            </span>
-          )}
-          {cfg?.setup_needed ? (
-            // no account yet: the primary action is the setup card's
+        {cfg?.setup_needed && (
+          // no account yet: the primary action is the setup card's
+          <div className="ml-auto flex items-center gap-2">
             <Button onClick={() => setWizard({ mode: "first" })}>
               {t("wizard.setup_btn")}</Button>
-          ) : (
-            // Below 1024 the Scan icon lives in the top bar.
-            wide && <Button variant="secondary" onClick={startScan}
-              disabled={scanBusy}>
-              {scanning ? <Spinner /> : t("Scan")}
-            </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       )}
       {/* Row 2 - search / filter: the filter input (+ clear, QueryBuilder) ·

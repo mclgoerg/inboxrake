@@ -336,8 +336,7 @@ test("All mail is a page: hash follows, back/forward work, selection resets",
   expect(nav.getByRole("link", { name: /All mail/ }).getAttribute("aria-current"))
     .toBe("page");
   // no grouping segments on the All mail page
-  expect(screen.getByRole("tab", { name: "Subject" }).closest(".hidden"))
-    .toBeTruthy();
+  expect(screen.queryByRole("tab", { name: "Subject" })).toBeNull();
   act(() => {
     window.location.hash = "#/senders";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -345,8 +344,7 @@ test("All mail is a page: hash follows, back/forward work, selection resets",
   await waitFor(() => expect(
     nav.getByRole("link", { name: /Senders/ }).getAttribute("aria-current"))
     .toBe("page"));
-  expect(screen.getByRole("tab", { name: "Subject" }).closest(".hidden"))
-    .toBeNull();
+  expect(screen.getByRole("tab", { name: "Subject" })).toBeTruthy();
 });
 
 test("keyboard shortcuts act only on the senders page", async () => {

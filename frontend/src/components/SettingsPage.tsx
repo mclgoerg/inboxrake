@@ -1,4 +1,4 @@
-import { Archive, Bell, Check, ChevronLeft, Folder, KeyRound, Mail, Plus,
+import { Archive, Bell, Check, Folder, KeyRound, Mail, Plus,
   RefreshCw, Search, Settings as SettingsIcon, Shield, Sparkles, Star,
   Tag as TagIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState,
@@ -23,7 +23,7 @@ import { BUILTIN_CATEGORIES, CategoryList,
 import { demoHint, useDemo } from "../demoMode";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
-  DecimalInput, LINK_ACCENT, Loading, Notice, PopupSelect, promptDialog, RadioRow, Ring,
+  DecimalInput, LINK_ACCENT, Loading, Notice, PageHeader, PopupSelect, promptDialog, RadioRow, Ring,
   Segmented, Select, SettingsGroup, SettingsRow, Spinner, Stepper, Switch, Tag,
   type TagTone, TextArea, useBulkBarHeight, useToast } from "./ui";
 
@@ -1792,10 +1792,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     return (
       <div className="flex min-h-0 flex-1">
         {sectionColumn}
-        <div data-scroll-id="settings" className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-5 pb-28 pt-5">
-            <h1 className="mb-4 type-title2">{title}</h1>
-            {content}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <PageHeader contain="mx-auto max-w-3xl" title={title} />
+          <div data-scroll-id="settings" className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-3xl px-5 pb-28 pt-5">
+              {content}
+            </div>
           </div>
         </div>
         {saveBar}
@@ -1806,16 +1808,11 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     <div className="pb-4">
       <div ref={phoneSlide}>
       {open ? (<>
-        <button type="button" onClick={() => onSection(null)}
-          className="-ml-1 mb-1 inline-flex min-h-11 items-center gap-0.5
-            rounded-control pr-2 type-body text-accent">
-          <ChevronLeft size={18} aria-hidden />
-          {t("Settings")}
-        </button>
-        <h1 className="mb-4 type-largetitle">{title}</h1>
+        <PageHeader variant="large" flush title={title}
+          back={{ label: t("Settings"), onClick: () => onSection(null) }} />
         {content}
       </>) : (<>
-        <h1 className="mb-3 type-largetitle">{t("Settings")}</h1>
+        <PageHeader variant="large" flush title={t("Settings")} />
         {rootList}
       </>)}
       </div>
