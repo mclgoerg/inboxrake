@@ -154,13 +154,16 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
   const text = entryText(e, rules);
   const [why, setWhy] = useState(false);
   const whyId = useId();
+  // Grid: icon | headline + second line | date + status. On phones the date
+  // and status drop under the headline so it keeps the full width.
   return (
-    <li className="flex items-start gap-3 px-3 py-3">
-      <span aria-hidden className={`grid size-10 shrink-0 place-items-center
+    <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-3
+      py-3 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto]">
+      <span aria-hidden className={`row-span-3 grid size-10 place-items-center
         rounded-control ${look.tone}`}>
         <Icon size={18} />
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="col-start-2 min-w-0">
         <span className="block type-body-mobile font-medium md:type-body">
           {text.title}
         </span>
@@ -170,25 +173,15 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
               {text.detail}</span>
           )}
           <span className="shrink-0 whitespace-pre-wrap">
-            {text.detail ? " · " : ""}{text.who}
-            {e.bytes > 0 && ` · ${fmtSize(e.bytes)}`}
+            {text.detail && (text.who || e.bytes > 0) ? " · " : ""}
+            {text.who}
+            {e.bytes > 0 && `${text.who ? " · " : ""}${fmtSize(e.bytes)}`}
           </span>
         </span>
-        {why && e.error && (
-          <span id={whyId} className={`mt-1 block type-meta ${failed
-            ? "text-danger-fg" : "text-muted"}`}>{errorText(e.error)}</span>
-        )}
-        {undone > 0 && (
-          <span className="mt-1 block">
-            <Tag tone="neutral">
-              {undone >= e.count ? t("activity.undone")
-                : t("activity.undone_n", { n: undone })}
-            </Tag>
-          </span>
-        )}
-        {retry}
       </span>
-      <span className="flex shrink-0 flex-col items-end gap-1">
+      <span className="col-start-2 row-start-2 flex flex-wrap items-center
+        gap-x-2 sm:col-start-3 sm:row-span-3 sm:row-start-1 sm:flex-col
+        sm:items-end sm:gap-1">
         <ShortDate iso={localIso(e.ts)} time
           className="type-meta text-muted" />
         <span className={`inline-flex items-center gap-1 type-meta
@@ -206,6 +199,22 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
             </button>
           </>)}
         </span>
+      </span>
+      <span className="col-start-2 row-start-3 min-w-0 empty:hidden
+        sm:row-start-2">
+        {why && e.error && (
+          <span id={whyId} className={`block type-meta ${failed
+            ? "text-danger-fg" : "text-muted"}`}>{errorText(e.error)}</span>
+        )}
+        {undone > 0 && (
+          <span className="mt-1 block">
+            <Tag tone="neutral">
+              {undone >= e.count ? t("activity.undone")
+                : t("activity.undone_n", { n: undone })}
+            </Tag>
+          </span>
+        )}
+        {retry}
       </span>
     </li>
   );

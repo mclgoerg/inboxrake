@@ -36,9 +36,8 @@ const reset = () => audit.mockResolvedValue({ total: 3, entries });
 
 test("one headline per entry, then who did it", async () => {
   render(<AuditLogPanel rules={[]} onClose={() => {}} />);
-  await waitFor(() => screen.getByText("Rule executed · 1 mail"));
   // rule not in the list: its stored name is shown
-  expect(screen.getByText(/Rule “item 0”/)).toBeTruthy();
+  await waitFor(() => screen.getByText("Ran rule “item 0” · 1 mail"));
   expect(screen.getByText("Moved 2 mails to Trash")).toBeTruthy();
   expect(screen.getByText("Could not unsubscribe from item 2")).toBeTruthy();
   expect(screen.getByText(/item 1/)).toBeTruthy();
@@ -46,14 +45,22 @@ test("one headline per entry, then who did it", async () => {
   expect(audit).toHaveBeenCalledWith(0, 50);
 });
 
-test("a rule run is worded by what its rule does, with the rule's name once",
-  async () => {
-    const rule = { id: "abc123", name: "Grok", action: "archive" } as any;
-    render(<AuditLogPanel rules={[rule]} onClose={() => {}} />);
-    await waitFor(() => screen.getByText("Archived 1 mail"));
-    expect(screen.getByText(/^Rule “Grok”/)).toBeTruthy();
-    expect(screen.queryByText(/abc123/)).toBeNull();
-  });
+test("a rule run is about the rule; the move it caused names the rule on its " +
+  "second line", async () => {
+  audit.mockResolvedValue({ total: 2, entries: [
+    mk({ action: "rule_execute", actor: "rule:abc123", count: 3,
+      label: "Grok" }),
+    mk({ action: "trash", actor: "rule:abc123", count: 3,
+      label: "a@x.example" })] });
+  const rule = { id: "abc123", name: "Grok2", action: "trash" } as any;
+  render(<AuditLogPanel rules={[rule]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("Ran rule “Grok2” · 3 mails"));
+  expect(screen.getByText("Trashed")).toBeTruthy();   // what the rule does
+  expect(screen.getByText("Moved 3 mails to Trash")).toBeTruthy();
+  expect(screen.getByText(/· Rule “Grok2”/)).toBeTruthy();
+  expect(screen.queryByText(/abc123/)).toBeNull();
+  reset();
+});
 
 test("the subtitle counts the entries", async () => {
   render(<AuditLogPanel rules={[]} onClose={() => {}} />);
@@ -275,6 +282,8 @@ test("every recorded action has a headline, in English and German", async () => 
       "Papierkorb geleert: 7 Mails endgültig gelöscht"],
     [{ action: "purge", count: 2, label: "Junk" },
       "Permanently deleted 2 mails", "2 Mails endgültig gelöscht"],
+    [{ action: "rule_execute", count: 150, actor: "rule:zz", label: "Old" },
+      "Ran rule “Old” · 150 mails", "Regel „Old“ ausgeführt · 150 Mails"],
     [{ action: "rule_report", count: 9, actor: "rule:zz", label: "Old" },
       "Rule report: 9 mails match", "Regel-Bericht: 9 Mails passen"],
     [{ action: "rule_report", count: 0, actor: "rule:zz", label: "Old" },
@@ -308,13 +317,12 @@ test("every recorded action has a headline, in English and German", async () => 
   reset();
 });
 
-test("an unknown rule action and a deleted rule keep a plain headline",
+test("a deleted rule keeps its stored name in the headline",
   async () => {
     audit.mockResolvedValue({ total: 1, entries: [
       mk({ action: "rule_execute", actor: "rule:gone", count: 3,
         label: "Old rule" })] });
     render(<AuditLogPanel rules={[]} onClose={() => {}} />);
-    await waitFor(() => screen.getByText("Rule executed · 3 mails"));
-    expect(screen.getByText(/^Rule “Old rule”/)).toBeTruthy();
+    await waitFor(() => screen.getByText("Ran rule “Old rule” · 3 mails"));
     reset();
   });

@@ -201,7 +201,7 @@ export const tOr = (prefix: string, key: string): string => {
   return s === full ? key : s;
 };
 
-/** What a rule's run did, from the rule's current action. */
+/** The rule actions that have an `audit.act.*` word. */
 const RULE_ACTION_TITLE: Record<string, string> = {
   trash: "trash", archive: "archive", move: "move", mark_read: "mark_read",
   purge: "purge",
@@ -246,13 +246,15 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       title = counted("empty_trash");
       break;
     case "rule_execute": {
+      // the entry is about the rule; the move it caused is its own entry
       const rule = rules.find((r) => `rule:${r.id}` === e.actor);
-      const key = rule && RULE_ACTION_TITLE[rule.action];
-      title = key ? counted(key)
-        : `${tOr("audit.act", e.action)}${n > 0
-          ? ` · ${t("n.mails", { n })}` : ""}`;
-      detail = "";   // the label is the rule's name: `who` says it
-      break;
+      const name = ruleName(e, rules);
+      title = n > 0 ? t("audit.h.rule_execute", { name, n })
+        : t("audit.h.rule_execute_none", { name });
+      // what the rule does, when it still exists; the name is in the title
+      detail = rule && RULE_ACTION_TITLE[rule.action]
+        ? tOr("audit.act", rule.action) : "";
+      return { title, who: "", detail };
     }
     case "rule_report":
       title = n > 0 ? t("audit.h.rule_report", { n })
