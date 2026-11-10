@@ -907,13 +907,21 @@ def generate() -> dict:
     def _t(days_ago: float) -> int:
         return int(NOW - days_ago * 86400 - _hours.uniform(0, 23) * 3600)
 
-    _au = [("proton", "unsubscribe", _t(40), 1, "ok", "user", ""),
-           ("proton", "unsubscribe", _t(120), 1, "ok", "user", ""),
-           ("proton", "unsubscribe", _t(300), 1, "ok", "user", ""),
-           ("proton", "unsubscribe", _t(30), 1, "failed", "user", ""),
-           ("proton", "unsubscribe", _t(420), 1, "ok", "user", ""),
-           ("icloud", "unsubscribe", _t(4), 1, "ok", "user", ""),
-           ("icloud", "unsubscribe", _t(400), 1, "ok", "user", "")]
+    # (the stored label of an unsubscribe is the sender's address)
+    _au = [("proton", "unsubscribe", _t(40), 1, "ok", "user",
+            "news@oldgazette.example"),
+           ("proton", "unsubscribe", _t(120), 1, "ok", "user",
+            "hello@retrodeals.example"),
+           ("proton", "unsubscribe", _t(300), 1, "ok", "user",
+            "weekly@citybulletin.example"),
+           ("proton", "unsubscribe", _t(30), 1, "failed", "user",
+            "hello@dealhunter.example"),
+           ("proton", "unsubscribe", _t(420), 1, "ok", "user",
+            "digest@oldgazette.example"),
+           ("icloud", "unsubscribe", _t(4), 1, "ok", "user",
+            "offers@shopnow.example"),
+           ("icloud", "unsubscribe", _t(400), 1, "ok", "user",
+            "news@citybulletin.example")]
     for rule, d, count in ((sweep, 21, 150), (parcels, 14, 60),
                            (lapsed, 9, 48)):
         ts = _t(d)
@@ -934,7 +942,9 @@ def generate() -> dict:
     Path(os.environ["AUDIT_LOG_PATH"]).write_text("".join(
         json.dumps({"ts": ts, "account": acct, "actor": actor,
                     "action": action, "count": count, "bytes": 0,
-                    "label": label, "outcome": outcome, "error": ""}) + "\n"
+                    "label": label, "outcome": outcome,
+                    "error": "unsub_no_method" if outcome == "failed" else ""})
+        + "\n"
         for acct, action, ts, count, outcome, actor, label in _au))
     Path(os.environ["STATS_PATH"]).write_text(json.dumps(
         {"input_tokens": 412_331, "output_tokens": 60_112, "cost": 1.43,

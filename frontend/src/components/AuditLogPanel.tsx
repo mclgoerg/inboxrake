@@ -1,15 +1,19 @@
-import { Archive, BellOff, ChevronLeft, ChevronRight, Download, FolderInput,
-  ListChecks, Mail, MailCheck, ScrollText, Send, Trash2, Undo2,
-  type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { groupByMonth, localIso, monthSummary, undoneCounts } from "../activity";
+import { Archive, BellOff, Ban, ChevronLeft, ChevronRight, CircleAlert,
+  CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, ListChecks,
+  Mail, MailCheck, ScrollText, Send, Trash2, Undo2, type LucideIcon }
+  from "lucide-react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
+  weekRanges } from "../activity";
 import { nowDate } from "../clock";
 import { api, downloadFile, errorText, fmtSize } from "../api";
 import { getLang, t } from "../i18n";
 import type { AuditEntry, Group, Rule } from "../types";
 import { retryableGroup } from "../unsub";
 import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
-  ShortDate, Tag, type TagTone } from "./ui";
+  ShortDate, Tag } from "./ui";
+
+export { tOr };
 
 const PAGE_SIZE = 50;
 /** The month summary pages through the log (newest first) until the month
@@ -25,14 +29,6 @@ export const actorLabel = (actor: string, rules: Rule[]): string => {
   const id = actor.slice(5);
   const name = rules.find((r) => r.id === id)?.name;
   return t("audit.by_rule", { name: name || id });
-};
-
-/** `t()` with a tiered fallback: a `prefix.<key>` translation, or the raw
- *  key itself when there is no (yet) translated entry for it. */
-export const tOr = (prefix: string, key: string): string => {
-  const full = `${prefix}.${key}`;
-  const s = t(full);
-  return s === full ? key : s;
 };
 
 /** Icon + tint of an action's tile in the timeline. */
@@ -52,9 +48,15 @@ const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
 };
 const FALLBACK_LOOK = { icon: Mail, tone: "bg-chip text-chiptext" };
 
-const OUTCOME_TONE: Record<string, TagTone> = {
-  ok: "safe", done: "safe", link: "info", partial: "review",
-  cancelled: "neutral", error: "keep", failed: "keep",
+/** Icon + colour of an entry's status ("Done", "Failed", ...). */
+const STATUS_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
+  ok: { icon: CircleCheck, tone: "text-safe-fg" },
+  done: { icon: CircleCheck, tone: "text-safe-fg" },
+  link: { icon: ExternalLink, tone: "text-info-fg" },
+  partial: { icon: CircleAlert, tone: "text-review-fg" },
+  cancelled: { icon: Ban, tone: "text-muted" },
+  error: { icon: CircleX, tone: "text-danger-fg" },
+  failed: { icon: CircleX, tone: "text-danger-fg" },
 };
 
 const monthName = (ts: number): string => {
@@ -65,8 +67,9 @@ const monthName = (ts: number): string => {
     .format(d);
 };
 
-/** "This month" card: mails cleaned (+ size when the log has it) and the
- *  weekly bars, all from the audit log. */
+/** "This month" card: mails cleaned (+ size when the log has it), the weekly
+ *  bars with their values and the split (by rules / by you / unsubscribed),
+ *  all from the audit log. */
 function MonthCard({ recent, rules }: {
   recent: { entries: AuditEntry[]; complete: boolean } | null; rules: Rule[];
 }) {
@@ -74,9 +77,18 @@ function MonthCard({ recent, rules }: {
     && monthSummary(recent.entries, nowDate(), rules), [recent, rules]);
   if (!sum) return null;
   const max = Math.max(1, ...sum.weeks);
+  const now = nowDate();
+  const month = new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB",
+    { month: "short" }).format(now);
+  const split: { icon: LucideIcon; label: string; n: number }[] = [
+    { icon: ListChecks, label: t("activity.by_rules"), n: sum.byRules },
+    { icon: Hand, label: t("activity.by_you"), n: sum.byYou },
+    { icon: BellOff, label: t("activity.unsubscribed"), n: sum.unsubscribed },
+  ];
   return (
     <section aria-label={t("activity.month")}
-      className="rounded-card border border-line bg-panel p-4">
+      className="rounded-card border border-line bg-panel p-4
+        lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1 lg:self-start">
       <div className="type-meta text-muted">{t("activity.month")}</div>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="type-largetitle tabular-nums">
@@ -92,21 +104,37 @@ function MonthCard({ recent, rules }: {
           {t("activity.month_empty")}</p>
       ) : (
         <ul className="mt-3 grid grid-cols-4 gap-3">
-          {sum.weeks.map((v, i) => (
-            <li key={i} className="flex flex-col items-stretch gap-1">
-              <div className="flex h-16 items-end">
-                <div className="w-full rounded-badge bg-accent/70"
-                  // bar height = this week's share of the busiest week
-                  style={{ height: `${v ? Math.max(6, (100 * v) / max) : 2}%` }} />
-              </div>
-              <span className="text-center type-meta text-muted">
-                {t("activity.week", { n: i + 1 })}
-                <span className="sr-only">: {t("n.mails", { n: v })}</span>
-              </span>
-            </li>
-          ))}
+          {sum.weeks.map((v, i) => {
+            const [from, to] = weekRanges(now)[i];
+            return (
+              <li key={i} className="flex flex-col items-stretch gap-1">
+                <span aria-hidden className="text-center type-meta
+                  font-medium tabular-nums">{v || "–"}</span>
+                <div className="flex h-16 items-end">
+                  <div className="w-full rounded-badge bg-accent/70"
+                    // bar height = this week's share of the busiest week
+                    style={{ height: `${v ? Math.max(6, (100 * v) / max) : 2}%` }} />
+                </div>
+                <span className="text-center type-meta text-muted">
+                  {i === 0 ? `${from}–${to} ${month}` : `${from}–${to}`}
+                  <span className="sr-only">
+                    {" "}({t("activity.week", { n: i + 1 })}): {t("n.mails", { n: v })}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
+      <ul className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+        {split.map(({ icon: Icon, label, n }) => (
+          <li key={label} className="flex items-center gap-2 type-body">
+            <Icon size={16} aria-hidden className="shrink-0 text-muted" />
+            <span className="flex-1">{label}</span>
+            <span className="font-semibold tabular-nums">{n}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -120,7 +148,12 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
 }) {
   const look = ACTION_LOOK[e.action] ?? FALLBACK_LOOK;
   const Icon = look.icon;
+  const status = STATUS_LOOK[e.outcome] ?? STATUS_LOOK.cancelled;
+  const StatusIcon = status.icon;
   const failed = e.outcome === "error" || e.outcome === "failed";
+  const text = entryText(e, rules);
+  const [why, setWhy] = useState(false);
+  const whyId = useId();
   return (
     <li className="flex items-start gap-3 px-3 py-3">
       <span aria-hidden className={`grid size-10 shrink-0 place-items-center
@@ -129,20 +162,21 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block type-body-mobile font-medium md:type-body">
-          {tOr("audit.act", e.action)}
-          {e.count > 0 && ` · ${t("n.mails", { n: e.count })}`}
+          {text.title}
         </span>
-        {e.label && (
-          <span className="block truncate type-meta text-muted"
-            title={e.label}>{e.label}</span>
-        )}
-        <span className="block type-meta text-muted">
-          {actorLabel(e.actor, rules)}
-          {e.bytes > 0 && ` · ${fmtSize(e.bytes)}`}
+        <span className="flex min-w-0 type-meta text-muted">
+          {text.detail && (
+            <span className="min-w-0 truncate" title={text.detail}>
+              {text.detail}</span>
+          )}
+          <span className="shrink-0 whitespace-pre-wrap">
+            {text.detail ? " · " : ""}{text.who}
+            {e.bytes > 0 && ` · ${fmtSize(e.bytes)}`}
+          </span>
         </span>
-        {e.error && (
-          <span className={`block type-meta ${failed ? "text-danger-fg"
-            : "text-muted"}`}>{errorText(e.error)}</span>
+        {why && e.error && (
+          <span id={whyId} className={`mt-1 block type-meta ${failed
+            ? "text-danger-fg" : "text-muted"}`}>{errorText(e.error)}</span>
         )}
         {undone > 0 && (
           <span className="mt-1 block">
@@ -157,11 +191,20 @@ function TimelineRow({ e, rules, retry, undone = 0 }: {
       <span className="flex shrink-0 flex-col items-end gap-1">
         <ShortDate iso={localIso(e.ts)} time
           className="type-meta text-muted" />
-        <span title={e.error ? errorText(e.error) : undefined}>
-          <Tag tone={OUTCOME_TONE[e.outcome] ?? "neutral"}
-            className={failed ? "font-semibold" : ""}>
-            {tOr("audit.outcome", e.outcome)}
-          </Tag>
+        <span className={`inline-flex items-center gap-1 type-meta
+          font-medium ${status.tone}`}>
+          <StatusIcon size={14} aria-hidden />
+          {tOr("audit.outcome", e.outcome)}
+          {e.error && (<>
+            <span aria-hidden className="text-muted">·</span>
+            <button type="button" aria-expanded={why} aria-controls={whyId}
+              onClick={() => setWhy((v) => !v)}
+              className="rounded-control px-1 text-accent hover:underline
+                focus-visible:ring-2 focus-visible:ring-accent
+                coarse:min-h-11">
+              {t("audit.why")}
+            </button>
+          </>)}
         </span>
       </span>
     </li>
@@ -251,8 +294,8 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
         title={<span className="inline-flex items-center gap-2">
           <ScrollText size={18} /> {t("nav.activity")}
         </span>}
-        sub={total == null ? t("loading…") : total === 0 ? "" : t("audit.page", {
-          from: offset + 1, to: Math.min(offset + PAGE_SIZE, total), total })}
+        sub={total == null ? t("loading…") : total === 0 ? ""
+          : t("audit.entries", { n: total })}
         actions={!!total && (
           <Button variant="secondary" size="icon"
             label={t("audit.export")}
@@ -262,8 +305,13 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
         onClose={onClose}
       />
       <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
-        <div className="mx-auto flex max-w-180 flex-col gap-4">
+        {/* phones / tablets: the month card on top; from 1024 px the log on
+            the left, the card beside it */}
+        <div className="mx-auto flex max-w-180 flex-col gap-4
+          lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
           {total !== 0 && <MonthCard recent={recent} rules={rules} />}
+          <div className="flex min-w-0 flex-col gap-4 lg:col-start-1
+            lg:row-start-1">
           {above}
           {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
           {!entries && !error && <Loading />}
@@ -284,11 +332,15 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
               </ul>
             </section>
           ))}
+          </div>
         </div>
       </div>
-      {!!total && (
-        <div className="flex justify-end gap-2 border-t border-line px-4 py-2
+      {!!total && total > PAGE_SIZE && (
+        <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-2
           max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+          <span className="mr-auto type-meta text-muted">{t("audit.page", {
+            from: offset + 1, to: Math.min(offset + PAGE_SIZE, total), total })}
+          </span>
           <Button variant="secondary" size="sm" disabled={offset === 0}
             onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
             <ChevronLeft size={16} className="mr-1 inline align-text-bottom" />
