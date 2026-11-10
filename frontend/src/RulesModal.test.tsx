@@ -191,6 +191,17 @@ test("every kind of rule reads as a sentence in English", () => {
       + "Trash match from:a then delete permanently if older than 60 days · weekly");
 });
 
+test("the dot before the schedule travels with it, so it never ends a line", () => {
+  renderCards([rule]);
+  const p = document.querySelector("p.leading-9")!;
+  const unit = [...p.querySelectorAll("span.whitespace-nowrap")]
+    .find((u) => u.textContent!.startsWith("·"))!;
+  expect(unit.textContent).toMatch(/^·\u00a0\S+$/);
+  expect(unit.textContent).toContain("manual");
+  // no dot is left behind in the loose text
+  expect(p.textContent!.replace(unit.textContent!, "")).not.toContain("·");
+});
+
 test("and in German, with the right case and word order", () => {
   setLang("de");
   expect(sentenceOf({ action: "trash", older_than_days: 30, query: "" }))

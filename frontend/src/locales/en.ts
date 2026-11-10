@@ -86,8 +86,6 @@ export const EN: Record<string, string> = {
   "menu.done": "Done",
   "menu.signin_failed": "Sign-in failed - fix it",
   "menu.signin_missing": "Not signed in - set it up",
-  "menu.mails_size": "{n}\u00a0mails · {size}",
-  "menu.mails_size_one": "1\u00a0mail · {size}",
   "update.available": "A new version of Inboxrake is available.",
   "update.reload": "Reload",
   "menu.version": "v{version} (build {id})",
@@ -912,9 +910,9 @@ export const EN: Record<string, string> = {
   "rule.seg_report": "Report only",
   "rule.seg_active": "Active",
   "rule.sent_mail":
-    "When {grouping} groups match {filter} then {action}{retention}\u00a0· {schedule}",
+    "When {grouping} groups match {filter} then {action}{retention} {schedule}",
   "rule.sent_purge":
-    "When {grouping} groups in {scope} match {filter} then {action}{retention}\u00a0· {schedule}",
+    "When {grouping} groups in {scope} match {filter} then {action}{retention} {schedule}",
   "rule.row_when": "When a",
   "rule.mid_in": "group in",
   "rule.row_grouped": "Grouped by",

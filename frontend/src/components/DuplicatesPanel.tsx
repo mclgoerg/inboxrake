@@ -10,7 +10,8 @@ import { DuplicateCompare, gapLabel } from "./DuplicateCompare";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { Avatar, Button, Checkbox, EmptyState, Loading, Modal, PanelHeader,
-  Segmented, ShortDate, Tag, Toolbar, useMediaQuery, useOptionalToast } from "./ui";
+  Segmented, ShortDate, Tag, Toolbar, UnreadSlot, useMediaQuery,
+  useOptionalToast } from "./ui";
 
 const KINDS: DupKind[] = ["identical", "versions", "possible"];
 
@@ -332,13 +333,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
                   <span className="sr-only">{t("dups.locked_pinned")}</span>
                 </>
               )}
-              {!m.seen && (
-                <>
-                  <span aria-hidden className="inline-block size-2 shrink-0
-                    rounded-full bg-accent" />
-                  <span className="sr-only">{t("unread")}</span>
-                </>
-              )}
+              <UnreadSlot unread={!m.seen} />
               <span className="min-w-0 truncate type-body font-semibold">
                 {m.folder}</span>
             </span>
@@ -371,11 +366,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     const [lo, hi] = [Math.min(...sizes), Math.max(...sizes)];
     const span = Math.max(...s.mails.map((m) => m.ts))
       - Math.min(...s.mails.map((m) => m.ts));
-    const meta = [head.addr, ...(kind === "possible"
+    // the address truncates with an ellipsis; the facts after it stay whole
+    const facts = kind === "possible"
       ? [t("dups.poss_meta", { n: s.mails.length, gap: gapLabel(span) }),
         lo === hi ? t("dups.each", { size: fmtSize(lo) })
           : `${fmtSize(lo)} - ${fmtSize(hi)}`]
-      : [`×${s.mails.length}`])].join(" · ");
+      : [`×${s.mails.length}`];
     return (
       <div key={s.key} role="group" aria-label={subject}
         className="overflow-hidden rounded-card border border-line bg-panel">
@@ -388,7 +384,17 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
           <div className={`min-w-0 flex-1 ${kind === "identical"
             ? "" : "max-sm:basis-full"}`}>
             <div className="truncate type-body font-semibold">{subject}</div>
-            <div className="break-words type-meta text-muted">{meta}</div>
+            {/* the address truncates; the facts after it stay whole (phones:
+                a possible set's longer facts get their own line) */}
+            <div className={`flex min-w-0 items-baseline type-meta text-muted
+              ${kind === "possible" ? "max-sm:flex-wrap" : ""}`}>
+              <span className="min-w-0 truncate">{head.addr}</span>
+              <span className={`whitespace-nowrap ${kind === "possible"
+                ? "max-sm:basis-full max-sm:[&>[aria-hidden]]:hidden" : "shrink-0"}`}>
+                <span aria-hidden className="whitespace-pre">{" · "}</span>
+                {facts.join(" · ")}
+              </span>
+            </div>
             {((kind === "identical" && !s.locked) || s.locked) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {kind === "identical" && !s.locked && (

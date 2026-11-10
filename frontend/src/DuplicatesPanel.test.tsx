@@ -288,6 +288,18 @@ test("cards mark keep · newest and remove per copy, never for versions or "
   expect(screen.getByText("largest")).toBeTruthy();
 });
 
+test("a set's address truncates in front of its facts instead of breaking "
+  + "mid-word", async () => {
+  identicalWorld();
+  show();
+  await screen.findByText("Keep");
+  const addr = screen.getByText("a@x.example", { selector: "span" });
+  expect(addr.className).toContain("truncate");
+  expect(addr.parentElement!.textContent).toBe("a@x.example · ×3");
+  // the facts stay whole, so the address is what gives way
+  expect(addr.nextElementSibling!.className).toContain("shrink-0");
+});
+
 test("segments carry the summary's counts, start on the first non-empty one "
   + "and disable empty ones", async () => {
   possibleDuplicates.mockResolvedValue([possSet()]);

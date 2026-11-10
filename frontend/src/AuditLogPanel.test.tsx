@@ -257,7 +257,10 @@ test("a failed unsubscribe of a known sender offers Retry", async () => {
   const onRetryUnsub = vi.fn().mockResolvedValue(undefined);
   render(<AuditLogPanel rules={[]} onClose={() => {}}
     groups={{ "news@x.example": group }} onRetryUnsub={onRetryUnsub} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  // inline in the status line, after "Failed", not a row of its own
+  expect(retry.parentElement!.textContent).toMatch(/^Failed/);
+  fireEvent.click(retry);
   await waitFor(() => expect(onRetryUnsub).toHaveBeenCalledWith(group));
   reset();
 });

@@ -1,11 +1,11 @@
 import { MailOpen, Pin, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState, type ReactNode }
+import { useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
 import { groupByDate, monthHeading } from "../dayGroups";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
-import { AiTag, Button, MailRow, PinButton, SwipeRow, useBackLayer,
+import { AiTag, Button, MailRow, Meta, PinButton, SwipeRow, useBackLayer,
   type SwipeAction } from "./ui";
 import { BodyState, MailChips, MailHeader, MailText, RawHeaders, ReaderFrame,
   UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
@@ -186,10 +186,9 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             checked={sel.has(mailKey(m))}
             onToggle={() => onToggle(mailKey(m))} unread={!m.seen}
             subject={mark && m.subject ? mark(subject) : subject}
-            meta={meta.every((x) => typeof x === "string")
-              ? meta.join(" · ")
-              : <span className="min-w-0 truncate">{meta.map((x, i) => (
-                <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>))}</span>} dateIso={m.date || ""}
+            // the sender truncates; folder and size (and their dots) stay
+            meta={<Meta items={meta} shrink={multiSender ? meta.length - 2 : 0} />}
+            dateIso={m.date || ""}
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
             pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing}
             spread={spread} />

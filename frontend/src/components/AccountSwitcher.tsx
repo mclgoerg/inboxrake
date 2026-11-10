@@ -1,12 +1,12 @@
 import { Check, ChevronRight, Plus, ScrollText, Settings as SettingsIcon, Star,
   Power } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { t } from "../i18n";
 import { fmtAgo, fmtSize } from "../lib";
 import type { AccountSummary, Config } from "../types";
 import { demoHint } from "../demoMode";
 import { statusOf, StatusDot } from "./SettingsPage";
-import { AccountAvatar, IconTile, Segmented } from "./ui";
+import { AccountAvatar, IconTile, Meta, Segmented } from "./ui";
 
 type Appearance = "system" | "light" | "dark";
 
@@ -72,16 +72,16 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
           const active = name === account;
           const sum = summary?.[name];
           // Each bit stays whole on a wrapped line ("227.4 MB" never sits
-          // alone; "1,623 mails · 227.4 MB" breaks only after the dot).
+          // alone), see `Meta`.
+          const done = sum?.scanned_ts && sum.status !== "scanning";
           const bits = [
             t(`settings.status.${status}`),
             sum?.status === "scanning" ? t("account.scan_running")
               : sum?.scanned_ts ? t("scan.age", { ago: fmtAgo(sum.scanned_ts) })
               : sum ? t("account.never_scanned") : "",
-            sum?.scanned_ts && sum.status !== "scanning"
-              ? t("menu.mails_size", { n: sum.mails,
-                size: fmtSize(sum.size) }) : "",
-          ].filter(Boolean);
+            done ? t("n.mails", { n: sum.mails }) : "",
+            done ? fmtSize(sum.size) : "",
+          ];
           return (
             <div key={name} className={`rounded-card border bg-panel
               ${active ? "border-accent" : "border-line"}`}>
@@ -103,16 +103,8 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
                     {im.user}
                   </span>
                   {!broken && (
-                    <span className="block type-meta text-muted">
-                      {bits.map((b, i) => (
-                        <Fragment key={i}>
-                          {i > 0 && " "}
-                          <span className="whitespace-nowrap">
-                            {b}{i < bits.length - 1 && " ·"}
-                          </span>
-                        </Fragment>
-                      ))}
-                    </span>
+                    <Meta items={bits}
+                      className="block type-meta text-muted" />
                   )}
                 </span>
                 {active ? <Check size={16} aria-hidden className="text-accent" />

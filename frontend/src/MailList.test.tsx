@@ -27,6 +27,18 @@ describe("MailRows", () => {
     expect(screen.getByText("Mail 2").className).not.toContain("font-semibold");
   });
 
+  it("keeps a fixed slot for the unread dot, so read and unread subjects "
+    + "line up", () => {
+    render(<MailRows mails={[mk(1, { seen: false }), mk(2, { seen: true })]}
+      sel={new Set()} onToggle={noop} onOpen={noop} />);
+    const slots = screen.getAllByTestId("unread-slot");
+    expect(slots).toHaveLength(2);
+    expect(slots[0].className).toContain("size-2");
+    expect(slots[1].className).toContain("size-2");
+    expect(slots[0].textContent).toBe("unread");
+    expect(slots[1].textContent).toBe("");
+  });
+
   it("keeps the meta line to date + size for a single-sender, "
     + "single-folder list", () => {
     render(<MailRows mails={[mk(1), mk(2)]}
@@ -42,8 +54,8 @@ describe("MailRows", () => {
     render(<MailRows mails={[
       mk(1, { addr: "a@x.example" }), mk(2, { addr: "b@x.example" }),
     ]} sel={new Set()} onToggle={noop} onOpen={noop} />);
-    expect(screen.getByText("a@x.example · 1,000 B")).toBeTruthy();
-    expect(screen.getByText("b@x.example · 1,000 B")).toBeTruthy();
+    expect(document.body.textContent).toContain("a@x.example · 1,000\u00a0B");
+    expect(document.body.textContent).toContain("b@x.example · 1,000\u00a0B");
   });
 
   it("adds the folder once the visible mails span more than one folder",
@@ -51,8 +63,8 @@ describe("MailRows", () => {
     render(<MailRows mails={[
       mk(1, { folder: "INBOX" }), mk(2, { folder: "Archive" }),
     ]} sel={new Set()} onToggle={noop} onOpen={noop} />);
-    expect(screen.getByText("INBOX · 1,000 B")).toBeTruthy();
-    expect(screen.getByText("Archive · 1,000 B")).toBeTruthy();
+    expect(document.body.textContent).toContain("INBOX · 1,000\u00a0B");
+    expect(document.body.textContent).toContain("Archive · 1,000\u00a0B");
   });
 
   describe("paging and month headings (sender detail)", () => {

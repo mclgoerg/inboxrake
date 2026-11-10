@@ -497,7 +497,7 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
                   hover:bg-panel2">
                 {tileEl}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate type-body font-medium">
+                  <span className="line-clamp-2 type-body font-medium">
                     {name}</span>
                   <span className="block type-meta text-muted">{meta}</span>
                 </span>

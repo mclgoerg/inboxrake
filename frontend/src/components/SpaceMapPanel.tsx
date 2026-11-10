@@ -271,9 +271,10 @@ export function SpaceMapPanel({ groups, onDone, onShow, onClose }: {
               ${picked.length ? "pb-28" : ""}`}>
             {!(page && view === "rings") && headline}
             <div className="flex flex-wrap items-center gap-2">
-              <Segmented label={t("space.color_by")} value={mode}
+              <Segmented label={t("space.color_by")} value={mode} phoneFill
                 options={modes} onChange={setBy} />
               <Segmented label={t("space.view")} role="radio" value={view}
+                phoneFill
                 options={[{ value: "tiles", label: t("space.view_tiles") },
                   { value: "rings", label: t("space.view_rings") }]}
                 onChange={setViewKeep} />
