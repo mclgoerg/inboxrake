@@ -255,6 +255,7 @@ export function EngagementMeter({ g, labelled = false }: {
   labelled?: boolean;
 }) {
   const { open, setOpen, alignRight, ref, pop } = usePopover();
+  const tipId = useId();
   const tier = engagementTier(g.engagement);
   const lit = { low: 1, medium: 2, high: 3 }[tier];
   const readPct = g.count ? Math.round(100 * (1 - g.unread / g.count)) : 0;
@@ -271,6 +272,7 @@ export function EngagementMeter({ g, labelled = false }: {
     <span ref={ref} className="relative inline-block">
       <button type="button" title={tip} aria-label={labelled ? undefined : tip}
         aria-expanded={open} data-eng={tier}
+        aria-describedby={labelled ? tipId : undefined}
         // Rows are tap targets themselves (open the detail view) - this
         // one only explains the score.
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
@@ -291,6 +293,7 @@ export function EngagementMeter({ g, labelled = false }: {
         </span>
         {labelled && t(`eng.tag_${tier}`)}
       </button>
+      {labelled && <span id={tipId} className="sr-only">{tip}</span>}
       {open && (
         <div ref={pop} role="dialog" onClick={(e) => e.stopPropagation()}
           className={`${POPOVER} ${alignRight ? "right-0" : "left-0"}`}>

@@ -84,6 +84,9 @@ test("desktop: key hints on the buttons (Protect has none), no far-edge pills", 
   // the pills ("Trash" / "Keep" at the edges) are not rendered
   expect(Array.from(dlg.querySelectorAll("span"))
     .filter((e) => e.className.includes("pointer-events-none"))).toHaveLength(0);
+  // "Trash" / "Keep" appear once each: the button caption, not an edge pill
+  expect(within(dlg).getAllByText("Trash")).toHaveLength(1);
+  expect(within(dlg).getAllByText("Keep")).toHaveLength(1);
 });
 
 test("desktop: counters with words follow the decisions", () => {
@@ -103,6 +106,23 @@ test("desktop: counters with words follow the decisions", () => {
     .toMatch(/^Trash 1 group · .+ · Protect 1$/);
 });
 
+test("desktop: Backspace and the Undo button restore the list and counters", () => {
+  const dlg = open();
+  const upNext = () => within(within(dlg).getByRole("region", { name: "Up next" }));
+  key("ArrowLeft");
+  key("ArrowRight");
+  expect(upNext().getAllByRole("listitem")[0].textContent).toContain("Sender 3");
+  key("Backspace");
+  expect(within(dlg).getByText("0 kept")).toBeTruthy();
+  expect(within(dlg).getByText("1 trashed")).toBeTruthy();
+  expect(upNext().getAllByRole("listitem")[0].textContent).toContain("Sender 2");
+  expect(upNext().getByText("+ 2 more")).toBeTruthy();
+  fireEvent.click(within(dlg).getByRole("button", { name: "Undo last decision" }));
+  expect(within(dlg).getByText("0 trashed")).toBeTruthy();
+  expect(upNext().getAllByRole("listitem")[0].textContent).toContain("Sender 1");
+  expect(within(card()).getByText("Sender 0")).toBeTruthy();
+});
+
 test("engagement is a labelled tag with the same popover, on both layouts", () => {
   for (const w of [true, false]) {
     wide = w;
@@ -110,6 +130,8 @@ test("engagement is a labelled tag with the same popover, on both layouts", () =
     const tag = within(card()).getByRole("button", { name: "Low engagement" });
     expect(tag.getAttribute("data-eng")).toBe("low");
     expect(tag.getAttribute("title")).toContain("Engagement 20/100 (low)");
+    expect(document.getElementById(tag.getAttribute("aria-describedby")!)!
+      .textContent).toContain("Engagement 20/100 (low)");
     fireEvent.click(tag);
     expect(within(card()).getByRole("dialog").textContent)
       .toContain("Engagement score 20/100 · low");

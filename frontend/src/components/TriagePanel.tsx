@@ -506,7 +506,9 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
           <div className="mx-auto flex w-full max-w-4xl items-start
             justify-center gap-7 pt-4">
             <div className="min-w-0 max-w-xl flex-1">
-              <div className="relative mb-14">
+              {/* A fixed slot: the buttons stay put from card to card. */}
+              <div className="mb-14 min-h-96">
+              <div className="relative">
                 {[2, 1].filter((n) => idx + n < deck.length).map((n) => (
                   <div key={n} aria-hidden
                     className="pointer-events-none absolute inset-0 rounded-card
@@ -516,6 +518,7 @@ export function TriagePanel({ groups, grouping, onApply, onClose }: {
                 ))}
                 <Card key={g.key} g={g} grouping={grouping} reduced={reduced}
                   onCommit={decide} onIntent={setIntent} />
+              </div>
               </div>
               <DecisionBar g={g} grouping={grouping} keys canUndo={!!history.length}
                 onUndo={undo} onDecide={decide} />
