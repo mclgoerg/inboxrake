@@ -6,13 +6,25 @@
 ### Features
 
 * AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+  <!-- release-notes:363 -->
+  - Settings has a new section, **AI assistants**: an admin switches assistant access on there (it is off by default).
+  - Create an access token for Claude Code, Cursor, VS Code or Claude Desktop; the token is shown once with a ready-to-paste setup line. Revoke it any time.
+  - Only the Read level exists so far; assistants can ask about your mailbox but change nothing.
 * notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+  <!-- release-notes:358 -->
+  - Notifications now reach you with Inboxrake closed, including on iPhone and iPad (add Inboxrake to the Home Screen first, iOS 16.4+), when a scan or clean-up you started finishes.
+  - Turn it on once per device in Settings -> Notifications. Needs HTTPS and outbound HTTPS from the server to the push services.
 * read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+  <!-- release-notes:361 -->
+  - New, off by default: an administrator can switch on read-only access for AI assistants (Claude Code, Cursor, ...) over MCP; each user creates their own access tokens for chosen accounts. Assistants see sender names and addresses, counts, sizes, dates, folder, rule and activity names - subject lines only if you allow them, never mail bodies.
+  - No Settings screen yet: it follows in a separate PR; until then the cap is `assistants.access` in the server settings and tokens come from `/api/assistants/tokens`.
 
 
 ### Bug Fixes
 
 * notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+  <!-- release-notes:360 -->
+  - Notifications no longer repeat the app name: the title now says what happened (for example "Scan finished"), with the account and details below it.
 
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
