@@ -194,10 +194,15 @@ is written there.
 </details>
 
 <details class="faq-q">
-<summary><h3 id="is-there-an-api">Is there an API?</h3><span class="faq-short">No public one.</span></summary>
+<summary><h3 id="is-there-an-api">Is there an API?</h3><span class="faq-short">No public one - but AI assistants can connect over MCP.</span></summary>
 
 No public one. The web UI talks to JSON endpoints under `/api/`, but they
 are internal and may change in any release.
+
+For AI assistants there is a separate, supported door: a read-only
+[MCP endpoint](assistants.md) at `/mcp` (off until an admin switches it on,
+one access token per assistant, metadata only). It is meant for assistants,
+not as a general-purpose API.
 
 </details>
 
