@@ -1227,3 +1227,57 @@ def test_a_user_allowlisted_by_provider_sub_keeps_their_tokens():
     assert legacy(secret, "ping", c=anon).status_code == 200
     cfgmod.update_config({"auth": {"oidc": {"allowed": ["idp-sub-8"]}}})
     assert legacy(secret, "ping", c=anon).status_code == 401
+
+
+def test_masking_happens_before_the_output_cut(mbox):
+    _cap()
+    secret = _token()
+    name = "MySecretCategory"
+    cfgmod.update_config({"categories": {name: ["x.example"]}})
+    Y = mcptools.YOUR_CATEGORY
+    long_head = "h" * 90 + ", " + "i" * 10          # 102 chars + ", "
+    # cut by the 120-character output limit: the name starts at 104 and
+    # would be sliced to "MySecretCa…" if the cut came first
+    auditlog.record("trash", account="default", count=1,
+                    label=f"{long_head}, {name}")
+    # cut by the 200-character storage limit (no "…" is stored)
+    stored = ("s" * 188 + ", " + name)[:200]
+    assert len(stored) == 200 and stored.endswith("MySecretCa")
+    auditlog.record("trash", account="default", count=2, label=stored)
+    # a 200-character label whose last piece is no category prefix stays
+    plain = ("p" * 190 + ", Shop Wee")[:200]
+    assert len(plain) == 200
+    auditlog.record("trash", account="default", count=3, label=plain)
+    # a shorter label ending in a mere prefix is left alone (not cut by us)
+    auditlog.record("trash", account="default", count=4, label="a, MySec")
+    got = {e["count"]: e["label"]
+           for e in ok(secret, "recent_activity")["entries"]
+           if e["action"] == "trash"}
+    assert got[1].endswith(f", {Y}") and "MySecret" not in got[1]
+    assert got[1].startswith("h" * 90)
+    assert "MySec" not in got[2]
+    assert "Shop Wee" in got[3] or got[3].endswith("…")
+    assert Y not in got[3]
+    assert got[4] == "a, MySec"
+
+
+def test_a_name_cut_by_the_storage_limit_is_masked(monkeypatch):
+    """The stored label is cut at STORED_LABEL_MAX without a marker; with a
+    small limit the replaced tail stays inside the 120 output characters."""
+    monkeypatch.setattr(mcptools, "STORED_LABEL_MAX", 30)
+    names = frozenset({"MySecretCategory", "Bills, Tax"})
+    Y = mcptools.YOUR_CATEGORY
+    cut = ("ab, " * 5 + "MySecretCategory")[:30]            # ends "MySecretCa"
+    assert len(cut) == 30 and cut.endswith("MySecretCa")
+    assert mcptools._mask_label(cut, names) == "ab, ab, ab, ab, ab, " + Y \
+        or mcptools._mask_label(cut, names).endswith(", " + Y)
+    assert "MySec" not in mcptools._mask_label(cut, names)
+    # a name that itself holds ", " cut inside: the tail from its start goes
+    cut2 = ("q" * 20 + ", Bills, Ta")[:30]
+    assert mcptools._mask_label(cut2, names) == "q" * 20 + ", " + Y
+    # a full-length label whose last piece is no prefix of any name stays
+    plain = ("ab, " * 5 + "Shop Weekly Dai")[:30]
+    assert len(plain) == 30
+    assert mcptools._mask_label(plain, names) == plain
+    # shorter than the limit: a lone prefix is just text
+    assert mcptools._mask_label("a, MySec", names) == "a, MySec"

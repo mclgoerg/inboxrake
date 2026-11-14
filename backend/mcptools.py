@@ -152,6 +152,27 @@ def _mask_names(text: str, names: frozenset[str]) -> str:
                   flags=re.IGNORECASE)
 
 
+STORED_LABEL_MAX = 200          # auditlog.record cuts labels here, no "…"
+
+
+def _mask_label(raw: str, names: frozenset[str]) -> str:
+    """An audit label ready to return: masked on the FULL normalised text
+    (cutting first could leave half a name), then cut. A label stored at the
+    audit limit may end in a category name cut short: a tail that starts at
+    a piece boundary and is a strict prefix of a name is replaced too."""
+    text = _mask_names(clean(raw, 10_000), names)
+    if names and len(raw) >= STORED_LABEL_MAX:
+        starts = [0] + [m.end() for m in re.finditer(", ", text)]
+        low = [n.lower() for n in names]
+        for i in starts:
+            tail = text[i:].lower()
+            if tail and any(n.startswith(tail) and len(n) > len(tail)
+                            for n in low):
+                text = text[:i] + YOUR_CATEGORY
+                break
+    return clean(text)
+
+
 def _user_category_names() -> frozenset[str]:
     custom = mailops._custom_categories(cfgmod.load_config())
     # normalised the way `clean` normalises the labels they are looked for in
@@ -664,7 +685,7 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
             "bytes": int(e["bytes"] or 0),
             # a report's recipient is the user's own address: not needed
             "label": "" if e["action"] == "digest_sent"
-            else _mask_names(clean(e["label"]), names),
+            else _mask_label(e["label"], names),
             "outcome": clean(e["outcome"], 20)} for e in res["entries"]]},
         "entries")
 
