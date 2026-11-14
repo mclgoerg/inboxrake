@@ -2324,11 +2324,8 @@ if STATIC_DIR.is_dir():
         file = (_STATIC_ROOT / path).resolve()
         # codeql[py/path-injection]
         if path and file.is_relative_to(_STATIC_ROOT) and file.is_file():
-            # The service worker is re-fetched on every start, so a new
-            # build's worker (and the push handling in it) is picked up.
-            headers = {"Cache-Control": "no-cache"} if path == "sw.js" else None
             # codeql[py/path-injection]
-            return FileResponse(file, headers=headers)
+            return FileResponse(file)
         # index.html references the CURRENT build's hashed /assets bundle -
         # it must always be revalidated, or an installed PWA can keep
         # showing a stale shell (and stale hashed bundle) indefinitely.
@@ -2356,4 +2353,8 @@ async def _security_headers(request: Request, call_next):
     resp = await call_next(request)
     for name, value in _SECURITY_HEADERS.items():
         resp.headers[name] = value
+    if request.url.path == "/sw.js":
+        # The service worker is re-fetched on every start, so a new build's
+        # worker (and the push handling in it) is picked up.
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
