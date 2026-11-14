@@ -3,11 +3,13 @@
 /mcp endpoint, on both protocol legs.
 
 Starts scripts/demo.py on its own port (it does not switch on the in-browser
-demo mode; login mode is "none"), switches the admin cap on, creates a propose
+demo mode; login mode is "none"), switches the admin cap on, creates an act
 token through /api/assistants/tokens, then - once per protocol leg (the
 2025-era initialize handshake, and 2026-07-28 stateless) - lists the tools and
-calls every one of them (a proposal is withdrawn again), checking that each answer is a success whose
-structured content matches its text block.
+calls every read tool, checking that each answer is a success whose
+structured content matches its text block, a proposal (withdrawn again), and
+the Act flow on the demo mailbox: preview_action -> apply_action ->
+undo_action.
 
 The SDK is NOT a dependency of Inboxrake: it is pinned with hashes in
 scripts/mcp-interop/requirements.txt, outside the runtime and dev lockfiles.
@@ -35,6 +37,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+ACT_TOOLS = ["preview_action", "apply_action", "undo_action",
+             "protect_senders", "pin_mails", "start_scan"]
 EXPECTED = ["list_accounts", "mailbox_overview", "list_groups", "list_mails",
             "search_mails", "count_matches", "list_rules", "recent_activity"]
 PROPOSE = ["propose_rule", "withdraw_proposal"]
@@ -91,15 +95,27 @@ async def leg(base: str, secret: str, mode: str, bad: Failures) -> None:
             else ("2025-11-25", "2025-06-18")),
             f"negotiated protocol {client.protocol_version}")
         tools = (await client.list_tools()).tools
-        bad.check([t.name for t in tools] == EXPECTED + PROPOSE,
+        names = [t.name for t in tools]
+        bad.check(names[:len(EXPECTED) + len(PROPOSE)] == EXPECTED + PROPOSE,
                   "the 8 read tools and the 2 propose tools")
-        bad.check(all(t.annotations and t.output_schema for t in tools)
-                  and all(t.annotations.read_only_hint for t in tools[:8])
-                  and not any(t.annotations.read_only_hint
-                              or t.annotations.destructive_hint
-                              for t in tools[8:]),
-                  "annotations (read-only reads, non-destructive proposals) "
-                  "and output schemas")
+        bad.check(set(ACT_TOOLS) <= set(names), "the Act tools")
+        bad.check(all(t.annotations and t.output_schema for t in tools),
+                  "annotations and output schemas")
+        bad.check(all(t.annotations.read_only_hint for t in tools
+                      if t.name in EXPECTED), "read tools are read-only")
+        bad.check(not any(t.annotations.read_only_hint or
+                          t.annotations.destructive_hint for t in tools
+                          if t.name in PROPOSE),
+                  "propose tools are not destructive")
+        apply_tool = next(t for t in tools if t.name == "apply_action")
+        bad.check(apply_tool.annotations.destructive_hint is True,
+                  "apply_action is annotated destructive")
+        bad.check((apply_tool.meta or {}).get(
+            "anthropic/requiresUserInteraction") is True,
+            "apply_action carries _meta requiresUserInteraction")
+        bad.check(not any(t.meta and "anthropic/requiresUserInteraction"
+                          in t.meta for t in tools if t.name != "apply_action"),
+                  "no other tool asks for it")
         first = await client.call_tool("list_groups", {"limit": 3})
         groups = (first.structured_content or {}).get("groups") or []
         key = groups[0]["key"] if groups else "example"
@@ -129,6 +145,43 @@ async def leg(base: str, secret: str, mode: str, bad: Failures) -> None:
         res = await client.call_tool("withdraw_proposal",
                                      {"rule_id": text.get("rule_id", "")})
         bad.check(not res.is_error, "withdraw_proposal: gone again")
+        await act_flow(client, bad)
+
+
+async def act_flow(client, bad: Failures) -> None:
+    """preview -> apply -> undo on two mails of the demo mailbox."""
+    groups = (await client.call_tool("list_groups", {
+        "limit": 25, "sort": "size"})).structured_content["groups"]
+    mails = []
+    for g in groups:
+        if g["protected"] or g["pinned"]:
+            continue
+        got = (await client.call_tool("list_mails", {
+            "key": g["key"], "limit": 2})).structured_content["mails"]
+        if got and not any(m["pinned"] for m in got):
+            mails = [{"folder": m["folder"], "uid": m["uid"]} for m in got]
+            break
+    bad.check(bool(mails), "found mails to act on")
+    if not mails:
+        return
+    prev = await client.call_tool("preview_action", {
+        "action": "trash", "mails": mails})
+    bad.check(not prev.is_error and prev.structured_content["mails"]
+              == len(mails), "preview_action: a plan for exactly those mails")
+    if prev.is_error:
+        return
+    plan = prev.structured_content["plan_id"]
+    done = await client.call_tool("apply_action", {"plan_id": plan})
+    out = done.structured_content or {}
+    bad.check(not done.is_error and out.get("moved") == len(mails)
+              and out.get("undo_id"), "apply_action: moved, with an undo id")
+    again = await client.call_tool("apply_action", {"plan_id": plan})
+    bad.check(bool(again.is_error), "a plan cannot be applied twice")
+    if out.get("undo_id"):
+        back = await client.call_tool("undo_action", {
+            "undo_id": out["undo_id"]})
+        bad.check(not back.is_error and back.structured_content["restored"]
+                  == len(mails), "undo_action: restored")
 
 
 async def run(base: str, secret: str) -> list[str]:
@@ -161,10 +214,10 @@ def main() -> int:
     try:
         wait_up(base, proc, 180)
         http(base + "/api/config", "POST",
-             {"assistants": {"access": "read_propose"}})
+             {"assistants": {"access": "act"}})
         accounts = list(http(base + "/api/accounts/summary"))
         made = http(base + "/api/assistants/tokens", "POST", {
-            "name": "interop", "accounts": accounts[:1], "level": "propose",
+            "name": "interop", "accounts": accounts[:1], "level": "act",
             "subjects": True, "expires_days": 30})
         failures = asyncio.run(run(base, made["secret"]))
     finally:

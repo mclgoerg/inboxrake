@@ -45,6 +45,7 @@ def _initial_state() -> dict:
                                # clients refetch the (big) group list only
                                # when this moves
         "undo": [],            # summaries of undoable move jobs (newest last)
+        "assistant_undo": [],  # the same for AI assistants' steps (own list)
         "folders_raw": [],     # raw IMAP folder names (targets for move-to)
         "index": {"status": "idle", "progress": "", "error": "",
                   "done": 0, "total": 0},   # local body index job
@@ -84,6 +85,9 @@ class AccountState:
         self.role_index: dict[str, dict[str, dict]] = {}
         self.role_uv: dict[str, dict[str, int]] = {}
         self.undo_log: list[dict] = []
+        # Steps of AI assistants (MCP): never mixed into `undo_log`, so an
+        # assistant cannot push the user's own steps out of it.
+        self.assistant_undo: list[dict] = []
         self.replied: set[str] = set()
         self.replied_loaded = False
         self.cancel = {"scan": False, "ai": False, "delete": False,

@@ -31,8 +31,8 @@ TOKENS_PATH = Path(os.environ.get("ASSISTANT_TOKENS_PATH",
 PREFIX = "irk_"
 LEVELS = ("read", "propose", "act")
 # The levels whose tools exist (a level is accepted by `create` once listed
-# here): read (MCP1), propose (MCP4); act arrives with its tools.
-AVAILABLE_LEVELS = ("read", "propose")
+# here): read (MCP1), propose (MCP4), act (MCP5).
+AVAILABLE_LEVELS = ("read", "propose", "act")
 EXPIRY_DAYS = (30, 90, None)
 DAILY_CAP_DEFAULT = 2000
 DAILY_CAP_MIN, DAILY_CAP_MAX = 100, 10_000
@@ -48,6 +48,9 @@ BAD_LEVEL = "assistant_token_level"
 LEVEL_NOT_AVAILABLE = "level_not_available"
 TOO_MANY = "assistant_token_limit"
 UNKNOWN = "assistant_token_unknown"
+# `reserve` refused: the token's mails for today are used up (the text after
+# the colon is how many are left)
+CAP_REACHED = "daily_cap_reached"
 
 _LOCK = threading.Lock()
 
@@ -95,6 +98,21 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
+def _roll(t: dict) -> None:
+    """Restart a record's counters when the UTC day changed."""
+    today = _today()
+    if t.get("usage_day") != today:
+        t["usage_day"], t["calls_today"], t["mails_today"] = today, 0, 0
+
+
+def check_cap(value) -> int:
+    """A daily cap as the API accepts it (an int in range), or BAD_CAP."""
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or not DAILY_CAP_MIN <= value <= DAILY_CAP_MAX:
+        raise TokenError(BAD_CAP)
+    return value
+
+
 def create(tenant_id: str, name: str, accounts: list[str], level: str = "read",
            subjects: bool = False, expires_days: int | None = None,
            daily_cap: int = DAILY_CAP_DEFAULT,
@@ -117,9 +135,7 @@ def create(tenant_id: str, name: str, accounts: list[str], level: str = "read",
         raise TokenError(LEVEL_NOT_AVAILABLE)
     if expires_days not in EXPIRY_DAYS:
         raise TokenError(BAD_EXPIRY)
-    if isinstance(daily_cap, bool) or not isinstance(daily_cap, int) \
-            or not DAILY_CAP_MIN <= daily_cap <= DAILY_CAP_MAX:
-        raise TokenError(BAD_CAP)
+    check_cap(daily_cap)
     # The secret is `irk_` + 4 random characters (the display prefix, drawn
     # first and kept as such) + 32 random bytes in base64url: 256 bits stay
     # unknown after the prefix.
@@ -203,15 +219,77 @@ def touch(token_id: str, call: bool = False) -> None:
         for t in tokens:
             if t.get("id") != token_id:
                 continue
-            today = _today()
-            if t.get("usage_day") != today:
-                t["usage_day"], t["calls_today"], t["mails_today"] = \
-                    today, 0, 0
+            _roll(t)
             t["last_used"] = int(time.time())
             if call:
                 t["calls_today"] = t.get("calls_today", 0) + 1
             _write(tokens)
             return
+
+
+def set_cap(tenant_id: str, token_id: str, daily_cap) -> dict:
+    """Change one of the tenant's tokens' daily cap (it applies from the next
+    plan on); returns its public record. Raises TokenError."""
+    check_cap(daily_cap)
+    with _LOCK:
+        tokens = _read()
+        hit = next((t for t in tokens if t.get("id") == token_id
+                    and t.get("tenant") == tenant_id), None)
+        if hit is None:
+            raise TokenError(UNKNOWN)
+        hit["daily_cap"] = daily_cap
+        _write(tokens)
+    return public(hit)
+
+
+def mails_left(token_id: str) -> int:
+    """How many mails the token may still move today (0 for a vanished
+    token)."""
+    for t in _read():
+        if t.get("id") == token_id:
+            _roll(t)
+            return max(0, int(t.get("daily_cap", DAILY_CAP_DEFAULT))
+                       - int(t.get("mails_today", 0)))
+    return 0
+
+
+def reserve(token_id: str, n: int) -> str:
+    """Count `n` mails against today's cap BEFORE they are moved, in one
+    locked step (two plans applied at once cannot both slip under it).
+    Returns the UTC day they were counted on (`refund` needs it). Raises
+    TokenError("daily_cap_reached:<left>") when it would not fit."""
+    with _LOCK:
+        tokens = _read()
+        for t in tokens:
+            if t.get("id") != token_id:
+                continue
+            _roll(t)
+            cap = int(t.get("daily_cap", DAILY_CAP_DEFAULT))
+            used = int(t.get("mails_today", 0))
+            if used + n > cap:
+                raise TokenError(f"{CAP_REACHED}:{max(0, cap - used)}")
+            t["mails_today"] = used + n
+            _write(tokens)
+            return t["usage_day"]
+        raise TokenError(UNKNOWN)
+
+
+def refund(token_id: str, n: int, day: str) -> None:
+    """Give back mails that were reserved but not moved, to the UTC day
+    `reserve` counted them on: when midnight has passed since, that day's
+    counter is gone and today's is not touched."""
+    if n <= 0:
+        return
+    with _LOCK:
+        tokens = _read()
+        for t in tokens:
+            if t.get("id") == token_id:
+                _roll(t)
+                if t["usage_day"] != day:
+                    return
+                t["mails_today"] = max(0, int(t.get("mails_today", 0)) - n)
+                _write(tokens)
+                return
 
 
 def rename_account(tenant_id: str, old: str, new: str) -> None:

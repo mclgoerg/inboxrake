@@ -429,6 +429,9 @@ def error_text(exc: Exception, host: str = "",
 
 
 UNDO_MAX = 10
+# An AI assistant's steps live in their own list, so an active assistant
+# never pushes the user's own steps out of `undo_log`: the last N per token.
+ASSISTANT_UNDO_MAX = 10
 
 # All mutable mail state lives in per-account AccountState objects (see
 # backend/accounts.py); every function below takes `acc` (None = default
@@ -713,7 +716,7 @@ def _undo_ident(entry: dict) -> dict:
             **({"id": entry["id"]} if entry.get("id") else {})}
 
 
-def _undo_summaries(acc) -> list[dict]:
+def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
              "action": u.get("action", "trash"),
@@ -722,8 +725,28 @@ def _undo_summaries(acc) -> list[dict]:
              # a label the UI words itself (key + params); absent = `label`
              **({"label_key": u["label_key"],
                  "label_params": u["label_params"]}
-                if u.get("label_key") else {})}
-            for u in acc.undo_log]
+                if u.get("label_key") else {}),
+             # an assistant's step: who did it (the token's name)
+             **({"actor": u["actor"], "token": u["token"]}
+                if u.get("token") else {})}
+            for u in (acc.undo_log if entries is None else entries)]
+
+
+def _sync_undo(acc) -> None:
+    """Refresh the public summaries of both undo lists (acc.lock held)."""
+    acc.state["undo"] = _undo_summaries(acc)
+    acc.state["assistant_undo"] = _undo_summaries(acc, acc.assistant_undo)
+
+
+def _trim_assistant_undo(acc) -> None:
+    """Keep the last ASSISTANT_UNDO_MAX steps of each token (acc.lock held)."""
+    seen: dict[str, int] = {}
+    kept = []
+    for e in reversed(acc.assistant_undo):
+        seen[e["token"]] = seen.get(e["token"], 0) + 1
+        if seen[e["token"]] <= ASSISTANT_UNDO_MAX:
+            kept.append(e)
+    acc.assistant_undo[:] = kept[::-1]
 
 
 def clear_ai_marks() -> None:
@@ -3041,8 +3064,11 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                  acc, quiet: bool = False,
                  label_fields: dict | None = None,
                  copies: list[dict] | None = None,
-                 audit_id: str = "") -> None:
-    """Append a move job to the undo log (acc.lock held). `audit_id` is the
+                 audit_id: str = "", token: str = "",
+                 actor: str = "") -> str:
+    """Append a move job to the undo log (acc.lock held). A step of an AI
+    assistant (`token` = the token's id, `actor` = its audit actor) goes to
+    the assistant list instead, never into (or out of) the user's. `audit_id` is the
     id of the audit entry that records the same action, so an undo can say
     what it undid. `quiet` = the
     caller shows its own toast (Folders panel), so the UI's generic "moved
@@ -3052,19 +3078,26 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
              for folder, by_uid in meta.items()
              for m in by_uid.values() if copies is not None or m.get("msgid")]
     if not items:
-        return
+        return ""
     if copies is not None:
         for copy in copies:
             copy.setdefault("msgid", meta.get(copy["folder"], {}).get(
                 copy["source_uid"], {}).get("msgid", ""))
-    acc.undo_log.append({"id": f"{time.time_ns():x}", "ts": int(time.time()), "label": label,
-                         "action": action, "count": len(items),
-                         "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
-                         **({"copies": copies} if copies is not None else {}),
-                         **({"audit_id": audit_id} if audit_id else {}),
-                         **(label_fields or {})})
-    del acc.undo_log[:-UNDO_MAX]
-    acc.state["undo"] = _undo_summaries(acc)
+    entry = {"id": f"{time.time_ns():x}", "ts": int(time.time()), "label": label,
+             "action": action, "count": len(items),
+             "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
+             **({"copies": copies} if copies is not None else {}),
+             **({"audit_id": audit_id} if audit_id else {}),
+             **(label_fields or {})}
+    if token:
+        entry.update(token=token, actor=actor)
+        acc.assistant_undo.append(entry)
+        _trim_assistant_undo(acc)
+    else:
+        acc.undo_log.append(entry)
+        del acc.undo_log[:-UNDO_MAX]
+    _sync_undo(acc)
+    return entry["id"]
 
 
 def _delete_worker(acc) -> None:
@@ -3111,7 +3144,8 @@ def _delete_worker(acc) -> None:
         by_folder, label = job["by_folder"], job["label"]
         action, dest = job["action"], job["dest"]
         actor = job.get("actor", "user")
-        by_user = by_user or not str(actor).startswith("rule:")
+        token = job.get("token", "")
+        by_user = by_user or not str(actor).startswith(("rule:", "mcp:"))
 
         def progress_cb(moved, total):
             with acc.lock:
@@ -3134,8 +3168,9 @@ def _delete_worker(acc) -> None:
             if not moved_uids:
                 return
             meta = _apply_removal(moved_uids, acc)
-            _record_undo(label, meta, action, resolved[0], acc, copies=copies,
-                         audit_id=audit_id)
+            undo_id[0] = _record_undo(
+                label, meta, action, resolved[0], acc, copies=copies,
+                audit_id=audit_id, token=token, actor=actor) or undo_id[0]
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
@@ -3143,6 +3178,7 @@ def _delete_worker(acc) -> None:
             freed[1] += n
 
         resolved = [dest]
+        undo_id = [""]
         freed = [0, 0]                      # [bytes moved, mails moved]
         error = ""
         cancelled = False
@@ -3188,13 +3224,16 @@ def _delete_worker(acc) -> None:
             error=error, entry_id=audit_id)
         if job.get("completion") is not None:
             job["completion"].update(moved=done if action == "mark_read" else freed[1],
-                                     error=error or ("action_cancelled" if cancelled else ""), done=True)
+                                     error=error or ("action_cancelled" if cancelled else ""),
+                                     undo_id=undo_id[0], done=True)
 
 
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
-                  actor: str = "user", completion: dict | None = None) -> None:
-    """Enqueue a background mail action (acc.lock held by caller)."""
+                  actor: str = "user", completion: dict | None = None,
+                  token: str = "") -> None:
+    """Enqueue a background mail action (acc.lock held by caller). `token`
+    (an AI assistant's token id) files the undo step in the assistant list."""
     if action not in ACTIONS:
         raise ValueError("bad action")
     if action == "move" and not dest:
@@ -3216,7 +3255,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         return
     acc.delete_pending.append({"by_folder": by_folder, "label": label,
                             "action": action, "dest": dest, "actor": actor,
-                            "completion": completion})
+                            "token": token, "completion": completion})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
         # at start, so a stale "done" tick of an earlier job is not mistaken
@@ -3398,11 +3437,16 @@ def set_group_pin(grouping: str, key: str, pinned: bool, acc=None) -> dict:
 
 
 def delete_messages(items: list, action: str = "trash",
-                    dest: str = "", acc=None, force: bool = False) -> dict:
+                    dest: str = "", acc=None, force: bool = False,
+                    actor: str = "user", completion: dict | None = None,
+                    token: str = "") -> dict:
     """Act on individual messages ([folder, uid] pairs). A pinned mail is
     only ever moved on explicit request: without `force` a selection that
     contains one is refused as a whole (the UI asks per mail first and
-    then re-sends with force). mark_read is non-destructive and exempt."""
+    then re-sends with force). mark_read is non-destructive and exempt.
+    `actor` is recorded in the audit log; `token` (an AI assistant's token
+    id) files the undo step in the assistant list, and `completion` is
+    filled in when the job ends (see `_start_delete`)."""
     acc = acc or accounts.get()
     guard = (pinstore.load_account(acc.name)
              if action != "mark_read" and not force else set())
@@ -3425,7 +3469,8 @@ def delete_messages(items: list, action: str = "trash",
         if not by_folder:
             raise RuntimeError("no known messages selected")
         n = sum(len(s) for s in by_folder.values())
-        _start_delete(by_folder, f"{n} selected mails", acc, action, dest)
+        _start_delete(by_folder, f"{n} selected mails", acc, action, dest,
+                      actor, completion, token)
     return {"ok": True, "queued": sum(len(s) for s in by_folder.values())}
 
 
@@ -4197,36 +4242,54 @@ def _reinsert_undo(acc, entry: dict, pos: int) -> None:
     """Put a taken-off undo entry back (acc.lock held). The list may have
     changed while the IMAP work ran (new entries, front-trimming, pruning),
     so `pos` is only a hint: the entry goes into its timestamp slot, at
-    `pos` where the timestamps leave a choice."""
-    log_ = acc.undo_log
+    `pos` where the timestamps leave a choice. An assistant's step (it has
+    a `token`) goes back to the assistant list."""
+    assistant = bool(entry.get("token"))
+    log_ = acc.assistant_undo if assistant else acc.undo_log
     lo = sum(1 for e in log_ if e["ts"] < entry["ts"])
     hi = sum(1 for e in log_ if e["ts"] <= entry["ts"])
     log_.insert(min(max(pos, lo), hi), entry)
-    del log_[:-UNDO_MAX]
-    acc.state["undo"] = _undo_summaries(acc)
+    if assistant:
+        _trim_assistant_undo(acc)
+    else:
+        del log_[:-UNDO_MAX]
+    _sync_undo(acc)
 
 
-def undo_last(index: int = -1, acc=None, ident: dict | None = None) -> dict:
+def undo_last(index: int = -1, acc=None, ident: dict | None = None,
+              assistant: bool = False, token: str | None = None,
+              actor: str = "user") -> dict:
     """Restore a recorded move job by exact destination copies where available.
     `ident` ({ts, label, count} of the entry, as returned when it was
-    recorded) picks the entry by identity instead of by position."""
+    recorded) picks the entry by identity instead of by position.
+    `assistant` picks from the AI assistants' list instead of the user's;
+    `token` (an assistant's own call) limits that to the steps of that token,
+    so it can neither see nor undo another's. `actor` is the audit actor."""
     acc = acc or accounts.get()
     with acc.lock:
+        lst = acc.assistant_undo if assistant else acc.undo_log
+        if token is not None:
+            # an assistant's own call: only its own steps, picked by identity
+            if not assistant or not ident or not ident.get("id"):
+                raise RuntimeError(NOTHING_TO_UNDO)
+            if not any(u.get("id") == ident["id"] and u.get("token") == token
+                       for u in lst):
+                raise RuntimeError(NOTHING_TO_UNDO)
         if ident is not None:
-            index = next((i for i, u in enumerate(acc.undo_log)
+            index = next((i for i, u in enumerate(lst)
                           if (u.get("id") == ident["id"] if ident.get("id") else
                               (u["ts"], u["label"], u["count"]) ==
                           (ident.get("ts"), ident.get("label"),
-                           ident.get("count")))), len(acc.undo_log))
-        if not acc.undo_log:
+                           ident.get("count")))), len(lst))
+        if not lst:
             raise RuntimeError(NOTHING_TO_UNDO)
-        if not -len(acc.undo_log) <= index < len(acc.undo_log):
+        if not -len(lst) <= index < len(lst):
             raise RuntimeError(NOTHING_TO_UNDO)     # a stale list position
         if acc.state["delete"]["status"] == "running":
             raise RuntimeError(BUSY_ACTION)
-        pos = index if index >= 0 else len(acc.undo_log) + index
-        entry = acc.undo_log.pop(index)
-        acc.state["undo"] = _undo_summaries(acc)
+        pos = index if index >= 0 else len(lst) + index
+        entry = lst.pop(index)
+        _sync_undo(acc)
 
     restored = 0
     moved: list[int] = []
@@ -4347,7 +4410,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None) -> dict:
             if acc.state[key] is not None:
                 acc.state[key] += restored
     auditlog.record(
-        "undo", account=acc.name, count=restored, label=entry["label"],
+        "undo", actor=actor, account=acc.name, count=restored,
+        label=entry["label"],
         outcome=("error" if failed and not restored else
                  "ok" if restored == entry["count"] else "partial"),
         error=error_text(failed) if failed else "",
@@ -4896,7 +4960,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
                     "action": "move_contents", "count": len(items),
                     "items": items, "in": target, "copies": copies})
                 del acc.undo_log[:-UNDO_MAX]
-                acc.state["undo"] = _undo_summaries(acc)
+                _sync_undo(acc)
                 undo = _undo_ident(acc.undo_log[-1])
             if role == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += moved
@@ -4942,26 +5006,33 @@ def _prune_undo(acc, trash: str, purged: set[str], uids: set[int] | None = None)
     """Drop purged Message-IDs from the undo entries that restore out of
     Trash; an entry left without items disappears."""
     with acc.lock:
-        kept = []
-        for e in acc.undo_log:
-            if e.get("copies") is not None:
-                # IDs are not copy identities. Another mail with the same ID
-                # may have been purged; don't discard an exact, still-live copy.
-                remaining = [c for c in e["copies"]
-                             if (e.get("in") or trash) != trash or c.get("uid") not in (uids or set())]
-                if remaining:
-                    kept.append({**e, "copies": remaining,
-                                 "items": [(c["folder"], c.get("msgid", "")) for c in remaining],
-                                 "count": len(remaining)})
-                continue
-            if (e.get("in") or trash) != trash:
-                kept.append(e)
-                continue
-            items = [it for it in e["items"] if it[1] not in purged]
-            if items:
-                kept.append({**e, "items": items, "count": len(items)})
-        acc.undo_log[:] = kept
-        acc.state["undo"] = _undo_summaries(acc)
+        acc.undo_log[:] = _pruned_undo(acc.undo_log, trash, purged, uids)
+        acc.assistant_undo[:] = _pruned_undo(acc.assistant_undo, trash,
+                                             purged, uids)
+        _sync_undo(acc)
+
+
+def _pruned_undo(entries: list[dict], trash: str, purged: set[str],
+                 uids: set[int] | None) -> list[dict]:
+    kept = []
+    for e in entries:
+        if e.get("copies") is not None:
+            # IDs are not copy identities. Another mail with the same ID
+            # may have been purged; don't discard an exact, still-live copy.
+            remaining = [c for c in e["copies"]
+                         if (e.get("in") or trash) != trash or c.get("uid") not in (uids or set())]
+            if remaining:
+                kept.append({**e, "copies": remaining,
+                             "items": [(c["folder"], c.get("msgid", "")) for c in remaining],
+                             "count": len(remaining)})
+            continue
+        if (e.get("in") or trash) != trash:
+            kept.append(e)
+            continue
+        items = [it for it in e["items"] if it[1] not in purged]
+        if items:
+            kept.append({**e, "items": items, "count": len(items)})
+    return kept
 
 
 def empty_trash(acc=None, uv: int = 0, max_uid: int = 0) -> dict:
@@ -5031,7 +5102,7 @@ def _empty_trash(acc, uv: int, max_uid: int) -> dict:
                                             if data and data[0] else []))
             if status != "OK" or again != chosen:
                 raise RuntimeError(coded(FOLDER_CHANGED, role="trash"))
-        want_ids = bool(acc.undo_log)
+        want_ids = bool(acc.undo_log or acc.assistant_undo)
         for start in range(0, len(chosen), MOVE_CHUNK):
             chunk = chosen[start:start + MOVE_CHUNK]
             uidstr = ",".join(str(u) for u in chunk)

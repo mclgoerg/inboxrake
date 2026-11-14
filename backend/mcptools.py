@@ -28,6 +28,7 @@ from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import accounts as accountsmod
+from . import assistantplans, assistanttokens
 from . import auditlog
 from . import auth as authmod
 from . import config as cfgmod
@@ -56,9 +57,14 @@ class Ctx:
     """Who is calling: the token's record (its tenant is already active)."""
     accounts: list[str]        # the allow-list, in the token's order
     subjects: bool             # may subject lines be returned?
-    token_id: str = ""         # who is calling (proposals are bound to it)
+    token_id: str = ""         # who is calling (proposals and plans are bound to it)
     token_name: str = ""
     origin: str = ""           # this server's address, for links into the UI
+
+    @property
+    def actor(self) -> str:
+        """How the audit log names this assistant."""
+        return f"mcp:{self.token_name}"
 
 
 def clean(text: Any, limit: int = TEXT_MAX) -> str:
@@ -939,6 +945,462 @@ def _withdraw_proposal(ctx: Ctx, args: WithdrawIn) -> dict:
     auditlog.record("rule_withdrawn", actor=_actor(ctx),
                     account=rule.get("account"), label=rule.get("name", ""))
     return {"withdrawn": True, "rule_id": rule["id"]}
+# ---------------------------------------------------------------- act level
+# Everything below changes mail or settings, and only for a token with the Act
+# level. The limits are enforced HERE, never left to the model: reversible
+# moves only (never a purge, never `force`), protected senders and pinned mails
+# are left out of every plan, a plan is exact UIDs bound to its token and
+# expires, and a token's daily cap counts every mail it moves.
+
+PLAN_MAX = rulesmod.RULE_CAP            # mails per plan (500)
+PROTECT_MAX = 100                       # senders per protect_senders call
+PIN_MAX = 200                           # mails per pin_mails call
+PROTECTED_LIST_MAX = 5000               # as /api/protect
+APPLY_WAIT = 120.0                      # seconds a call waits for its job
+_JUNK_TRASH_NAMES = frozenset({
+    "trash", "junk", "spam", "bin", "deleted items", "deleted messages",
+    "junk e-mail", "junk email", "bulk mail"})
+_HOST = r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"
+# a domain needs a dot (never "@com"); common two-label public suffixes would
+# protect a whole country's mail, so they are not a domain either
+_PROTECT_ENTRY = re.compile(rf"^(?:@{_HOST}|[^@\s]+@{_HOST})$")
+_PUBLIC_SUFFIXES = frozenset({
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au",
+    "org.au", "co.nz", "co.jp", "ne.jp", "or.jp", "co.in", "com.br",
+    "com.cn", "com.mx", "com.tr", "co.za", "com.sg", "com.hk", "co.kr"})
+SCAN_GAP = 600                          # seconds between assistant scans
+_last_scan: dict[tuple[str, str], float] = {}
+
+
+class MailRef(_In):
+    folder: str = Field(..., max_length=200, description=(
+        "The folder exactly as list_mails returned it."))
+    uid: int = Field(..., ge=0)
+
+
+class PreviewActionIn(_In):
+    account: Optional[str] = _ACCOUNT
+    action: Literal["trash", "archive", "move", "mark_read"] = Field(
+        ..., description=(
+            "trash and archive move to the folders the mail account names "
+            "so; move needs `dest`; mark_read only flags mails as read."))
+    dest: Optional[str] = Field(None, max_length=200, description=(
+        "For move: an existing folder (not Junk, not Trash), spelled as "
+        "list_mails shows folders."))
+    grouping: Optional[Literal["sender", "domain", "smart"]] = Field(
+        None, description="With `keys`: what the keys are keys of.")
+    keys: Optional[list[str]] = Field(None, max_length=100, description=(
+        "Group keys from list_groups (needs `grouping`)."))
+    mails: Optional[list[MailRef]] = Field(None, max_length=2000, description=(
+        "Exact mails from list_mails, instead of group keys."))
+
+
+class TopSender(_Out):
+    sender: str
+    mails: int
+    bytes: int
+
+
+class SkippedCounts(_Out):
+    protected: int
+    pinned: int
+    unknown: int
+    already_in_destination: int
+
+
+class PreviewActionOut(_Out):
+    account: str
+    scanned_at: Optional[str]
+    plan_id: str
+    action: str
+    dest: Optional[str] = None
+    mails: int
+    bytes: int
+    folders: int
+    top_senders: list[TopSender]
+    skipped: SkippedCounts
+    expires_in_seconds: int
+    daily_remaining: int
+
+
+class ApplyActionIn(_In):
+    plan_id: str = Field(..., min_length=1, max_length=64)
+
+
+class ApplyActionOut(_Out):
+    account: str
+    action: str
+    planned: int
+    moved: int
+    status: Literal["done", "partly_done", "failed", "running"]
+    error: Optional[str] = None
+    undo_id: Optional[str] = None
+    daily_remaining: int
+
+
+class UndoActionIn(_In):
+    account: Optional[str] = _ACCOUNT
+    undo_id: str = Field(..., min_length=1, max_length=64, description=(
+        "The undo_id apply_action returned."))
+
+
+class UndoActionOut(_Out):
+    account: str
+    restored: int
+    of: int
+
+
+class ProtectSendersIn(_In):
+    senders: list[str] = Field(..., min_length=1, max_length=PROTECT_MAX,
+                               description=(
+        "Addresses (name@host.example) or whole domains (@host.example) "
+        "to protect. Adds only: nothing is ever unprotected."))
+
+
+class ProtectSendersOut(_Out):
+    added: int
+    already_protected: int
+
+
+class PinMailsIn(_In):
+    account: Optional[str] = _ACCOUNT
+    mails: list[MailRef] = Field(..., min_length=1, max_length=PIN_MAX)
+
+
+class PinMailsOut(_Out):
+    account: str
+    pinned: int
+    already_pinned: int
+    skipped: int
+
+
+class StartScanIn(_In):
+    account: Optional[str] = _ACCOUNT
+
+
+class StartScanOut(_Out):
+    account: str
+    started: bool
+
+
+def _shown(raw: str) -> str:
+    return clean(mailops.decode_mutf7(raw), 200)
+
+
+def _folder_lookup(acc) -> dict[str, str]:
+    """{folder as MCP shows it: raw name} for the folders of the account.
+    A shown name two raw folders share is left out (never guessed)."""
+    with acc.lock:
+        raws = {m["folder"] for m in acc.index.values()} \
+            | set(acc.state["folders_raw"])
+    out: dict[str, str] = {}
+    dup: set[str] = set()
+    for raw in raws:
+        shown = _shown(raw)
+        if out.setdefault(shown, raw) != raw:
+            dup.add(shown)
+    return {k: v for k, v in out.items() if k not in dup}
+
+
+def _is_junk_or_trash(acc, raw: str) -> bool:
+    """Junk or Trash itself, or any folder below one of them (Trash/Old)."""
+    with acc.lock:
+        roles = [r for r in (acc.folder_roles.get("trash"),
+                             acc.folder_roles.get("junk")) if r]
+    if any(raw == r or raw.startswith((r + "/", r + ".")) for r in roles):
+        return True
+    role = mailops.role_of_folder(raw, acc)
+    if role is not None:
+        return True
+    parts = re.split(r"[/.]", mailops.decode_mutf7(raw).lower())
+    return any(p.strip() in _JUNK_TRASH_NAMES for p in parts)
+
+
+def _move_dest(acc, shown: Optional[str]) -> str:
+    """The raw folder a `move` goes to: an existing one, never Junk or Trash
+    (Trash is what the trash action is for; Junk would teach the server
+    spam)."""
+    if not shown:
+        raise ToolError("move needs `dest`: the name of an existing folder.")
+    raw = _folder_lookup(acc).get(shown)
+    if raw is None:
+        raise ToolError("Unknown destination folder. Use a folder name "
+                        "exactly as list_mails shows it.")
+    if _is_junk_or_trash(acc, raw):
+        raise ToolError("Moving to Junk or Trash is not allowed here. Use "
+                        "the trash action for Trash.")
+    return raw
+
+
+def _selection(acc, args: PreviewActionIn) -> tuple[list[tuple[str, int]], int]:
+    """(unique (raw folder, uid) pairs in order, how many named mails are
+    unknown)."""
+    if bool(args.mails) == bool(args.keys):
+        raise ToolError("Give either `grouping` + `keys` or `mails`, not "
+                        "both and not neither.")
+    pairs: list[tuple[str, int]] = []
+    unknown = 0
+    if args.keys:
+        if not args.grouping:
+            raise ToolError("`keys` needs `grouping`.")
+        for key in args.keys:
+            real = _real_group_key(acc, args.grouping, key)
+            with acc.lock:
+                rec = acc.state["groups"][args.grouping].get(real) \
+                    if real is not None else None
+                if rec is None:
+                    unknown += 1
+                    continue
+                pairs += [(f, u) for f, uids in rec["folders"].items()
+                          for u in sorted(uids)]
+    else:
+        lookup = _folder_lookup(acc)
+        for ref in args.mails or []:
+            raw = lookup.get(ref.folder)
+            if raw is None:
+                unknown += 1
+            else:
+                pairs.append((raw, ref.uid))
+    return list(dict.fromkeys(pairs)), unknown
+
+
+def _classify(acc, pairs: list[tuple[str, int]]) -> dict:
+    """What the account's current state says about each pair: `ok` (mail
+    records), `missing`, `protected`, `pinned`. The same check runs again at
+    apply time, so a sender protected or a mail pinned in between is caught."""
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    pinned = pinstore.load_account(acc.name)
+    out: dict[str, list] = {"ok": [], "missing": [], "protected": [],
+                            "pinned": []}
+    with acc.lock:
+        for folder, uid in pairs:
+            m = acc.index.get(mailops.ikey(folder, uid))
+            if m is None:
+                out["missing"].append((folder, uid))
+            elif cfgmod.is_protected(m["addr"], plist):
+                out["protected"].append((folder, uid))
+            elif m["msgid"] and m["msgid"] in pinned:
+                out["pinned"].append((folder, uid))
+            else:
+                out["ok"].append(m)
+    return out
+
+
+def _need_scan(acc) -> None:
+    with acc.lock:
+        done = acc.state["status"] == "done"
+    if not done:
+        raise ToolError("No completed scan to work from. Call start_scan, "
+                        "wait for it to finish, then try again.")
+
+
+def _preview_action(ctx: Ctx, args: PreviewActionIn) -> dict:
+    acc = _account(ctx, args.account)
+    _need_scan(acc)
+    dest = _move_dest(acc, args.dest) if args.action == "move" else ""
+    pairs, unknown = _selection(acc, args)
+    cls = _classify(acc, pairs)
+    unknown += len(cls["missing"])
+    already = [m for m in cls["ok"] if dest and m["folder"] == dest]
+    mails = [m for m in cls["ok"] if not (dest and m["folder"] == dest)]
+    skipped = {"protected": len(cls["protected"]),
+               "pinned": len(cls["pinned"]), "unknown": unknown,
+               "already_in_destination": len(already)}
+    if not mails:
+        raise ToolError(
+            "Nothing to do: none of the selected mails can be acted on "
+            f"({skipped['protected']} protected, {skipped['pinned']} pinned, "
+            f"{unknown} unknown, {len(already)} already there).")
+    if len(mails) > PLAN_MAX:
+        raise ToolError(
+            f"The selection is {len(mails)} mails; a plan holds at most "
+            f"{PLAN_MAX}. Narrow it (fewer groups, or a smaller list of "
+            "mails) and preview again.")
+    folders = {m["folder"] for m in mails}
+    with acc.lock:
+        uv = {f: int(acc.folder_uv.get(f) or 0) for f in folders}
+    plan = assistantplans.create(
+        ctx.token_id, tenants.current().id, acc.name, args.action, dest,
+        [(m["folder"], m["uid"]) for m in mails], uv)
+    by_sender: dict[str, list[int]] = {}
+    for m in mails:
+        row = by_sender.setdefault(clean(m["addr"], 254), [0, 0])
+        row[0] += 1
+        row[1] += m["size"]
+    top = sorted(by_sender.items(), key=lambda kv: (-kv[1][0], kv[0]))[:10]
+    return {
+        "account": acc.name, "scanned_at": _scanned(acc),
+        "plan_id": plan.id, "action": args.action,
+        "dest": _shown(dest) if dest else None, "mails": len(mails),
+        "bytes": sum(m["size"] for m in mails), "folders": len(folders),
+        "top_senders": [{"sender": s, "mails": n, "bytes": b}
+                        for s, (n, b) in top],
+        "skipped": skipped, "expires_in_seconds": assistantplans.PLAN_TTL,
+        "daily_remaining": assistanttokens.mails_left(ctx.token_id)}
+
+
+def _refuse_changed(why: str) -> ToolError:
+    return ToolError(f"{why} Nothing was moved. Call preview_action again.")
+
+
+def _apply_action(ctx: Ctx, args: ApplyActionIn) -> dict:
+    try:
+        plan = assistantplans.take(args.plan_id, ctx.token_id,
+                                   tenants.current().id)
+    except assistantplans.PlanError as exc:
+        raise ToolError(str(exc))
+    acc = _account(ctx, plan.account)       # still the token's, still exists
+    _need_scan(acc)
+    # The mails and folders must still be what the preview saw.
+    with acc.lock:
+        moved_uv = [f for f, uv in plan.uv.items()
+                    if int(acc.folder_uv.get(f) or 0) != uv]
+    if moved_uv:
+        raise _refuse_changed("A folder was renumbered by the mail server "
+                              "(UIDVALIDITY changed), so the planned UIDs "
+                              "may be different mails now.")
+    # LOAD-BEARING: for mark_read, `mailops.delete_messages` skips its own
+    # protected / pinned checks, so this re-check is the only guard there
+    # (and for the other actions it must refuse before the daily cap is
+    # touched, with a message that says why).
+    cls = _classify(acc, plan.items)
+    if cls["missing"]:
+        raise _refuse_changed("Some planned mails are gone or were moved.")
+    if cls["protected"]:
+        raise _refuse_changed("A sender in the plan was protected after the "
+                              "preview.")
+    if cls["pinned"]:
+        raise _refuse_changed("A mail in the plan was pinned after the "
+                              "preview.")
+    dest = ""
+    if plan.action == "move":
+        with acc.lock:
+            known = plan.dest in acc.state["folders_raw"]
+        if not known or _is_junk_or_trash(acc, plan.dest):
+            raise _refuse_changed("The destination folder is no longer a "
+                                  "valid target.")
+        dest = plan.dest
+    n = len(plan.items)
+    try:
+        day = assistanttokens.reserve(ctx.token_id, n)
+    except assistanttokens.TokenError as exc:
+        code, _, left = str(exc).partition(":")
+        if code != assistanttokens.CAP_REACHED:
+            raise ToolError("This token no longer exists.")
+        raise ToolError(
+            f"Daily limit reached: this plan has {n} mails but the token may "
+            f"move only {left} more today (resets at 00:00 UTC). Preview "
+            "fewer mails, or ask the user to raise the limit in Settings. "
+            "Nothing was moved.")
+    completion: dict = {}
+    try:
+        mailops.delete_messages(
+            [list(p) for p in plan.items], plan.action, dest, acc,
+            force=False, actor=ctx.actor, completion=completion,
+            token=ctx.token_id)
+    except (ValueError, RuntimeError) as exc:
+        assistanttokens.refund(ctx.token_id, n, day)
+        raise _refuse_changed(f"The action was refused ({clean(str(exc), 120)}).")
+    except Exception:
+        assistanttokens.refund(ctx.token_id, n, day)
+        raise
+    deadline = time.monotonic() + APPLY_WAIT
+    while not completion.get("done") and time.monotonic() < deadline:
+        time.sleep(0.05)
+    moved = int(completion.get("moved") or 0)
+    if not completion.get("done"):
+        return {"account": acc.name, "action": plan.action, "planned": n,
+                "moved": 0, "status": "running", "error": None,
+                "undo_id": None,
+                "daily_remaining": assistanttokens.mails_left(ctx.token_id)}
+    assistanttokens.refund(ctx.token_id, n - moved, day)
+    error = clean(completion.get("error") or "", 200) or None
+    return {"account": acc.name, "action": plan.action, "planned": n,
+            "moved": moved,
+            "status": "failed" if error and not moved else
+            "partly_done" if error or moved < n else "done",
+            "error": error, "undo_id": completion.get("undo_id") or None,
+            "daily_remaining": assistanttokens.mails_left(ctx.token_id)}
+
+
+def _undo_action(ctx: Ctx, args: UndoActionIn) -> dict:
+    acc = _account(ctx, args.account)
+    try:
+        res = mailops.undo_last(
+            acc=acc, ident={"id": args.undo_id}, assistant=True,
+            token=ctx.token_id, actor=ctx.actor)
+    except RuntimeError as exc:
+        if str(exc) == mailops.NOTHING_TO_UNDO:
+            raise ToolError("No such step: only this token's own recent "
+                            "steps (the last 10) can be undone, by the "
+                            "undo_id apply_action returned.")
+        raise ToolError("Undo failed: " + clean(str(exc), 120))
+    return {"account": acc.name, "restored": res["restored"], "of": res["of"]}
+
+
+def _protect_senders(ctx: Ctx, args: ProtectSendersIn) -> dict:
+    entries = [e for e in cfgmod.normalize_protected(args.senders)]
+    bad = [e for e in entries if not _PROTECT_ENTRY.match(e) or len(e) > 254
+           or e.lstrip("@") in _PUBLIC_SUFFIXES]
+    if bad or not entries:
+        raise ToolError("Give plain addresses (name@host.example) or domains "
+                        "(@host.example, never a bare ending like @com). Not accepted: " + ", ".join(
+                            clean(b, 40) for b in bad[:5]))
+    have = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    new = [e for e in entries if e not in have]
+    if len(have) + len(new) > PROTECTED_LIST_MAX:
+        raise ToolError("The protected list is full.")
+    if new:
+        cfgmod.set_protected_many(new, True)       # on=True: adds only
+        mailops.rebuild_smart_all()
+        for name in ctx.accounts:
+            auditlog.record("assistant_protect", actor=ctx.actor,
+                            account=name, count=len(new),
+                            label=clean(", ".join(new), 200))
+    return {"added": len(new), "already_protected": len(entries) - len(new)}
+
+
+def _pin_mails(ctx: Ctx, args: PinMailsIn) -> dict:
+    acc = _account(ctx, args.account)
+    lookup = _folder_lookup(acc)
+    msgids: set[str] = set()
+    skipped = 0
+    with acc.lock:
+        for ref in args.mails:
+            raw = lookup.get(ref.folder)
+            m = acc.index.get(mailops.ikey(raw, ref.uid)) if raw else None
+            if m and m["msgid"]:
+                msgids.add(m["msgid"])
+            else:
+                skipped += 1
+    changed = pinstore.set_many(msgids, True, acc.name)   # pins only
+    if changed:
+        with acc.lock:
+            acc.state["groups_rev"] += 1
+        auditlog.record("assistant_pin", actor=ctx.actor, account=acc.name,
+                        count=changed, label=f"{changed} mails")
+    return {"account": acc.name, "pinned": changed,
+            "already_pinned": len(msgids) - changed, "skipped": skipped}
+
+
+def _start_scan(ctx: Ctx, args: StartScanIn) -> dict:
+    acc = _account(ctx, args.account)
+    key = (tenants.current().id, acc.name)
+    wait = SCAN_GAP - (time.monotonic() - _last_scan.get(key, -SCAN_GAP))
+    if wait > 0:
+        raise ToolError(f"A scan was started by an assistant {int(SCAN_GAP - wait)}"
+                        f" seconds ago; assistants may start one every "
+                        f"{SCAN_GAP // 60} minutes. Try again in "
+                        f"{int(wait) + 1} seconds.")
+    try:
+        mailops.start_scan(acc)
+    except RuntimeError:
+        raise ToolError("A job is running on this account (a scan, a move "
+                        "or another task). Try again in a minute.")
+    _last_scan[key] = time.monotonic()
+    auditlog.record("assistant_scan", actor=ctx.actor, account=acc.name,
+                    label="scan")
+    return {"account": acc.name, "started": True}
 
 
 @dataclass(frozen=True)
@@ -950,6 +1412,10 @@ class Tool:
     inputs: type[BaseModel]
     outputs: type[BaseModel]
     run: Callable[[Ctx, Any], dict]
+    # annotations beyond the read-only default (hints only: the server
+    # enforces every limit)
+    annotations: Optional[dict] = None
+    meta: Optional[dict] = None       # `_meta` of the tools/list entry
 
 
 def _grammar() -> str:
@@ -1021,6 +1487,62 @@ TOOLS: tuple[Tool, ...] = (
          "Proposals of other tokens, and rules the user approved, cannot "
          "be withdrawn.",
          "propose", WithdrawIn, WithdrawOut, _withdraw_proposal),
+    Tool("preview_action", "Preview a mail action",
+         "Plan a cleanup without changing anything: resolve groups (grouping "
+         "+ keys from list_groups) or exact mails (from list_mails) to a "
+         "frozen list, and return a plan_id with the counts, bytes, top "
+         "senders and what was left out. Protected senders and pinned mails "
+         "are always left out. At most 500 mails per plan; the plan is for "
+         "this token only, single use and valid for 10 minutes. Show the "
+         "user the preview before calling apply_action. Actions: trash, "
+         "archive, move (an existing folder, not Junk or Trash), mark_read.",
+         "act", PreviewActionIn, PreviewActionOut, _preview_action,
+         annotations={"readOnlyHint": False, "destructiveHint": False,
+                      "idempotentHint": False}),
+    Tool("apply_action", "Apply a previewed mail action",
+         "Carry out a plan from preview_action, once, on exactly the mails "
+         "it listed. Mails are only moved (to Trash, Archive or a folder) or "
+         "marked read, never deleted for good; the user can undo it. Refused "
+         "if the plan expired, was used, was made by another token, a folder "
+         "changed, a sender was protected or a mail pinned since, or the "
+         "token's daily limit would be exceeded. Returns an undo_id. Only "
+         "call it after the user agreed to this exact preview.",
+         "act", ApplyActionIn, ApplyActionOut, _apply_action,
+         annotations={"readOnlyHint": False, "destructiveHint": True,
+                      "idempotentHint": False},
+         # Claude Code then asks the user before EVERY call, in every
+         # permission mode (headless `claude -p` denies it); other clients
+         # ignore the key. Advisory: the server enforces every limit.
+         meta={"anthropic/requiresUserInteraction": True}),
+    Tool("undo_action", "Undo one of this token's steps",
+         "Move the mails of one of this token's own earlier steps back to "
+         "where they came from (the undo_id apply_action returned). Only the "
+         "last 10 steps of this token can be undone, and only until the "
+         "server restarts; the user can undo any step in Inboxrake.",
+         "act", UndoActionIn, UndoActionOut, _undo_action,
+         annotations={"readOnlyHint": False, "destructiveHint": False,
+                      "idempotentHint": False}),
+    Tool("protect_senders", "Protect senders",
+         "Add senders (addresses or @domains) to the protected list, so no "
+         "cleanup ever touches their mail. Adds only: this tool cannot "
+         "remove protection. At most 100 per call.",
+         "act", ProtectSendersIn, ProtectSendersOut, _protect_senders,
+         annotations={"readOnlyHint": False, "destructiveHint": False,
+                      "idempotentHint": True}),
+    Tool("pin_mails", "Pin mails",
+         "Pin individual mails (from list_mails) so no cleanup touches them. "
+         "Pins only: this tool cannot unpin. At most 200 per call.",
+         "act", PinMailsIn, PinMailsOut, _pin_mails,
+         annotations={"readOnlyHint": False, "destructiveHint": False,
+                      "idempotentHint": True}),
+    Tool("start_scan", "Rescan the mailbox",
+         "Refresh the scanned snapshot of one account (a read-only pass "
+         "over the mail folders). Refused while another job runs. Returns "
+         "at once; the scan takes a while - read scanned_at on any read "
+         "tool to see when it is done.",
+         "act", StartScanIn, StartScanOut, _start_scan,
+         annotations={"readOnlyHint": False, "destructiveHint": False,
+                      "idempotentHint": False}),
 )
 _BY_NAME = {t.name: t for t in TOOLS}
 _LEVEL_RANK = {"read": 1, "propose": 2, "act": 3}
@@ -1058,13 +1580,14 @@ def describe(tool: Tool) -> dict:
         "description": f"{tool.description}\n\n{DATA_SENTENCE}",
         "inputSchema": _schema(tool.inputs),
         "outputSchema": _schema(tool.outputs),
-        "annotations": (
-            {"title": tool.title, "readOnlyHint": True,
-             "idempotentHint": True, "openWorldHint": False}
-            if tool.level == "read" else
-            {"title": tool.title, "readOnlyHint": False,
-             "destructiveHint": False, "idempotentHint": False,
-             "openWorldHint": False})}
+        "annotations": {"title": tool.title,
+                        **(tool.annotations or (
+                            {"readOnlyHint": True, "idempotentHint": True}
+                            if tool.level == "read" else
+                            {"readOnlyHint": False, "destructiveHint": False,
+                             "idempotentHint": False})),
+                        "openWorldHint": False},
+        **({"_meta": tool.meta} if tool.meta else {})}
 
 
 def _error(text: str) -> dict:
