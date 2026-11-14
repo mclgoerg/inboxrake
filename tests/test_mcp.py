@@ -1175,3 +1175,55 @@ def test_each_token_has_its_own_rate_limit(mbox, monkeypatch):
     # the window slides
     monkeypatch.setattr(mcpserver, "RATE_WINDOW", 0.0)
     assert legacy(a, "ping").status_code == 200
+
+
+def test_masking_replaces_whole_pieces_only():
+    names = frozenset({"Bills, Tax", "Tax", "Pro  Stuff".replace("  ", " ")})
+    mask = lambda t: mcptools._mask_names(t, names)       # noqa: E731
+    Y = mcptools.YOUR_CATEGORY
+    assert mask("Tax") == Y                                  # whole label
+    assert mask("tax") == Y                                  # case
+    assert mask("A, B, Tax…") == f"A, B, {Y}…"               # cut job label
+    assert mask("A, Bills, Tax, C") == f"A, {Y}, C"          # name with ", "
+    assert mask("Bills, Tax…") == f"{Y}…"
+    assert mask("Taxi Co") == "Taxi Co"                      # no substrings
+    assert mask("Co Tax") == "Co Tax" and mask("Tax Co, X") == "Tax Co, X"
+    assert mask("Pro Stuff, Taxi Co") == f"{Y}, Taxi Co"
+    assert mask("Shop Weekly") == "Shop Weekly"
+    assert mcptools._mask_names("Tax", frozenset()) == "Tax"
+
+
+def test_activity_masks_category_names_in_every_label_shape(mbox):
+    _cap()
+    secret = _token()
+    cfgmod.update_config({"categories": {
+        "Bills, Tax": ["x.example"], "Wide   Name": ["y.example"],
+        "Tax": ["z.example"]}})
+    for label in ("A, B, C, Bills, Tax…",               # > 3 groups
+                  "Shop Weekly, Bills, Tax",             # name holding ", "
+                  "wide name, Taxi Co",                  # whitespace + case
+                  "Tax"):                                # the whole label
+        auditlog.record("trash", account="default", count=1, label=label)
+    got = [e["label"] for e in ok(secret, "recent_activity")["entries"]]
+    Y = mcptools.YOUR_CATEGORY
+    assert f"A, B, C, {Y}…" in got
+    assert f"Shop Weekly, {Y}" in got
+    assert f"{Y}, Taxi Co" in got
+    assert Y in got
+    blob = json.dumps(got)
+    assert "Bills" not in blob and "wide name" not in blob.lower()
+    assert "Taxi Co" in blob                                 # not mangled
+
+
+def test_a_user_allowlisted_by_provider_sub_keeps_their_tokens():
+    c = _oidc_clients()
+    c["alice"].post("/api/config", json={
+        "rename_account": {"from": "default", "to": "alice-box"}})
+    secret = _token(c["alice"], accounts=["alice-box"], name="alice")
+    # what login records for her: the admitted email and the IdP's own sub
+    cfgmod.bind_oidc_admin("alice@x.example", "alice@x.example", "idp-sub-7")
+    anon = TestClient(app)
+    cfgmod.update_config({"auth": {"oidc": {"allowed": ["idp-sub-7"]}}})
+    assert legacy(secret, "ping", c=anon).status_code == 200
+    cfgmod.update_config({"auth": {"oidc": {"allowed": ["idp-sub-8"]}}})
+    assert legacy(secret, "ping", c=anon).status_code == 401

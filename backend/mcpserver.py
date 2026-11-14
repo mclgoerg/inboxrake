@@ -33,6 +33,7 @@ from urllib.parse import parse_qsl
 
 from . import accounts as accountsmod
 from . import assistanttokens
+from . import auth as authmod
 from . import config as cfgmod
 from . import demo as demomod
 from . import mailops
@@ -190,11 +191,13 @@ def owner_valid(rec: dict, resolve_tenant) -> bool:
     owner = rec.get("owner") or ""
     if not owner or owner == "password":
         return False
-    allowed = {str(a).strip().lower()
-               for a in auth["oidc"].get("allowed") or [] if str(a).strip()}
+    allowed = auth["oidc"].get("allowed") or []
     if allowed:
-        label = auth.get("identity_labels", {}).get(owner, owner)
-        if str(label).strip().lower() not in allowed:
+        # the login's own admission check, on what the login recorded
+        claims = {"email": auth.get("identity_labels", {}).get(owner, owner),
+                  "sub": auth.get("identity_subs", {}).get(owner, ""),
+                  "email_verified": True}
+        if not authmod.allowed_subject(claims, allowed):
             return False
     try:
         return resolve_tenant(mode, auth, owner).id == rec.get("tenant")

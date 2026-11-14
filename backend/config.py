@@ -296,6 +296,9 @@ def bind_oidc_admin(identity: str, admitted: str, provider_sub: str = "") -> Non
         server = load_server()
         auth = server["auth"]
         auth.setdefault("identity_labels", {})[identity] = admitted
+        # the IdP's own subject, so a later re-check (assistant tokens) can
+        # admit by the same two names login does
+        auth.setdefault("identity_subs", {})[identity] = provider_sub
         expected = (auth.get("admin") or "").strip().lower()
         allowed = auth.get("oidc", {}).get("allowed") or []
         if not expected and len(allowed) == 1:

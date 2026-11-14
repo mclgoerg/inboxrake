@@ -141,18 +141,22 @@ def _real_group_key(acc, grouping: str, key: str) -> Optional[str]:
 
 
 def _mask_names(text: str, names: frozenset[str]) -> str:
-    """`text` (a list of group labels joined by ", ") with any piece that is
-    one of the user's category names replaced."""
+    """`text` (cleaned group labels joined by ", ", maybe ending in "…") with
+    every user category name that stands as a whole piece replaced: after the
+    start or a ", ", before a ", ", "…" or the end. Case-insensitive, longest
+    name first, never a plain substring ("Tax" leaves "Taxi Co" alone)."""
     if not names:
         return text
-    return ", ".join(YOUR_CATEGORY if p.strip().lower() in names else p
-                     for p in text.split(", "))
+    alt = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    return re.sub(rf"(?:^|(?<=, ))(?:{alt})(?=, |…|$)", YOUR_CATEGORY, text,
+                  flags=re.IGNORECASE)
 
 
 def _user_category_names() -> frozenset[str]:
     custom = mailops._custom_categories(cfgmod.load_config())
-    return frozenset(n.strip().lower() for n in custom
-                     if n not in BUILTIN_TAGS)
+    # normalised the way `clean` normalises the labels they are looked for in
+    return frozenset(clean(n, 10_000) for n in custom
+                     if n not in BUILTIN_TAGS and clean(n, 10_000))
 
 
 _TAG_TERM = re.compile(r"(?i)(?<!\S)(-?tag:)(\S*)")
