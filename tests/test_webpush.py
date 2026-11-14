@@ -322,12 +322,16 @@ def test_subscriptions_are_not_part_of_the_settings_export(tmp_path):
 # ------------------------------------------------------------ test + errors
 
 def test_the_test_push_reaches_the_device_and_ignores_presence(network):
-    client.post("/api/push/subscribe", json=sub_body(lang="de"))
+    keys, key = device()
+    client.post("/api/push/subscribe", json=sub_body(lang="de", keys=keys))
     client.post("/api/push/presence", json={"endpoint": ENDPOINT,
                                             "visible": True})
     r = client.post("/api/push/test", json={"endpoint": ENDPOINT})
     assert r.status_code == 200 and r.json() == {"ok": True}
     assert len(network.sent) == 1
+    got = _decrypt(network.sent[0][2], (keys, key))
+    assert got["title"] == "Benachrichtigungen funktionieren"
+    assert got["body"].startswith("Du bekommst hier Bescheid")
 
 
 def test_the_test_push_for_an_unknown_device():
@@ -508,32 +512,45 @@ def test_the_push_endpoints_need_a_session():
 # -------------------------------------------------------------------- texts
 
 def test_texts_in_both_languages_and_the_account_prefix():
+    # The title is the news itself, never the app name (iOS already adds
+    # "from Inboxrake" under it); the body carries account and details.
     en = webpush._payload("en", "scan", True, "work", False)
-    assert en == {"title": "Inboxrake", "body": "Scan finished.",
+    assert en == {"title": "Scan finished", "body": "",
                   "tag": "work:scan", "url": "/"}
-    assert webpush._payload("de", "scan", True, "work", False)["body"] \
-        == "Scan fertig."
-    assert webpush._payload("en", "delete", True, "a", True, 1)["body"] \
-        == "a: Done: 1 mail processed."
+    assert webpush._payload("de", "scan", True, "work", False)["title"] \
+        == "Scan fertig"
+    assert webpush._payload("en", "scan", True, "work", True)["body"] \
+        == "work"
+    one = webpush._payload("en", "delete", True, "a", True, 1)
+    assert (one["title"], one["body"]) \
+        == ("Clean-up finished", "a · 1 mail processed.")
     assert webpush._payload("en", "delete", True, "a", False, 5)["body"] \
-        == "Done: 5 mails processed."
-    assert webpush._payload("de", "delete", True, "a", False, 1)["body"] \
-        == "Fertig: 1 Mail verarbeitet."
+        == "5 mails processed."
+    de = webpush._payload("de", "delete", True, "a", False, 1)
+    assert (de["title"], de["body"]) \
+        == ("Aufräumen fertig", "1 Mail verarbeitet.")
     assert webpush._payload("de", "delete", True, "a", False, 5)["body"] \
-        == "Fertig: 5 Mails verarbeitet."
+        == "5 Mails verarbeitet."
     for kind, en_job, de_job in (
             ("scan", "Scan", "Scan"), ("delete", "Clean-up", "Aufräumen"),
             ("ai", "AI review", "KI-Prüfung"),
             ("atts", "Attachment analysis", "Anhang-Analyse"),
             ("unsub", "Bulk unsubscribe", "Massenabbestellen")):
-        assert webpush._payload("en", kind, False, "a", False)["body"] \
-            == f"{en_job} stopped with an error."
-        assert webpush._payload("de", kind, False, "a", False)["body"] \
-            == f"{de_job} mit Fehler abgebrochen."
-    assert webpush._payload("en", "ai", True, "a", False)["body"] \
-        == "AI review finished."
-    assert webpush._payload("de", "unsub", True, "a", False)["body"] \
-        == "Massenabbestellen abgeschlossen."
+        err = webpush._payload("en", kind, False, "a", False)
+        assert (err["title"], err["body"]) \
+            == (f"{en_job} stopped with an error",
+                "Open Inboxrake for the details.")
+        assert webpush._payload("de", kind, False, "a", True)["title"] \
+            == f"{de_job} mit Fehler abgebrochen"
+    assert webpush._payload("en", "ai", True, "a", False)["title"] \
+        == "AI review finished"
+    assert webpush._payload("de", "unsub", True, "a", False)["title"] \
+        == "Massenabbestellen abgeschlossen"
+    for lang in ("en", "de"):
+        for kind in ("scan", "delete", "ai", "atts", "unsub"):
+            for ok in (True, False):
+                assert webpush._payload(lang, kind, ok, "a", True, 3)[
+                    "title"] != "Inboxrake"
 
 
 def _decrypt(body: bytes, key) -> dict:
@@ -726,10 +743,10 @@ def test_a_finished_job_is_delivered_encrypted_to_each_device(bridge, network):
     assert _wait(lambda: len(network.sent) == 2)
     by_end = {e: b for e, _, b in network.sent}
     assert _decrypt(by_end[ENDPOINT], k1) == {
-        "title": "Inboxrake", "body": "Scan fertig.", "tag": "default:scan",
+        "title": "Scan fertig", "body": "", "tag": "default:scan",
         "url": "/"}
     assert _decrypt(by_end["https://fcm.googleapis.com/fcm/send/2"], k2)[
-        "body"] == "Scan finished."
+        "title"] == "Scan finished"
 
 
 def test_the_account_name_prefixes_when_there_are_several(bridge, network):
@@ -740,8 +757,8 @@ def test_the_account_name_prefixes_when_there_are_several(bridge, network):
         "two": {"host": "h2", "user": "u2", "password": "pw"}}}))
     webpush.job_finished(accountsmod.get("one"), "ai", True)
     assert _wait(lambda: network.sent)
-    assert _decrypt(network.sent[0][2], (keys, key))["body"] \
-        == "one: AI review finished."
+    got = _decrypt(network.sent[0][2], (keys, key))
+    assert (got["title"], got["body"]) == ("AI review finished", "one")
 
 
 def test_a_visible_device_is_skipped(bridge, network):
