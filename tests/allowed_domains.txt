@@ -15,6 +15,7 @@ scorecard.dev             # README: OpenSSF Scorecard badge
 securityscorecards.dev    # README: OpenSSF Scorecard badge
 bestpractices.dev         # README: OpenSSF best-practices badge
 conventionalcommits.org   # CONTRIBUTING / CLAUDE: the commit-title specification
+modelcontextprotocol.io   # docs/assistants.md: the MCP specification the assistant endpoint implements
 w3.org                    # SVG XML namespace in frontend/public/icon.svg
 microsoft.com             # setup documentation: Microsoft Entra app registration for OAuth
 microsoftonline.com       # OAuth endpoints of the Microsoft sign-in flow (backend/oauthflow.py)
