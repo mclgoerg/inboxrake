@@ -166,12 +166,21 @@ def test_only_the_admin_sets_the_cap_and_only_known_values(monkeypatch):
     cfgmod.update_config({"assistants": {"access": "act"}})
     assert cfgmod.assistant_access() == "act"
     cfg = client.get("/api/config").json()
-    assert cfg["assistants"] == {"access": "act",
+    assert cfg["assistants"] == {"access": "act", "levels": ["read"],
                                  "options": ["off", "read_propose", "act"]}
     # a hand-edited server.json with junk falls back to off
     cfgmod.SERVER_PATH.write_text(json.dumps(
         {"assistants": {"access": "root"}}))
     assert cfgmod.assistant_access() == "off"
+
+
+def test_config_lists_the_levels_a_token_can_have(monkeypatch):
+    """The Settings UI offers exactly these (data-driven, no hard-coded list)."""
+    assert client.get("/api/config").json()["assistants"]["levels"] == ["read"]
+    monkeypatch.setattr(assistanttokens, "AVAILABLE_LEVELS",
+                        ("read", "propose"))
+    assert client.get("/api/config").json()["assistants"]["levels"] == [
+        "read", "propose"]
 
 
 def test_non_admins_see_the_cap_but_cannot_change_it():
@@ -181,7 +190,8 @@ def test_non_admins_see_the_cap_but_cannot_change_it():
                  "client_secret": "sst"}}})
     alice = TestClient(app)
     alice.cookies.set("pmc_session", authmod.make_session("alice@x.example"))
-    assert alice.get("/api/config").json()["assistants"] == {"access": "off"}
+    assert alice.get("/api/config").json()["assistants"] == {
+        "access": "off", "levels": ["read"]}
     r = alice.post("/api/config", json={"assistants": {"access": "act"}})
     assert r.status_code == 403
     assert cfgmod.assistant_access() == "off"

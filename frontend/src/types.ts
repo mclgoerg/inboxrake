@@ -859,6 +859,11 @@ export interface Config {
     shared_budget_usd: number;         // effective cap when on the shared key
   };
   shared_ai?: SharedAiCfg;             // present for the admin only
+  /** AI assistants (MCP): the admin's cap and the levels a token can have
+   *  today; `options` (the cap's values) is for the admin only. Absent from
+   *  older backends. */
+  assistants?: { access: AssistantAccess; levels?: AssistantLevel[];
+    options?: AssistantAccess[] };
   ai_stats: {
     input_tokens: number;
     output_tokens: number;
@@ -954,4 +959,40 @@ export interface AccountSummary {
   scanned_ts: number | null;
   mails: number;
   size: number;
+}
+
+/** The admin's cap on AI assistants (the `assistants.access` server setting). */
+export type AssistantAccess = "off" | "read_propose" | "act";
+export type AssistantLevel = "read" | "propose" | "act";
+
+/** One AI-assistant access token as the API lists it (never its secret). */
+export interface AssistantToken {
+  id: string;
+  name: string;
+  /** `irk_` + 4 characters: all that is shown of it afterwards. */
+  prefix: string;
+  accounts: string[];
+  level: AssistantLevel;
+  subjects: boolean;
+  daily_cap: number;
+  created: number;                     // epoch seconds
+  expires: number | null;
+  last_used: number | null;
+  calls_today: number;
+  mails_today: number;
+}
+
+export interface AssistantTokenList {
+  tokens: AssistantToken[];
+  access: AssistantAccess;
+  levels: AssistantLevel[];
+}
+
+export interface AssistantTokenRequest {
+  name: string;
+  accounts: string[];
+  level: AssistantLevel;
+  subjects: boolean;
+  expires_days: 30 | 90 | null;
+  daily_cap?: number;
 }

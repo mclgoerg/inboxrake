@@ -38,11 +38,11 @@ export const DEFAULT_PAGE: Page = "overview";
 /** The sections of the Settings page, in the order of its section column. */
 export type SettingsSection = "account" | "general" | "notifications"
   | "protected" | "categories" | "filed" | "digest" | "autoscan" | "ai"
-  | "signin" | "backup";
+  | "assistants" | "signin" | "backup";
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = ["account",
   "general", "notifications", "protected", "categories", "filed", "digest",
-  "autoscan", "ai", "signin", "backup"];
+  "autoscan", "ai", "assistants", "signin", "backup"];
 
 /** `#/settings/ai` -> { section: "ai" }; `#/settings/account/work` -> the
  *  account section for the account "work" (the name is URI-encoded). A

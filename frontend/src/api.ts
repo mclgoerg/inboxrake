@@ -1,5 +1,6 @@
 import { t } from "./i18n";
 import type {
+  AssistantTokenList, AssistantToken, AssistantTokenRequest,
   AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
@@ -379,6 +380,15 @@ export const api = {
   accountsSummary: () => req<Record<string, AccountSummary>>(
     "/api/accounts/summary"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
+  /** AI assistants (MCP): this workspace's access tokens. */
+  assistantTokens: () => req<AssistantTokenList>("/api/assistants/tokens"),
+  /** The secret is in this answer and nowhere else. */
+  createAssistantToken: (body: AssistantTokenRequest) =>
+    req<{ token: AssistantToken; secret: string }>(
+      "/api/assistants/tokens", body),
+  revokeAssistantToken: (id: string) =>
+    req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
+      undefined, "DELETE"),
   unsubscribe: (grouping: Grouping, key: string) =>
     req<UnsubResult>("/api/unsubscribe", { grouping, key }),
   unsubscribeBulk: (grouping: Grouping, keys: string[]) =>
