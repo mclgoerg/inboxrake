@@ -6,6 +6,7 @@ push (only the ones a person started)."""
 import base64
 import json
 import os
+import re
 import threading
 import time
 import types
@@ -361,7 +362,7 @@ def test_a_failure_logs_host_and_status_but_never_the_path(network, caplog):
     network.status = 500
     with caplog.at_level("WARNING", logger="inboxrake.webpush"):
         client.post("/api/push/test", json={"endpoint": ENDPOINT})
-    assert "web.push.apple.com" in caplog.text and "500" in caplog.text
+    assert re.search(r"web\.push\.apple\.com.*500", caplog.text)
     assert "QXhfcGFzc3dvcmQ" not in caplog.text
 
 
