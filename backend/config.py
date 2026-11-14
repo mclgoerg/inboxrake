@@ -15,6 +15,7 @@ import os
 import threading
 from pathlib import Path
 
+from . import assistanttokens
 from . import knownsenders
 from . import secretbox
 from . import tenants
@@ -1091,12 +1092,15 @@ def masked_config(cfg: dict) -> dict:
                if ai_source == "shared" else 0},
         "ai_stats": load_stats(),
     }
-    # The cap is not a secret and the token dialog needs it; only the admin
-    # also gets its options (they are the Settings control).
-    out["assistants"] = {"access": load_server()["assistants"]["access"]}
+    # The cap is not a secret and the token dialog needs it, and so do the
+    # levels a token can have today (the UI shows only those); only the admin
+    # also gets the cap's options (they are the Settings control).
+    out["assistants"] = {"access": load_server()["assistants"]["access"],
+                         "levels": list(assistanttokens.AVAILABLE_LEVELS)}
     if admin:
         server = load_server()
         out["assistants"]["options"] = list(ASSISTANT_ACCESS)
+        out["assistants"]["token_counts"] = assistanttokens.level_counts()
         out["auth"].update({
             "password_set": bool(cfg["auth"]["password_hash"]),
             "admin": cfg["auth"].get("admin") or "",

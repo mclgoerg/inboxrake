@@ -1,4 +1,4 @@
-import { Archive, Bell, Check, Folder, KeyRound, Mail, Plus,
+import { Archive, Bell, Bot, Check, Folder, KeyRound, Mail, Plus,
   RefreshCw, Search, Settings as SettingsIcon, Shield, Sparkles, Star,
   Tag as TagIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState,
@@ -11,9 +11,10 @@ import { accountAuth, fmtAgo, fmtSize } from "../lib";
 import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
   type SettingsSection } from "../nav";
 import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
-import type { AdminTenantStats, AppState, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
+import type { AdminTenantStats, AppState, AssistantAccess, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
   DigestSchedule, FoldersResp, ImapAccount, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
+import { AssistantsSection, useAssistantTokens } from "./AssistantsSettings";
 import { FolderSettings } from "./FolderSettings";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
@@ -103,6 +104,7 @@ const initialForm = (c: Config, name: string) => ({
   sharedBudget: c.shared_ai?.default_tenant_budget_usd
     ? String(c.shared_ai.default_tenant_budget_usd) : "",
   newSenderWindowDays: String(c.new_sender_window_days ?? 7),
+  assistantAccess: (c.assistants?.access ?? "off") as AssistantAccess,
 });
 type Form = ReturnType<typeof initialForm>;
 
@@ -134,6 +136,7 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
     "oidcIssuer", "oidcClientId", "oidcSecret", "oidcRedirect", "oidcAllowed",
     "oidcAdmin", "sharedEnabled", "sharedProvider", "sharedModel",
     "sharedEndpoint", "sharedKey", "sharedBudget"] },
+  { label: "settings.sec.assistants", fields: ["assistantAccess"] },
 ];
 
 /** The save bar's text: one change is named ("Password changed", "AI review
@@ -433,6 +436,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             foundry_endpoint: f.sharedEndpoint,
             default_tenant_budget_usd: +f.sharedBudget || 0,
             ...(f.sharedKey ? { api_key: f.sharedKey } : {}) },
+          // only where the server knows the setting (an older one rejects it)
+          ...(cfg.assistants ? { assistants: { access: f.assistantAccess } }
+            : {}),
         } : {}),
         ...extra,
       };
@@ -440,6 +446,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       onSaved(next);
       const nf: Form = { ...f, apiKey: "", authPassword: "", oidcSecret: "",
         sharedKey: "", authMode: next.auth.mode,
+        assistantAccess: (next.assistants?.access ?? f.assistantAccess) as AssistantAccess,
         newSenderWindowDays: String(next.new_sender_window_days),
         ...imapFields(next, editAcct) };
       const pt = (next.protected ?? []).join("\n");
@@ -655,6 +662,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceInfo?.deviceCode]);
 
+  // The token list feeds the section and its badge; a server that predates
+  // assistants (no `cfg.assistants`) has none, and the demo's refuses.
+  const assistantTokens = useAssistantTokens(!!cfg.assistants && !demo);
+
   const [pi, po] = cfg.ai.prices_effective;
   const s = cfg.ai_stats;
 
@@ -764,6 +775,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         ? t(scan.unit === "minutes" ? "settings.every_min"
           : "settings.every_h", { n: scan.value }) : t("digest.off"),
       [t("auto_scan.enabled"), t("auto_scan.every"), t("auto_scan.align")]),
+    assistants: sec("assistants", <Bot size={16} />, "info",
+      assistantTokens.tokens?.length ? String(assistantTokens.tokens.length)
+        : undefined,
+      [t("assistants.access"), t("assistants.address"),
+        t("assistants.setup_title"), t("assistants.new"),
+        t("assistants.revoke_all"), t("assistants.group.levels")]),
     ai: sec("ai", <Sparkles size={16} />, "attach",
       cfg.ai.api_key_set || cfg.ai.source === "shared" ? aiProvider
         : t("settings.not_set_up"),
@@ -781,7 +798,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         ...(admin ? [] : ["backup" as const])] },
     { key: "automation", label: t("settings.group.automation"),
       ids: ["digest", "autoscan"] },
-    { key: "ai", label: t("settings.group.ai"), ids: ["ai"] },
+    { key: "ai", label: t("settings.group.ai"),
+      ids: ["ai", "assistants"] },
     ...(admin ? [{ key: "server", label: t("settings.group.server"),
       ids: ["signin" as const, "backup" as const] }] : []),
   ];
@@ -1674,6 +1692,13 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsGroup>
   </>);
 
+  const assistantsBody = (
+    <AssistantsSection cfg={cfg} admin={admin} access={f.assistantAccess}
+      onAccess={(a) => put("assistantAccess", a)}
+      tokens={assistantTokens.tokens} tokensError={assistantTokens.error}
+      reload={assistantTokens.load} />
+  );
+
   const backupBody = (
     <SettingsGroup footnote={t("backup.help")}>
       <SettingsRow label={t("backup.export")}>
@@ -1696,7 +1721,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     account: accountBody, general: generalBody,
     notifications: notificationsBody, protected: protectedBody,
     categories: categoriesBody, filed: filedBody, digest: digestBody,
-    autoscan: autoscanBody, ai: aiBody, signin: signinBody,
+    autoscan: autoscanBody, ai: aiBody, assistants: assistantsBody,
+    signin: signinBody,
     backup: backupBody,
   };
 
