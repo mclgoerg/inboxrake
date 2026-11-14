@@ -150,6 +150,20 @@ def list_for(tenant_id: str) -> list[dict]:
     return [public(t) for t in _read() if t.get("tenant") == tenant_id]
 
 
+def level_counts() -> dict[str, int]:
+    """How many unexpired tokens of every tenant have each level: only
+    numbers, for the admin's "lower the cap?" question (the cap is
+    server-wide, the token list is per tenant)."""
+    now = time.time()
+    out = {level: 0 for level in LEVELS}
+    for t in _read():
+        if t.get("expires") and t["expires"] <= now:
+            continue
+        if t.get("level") in out:
+            out[t["level"]] += 1
+    return out
+
+
 def revoke(tenant_id: str, token_id: str) -> dict:
     """Delete one of the tenant's tokens (it stops working at once); returns
     its public record. Raises TokenError(UNKNOWN)."""

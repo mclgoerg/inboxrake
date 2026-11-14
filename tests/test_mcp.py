@@ -166,12 +166,23 @@ def test_only_the_admin_sets_the_cap_and_only_known_values(monkeypatch):
     cfgmod.update_config({"assistants": {"access": "act"}})
     assert cfgmod.assistant_access() == "act"
     cfg = client.get("/api/config").json()
-    assert cfg["assistants"] == {"access": "act",
-                                 "options": ["off", "read_propose", "act"]}
+    assert cfg["assistants"] == {"access": "act", "levels": ["read"],
+                                 "options": ["off", "read_propose", "act"],
+                                 "token_counts": {"read": 0, "propose": 0,
+                                                  "act": 0}}
     # a hand-edited server.json with junk falls back to off
     cfgmod.SERVER_PATH.write_text(json.dumps(
         {"assistants": {"access": "root"}}))
     assert cfgmod.assistant_access() == "off"
+
+
+def test_config_lists_the_levels_a_token_can_have(monkeypatch):
+    """The Settings UI offers exactly these (data-driven, no hard-coded list)."""
+    assert client.get("/api/config").json()["assistants"]["levels"] == ["read"]
+    monkeypatch.setattr(assistanttokens, "AVAILABLE_LEVELS",
+                        ("read", "propose"))
+    assert client.get("/api/config").json()["assistants"]["levels"] == [
+        "read", "propose"]
 
 
 def test_non_admins_see_the_cap_but_cannot_change_it():
@@ -181,7 +192,8 @@ def test_non_admins_see_the_cap_but_cannot_change_it():
                  "client_secret": "sst"}}})
     alice = TestClient(app)
     alice.cookies.set("pmc_session", authmod.make_session("alice@x.example"))
-    assert alice.get("/api/config").json()["assistants"] == {"access": "off"}
+    assert alice.get("/api/config").json()["assistants"] == {
+        "access": "off", "levels": ["read"]}
     r = alice.post("/api/config", json={"assistants": {"access": "act"}})
     assert r.status_code == 403
     assert cfgmod.assistant_access() == "off"
@@ -406,6 +418,27 @@ def _oidc_clients():
         c.cookies.set("pmc_session", authmod.make_session(who))
         out[who.split("@")[0]] = c
     return out
+
+
+def test_admin_config_counts_tokens_of_every_tenant(monkeypatch):
+    """The cap is server-wide, so the confirm that lowers it needs the numbers
+    of all tenants - as aggregates, for the admin only."""
+    c = _oidc_clients()
+    c["admin"].post("/api/config", json={
+        "rename_account": {"from": "default", "to": "admin-box"}})
+    c["alice"].post("/api/config", json={
+        "rename_account": {"from": "default", "to": "alice-box"}})
+    _token(c["admin"], accounts=["admin-box"], name="a1")
+    _token(c["alice"], accounts=["alice-box"], name="al1")
+    _token(c["alice"], accounts=["alice-box"], name="al2")
+    data = json.loads(assistanttokens.TOKENS_PATH.read_text())
+    data["tokens"][1]["expires"] = int(time.time()) - 5      # expired: not counted
+    assistanttokens.TOKENS_PATH.write_text(json.dumps(data))
+    counts = c["admin"].get("/api/config").json()["assistants"]["token_counts"]
+    assert counts == {"read": 2, "propose": 0, "act": 0}
+    assert "token_counts" not in c["alice"].get("/api/config").json()[
+        "assistants"]
+    assert "al1" not in c["admin"].get("/api/config").text
 
 
 def test_tenants_never_see_each_other(monkeypatch):
