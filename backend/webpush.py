@@ -405,33 +405,40 @@ def send(sub: dict, payload: dict, tenant: tenants.Tenant | None = None) -> int:
 
 # ----------------------------------------------------------------- texts
 
+# The title says what happened, never just "Inboxrake": the platform already
+# names the app (iOS adds its own "from Inboxrake" line, desktop browsers the
+# site), so an app-name title only repeats it. The body holds the details.
 STRINGS = {
     "en": {
-        "title": "Inboxrake",
-        "scan": "Scan finished.",
-        "delete_one": "Done: {n} mail processed.",
-        "delete_other": "Done: {n} mails processed.",
-        "ai": "AI review finished.",
-        "atts": "Attachment analysis finished.",
-        "unsub": "Bulk unsubscribe finished.",
-        "error": "{job} stopped with an error.",
+        "scan": "Scan finished",
+        "delete": "Clean-up finished",
+        "delete_one": "{n} mail processed.",
+        "delete_other": "{n} mails processed.",
+        "ai": "AI review finished",
+        "atts": "Attachment analysis finished",
+        "unsub": "Bulk unsubscribe finished",
+        "error": "{job} stopped with an error",
+        "error_body": "Open Inboxrake for the details.",
         "job_scan": "Scan", "job_delete": "Clean-up", "job_ai": "AI review",
         "job_atts": "Attachment analysis", "job_unsub": "Bulk unsubscribe",
-        "test": "Notifications work on this device.",
+        "test": "Notifications work",
+        "test_body": "You'll be told here when a scan or clean-up you started finishes.",
     },
     "de": {
-        "title": "Inboxrake",
-        "scan": "Scan fertig.",
-        "delete_one": "Fertig: {n} Mail verarbeitet.",
-        "delete_other": "Fertig: {n} Mails verarbeitet.",
-        "ai": "KI-Prüfung abgeschlossen.",
-        "atts": "Anhang-Analyse abgeschlossen.",
-        "unsub": "Massenabbestellen abgeschlossen.",
-        "error": "{job} mit Fehler abgebrochen.",
+        "scan": "Scan fertig",
+        "delete": "Aufräumen fertig",
+        "delete_one": "{n} Mail verarbeitet.",
+        "delete_other": "{n} Mails verarbeitet.",
+        "ai": "KI-Prüfung abgeschlossen",
+        "atts": "Anhang-Analyse abgeschlossen",
+        "unsub": "Massenabbestellen abgeschlossen",
+        "error": "{job} mit Fehler abgebrochen",
+        "error_body": "Die Details stehen in Inboxrake.",
         "job_scan": "Scan", "job_delete": "Aufräumen",
         "job_ai": "KI-Prüfung", "job_atts": "Anhang-Analyse",
         "job_unsub": "Massenabbestellen",
-        "test": "Benachrichtigungen funktionieren auf diesem Gerät.",
+        "test": "Benachrichtigungen funktionieren",
+        "test_body": "Du bekommst hier Bescheid, wenn ein Scan oder Aufräumen fertig ist.",
     },
 }
 
@@ -440,13 +447,15 @@ def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
              n: int = 0) -> dict:
     t = STRINGS.get(lang) or STRINGS["en"]
     if not ok:
-        body = t["error"].format(job=t["job_" + kind])
+        title, detail = t["error"].format(job=t["job_" + kind]), \
+            t["error_body"]
     elif kind == "delete":
-        body = t["delete_one" if n == 1 else "delete_other"].format(n=n)
+        title = t["delete"]
+        detail = t["delete_one" if n == 1 else "delete_other"].format(n=n)
     else:
-        body = t[kind]
-    return {"title": t["title"],
-            "body": f"{account}: {body}" if prefix else body,
+        title, detail = t[kind], ""
+    body = " · ".join(p for p in (account if prefix else "", detail) if p)
+    return {"title": title, "body": body,
             "tag": f"{account}:{kind}", "url": "/"}
 
 
@@ -458,7 +467,7 @@ def send_test(endpoint) -> None:
     if sub is None:
         raise PushError("push_unknown")
     t = STRINGS.get(sub["lang"]) or STRINGS["en"]
-    status = send(sub, {"title": t["title"], "body": t["test"],
+    status = send(sub, {"title": t["test"], "body": t["test_body"],
                         "tag": "test", "url": "/"})
     if status in (404, 410):
         raise PushError("push_unknown")
