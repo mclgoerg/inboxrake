@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html as htmlmod
 import logging
+import re
 import threading
 import time
 import unicodedata
@@ -76,6 +77,16 @@ def plain(text, limit: int) -> str:
             out.append(c)
     s = " ".join("".join(out).split())
     return s if len(s) <= limit else s[:limit - 1] + "…"
+
+
+_DOT = re.compile(r"(?<=\w)\.(?=\w)")
+
+
+def defang(text: str) -> str:
+    """Assistant-written text with its addresses broken up so a mail app
+    does not turn them into links: `.` between word characters becomes
+    `[.]`, and `://` becomes `[://]`."""
+    return _DOT.sub("[.]", text.replace("://", "[://]"))
 
 
 def notify(acc, rule: dict, token_name: str, report: dict) -> None:
@@ -183,6 +194,8 @@ STRINGS = {
         "button": "Review in Inboxrake",
         "why": "You get this because email alerts are on in Settings › "
                "AI assistants.",
+        "defang": "Addresses are shown with [.] so mail apps don't turn "
+                  "them into links.",
     },
     "de": {
         "subject_one": "Inboxrake: {source} schlägt eine Regel vor",
@@ -204,6 +217,8 @@ STRINGS = {
         "button": "In Inboxrake ansehen",
         "why": "Du bekommst das, weil E-Mail-Hinweise in Einstellungen › "
                "KI-Assistenten an sind.",
+        "defang": "Adressen stehen mit [.], damit Mail-Apps keine Links "
+                  "daraus machen.",
     },
 }
 
@@ -222,17 +237,19 @@ def compose(lang: str, batch: list[dict], url: str) -> tuple[str, str, str]:
     S = STRINGS[lang]
     n = len(batch)
     first = batch[0]
+    source = defang(first["source"])
     subject = S["subject_one" if n == 1 else "subject_other"].format(
-        source=first["source"], n=n)
+        source=source, n=n)
     intro = S["intro_one" if n == 1 else "intro_other"].format(
-        source=first["source"], account=first["account"], n=n)
+        source=source, account=first["account"], n=n)
     link = url.rstrip("/") + ROUTE if url else ""
-    blocks = [(e["name"], _rule_line(S, e), S["counts"].format(
+    blocks = [(defang(e["name"]), defang(_rule_line(S, e)),
+               S["counts"].format(
         mails=e["mails"], groups=e["groups"], skipped=e["skipped"]))
         for e in batch]
     text = "\n\n".join([intro] + ["\n".join(b) for b in blocks]
                        + ([f"{S['button']}: {link}"] if link else [])
-                       + [S["why"]])
+                       + [S["defang"], S["why"]])
     esc = htmlmod.escape
     box = "".join(
         '<div style="background:#f4f1ec;border-radius:8px;padding:12px;'
@@ -246,6 +263,7 @@ def compose(lang: str, batch: list[dict], url: str) -> tuple[str, str, str]:
               % (esc(link, quote=True), esc(S["button"]))) if link else ""
     html = ('<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,'
             'sans-serif;font-size:15px;color:#1c1b19;max-width:520px">'
-            '<p>%s</p>%s%s<p style="color:#6b6760;font-size:12px">%s</p>'
-            '</div>' % (esc(intro), box, button, esc(S["why"])))
+            '<p>%s</p>%s%s<p style="color:#6b6760;font-size:12px">%s<br>%s</p>'
+            '</div>' % (esc(intro), box, button, esc(S["defang"]),
+                        esc(S["why"])))
     return subject, text, html

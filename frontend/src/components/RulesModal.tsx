@@ -638,18 +638,24 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     setCardErr(null);
     const r = rule.last_run;
     if (!r) return;
+    // a run is capped: what the first run will really act on
+    const will = Math.max(0, r.mails - r.capped);
     const bullets: ReactNode[] = [t(`proposal.b_${rule.action}`, {
-      mails: t("n.mails", { n: r.mails }),
+      mails: t("n.mails", { n: will }),
       groups: t(rule.grouping === "domain" ? "n.domains" : "n.senders",
         { n: r.groups }),
       folder: rule.dest })];
+    if (r.capped > 0) {
+      const cap = await getCap().catch(() => 500);
+      bullets.push(t("proposal.b_capped", { cap }));
+    }
     if (r.skipped_protected > 0)
       bullets.push(t("proposal.b_prot", { n: r.skipped_protected }));
     if (r.skipped_pinned > 0)
       bullets.push(t("proposal.b_pin", { n: r.skipped_pinned }));
     bullets.push(t(`proposal.b_runs_${rule.schedule}`));
-    const label = r.mails > 0 && rule.action in ACTION_VERB
-      ? t(`proposal.ok_${rule.action}`, { n: r.mails, folder: rule.dest })
+    const label = will > 0 && rule.action in ACTION_VERB
+      ? t(`proposal.ok_${rule.action}`, { n: will, folder: rule.dest })
       : t("proposal.ok_only");
     const { ok, checked } = await checkDialog({
       title: t("proposal.approve_title", { name: rule.name }),

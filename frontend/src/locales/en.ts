@@ -1041,6 +1041,7 @@ export const EN: Record<string, string> = {
   "proposal.b_archive": "{mails} from {groups} are archived (undoable)",
   "proposal.b_move": "{mails} from {groups} move to {folder} (undoable)",
   "proposal.b_mark_read": "{mails} from {groups} are marked as read",
+  "proposal.b_capped": "At most {cap} per run; the rest on the next run.",
   "proposal.b_prot": "{n}\u00a0protected senders skipped",
   "proposal.b_prot_one": "1\u00a0protected sender skipped",
   "proposal.b_pin": "{n}\u00a0pinned mails kept",

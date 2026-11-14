@@ -793,6 +793,25 @@ def open_proposals(rules: list[dict]) -> list[dict]:
             and r.get("mode") == "report"]
 
 
+def withdraw_proposal(rule_id: str, token_id: str,
+                      accounts_allowed: list[str]) -> dict | None:
+    """Delete a proposal of this token that is still waiting (report mode,
+    origin mcp); the check and the delete share one lock, so an approval in
+    between can never lose its rule. The deleted rule, or None."""
+    with _LOCK:
+        rules = load_rules()
+        rule = next((r for r in rules if r["id"] == rule_id), None)
+        by = (rule or {}).get("proposed_by") or {}
+        if rule is None or rule.get("origin") != ORIGIN_MCP \
+                or rule.get("mode") != "report" \
+                or by.get("token_id") != token_id \
+                or rule.get("account") not in accounts_allowed:
+            return None
+        _save([r for r in rules if r["id"] != rule_id])
+    log.info("rule %s withdrawn by its proposer", rule_id)
+    return rule
+
+
 def update_rule(rule_id: str, body: dict) -> dict:
     with _LOCK:
         rules = load_rules()

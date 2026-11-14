@@ -269,3 +269,27 @@ test("German: du, and the same shape", async () => {
     { name: "Genehmigen und 412 in den Papierkorb verschieben" })).toBeTruthy();
   expect(dlg.textContent).toContain("du kannst sie jederzeit");
 });
+
+test("a capped report: the label and bullets name what the first run acts on", async () => {
+  mount([proposal({ last_run: report({ mails: 812, capped: 312 }) })]);
+  fireEvent.click(within(card()).getByRole("button", { name: "Approve…" }));
+  const dlg = await findDialog();
+  const bullets = [...dlg.querySelectorAll("li")].map((l) =>
+    l.textContent!.replace(/\u00a0/g, " "));
+  expect(bullets[0]).toBe("500 mails from 9 senders move to Trash (undoable)");
+  expect(bullets[1]).toBe("At most 500 per run; the rest on the next run.");
+  expect(within(dlg).getByRole("button", { name: /^Approve and move 500 to Trash$/ }))
+    .toBeTruthy();
+  expect(dlg.textContent).not.toContain("812");
+  await cancelDialog();
+});
+
+test("German: the capped bullet", async () => {
+  setLang("de");
+  mount([proposal({ last_run: report({ mails: 812, capped: 312 }) })]);
+  fireEvent.click(within(card()).getByRole("button", { name: "Genehmigen…" }));
+  const dlg = await findDialog();
+  expect(dlg.textContent).toContain("Höchstens 500 pro Lauf; der Rest beim nächsten Lauf.");
+  expect(within(dlg).getByRole("button",
+    { name: "Genehmigen und 500 in den Papierkorb verschieben" })).toBeTruthy();
+});

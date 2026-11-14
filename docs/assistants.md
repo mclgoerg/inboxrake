@@ -186,7 +186,7 @@ With the **Propose** level the assistant gets two more tools:
 | `propose_rule` | Saves a cleanup rule for one account and runs one report for it. You give it a name (up to 80 characters), a [filter](filters.md), the grouping (sender or domain), an action (move to Trash, archive, move to a folder, mark as read), when it should run (manual, daily or weekly), and optionally "only mails older than N days". It gets the report back: how many mails and senders it would act on, how many protected or pinned mails it would skip, and the top senders. |
 | `withdraw_proposal` | Removes a proposal this token made, as long as you have not approved or edited it. |
 
-A proposal is an ordinary rule in **report mode**, marked as proposed by the token's name. **Nothing is moved, and the rule does nothing, until you approve it.** The assistant cannot approve it, switch it to Active, run it or change it afterwards, and it cannot propose rules that delete permanently or work on Junk or Trash.
+A proposal is an ordinary rule in **report mode**, marked as proposed by the token's name. **Nothing is moved, and the rule does nothing, until you approve it.** The assistant cannot approve it, switch it to Active, run it or change it afterwards, and it cannot propose rules that delete permanently or work on Junk or Trash. A proposal's `tag:` filter terms may only use the built-in tag names exactly, and the report the assistant gets back is computed like `count_matches`, so your own tags cannot be probed through it; the report you see in Rules is the full one.
 
 ### What you see
 

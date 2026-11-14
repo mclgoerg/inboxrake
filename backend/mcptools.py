@@ -33,6 +33,7 @@ from . import auth as authmod
 from . import config as cfgmod
 from . import mailops
 from . import overview as overviewmod
+from . import pinstore
 from . import proposalmail
 from . import rules as rulesmod
 from . import tenants
@@ -679,6 +680,17 @@ def _list_rules(ctx: Ctx, args: AccountIn) -> dict:
                     "skipped_protected", "skipped_pinned")}}
             if isinstance(run, dict) else None})
         by = r.get("proposed_by")
+        if isinstance(by, dict) and r.get("mode") == "report" \
+                and isinstance(run, dict) and not run.get("error"):
+            # the assistant chose this filter: its numbers come from the
+            # public view (see _public_report), not from the stored run
+            pub = _public_report(acc, r)
+            out[-1]["last_report"] = {
+                "ts": int(run.get("ts") or 0), "mode": "report",
+                "groups": pub["groups"], "mails": pub["mails"], "acted": 0,
+                "capped": pub["capped"],
+                "skipped_protected": pub["skipped_protected"],
+                "skipped_pinned": pub["skipped_pinned"]}
         if isinstance(by, dict):
             out[-1]["proposed_by"] = clean(by.get("name"), 60)
             if r.get("origin") == rulesmod.ORIGIN_MCP:
@@ -691,11 +703,16 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
     acc = _account(ctx, args.account)
     res = auditlog.load(acc.name, 0, args.limit)
     names = _user_category_names()
+    proposed = {f"rule:{r['id']}" for r in rulesmod.load_rules()
+                if isinstance(r.get("proposed_by"), dict)}
     return _fit({
         "account": acc.name, "total": res["total"],
         "entries": [{
             "time": _iso(e["ts"]), "actor": clean(e["actor"], 80),
-            "action": clean(e["action"], 40), "count": int(e["count"] or 0),
+            "action": clean(e["action"], 40),
+            # a proposal's report counts match the raw groups: not shown
+            "count": 0 if e["action"] == "rule_report"
+            and e["actor"] in proposed else int(e["count"] or 0),
             "bytes": int(e["bytes"] or 0),
             # a report's recipient is the user's own address: not needed
             "label": "" if e["action"] in ("digest_sent",
@@ -794,6 +811,50 @@ def _proposal_dest(acc, dest: Optional[str]) -> str:
     return found
 
 
+def _public_report(acc, rule: dict) -> dict:
+    """The numbers of a rule's report as the ASSISTANT may see them: the
+    same public view as count_matches (built-in tags only, user categories
+    opaque), never the raw groups a run matches against - a filter must not
+    be able to probe the user's own tags. Mirrors rules.run_rule's counting
+    (retention, pinned mail, the per-run cap); the stored report, which the
+    user sees, stays the real one."""
+    f = rulesmod.parse_filter(rule["query"])
+    grouping = rule["grouping"]
+    now = time.time()
+    matched = [g for g in _groups(acc, grouping).values()
+               if rulesmod.match_group(g, f, now)]
+    acted = [g for g in matched if not g.get("protected")]
+    keep, older = rule.get("keep_latest"), rule.get("older_than_days")
+    pinned = (pinstore.load_account(acc.name)
+              if rule["action"] != "mark_read" else set())
+    counts: dict[str, int] = {}
+    skipped_pinned = 0
+    with acc.lock:
+        recs = acc.state["groups"][grouping]
+        for g in acted:
+            rec = recs.get(g["key"])
+            if rec is None:
+                continue
+            counts[g["key"]] = mailops.group_act_count(
+                rec, acc, keep, older, pinned)
+            skipped_pinned += mailops.group_act_count(
+                rec, acc, keep, older) - counts[g["key"]]
+    mails = sum(counts.values())
+    picked, total = [], 0
+    for g in sorted(acted, key=lambda g: -counts.get(g["key"], 0)):
+        c = counts.get(g["key"], 0)
+        if c and total + c <= rulesmod.RULE_CAP:
+            picked.append(g)
+            total += c
+    return {
+        "groups": len(acted), "mails": mails,
+        "skipped_protected": len(matched) - len(acted),
+        "skipped_pinned": skipped_pinned, "capped": mails - total,
+        "top": [{"key": clean(g["key"], 254), "label": clean(g["label"]),
+                 "count": counts[g["key"]]}
+                for g in sorted(picked, key=lambda g: -counts[g["key"]])[:10]]}
+
+
 def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
     acc = _account(ctx, args.account)
     name = clean(args.name, rulesmod.NAME_MAX)
@@ -805,6 +866,11 @@ def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
             clean(b, 40) for b in bad[:10]) + ". Check the grammar in the "
             "count_matches description (tag: takes the built-in tag names "
             "only).")
+    odd = [t for t in rulesmod.parse_filter(args.query)["tags"]
+           if t not in BUILTIN_TAGS]
+    if odd:
+        raise ToolError("A tag: term must be exactly one of the built-in "
+                        "tags: " + ", ".join(sorted(BUILTIN_TAGS)) + ".")
     if args.action == "move":
         dest = _proposal_dest(acc, args.dest)
     elif args.dest:
@@ -843,8 +909,9 @@ def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
         if note and note.get("key") == "rule_report" and (
                 note.get("params") or {}).get("name") == rule["name"]:
             acc.state["notice"] = None
+    report = _public_report(acc, rule)
     auditlog.record("rule_proposed", actor=_actor(ctx), account=acc.name,
-                    count=int(run.get("mails") or 0), label=name)
+                    count=report["mails"], label=name)
     proposalmail.notify(acc, rule, ctx.token_name, run)
     return {
         "account": acc.name, "rule_id": rule["id"], "name": name,
@@ -855,14 +922,7 @@ def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
         "schedule": args.schedule,
         **({"older_than_days": args.older_than_days}
            if args.older_than_days is not None else {}),
-        "report": {
-            "groups": int(run["groups"]), "mails": int(run["mails"]),
-            "skipped_protected": int(run["skipped_protected"]),
-            "skipped_pinned": int(run["skipped_pinned"]),
-            "capped": int(run["capped"]),
-            "top": [{"key": clean(p["key"], 254), "label": clean(p["label"]),
-                     "count": int(p["count"])}
-                    for p in run["preview"][:10]]},
+        "report": report,
         "open_proposals": len(rulesmod.open_proposals(
             rulesmod.load_rules())),
         "link": ctx.origin + "/#/rules",
@@ -871,19 +931,11 @@ def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
 
 
 def _withdraw_proposal(ctx: Ctx, args: WithdrawIn) -> dict:
-    rule = next((r for r in rulesmod.load_rules()
-                 if r["id"] == args.rule_id), None)
-    by = (rule or {}).get("proposed_by") or {}
-    if rule is None or rule.get("origin") != rulesmod.ORIGIN_MCP \
-            or rule.get("mode") != "report" \
-            or by.get("token_id") != ctx.token_id \
-            or rule.get("account") not in ctx.accounts:
+    rule = rulesmod.withdraw_proposal(args.rule_id, ctx.token_id,
+                                      ctx.accounts)
+    if rule is None:
         raise ToolError("No open proposal of this token has that id (the "
                         "user may have approved, edited or declined it).")
-    try:
-        rulesmod.delete_rule(rule["id"])
-    except KeyError:
-        raise ToolError("That proposal is already gone.")
     auditlog.record("rule_withdrawn", actor=_actor(ctx),
                     account=rule.get("account"), label=rule.get("name", ""))
     return {"withdrawn": True, "rule_id": rule["id"]}

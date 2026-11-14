@@ -584,6 +584,7 @@ export const DE: Record<string, string> = {
   "proposal.b_archive": "{mails} von {groups} werden archiviert (rückgängig machbar)",
   "proposal.b_move": "{mails} von {groups} werden nach {folder} verschoben (rückgängig machbar)",
   "proposal.b_mark_read": "{mails} von {groups} werden als gelesen markiert",
+  "proposal.b_capped": "Höchstens {cap} pro Lauf; der Rest beim nächsten Lauf.",
   "proposal.b_prot": "{n}\u00a0geschützte Absender übersprungen",
   "proposal.b_prot_one": "1\u00a0geschützter Absender übersprungen",
   "proposal.b_pin": "{n}\u00a0angeheftete Mails bleiben",

@@ -193,6 +193,59 @@ def test_user_written_tags_cannot_be_probed_through_a_proposal(mbox):
     ok(secret, "propose_rule", {**PROPOSAL, "query": "tag:newsletter"})
 
 
+def _tag_alice(tag):
+    assert client.put("/api/labels", json={
+        "key": "alice@friends.example", "tags": [tag]}).status_code == 200
+
+
+def test_a_partial_tag_is_refused_and_probes_nothing(mbox):
+    """Regression: `tag:e` (a piece of "newsletter") used to pass, and the
+    raw-group report then told the assistant which senders carry user tags."""
+    secret = proposer()
+    _tag_alice(M_TAG)
+    for tag in ("e", "news", "usertag", M_TAG, "NEWSLETTERS"):
+        res = propose(secret, query=f"from:alice@friends.example tag:{tag}")
+        assert res["isError"] is True, tag
+    assert rules() == []
+    # count_matches (public view) and the refusal agree: nothing to learn
+    assert ok(secret, "count_matches", {
+        "filter": "from:alice@friends.example tag:e"})["mails"] == 0
+    # an exact built-in tag still works, in any case
+    ok(secret, "propose_rule", {**PROPOSAL, "query": "tag:Newsletter"})
+
+
+def test_the_assistants_report_comes_from_the_public_view(mbox):
+    secret = proposer()
+    _tag_alice("newsletter-kids.example-marker")
+    query = "from:alice@friends.example tag:newsletter"
+    public = ok(secret, "count_matches", {"filter": query})
+    assert public["mails"] == 0
+    out = ok(secret, "propose_rule", {**PROPOSAL, "query": query})
+    assert (out["report"]["groups"], out["report"]["mails"]) == (0, 0)
+    assert out["report"]["top"] == []
+    assert "alice@friends.example" not in json.dumps(out["report"])
+    # the user's own stored report is the real one (their data)
+    assert rules()[0]["last_run"]["mails"] == 1
+    # nothing else the assistant can read repeats the real numbers
+    row = ok(secret, "list_rules")["rules"][0]
+    assert row["last_report"]["mails"] == 0
+    acts = [a for a in ok(secret, "recent_activity")["entries"]
+            if a["action"] == "rule_report"]
+    assert acts and all(a["count"] == 0 for a in acts)
+    entry = [a for a in ok(secret, "recent_activity")["entries"]
+             if a["action"] == "rule_proposed"][0]
+    assert entry["count"] == 0
+
+
+def test_the_public_report_equals_count_matches_for_clean_data(mbox):
+    secret = proposer()
+    out = ok(secret, "propose_rule", {**PROPOSAL, "query": "shop"})
+    cm = ok(secret, "count_matches", {"filter": "shop"})
+    assert (out["report"]["groups"], out["report"]["mails"]) == (
+        cm["groups"], cm["mails"])
+    assert out["report"]["mails"] == rules()[0]["last_run"]["mails"]
+
+
 def test_a_move_needs_an_existing_folder_that_is_not_junk_or_trash(mbox):
     secret = proposer()
     acc = accountsmod.get("default")
@@ -291,6 +344,28 @@ def test_approved_or_edited_proposals_cannot_be_withdrawn(mbox):
         assert call(secret, "withdraw_proposal",
                     {"rule_id": rid})["isError"] is True
     assert len(rules()) == 2
+
+
+def test_withdraw_checks_and_deletes_under_the_rules_lock(mbox):
+    """An approval cannot slip in between the check and the delete: the
+    withdraw waits for the lock, then sees the approved (execute) rule."""
+    import threading
+    secret = proposer()
+    rid = ok(secret, "propose_rule", PROPOSAL)["rule_id"]
+    token = rules()[0]["proposed_by"]["token_id"]
+    result = []
+    with rulesmod._LOCK:                 # an approval is mid-way
+        t = threading.Thread(target=lambda: result.append(
+            rulesmod.withdraw_proposal(rid, token, ["default"])))
+        t.start()
+        t.join(0.3)
+        assert t.is_alive() and result == []        # waiting for the lock
+        data = json.loads(rulesmod._path().read_text())
+        data["rules"][0]["mode"] = "execute"        # the approval lands
+        rulesmod._path().write_text(json.dumps(data))
+    t.join(5)
+    assert result == [None]
+    assert [r["id"] for r in rules()] == [rid]
 
 
 def test_withdraw_is_bound_to_the_workspace(mbox):
@@ -441,12 +516,22 @@ def _subscribe():
     return keys, key
 
 
+def _proposal_push(network, keys, key):
+    """The decrypted proposal push (the fixture's own scan may push too, in
+    any order: pick by tag)."""
+    def got():
+        return [p for p in (_decrypt(b, (keys, key))
+                            for _, _, b in list(network.sent))
+                if p["tag"] == "default:proposal"]
+    assert _wait(lambda: got())
+    return got()[0]
+
+
 def test_web_push_says_it_generically(mbox, network, mails):
     keys, key = _subscribe()
     secret = proposer(name="Claude Code · laptop")
     ok(secret, "propose_rule", {**PROPOSAL, "name": "Secret plan <b>x</b>"})
-    assert _wait(lambda: network.sent)
-    payload = _decrypt(network.sent[0][2], (keys, key))
+    payload = _proposal_push(network, keys, key)
     assert payload == {"title": "An AI assistant proposes a rule",
                        "body": "Review it in Inboxrake. Nothing has moved "
                                "yet.", "tag": "default:proposal",
@@ -460,8 +545,7 @@ def test_web_push_is_german_for_a_german_device(mbox, network, mails):
     keys, key = device()
     webpush.subscribe(ENDPOINT, keys["p256dh"], keys["auth"], "de")
     ok(proposer(), "propose_rule", PROPOSAL)
-    assert _wait(lambda: network.sent)
-    assert _decrypt(network.sent[0][2], (keys, key))["title"] == (
+    assert _proposal_push(network, keys, key)["title"] == (
         "Ein KI-Assistent schlägt eine Regel vor")
 
 
@@ -524,6 +608,26 @@ def test_a_proposal_sends_one_plain_mail_with_inboxrakes_own_link(
     assert 'href="https://mail.example/#/rules"' in html
     entry = auditlog.load("default", 0, 20)["entries"][0]
     assert entry["action"] == "proposal_mail_sent" and entry["count"] == 1
+
+
+def test_urls_in_the_assistants_words_are_defanged_in_text_and_html(
+        mbox, mails, clock):
+    _mailbox_can_send()
+    ok(proposer(name="Claude.Code http://tok.example"), "propose_rule", {
+        **PROPOSAL, "name": "Go to https://evil.example/x now",
+        "query": "shop.example news@shop.example"})
+    (to, subject, text, html), = mails
+    for part in (subject, text, html):
+        assert "evil.example" not in part and "shop.example" not in part
+        assert "tok.example" not in part and "://evil" not in part
+    assert "https[://]evil[.]example/x" in text
+    assert "shop[.]example news@shop[.]example" in text
+    assert "shop[.]example" in html and "Claude[.]Code" in subject
+    assert "Addresses are shown with [.]" in text
+    assert "Addresses are shown with [.]" in html
+    # Inboxrake's own link stays a real link
+    assert 'href="https://mail.example/#/rules"' in html
+    assert "https://mail.example/#/rules" in text and html.count("href=") == 1
 
 
 def test_the_mail_goes_to_the_digest_recipient_when_there_is_one(
