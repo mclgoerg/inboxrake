@@ -184,6 +184,11 @@ const ERROR_CODES: Record<string, string> = {
   login_sso_off: "ferr.login_sso_off",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
+  // Web Push (backend/webpush.py)
+  push_invalid: "ferr.push_invalid",
+  push_unknown: "ferr.push_unknown",
+  push_http: "ferr.push_http",
+  push_unreachable: "ferr.push_unreachable",
 };
 
 /** The role names a `role=` param stands for (translated). */
@@ -496,6 +501,21 @@ export const api = {
   login: (password: string) =>
     req<{ ok: boolean }>("/api/login", { password }),
   logout: () => req<{ ok: boolean }>("/api/logout", {}),
+  // Web Push (backend/webpush.py; push.ts)
+  pushKey: () => req<{ key: string }>("/api/push/key"),
+  pushSubscribe: (body: { endpoint: string;
+    keys: { p256dh: string; auth: string }; lang: string }) =>
+    req<{ ok: boolean }>("/api/push/subscribe", body),
+  pushUnsubscribe: (endpoint: string) =>
+    req<{ ok: boolean }>("/api/push/unsubscribe", { endpoint }),
+  pushTest: (endpoint: string) =>
+    req<{ ok: boolean }>("/api/push/test", { endpoint }),
+  // keepalive: "hidden" must still leave a page that is being frozen
+  pushPresence: (endpoint: string, visible: boolean) =>
+    fetch("/api/push/presence", {
+      method: "POST", keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint, visible }) }),
   signOutAll: () => req<{ ok: boolean }>("/api/auth/sign_out_all", {}),
   adminStats: () =>
     req<{ tenants: AdminTenantStats[] }>("/api/admin/stats"),

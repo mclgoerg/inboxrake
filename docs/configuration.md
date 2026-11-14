@@ -20,6 +20,8 @@ file ([`deploy/.env.example`](../deploy/.env.example)) or pass them with
 | `INBOXRAKE_MS_CLIENT_ID` | unset | Client ID of an administrator-provided Microsoft (Entra) public app; no such app ships with Inboxrake. When set, Outlook accounts sign in with a device code and need no app registration of their own. Leave it unset and each user registers their own app. |
 | `INBOXRAKE_MS_TENANT` | `consumers` | Microsoft tenant for sign-in: a tenant ID or domain, `organizations` or `common` for work/school accounts. |
 | `INBOXRAKE_BIND` | `127.0.0.1` | Read by the starter compose file only (not by the app): the host address the port is published on. Use `0.0.0.0` only after setting a login. |
+| `INBOXRAKE_PUSH_CONTACT` | unset | Contact for the push services (RFC 8292 `sub`): a `mailto:` or `https:` address they can reach you at. Unset means the address the app is opened at, else a placeholder. |
+| `INBOXRAKE_PUSH_HOSTS` | unset | Extra push service host suffixes (comma separated) the server may send to, on top of Apple, Google, Mozilla and Microsoft. Only needed for a browser with its own push service. |
 | `INBOXRAKE_PORT` | `8765` | Read by the starter compose file only: the host port. |
 
 
@@ -99,6 +101,8 @@ State files default to names inside `/data` and normally need no change:
 | `DIGEST_PATH` | `digest.json` | When each account's activity digest was last sent. |
 | `PRESETS_PATH` | `presets.json` | Saved filter presets. |
 | `PINS_PATH` | `pinned_mails.json` | Pinned mails. |
+| `PUSH_KEY_PATH` | `push_vapid_key.pem` | The instance's signing key for notifications, created on first use (keep it out of backups you share; a new one only means devices must turn notifications on again). |
+| `PUSH_SUBS_PATH` | `push_subscriptions.json` | The devices registered for notifications (per user; not part of the settings export). |
 | `REPLIED_PATH` | `replied.json` | Who you have written to (To/Cc of the Sent folder). |
 | `VERDICTS_PATH` | `ai_verdicts.json` | Cached AI verdicts. |
 | `AI_SORT_PATH` | `ai_sort.json` | Cached answers of the optional AI sorting. |

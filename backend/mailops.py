@@ -47,6 +47,7 @@ from . import tenants
 from . import trackers
 from . import unsubstore
 from . import verdictstore
+from . import webpush
 
 FETCH_CHUNK = 500
 MOVE_CHUNK = 500
@@ -207,6 +208,13 @@ UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)
 NOT_IN_DEMO = "not_in_demo"
+# Web Push (backend/webpush.py): a registration that is not valid, a device
+# the server does not know (or the push service dropped), the push service's
+# own refusal (status=), and a push service that cannot be reached
+PUSH_INVALID = "push_invalid"
+PUSH_UNKNOWN = "push_unknown"
+PUSH_HTTP = "push_http"
+PUSH_UNREACHABLE = "push_unreachable"
 # password login (backend/auth.py LoginThrottle): n= minutes to wait
 LOGIN_THROTTLED = "login_throttled"
 # the sign-in page's other refusals (backend/main.py): a wrong password, and
@@ -219,7 +227,7 @@ FOLDER_ERROR_CODES = frozenset({
     "undo_copy_unknown", "protected_sender_selected",
     MAILTO_UNSAFE, MOVE_FOREIGN_DELETED, *UNSUB_CODES, LOGIN_THROTTLED,
     LOGIN_WRONG_PASSWORD, LOGIN_PASSWORD_OFF, LOGIN_SSO_OFF,
-    NOT_IN_DEMO,
+    NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
@@ -2546,8 +2554,9 @@ def public_status(acc=None) -> dict:
         return out
 
 
-def run_scan(acc=None) -> None:
+def run_scan(acc=None, push: bool = False) -> None:
     acc = acc or accounts.get()
+    outcome = None          # True / False once the scan ended on its own
 
     def progress_cb(folder, done, total):
         with acc.lock:
@@ -2662,6 +2671,7 @@ def run_scan(acc=None) -> None:
                                  len(groups["sender"]), acc.name, arrived)
             save_snapshot(acc)
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
+            outcome = True
         finally:
             try:
                 conn.logout()
@@ -2680,6 +2690,9 @@ def run_scan(acc=None) -> None:
         with acc.lock:
             acc.state["status"] = "error"
             acc.state["error"] = error_text(exc, im["host"], SCAN_FAILED)
+        outcome = False
+    if push and outcome is not None:        # a scan somebody started
+        webpush.job_finished(acc, "scan", outcome)
 
 
 def folder_message_count(conn, target: str | None) -> int | None:
@@ -2696,10 +2709,12 @@ def folder_message_count(conn, target: str | None) -> int | None:
         return None
 
 
-def start_scan(acc=None, notice: dict | None = None) -> None:
+def start_scan(acc=None, notice: dict | None = None,
+               push: bool = False) -> None:
     """Kick off a background scan. `notice` (key/params) is shown while it
     runs and survives the scan's own notices - used by the restore paths
-    so their result isn't swallowed by the reset below."""
+    so their result isn't swallowed by the reset below. `push`: a person
+    asked for it (the API), so its end sends a Web Push."""
     acc = acc or accounts.get()
     with acc.lock:
         if acc.state["status"] == "scanning" \
@@ -2733,7 +2748,8 @@ def start_scan(acc=None, notice: dict | None = None) -> None:
         # scan_folder() diffs against them to fetch only what's new/changed.
         acc.folder_roles.clear()
         acc.cancel["scan"] = False
-    threading.Thread(target=tenants.call_in, args=(acc.tenant, run_scan, acc),
+    threading.Thread(target=tenants.call_in,
+                     args=(acc.tenant, run_scan, acc, push),
                      daemon=True).start()
 
 
@@ -3034,6 +3050,7 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
 
 def _delete_worker(acc) -> None:
     persisted = False     # the snapshot already reflects every finished job
+    by_user = cancelled_any = False      # for the Web Push at the very end
     while True:
         with acc.lock:
             save_first = False
@@ -3068,10 +3085,14 @@ def _delete_worker(acc) -> None:
             persisted = True
             continue
         if finished:
+            if by_user and not cancelled_any:
+                webpush.job_finished(acc, "delete", not st["error"] or
+                                     bool(st["moved"]), n=st["moved"])
             return
         by_folder, label = job["by_folder"], job["label"]
         action, dest = job["action"], job["dest"]
         actor = job.get("actor", "user")
+        by_user = by_user or not str(actor).startswith("rule:")
 
         def progress_cb(moved, total):
             with acc.lock:
@@ -3121,7 +3142,7 @@ def _delete_worker(acc) -> None:
                      moved if action != "mark_read" else done,
                      time.time() - t0)
         except Cancelled:
-            cancelled = True
+            cancelled = cancelled_any = True
             with acc.lock:
                 apply_partial()
                 for pending in acc.delete_pending:
@@ -3579,6 +3600,7 @@ def _run_atts(acc) -> None:
         log.info("attachment analysis done: %d mails with attachments, "
                  "%s total, %.1fs", n, size, time.time() - t0)
         save_snapshot(acc)
+        webpush.job_finished(acc, "atts", True)
     except Cancelled:
         with acc.lock:
             acc.state["atts"].update(status="idle", progress="")
@@ -3588,6 +3610,7 @@ def _run_atts(acc) -> None:
         with acc.lock:
             acc.state["atts"].update(status="error", progress="",
                                  error=f"{type(exc).__name__}: {exc}")
+        webpush.job_finished(acc, "atts", False)
 
 
 def start_att_scan(acc=None) -> None:

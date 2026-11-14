@@ -26,6 +26,10 @@ azure.com                 # Settings hint: endpoint form of an Azure-hosted mode
 google.com                # setup docs: where to create a Gmail app password and OAuth client (Settings hint, README, install guide)
 inboxrake.com            # the project's own website (docs site base URL, website/)
 astro.build              # docs site generator documentation (website/README.md)
+push.apple.com            # Web Push service (public infrastructure)
+fcm.googleapis.com        # Web Push service (public infrastructure)
+push.services.mozilla.com # Web Push service (public infrastructure)
+notify.windows.com        # Web Push service (public infrastructure)
 jsdelivr.net             # Pyodide release CDN: the demo bundle build downloads the pinned wheels from it (scripts/demo-bundle/build.mjs)
 schema.org               # JSON-LD vocabulary on the landing page (website/landing/src/pages/index.astro)
 sitemaps.org             # XML namespace of website/public/sitemap.xml

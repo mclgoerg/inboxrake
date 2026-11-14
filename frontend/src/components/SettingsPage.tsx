@@ -21,6 +21,8 @@ import { BUILTIN_CATEGORIES, CategoryList,
   parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
 import { demoHint, useDemo } from "../demoMode";
+import { disablePush, enablePush, NOTIFY_KEY, prefetchPushKey, pushSupport,
+  sendTestPush } from "../push";
 import { AccountAvatar, AppearanceControl, Button, cap, choiceDialog,
   confirmDialog, DemoFieldset, DemoHint, Field, IconTile, Input, isModalOpen,
   DecimalInput, LINK_ACCENT, Loading, Notice, PageHeader, PopupSelect, promptDialog, RadioRow, Ring,
@@ -836,24 +838,71 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Notifications are a browser-side switch (applies at once, not staged).
-  const [notifyOn, setNotifyOn] = useState(
-    () => localStorage.getItem("pmc_notify") === "1");
+  // Notifications are a browser-side switch (applies at once, not staged):
+  // "push" = Web Push (push.ts), "1" = the older in-tab Notification, kept
+  // for a browser that has Notification but no PushManager.
+  const [notifyMode, setNotifyMode] = useState(
+    () => localStorage.getItem(NOTIFY_KEY));
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyDenied, setNotifyDenied] = useState(false);
+  const notifyOn = notifyMode === "push" || notifyMode === "1";
+  const pushKind = pushSupport();
+  const legacyNotify = pushKind === "unsupported"
+    && typeof Notification !== "undefined";
+  const permBlocked = notifyDenied || (typeof Notification !== "undefined"
+    && Notification.permission === "denied");
   const setNotify = async (on: boolean) => {
     if (!on) {
-      localStorage.setItem("pmc_notify", "0");
-      setNotifyOn(false);
+      if (notifyMode === "push") await disablePush();
+      else localStorage.setItem(NOTIFY_KEY, "0");
+      setNotifyMode("0");
       return;
     }
-    const perm = typeof Notification !== "undefined"
-      ? await Notification.requestPermission() : "denied";
-    if (perm === "granted") {
-      localStorage.setItem("pmc_notify", "1");
-      setNotifyOn(true);
-    } else {
-      note(t("notify.denied"), true);
+    if (legacyNotify) {
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        localStorage.setItem(NOTIFY_KEY, "1");
+        setNotifyMode("1");
+      } else {
+        setNotifyDenied(true);
+        note(t("notify.denied"), true);
+      }
+      return;
+    }
+    setNotifyBusy(true);
+    try {
+      // requestPermission() runs first inside enablePush: on iOS it must
+      // start in this tap.
+      if (await enablePush(getLang()) === "granted") setNotifyMode("push");
+      else {
+        setNotifyDenied(true);
+        note(t("notify.denied"), true);
+      }
+    } catch (e) {
+      note(t("notify.failed", { msg: (e as Error).message }), true);
+    } finally {
+      setNotifyBusy(false);
     }
   };
+  const [testing, setTesting] = useState(false);
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      await sendTestPush();
+      note(t("notify.test_sent"));
+    } catch (e) {
+      note((e as Error).message, true);
+    } finally {
+      setTesting(false);
+    }
+  };
+  useEffect(() => {
+    // the key is asked for before the tap, so the tap can start by asking
+    // for permission (iOS only allows that inside the gesture)
+    if (open === "notifications" && pushKind === "ok" && !demo)
+      void prefetchPushKey().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   // Body search is a switch; the mode it turns back on is the last one used.
   const lastBodyMode = useRef<BodySearchMode>(
     f.bodySearch === "disabled" ? "server" : f.bodySearch);
@@ -1215,12 +1264,31 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     )}
   </>);
 
+  // Why the switch cannot be turned on here (nothing when it can).
+  const notifyHint = demo ? demoHint()
+    : pushKind === "home_screen" ? t("notify.hint_home_screen")
+    : pushKind === "insecure" ? t("notify.hint_insecure")
+    : pushKind === "unsupported" && !legacyNotify ? t("notify.hint_unsupported")
+    : permBlocked ? t("notify.denied") : "";
   const notificationsBody = (
-    <SettingsGroup>
+    <>
+    <SettingsGroup footnote={notifyHint || undefined}>
       <SettingsRow label={t("notify.title")} sub={t("notify.sub")}>
-        <Switch checked={notifyOn} onChange={setNotify} />
+        <Switch checked={notifyOn} onChange={setNotify}
+          disabled={demo || notifyBusy || (!notifyOn && !!notifyHint)} />
       </SettingsRow>
     </SettingsGroup>
+    {notifyMode === "push" && (
+      <SettingsGroup>
+        <SettingsRow label={t("notify.test")}>
+          <Button variant="secondary" size="sm" onClick={sendTest}
+            disabled={testing} aria-label={t("notify.test")}>
+            {testing ? <Spinner /> : t("settings.send")}
+          </Button>
+        </SettingsRow>
+      </SettingsGroup>
+    )}
+    </>
   );
 
   const protectedBody = (

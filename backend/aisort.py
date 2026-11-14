@@ -31,6 +31,7 @@ from . import config as cfgmod
 from . import mailops
 from . import smartkinds as sk
 from . import tenants
+from . import webpush
 
 log = logging.getLogger("inboxrake.ai")
 
@@ -362,12 +363,15 @@ def _run_sort(acc, units: list[dict]) -> None:
                      if usage_in or usage_out else None)
         _finish(acc, cancelled, over_budget, done, units, total,
                 usage_in, usage_out, spent)
+        if not cancelled:
+            webpush.job_finished(acc, "ai", True)
     except Exception as exc:
         log.exception("AI sorting failed")
         _rebuild_quietly(acc)                         # keep what was saved
         with STATE_LOCK:
             STATE["ai"]["status"] = "error"
             STATE["ai"]["error"] = f"{type(exc).__name__}: {exc}"
+        webpush.job_finished(acc, "ai", False)
 
 
 def _rebuild_quietly(acc) -> bool:

@@ -58,6 +58,7 @@ from . import webguard
 from . import unsub
 from . import unsubstore
 from . import verdictstore
+from . import webpush
 from . import wrapped
 from . import aisort
 from . import aisortstore
@@ -781,9 +782,77 @@ def get_state(account: str | None = Query(None)):
 @app.post("/api/scan")
 def post_scan(account: str | None = Query(None)):
     try:
-        mailops.start_scan(_acc(account))
+        mailops.start_scan(_acc(account), push=True)
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
+    return {"ok": True}
+
+
+# ------------------------------------------------------------- Web Push
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+class PushSubscribeBody(BaseModel):
+    endpoint: str = Field(max_length=2048)
+    keys: PushKeys
+    lang: str = Field("en", max_length=10)
+
+
+class PushEndpointBody(BaseModel):
+    endpoint: str = Field(max_length=2048)
+
+
+class PushPresenceBody(PushEndpointBody):
+    visible: bool
+
+
+def _push(fn, *args, **kwargs):
+    """Run one Web Push call; its refusals are coded details. The demo
+    refuses first (no key is made, nothing is dialled)."""
+    if demomod.enabled():
+        raise HTTPException(500, mailops.coded(mailops.NOT_IN_DEMO))
+    try:
+        return fn(*args, **kwargs)
+    except webpush.PushError as exc:
+        text = str(exc)
+        raise HTTPException(
+            400 if text == mailops.PUSH_INVALID
+            else 404 if text == mailops.PUSH_UNKNOWN else 409, text)
+
+
+@app.get("/api/push/key")
+def get_push_key():
+    """The instance's VAPID public key (what the browser subscribes with)."""
+    return {"key": _push(webpush.public_key)}
+
+
+@app.post("/api/push/subscribe")
+def post_push_subscribe(body: PushSubscribeBody, request: Request):
+    _push(webpush.subscribe, body.endpoint, body.keys.p256dh, body.keys.auth,
+          body.lang, request.headers.get("origin", ""))
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+def post_push_unsubscribe(body: PushEndpointBody):
+    _push(webpush.unsubscribe, body.endpoint)
+    return {"ok": True}
+
+
+@app.post("/api/push/test")
+def post_push_test(body: PushEndpointBody):
+    """Send the test notification to this device, now."""
+    _push(webpush.send_test, body.endpoint)
+    return {"ok": True}
+
+
+@app.post("/api/push/presence")
+def post_push_presence(body: PushPresenceBody):
+    """The device says whether it is looking at the app (no pushes then)."""
+    _push(webpush.set_presence, body.endpoint, body.visible)
     return {"ok": True}
 
 
@@ -2255,8 +2324,12 @@ if STATIC_DIR.is_dir():
         file = (_STATIC_ROOT / path).resolve()
         # codeql[py/path-injection]
         if path and file.is_relative_to(_STATIC_ROOT) and file.is_file():
+            # The service worker is re-fetched on every start, so a new
+            # build's worker (and the push handling in it) is picked up.
             # codeql[py/path-injection]
-            return FileResponse(file)
+            return FileResponse(
+                file, headers={"Cache-Control": "no-cache"}
+                if path == "sw.js" else None)
         # index.html references the CURRENT build's hashed /assets bundle -
         # it must always be revalidated, or an installed PWA can keep
         # showing a stale shell (and stale hashed bundle) indefinitely.
