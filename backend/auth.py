@@ -104,6 +104,15 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def opaque_id(purpose: str, *parts: str, length: int = 10) -> str:
+    """A stable, unguessable stand-in for text that must not be shown: the
+    first `length` hex characters of an HMAC under this server's secret
+    (nobody can test a guess against it)."""
+    msg = "\x00".join((purpose, *parts)).encode()
+    return hmac.new(_secret(), b"opaque:" + msg,
+                    hashlib.sha256).hexdigest()[:length]
+
+
 # ------------------------------------------------------------- sessions
 
 def _sign(msg: bytes) -> str:

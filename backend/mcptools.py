@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -28,10 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import accounts as accountsmod
 from . import auditlog
+from . import auth as authmod
 from . import config as cfgmod
 from . import mailops
 from . import overview as overviewmod
 from . import rules as rulesmod
+from . import tenants
 
 log = logging.getLogger("inboxrake.mcp")
 
@@ -85,14 +88,84 @@ def _account(ctx: Ctx, name: Optional[str]):
     return accountsmod.get(name)
 
 
+# Nothing the user wrote may leave through MCP, and no filter may be able to
+# probe it: their own tags (Edit labels), the names of their own categories
+# (Settings > Categories, which also appear as automatic tags and as Smart
+# rows) and anything filed by hand. Only the built-in category names, the
+# kinds Inboxrake itself names and registrable-domain company names are shown.
+BUILTIN_TAGS = frozenset(n for n, _ in mailops.CATEGORY_RULES) | {
+    "automated", "newsletter"}
+YOUR_CATEGORY = "Your category"
+_CAT_KEY = "k:cat:"
+
+
+def _opaque_category(name: str) -> str:
+    """The key a user's category row has in MCP output: stable for this
+    tenant, not derivable from the name."""
+    return _CAT_KEY + authmod.opaque_id("category", tenants.current().id,
+                                        name)
+
+
+def _public_tags(g: dict) -> list[str]:
+    return [t for t in g.get("auto_tags", g["tags"]) if t in BUILTIN_TAGS]
+
+
 def _groups(acc, grouping: str) -> dict:
-    """The groups of one grouping, as the filter sees them. Their `tags` are
-    only what the keyword rules said (`auto_tags`): the user's own tags
-    (Edit labels) never leave the server, neither in a row nor through what
-    a `tag:` filter matches."""
-    return {k: {**g, "tags": g.get("auto_tags", g["tags"])}
-            for k, g in mailops.public_state(acc)["groups"][
-                grouping].items()}
+    """The groups of one grouping as the filter and the tools see them: tags
+    reduced to the built-in automatic ones, and a user category's Smart row
+    renamed (opaque key, "Your category") BEFORE any matching, so neither
+    the name nor a `tag:` term can be tested against."""
+    out = {}
+    for key, g in mailops.public_state(acc)["groups"][grouping].items():
+        g = {**g, "tags": _public_tags(g)}
+        if g.get("kind") == "category":
+            key = g["key"] = _opaque_category(g.get("category") or g["label"])
+            g["label"] = YOUR_CATEGORY
+            g.pop("category", None)
+        out[key] = g
+    return out
+
+
+def _real_group_key(acc, grouping: str, key: str) -> Optional[str]:
+    """The app's key for a key as MCP showed it; None when it is a user
+    category's real key (never accepted: it would confirm a guessed name)."""
+    if grouping != "smart" or not key.startswith(_CAT_KEY):
+        return key
+    with acc.lock:
+        for real, rec in acc.state["groups"]["smart"].items():
+            if rec.get("kind") == "category" \
+                    and _opaque_category(rec.get("category") or
+                                         rec["label"]) == key:
+                return real
+    return None
+
+
+def _mask_names(text: str, names: frozenset[str]) -> str:
+    """`text` (a list of group labels joined by ", ") with any piece that is
+    one of the user's category names replaced."""
+    if not names:
+        return text
+    return ", ".join(YOUR_CATEGORY if p.strip().lower() in names else p
+                     for p in text.split(", "))
+
+
+def _user_category_names() -> frozenset[str]:
+    custom = mailops._custom_categories(cfgmod.load_config())
+    return frozenset(n.strip().lower() for n in custom
+                     if n not in BUILTIN_TAGS)
+
+
+_TAG_TERM = re.compile(r"(?i)(?<!\S)(-?tag:)(\S*)")
+
+
+def _hide_user_tags(query: str) -> str:
+    """A rule's filter with every `tag:` term that is not a built-in tag
+    (so one the user made) replaced by `tag:…`."""
+    def term(m: re.Match) -> str:
+        val = m.group(2).lower()
+        return m.group(0) if val and any(
+            val in t for t in BUILTIN_TAGS) else m.group(1) + "…"
+    return _TAG_TERM.sub(term, query)
 
 
 # ------------------------------------------------------------------- models
@@ -380,7 +453,7 @@ def _categories(senders: list[dict]) -> list[dict]:
     first."""
     cats: dict[str, dict] = {}
     for g in senders:
-        for tag in g.get("auto_tags", g["tags"]):
+        for tag in _public_tags(g):
             c = cats.setdefault(tag, {"tag": clean(tag, 40), "count": 0,
                                       "size": 0})
             c["count"] += g["count"]
@@ -442,7 +515,9 @@ def _group_row(ctx: Ctx, grouping: str, g: dict) -> dict:
         "tags": [clean(t, 40) for t in (g.get("tags") or [])[:8]]}
     kind = g.get("kind") or g.get("smart_key")
     if kind:
-        row["smart_kind"] = clean(kind, 40)
+        # a sender's `smart_key` carries a user category's name: say only that
+        row["smart_kind"] = "category" if kind.startswith(_CAT_KEY) \
+            else clean(kind, 40)
     if g.get("ai"):
         row["ai_verdict"] = clean(g["ai"].get("verdict"), 40)
     # a smart row's `samples` are addresses, not subjects
@@ -494,7 +569,9 @@ def _list_mails(ctx: Ctx, args: ListMailsIn) -> dict:
         raise ToolError("Give either `key` (one group) or `query`, not both.")
     ignored: list[str] = []
     if args.key:
-        mails = mailops.group_mails(args.grouping, args.key, acc=acc)
+        real = _real_group_key(acc, args.grouping, args.key)
+        mails = mailops.group_mails(args.grouping, real, acc=acc) \
+            if real is not None else []
         if args.sort == "size":
             mails.sort(key=lambda m: -m["size"])
         elif args.sort == "sender":
@@ -553,7 +630,8 @@ def _list_rules(ctx: Ctx, args: AccountIn) -> dict:
         run = r.get("last_run")
         out.append({
             "id": clean(r["id"], 40), "name": clean(r.get("name"), 80),
-            "query": clean(r.get("query"), rulesmod.FILTER_MAX),
+            "query": _hide_user_tags(clean(r.get("query"),
+                                          rulesmod.FILTER_MAX)),
             "action": clean(r.get("action"), 40),
             "mode": clean(r.get("mode"), 20),
             "schedule": clean(r.get("schedule"), 20),
@@ -573,6 +651,7 @@ def _list_rules(ctx: Ctx, args: AccountIn) -> dict:
 def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
     acc = _account(ctx, args.account)
     res = auditlog.load(acc.name, 0, args.limit)
+    names = _user_category_names()
     return _fit({
         "account": acc.name, "total": res["total"],
         "entries": [{
@@ -581,7 +660,7 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
             "bytes": int(e["bytes"] or 0),
             # a report's recipient is the user's own address: not needed
             "label": "" if e["action"] == "digest_sent"
-            else clean(e["label"]),
+            else _mask_names(clean(e["label"]), names),
             "outcome": clean(e["outcome"], 20)} for e in res["entries"]]},
         "entries")
 
