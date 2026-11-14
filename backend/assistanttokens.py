@@ -73,6 +73,10 @@ def _read() -> list[dict]:
 def _write(tokens: list[dict]) -> None:
     TOKENS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = TOKENS_PATH.with_suffix(".tmp")
+    # What is stored is the SHA-256 of a 256-bit random secret (a password
+    # hash would add nothing: there is no guessable input) and its 4-character
+    # display prefix - never the secret itself.
+    # codeql[py/clear-text-storage-sensitive-data]
     tmp.write_text(json.dumps({"tokens": tokens}, indent=1))
     tmp.chmod(0o600)
     tmp.replace(TOKENS_PATH)
