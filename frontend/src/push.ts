@@ -6,9 +6,13 @@
  * older page-side Notification (App.tsx), kept for a browser that has
  * Notification but no PushManager.
  *
- * On iOS `Notification.requestPermission()` only works inside the tap that
- * asked: `enablePush` therefore calls it FIRST, before awaiting anything
- * (the registration, the server key - prefetched when the section opens). */
+ * On iOS the permission prompt must start inside the tap, and awaiting
+ * anything first can consume the gesture (NotAllowedError). The registration
+ * (cached at start) and the server key (prefetched when the section opens)
+ * are therefore kept in plain variables, so `enablePush` can make
+ * `pushManager.subscribe()` - which shows the prompt itself while permission
+ * is "default" - its very first await. Only if either is not cached yet does
+ * it fall back to requestPermission() first, then fetch what is missing. */
 
 import { api } from "./api";
 
@@ -40,7 +44,12 @@ export function registerServiceWorker(): void {
   if (import.meta.env.VITE_DEMO === "1") return;
   if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
   void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  void navigator.serviceWorker.ready.then((r) => { readyReg = r; },
+    () => {});
 }
+
+let readyReg: ServiceWorkerRegistration | null = null;
+let keyValue = "";
 
 const b64u = (buf: ArrayBuffer | null | undefined): string => {
   if (!buf) return "";
@@ -58,7 +67,7 @@ let keyPromise: Promise<string> | null = null;
 
 /** Fetch the server's key ahead of the tap (when the section opens). */
 export function prefetchPushKey(): Promise<string> {
-  keyPromise ??= api.pushKey().then((r) => r.key, (e) => {
+  keyPromise ??= api.pushKey().then((r) => { keyValue = r.key; return r.key; }, (e) => {
     keyPromise = null;                  // try again at the tap
     throw e;
   });
@@ -91,10 +100,23 @@ async function register(sub: PushSubscription, lang: string): Promise<void> {
 /** Turn notifications on for this device. "denied" when the person said no
  *  (or it is blocked); anything else that goes wrong throws. */
 export async function enablePush(lang: string): Promise<"granted" | "denied"> {
-  const perm = await Notification.requestPermission();   // FIRST: see above
-  if (perm !== "granted") return "denied";
-  const key = await prefetchPushKey();
-  const sub = await subscribe(key);
+  let sub: PushSubscription;
+  if (readyReg && keyValue) {
+    // nothing awaited before this: the tap's gesture is still alive
+    try {
+      sub = await readyReg.pushManager.subscribe({
+        userVisibleOnly: true, applicationServerKey: keyBytes(keyValue) });
+    } catch (e) {
+      if (Notification.permission === "denied"
+          || ((e as Error).name === "NotAllowedError"
+            && Notification.permission !== "granted")) return "denied";
+      throw e;
+    }
+  } else {
+    const perm = await Notification.requestPermission();   // FIRST: see above
+    if (perm !== "granted") return "denied";
+    sub = await subscribe(await prefetchPushKey());
+  }
   try {
     await register(sub, lang);
   } catch (e) {

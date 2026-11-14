@@ -333,7 +333,7 @@ def vapid_jwt(endpoint: str, subject: str, now: float | None = None) -> str:
     from cryptography.hazmat.primitives.asymmetric.utils import (
         decode_dss_signature)
     parts = urllib.parse.urlsplit(endpoint)
-    claims = {"aud": f"{parts.scheme}://{parts.netloc}",
+    claims = {"aud": f"https://{parts.hostname}",
               "exp": int((time.time() if now is None else now) + 12 * 3600),
               "sub": subject}
     signing = ".".join(_b64u(json.dumps(part, separators=(",", ":")).encode())

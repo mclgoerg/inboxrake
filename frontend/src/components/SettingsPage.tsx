@@ -871,8 +871,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     }
     setNotifyBusy(true);
     try {
-      // requestPermission() runs first inside enablePush: on iOS it must
-      // start in this tap.
+      // enablePush starts with pushManager.subscribe() (or, uncached,
+      // requestPermission()) before awaiting anything: on iOS the prompt
+      // must start in this tap.
       if (await enablePush(getLang()) === "granted") setNotifyMode("push");
       else {
         setNotifyDenied(true);

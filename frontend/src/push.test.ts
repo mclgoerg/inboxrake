@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   tested: [] as string[],
   keyFetches: 0,
   failSubscribe: false,
+  subscribeError: null as Error | null,
 }));
 vi.mock("./api", () => ({
   api: {
@@ -66,6 +67,7 @@ function setCapable(on: boolean) {
           getSubscription: () => Promise.resolve(existing),
           subscribe: (o: { userVisibleOnly: boolean; applicationServerKey: Uint8Array }) => {
             calls.push("pm.subscribe");
+            if (h.subscribeError) return Promise.reject(h.subscribeError);
             expect(o.userVisibleOnly).toBe(true);
             expect(Array.from(o.applicationServerKey)).toEqual([4, 5, 6]);
             existing = fakeSub();
@@ -89,7 +91,7 @@ async function load() {
 beforeEach(() => {
   calls.length = 0;
   Object.assign(h, { subscribed: [], unsub: [], presence: [], tested: [],
-    keyFetches: 0, failSubscribe: false, key: "BAUG" });
+    keyFetches: 0, failSubscribe: false, subscribeError: null, key: "BAUG" });
   existing = null;
   registerCalls = [];
   permission = "default";
@@ -159,7 +161,7 @@ test("a failing registration is swallowed", async () => {
 
 // ------------------------------------------------------------------- enable
 
-test("turning on asks for permission before anything else is awaited", async () => {
+test("without a cached registration and key, it asks for permission first (fallback)", async () => {
   let answer!: (p: NotificationPermission) => void;
   requestPermission = () => { calls.push("permission");
     return new Promise((r) => { answer = r; }); };
@@ -176,11 +178,37 @@ test("turning on asks for permission before anything else is awaited", async () 
   expect(localStorage.getItem("pmc_notify")).toBe("push");
 });
 
-test("a prefetched key is not fetched again at the tap", async () => {
+async function warm() {
   const push = await load();
+  push.registerServiceWorker();
   await push.prefetchPushKey();
-  await push.enablePush("en");
+  await new Promise((r) => setTimeout(r, 0));      // the ready registration
+  calls.length = 0;
+  return push;
+}
+
+test("with registration and key cached, subscribe is the first call in the tap", async () => {
+  requestPermission = () => { calls.push("permission"); return Promise.resolve("granted"); };
+  const push = await warm();
+  const done = push.enablePush("en");
+  expect(calls).toEqual(["pm.subscribe"]);         // synchronously, nothing before
+  expect(await done).toBe("granted");
+  expect(calls).toEqual(["pm.subscribe", "api.subscribe"]);
   expect(h.keyFetches).toBe(1);
+  expect(localStorage.getItem("pmc_notify")).toBe("push");
+});
+
+test("a prompt refused through subscribe is denied, other errors rethrow", async () => {
+  const push = await warm();
+  h.subscribeError = Object.assign(new Error("x"), { name: "NotAllowedError" });
+  permission = "denied";
+  expect(await push.enablePush("en")).toBe("denied");
+  permission = "default";
+  expect(await push.enablePush("en")).toBe("denied");   // NotAllowed, not granted
+  h.subscribeError = new Error("boom");
+  permission = "granted";
+  await expect(push.enablePush("en")).rejects.toThrow("boom");
+  expect(localStorage.getItem("pmc_notify")).toBeNull();
 });
 
 test("a refusal leaves everything as it was", async () => {

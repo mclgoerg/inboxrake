@@ -157,6 +157,12 @@ def test_the_jwt_verifies_and_carries_aud_exp_and_sub():
                f"{head}.{claims}".encode(), ec.ECDSA(hashes.SHA256()))
 
 
+def test_aud_is_the_origin_without_the_default_port():
+    token = webpush.vapid_jwt("https://web.push.apple.com:443/x", "mailto:a@b.example")
+    aud = json.loads(unb64u(token.split(".")[1]))["aud"]
+    assert aud == "https://web.push.apple.com"
+
+
 def test_the_vapid_subject_prefers_the_contact_then_the_origin(monkeypatch):
     sub = {"origin": "https://mail.example"}
     assert webpush._subject(sub) == "https://mail.example"
