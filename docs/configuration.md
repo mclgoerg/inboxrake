@@ -125,4 +125,5 @@ Some options exist only in the UI and are stored with the account in `/data`
 |---|---|---|
 | Digest **Link to Inboxrake** | Settings -> Activity digest, per account (`digest.url`) | The address the digest mail's buttons open: `http://` or `https://`, no `?` or `#`, at most 300 characters. Empty leaves the buttons out. |
 | Digest **Language of the mail** | Settings -> Activity digest, per account (`digest.lang`) | `en` or `de`. Not chosen yet means English until the section is saved. |
+| **Assistant access** | Settings -> AI assistants, admin only (`assistants.access` in `server.json`) | Whether AI assistants may connect to the [MCP endpoint](assistants.md) at all: Off (default; `/mcp` answers 404) or On (read-only). Users create their own access tokens there. |
 | **Number format** | Settings -> General, this browser only | Automatic (follows the language) or a pinned style. Not part of the backup. |

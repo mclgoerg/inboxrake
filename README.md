@@ -201,7 +201,9 @@ Attachments, rules and a scheduler, one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a Trash/Junk browser, trackers, space
 map, statistics, "Your year in mail", audit log, multiple strictly separate
 accounts, system/light/dark appearance, phone layout, English and
-German. Everything is listed in **[docs/features.md](docs/features.md)**.
+German. An optional read-only MCP endpoint lets your own AI assistant
+ask questions about the mailbox ([how](https://inboxrake.com/docs/assistants/)).
+Everything is listed in **[docs/features.md](docs/features.md)**.
 
 ## Security & multi-user
 

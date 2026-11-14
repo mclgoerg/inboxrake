@@ -86,6 +86,7 @@ export default defineConfig({
           items: [
             { label: "Filter syntax", slug: "filters" },
             { label: "Features", slug: "features" },
+            { label: "Connect an AI assistant", slug: "assistants" },
             { label: "Security & privacy", slug: "security" },
             { label: "FAQ", slug: "faq" },
           ],

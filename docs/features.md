@@ -743,6 +743,19 @@ as a preset, or start a rule from it (rules still begin in report mode).
 Only your sentence, the filter syntax and your tag names are sent to the
 provider - no mail data - and nothing is selected or changed.
 
+### Connect an AI assistant (MCP)
+
+<small class="where">Settings → AI assistants</small>
+
+An optional, read-only endpoint (`/mcp`) so your own assistant (Claude Code,
+Cursor, VS Code, Claude Desktop, Codex, ...) can ask questions about your
+mailbox: who fills it, what a filter would catch, which rules exist. An admin
+switches it on (off by default); each user creates access tokens limited to
+chosen accounts, with subject lines opt-in and an expiry. It sees metadata
+only - no bodies, no own tags - and cannot send, unsubscribe, delete or
+change anything. What it reads goes to the assistant's own AI provider. See
+[Connect an AI assistant](assistants.md) for setup and the privacy notes.
+
 </div>
 
 ## Safety
