@@ -45,6 +45,14 @@ const isRescue = (e: AuditEntry): boolean =>
 
 export const isRuleActor = (actor: string): boolean => actor.startsWith("rule:");
 
+/** An AI assistant's token acts as `mcp:<token name>` (backend/mcptools.py). */
+const ASSISTANT_PREFIX = "mcp:";
+
+/** The token name of an assistant actor, or null for any other actor. */
+export const assistantActorName = (actor: string): string | null =>
+  actor.startsWith(ASSISTANT_PREFIX) ? actor.slice(ASSISTANT_PREFIX.length)
+    : null;
+
 /** How many mails of each entry (by id) later undos restored. The same
  *  undo entry listed twice (overlapping lists) counts once. */
 export function undoneCounts(entries: AuditEntry[]): Map<string, number> {
@@ -195,7 +203,9 @@ const ruleName = (e: AuditEntry, rules: Rule[]): string => {
 
 /** Who did it: the rule, or "by you". */
 export const whoLine = (e: AuditEntry, rules: Rule[]): string =>
-  isRuleActor(e.actor)
+  assistantActorName(e.actor) !== null
+    ? t("audit.by_assistant", { name: assistantActorName(e.actor) ?? "" })
+  : isRuleActor(e.actor)
     // a move entry does not carry the rule's name: without the rule it
     // cannot be named
     ? ruleName(e, rules) ? t("audit.rule", { name: ruleName(e, rules) })
@@ -290,6 +300,18 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       break;
     case "digest_sent":
       title = label ? t("audit.h.digest_sent", { to: label })
+        : tOr("audit.act", e.action);
+      detail = "";
+      break;
+    case "rule_proposed": case "rule_withdrawn":
+      title = label ? t(`audit.h.${e.action}`, { label })
+        : tOr("audit.act", e.action);
+      // what its report found; the headline names the rule
+      detail = n > 0 ? t("n.mails", { n }) : "";
+      break;
+    case "proposal_mail_sent":
+      title = label ? t(n > 1 ? "audit.h.proposal_mail_sent_many"
+        : "audit.h.proposal_mail_sent", { to: label, n })
         : tOr("audit.act", e.action);
       detail = "";
       break;

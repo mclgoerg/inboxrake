@@ -65,11 +65,23 @@ PURGE_DEFAULT_DAYS = 30
 # switch (so Off knows it may remove it). Set on create only, for a Trash
 # purge rule only; nothing can set or clear it afterwards.
 AUTO_EMPTY = "auto_empty"
+# A rule an AI assistant proposed (backend/mcptools.py `propose_rule`). Set
+# only by `create_rule(proposed_by=...)`, never through /api/rules or an
+# import. It waits in report mode until the user arms it (the ordinary
+# report -> execute switch, gate unchanged); the first edit of its
+# definition, or switching it back to report, makes it an ordinary manual
+# rule (`proposed_by` stays as history).
+ORIGIN_MCP = "mcp"
+PROPOSAL_LIMIT = 10             # open proposals per tenant
+PROPOSAL_LIMIT_CODE = "proposal_limit"
+_EDIT_FIELDS = ("name", "scope", "grouping", "query", "action", "dest",
+                "schedule", "keep_latest", "older_than_days", "account")
 # Not "smart": its rows' membership depends on a per-account threshold and
 # the protected list, so a standing rule on them would shift under it.
 RULE_GROUPINGS = tuple(g for g in mailops.GROUPINGS if g != "smart")
 _DUE_AFTER = {"daily": 24 * 3600, "weekly": 7 * 24 * 3600}
 
+NAME_MAX = 80                    # longest rule name (chars)
 FILTER_MAX = 300                 # longest rule filter (chars)
 _LOCK = threading.Lock()          # guards the rules file
 _RUN_LOCK = threading.Lock()      # one rule run at a time
@@ -485,6 +497,10 @@ def _normalise(r: dict) -> bool:
     if r["origin"] == AUTO_EMPTY and (r.get("scope") != "trash"
                                       or r.get("action") != PURGE_ACTION):
         r["origin"] = "manual"           # a hand-edited file cannot misuse it
+    if r["origin"] == ORIGIN_MCP and (
+            not isinstance(r.get("proposed_by"), dict)
+            or r.get("scope", "mail") != "mail"):
+        r["origin"] = "manual"           # nor can it fake an assistant
     r.setdefault("scope", "mail")        # tolerate pre-purge rules.json
     r.setdefault("report_at", None)
     r.setdefault("reset_reason", "")
@@ -584,7 +600,7 @@ def publish() -> None:
 def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
     before, before_box = definition_sig(rule), box_sig(rule)
     if "name" in body:
-        rule["name"] = str(body["name"]).strip()[:80]
+        rule["name"] = str(body["name"]).strip()[:NAME_MAX]
     if "scope" in body:
         if body["scope"] not in SCOPES:
             raise ValueError("bad scope")
@@ -721,7 +737,12 @@ def drop_account(name: str) -> None:
                      len(mine))
 
 
-def create_rule(body: dict, lenient_filter: bool = False) -> dict:
+def create_rule(body: dict, lenient_filter: bool = False, *,
+                proposed_by: dict | None = None) -> dict:
+    """`proposed_by` ({token_id, name, at}) is for the MCP `propose_rule`
+    tool alone: it makes a mail rule of origin "mcp" (report mode, like every
+    new rule) and is refused beyond PROPOSAL_LIMIT open proposals. A body
+    cannot carry the origin."""
     rule = {"id": uuid.uuid4().hex[:8], "name": "", "scope": "mail",
             "grouping": "sender",
             "query": "", "action": "trash", "dest": "",
@@ -747,15 +768,47 @@ def create_rule(body: dict, lenient_filter: bool = False) -> dict:
         if body.get("scope") != "trash":
             raise ValueError("bad origin")
         rule["origin"] = AUTO_EMPTY
+    if proposed_by is not None:
+        if body.get("scope", "mail") != "mail" or "origin" in body:
+            raise ValueError("bad origin")
+        rule["origin"], rule["proposed_by"] = ORIGIN_MCP, proposed_by
     _validate(body, rule, lenient_filter)
     # filling in the blank template is not an edit of an armed rule
     rule["reset_reason"] = ""
     with _LOCK:
         rules = load_rules()
+        if proposed_by is not None \
+                and len(open_proposals(rules)) >= PROPOSAL_LIMIT:
+            raise ValueError(PROPOSAL_LIMIT_CODE)
         rules.append(rule)
         _save(rules)
     log.info("rule %s created: %r (%s, query %r)", rule["id"], rule["name"],
              rule["action"], rule["query"])
+    return rule
+
+
+def open_proposals(rules: list[dict]) -> list[dict]:
+    """The proposals waiting for the user: assistant-made, still report."""
+    return [r for r in rules if r.get("origin") == ORIGIN_MCP
+            and r.get("mode") == "report"]
+
+
+def withdraw_proposal(rule_id: str, token_id: str,
+                      accounts_allowed: list[str]) -> dict | None:
+    """Delete a proposal of this token that is still waiting (report mode,
+    origin mcp); the check and the delete share one lock, so an approval in
+    between can never lose its rule. The deleted rule, or None."""
+    with _LOCK:
+        rules = load_rules()
+        rule = next((r for r in rules if r["id"] == rule_id), None)
+        by = (rule or {}).get("proposed_by") or {}
+        if rule is None or rule.get("origin") != ORIGIN_MCP \
+                or rule.get("mode") != "report" \
+                or by.get("token_id") != token_id \
+                or rule.get("account") not in accounts_allowed:
+            return None
+        _save([r for r in rules if r["id"] != rule_id])
+    log.info("rule %s withdrawn by its proposer", rule_id)
     return rule
 
 
@@ -765,6 +818,13 @@ def update_rule(rule_id: str, body: dict) -> dict:
         rule = next((r for r in rules if r["id"] == rule_id), None)
         if not rule:
             raise KeyError(rule_id)
+        if rule.get("origin") == ORIGIN_MCP and (
+                any(k in body and body[k] != rule.get(k)
+                    for k in _EDIT_FIELDS)
+                or (body.get("mode") == "report"
+                    and rule.get("mode") == "execute")):
+            # the user's edit (or taking it off Active): theirs from now on
+            rule["origin"] = "manual"
         _validate(body, rule)
         _save(rules)
     log.info("rule %s updated (mode %s)", rule_id, rule["mode"])

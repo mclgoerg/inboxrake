@@ -458,3 +458,115 @@ test("setup snippets: the lines of board 91 with the real address and token", ()
   expect(setupSnippet("other", u, tk)).toBe(
     `Address: ${u}\nHeader: Authorization: Bearer ${tk}`);
 });
+
+/* ---- Propose (MCP4): exactly two levels, and "Notify me about proposals" */
+
+const PROPOSE = { access: "read_propose" as const,
+  levels: ["read" as const, "propose" as const],
+  options: READ_ONLY.options,
+  notify: { email: true, accounts: {
+    proton: { to: "me@home.example", can_send: true },
+    icloud: { to: "me@icloud.example", can_send: true } } } };
+
+test("with Read and Propose the cap control is Off / Read and propose (no Also act)", async () => {
+  await show(baseCfg(PROPOSE));
+  const group = screen.getByRole("radiogroup", { name: "Assistant access" });
+  expect(within(group).getAllByRole("radio").map((r) => r.textContent))
+    .toEqual(["Off", "Read and propose"]);
+  // two columns: Read and Propose, then the Never line
+  const levels = screen.getByText("What each level allows").closest("div")!
+    .parentElement!;
+  expect(within(levels).getByText("Create rules in report mode")).toBeTruthy();
+  expect(within(levels).queryByText("Everything in Propose")).toBeNull();
+  expect(within(levels).getByText(/Never, at any level:/)).toBeTruthy();
+});
+
+test("with Read and Propose the token dialog has two radio rows and no Act extras", async () => {
+  await show(baseCfg(PROPOSE));
+  await screen.findByText("No access tokens yet");
+  fireEvent.click(newTokenButton());
+  const dlg = await screen.findByRole("dialog");
+  const rows = within(dlg).getByRole("radiogroup", { name: "What it may do" });
+  expect(within(rows).getAllByRole("radio").map((r) => r.getAttribute("aria-checked")))
+    .toEqual(["true", "false"]);
+  fireEvent.click(within(rows).getAllByRole("radio")[1]);
+  expect(within(dlg).queryByText(/text written to trick an assistant/)).toBeNull();
+  expect(within(dlg).queryByText("Daily limit")).toBeNull();
+  fireEvent.change(within(dlg).getByLabelText("Name"), { target: { value: "Proposer" } });
+  fireEvent.click(within(dlg).getByRole("button", { name: "Create token" }));
+  await waitFor(() => expect(created.length).toBe(1));
+  expect(created[0]).toMatchObject({ level: "propose" });
+  expect(created[0]).not.toHaveProperty("daily_cap");
+});
+
+test("a Propose token row shows its level pill", async () => {
+  listed = [tok({ level: "propose", name: "Cursor" })];
+  await show(baseCfg(PROPOSE));
+  const row = (await screen.findByText("Cursor")).closest("li")!;
+  expect(within(row).getByText("Propose")).toBeTruthy();
+});
+
+test("the notify group: the email switch is on, says where it goes, and the browser row follows the device", async () => {
+  await show(baseCfg(PROPOSE));
+  const grp = screen.getByText("Notify me about proposals").closest("div")!
+    .parentElement!;
+  const sw = within(grp).getByRole("switch", { name: "Email" });
+  expect(sw.getAttribute("aria-checked")).toBe("true");
+  expect(grp.textContent).toContain("To me@home.example, me@icloud.example");
+  expect(grp.textContent).toContain("At most one mail every 10 minutes");
+  expect(grp.textContent).toContain("Follows Settings › Notifications on each device");
+  // this device has notifications off
+  const browser = screen.getByText("Browser notification").parentElement!
+    .parentElement!;
+  expect(within(browser).getByText("Off")).toBeTruthy();
+});
+
+test("the browser row says On when this device's notifications are on", async () => {
+  localStorage.setItem("pmc_notify", "push");
+  vi.stubGlobal("Notification", { permission: "granted" });
+  try {
+    await show(baseCfg(PROPOSE));
+    const browser = screen.getByText("Browser notification").parentElement!
+      .parentElement!;
+    expect(within(browser).getByText("On")).toBeTruthy();
+  } finally {
+    localStorage.removeItem("pmc_notify");
+    vi.unstubAllGlobals();
+  }
+});
+
+test("switching the email off is staged with the Save bar and saved as assistants_notify", async () => {
+  await show(baseCfg(PROPOSE));
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  fireEvent.click(screen.getByRole("switch", { name: "Email" }));
+  expect(screen.getByRole("switch", { name: "Email" }).getAttribute("aria-checked"))
+    .toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].assistants_notify).toEqual({ email: false });
+});
+
+test("an account that cannot send gets a hint, only while the switch is on", async () => {
+  await show(baseCfg({ ...PROPOSE, notify: { email: true, accounts: {
+    proton: { to: "me@home.example", can_send: true },
+    icloud: { to: "", can_send: false } } } }));
+  expect(screen.getByText(/icloud can't send mail yet/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("switch", { name: "Email" }));
+  expect(screen.queryByText(/can't send mail yet/)).toBeNull();
+});
+
+test("no notify group with Read only, or from a server without the setting", async () => {
+  await show(baseCfg({ ...READ_ONLY, notify: PROPOSE.notify }));
+  expect(screen.queryByText("Notify me about proposals")).toBeNull();
+  cleanup();
+  await show(baseCfg({ ...PROPOSE, notify: undefined }));
+  expect(screen.queryByText("Notify me about proposals")).toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: "Off" }));
+});
+
+test("German: the notify group", async () => {
+  setLang("de");
+  await show(baseCfg(PROPOSE));
+  expect(screen.getByText("Bei Vorschlägen benachrichtigen")).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "E-Mail" })).toBeTruthy();
+  expect(screen.getByText("Browser-Benachrichtigung")).toBeTruthy();
+});

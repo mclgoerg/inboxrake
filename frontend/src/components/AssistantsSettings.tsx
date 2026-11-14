@@ -3,6 +3,7 @@ import { Bot, Check, CircleCheck, Copy, Eye, EyeOff, Info, ListChecks,
 import { useCallback, useEffect, useId, useRef, useState,
   type ReactNode } from "react";
 import { api } from "../api";
+import { NOTIFY_KEY } from "../push";
 import { getLang, t } from "../i18n";
 import { fmtAgo, fmtTs } from "../lib";
 import { useDemo } from "../demoMode";
@@ -496,12 +497,53 @@ function TokenRow({ tk, busy, onRevoke }: {
 
 /* -------------------------------- section -------------------------------- */
 
-export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
-  tokensError, reload }: {
+/** "Notify me about proposals": the email switch (staged with the page's
+ *  Save bar) and a read-only row for the browser notification, which follows
+ *  Settings > Notifications on each device. */
+function NotifyGroup({ cfg, email, onEmail }: {
+  cfg: Config; email: boolean; onEmail: (on: boolean) => void;
+}) {
+  const info = cfg.assistants?.notify?.accounts ?? {};
+  const names = Object.keys(cfg.accounts);
+  const to = [...new Set(names.map((n) => info[n]?.to).filter(Boolean))];
+  // accounts whose proposals could not be mailed (no address / sign-in)
+  const cannot = names.filter((n) => info[n] && !info[n].can_send);
+  const mode = localStorage.getItem(NOTIFY_KEY);
+  const browserOn = (mode === "push" || mode === "1")
+    && typeof Notification !== "undefined"
+    && Notification.permission === "granted";
+  return (
+    <SettingsGroup header={t("assistants.group.notify")}
+      footnote={email && cannot.length ? t("assistants.notify_email_cant", {
+        account: cannot.join(", ") }) : undefined}>
+      <SettingsRow label={t("assistants.notify_email")}
+        sub={to.length ? t("assistants.notify_email_sub", {
+          to: to.join(", ") }) : t("assistants.notify_email_none")}>
+        <Switch checked={email} onChange={onEmail}
+          label={t("assistants.notify_email")} />
+      </SettingsRow>
+      <SettingsRow label={t("assistants.notify_browser")}
+        sub={t("assistants.notify_browser_sub")}>
+        <Tag tone={browserOn ? "safe" : "neutral"}
+          className="inline-flex items-center gap-1">
+          {browserOn && <Check size={14} aria-hidden />}
+          {t(browserOn ? "assistants.notify_state_on"
+            : "assistants.notify_state_off")}
+        </Tag>
+      </SettingsRow>
+    </SettingsGroup>
+  );
+}
+
+export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
+  onNotifyEmail, tokens, tokensError, reload }: {
   cfg: Config; admin: boolean;
   /** The cap as staged (the admin's control); the saved one is in `cfg`. */
   access: AssistantAccess;
   onAccess: (a: AssistantAccess) => void;
+  /** The staged "email me about proposals" switch. */
+  notifyEmail: boolean;
+  onNotifyEmail: (on: boolean) => void;
   tokens: AssistantToken[] | null; tokensError: string;
   reload: () => Promise<unknown>;
 }) {
@@ -703,6 +745,12 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
         </>)}
       </SettingsGroup>
     </DemoFieldset>
+
+    {levels.includes("propose") && cfg.assistants?.notify && (
+      <DemoFieldset>
+        <NotifyGroup cfg={cfg} email={notifyEmail} onEmail={onNotifyEmail} />
+      </DemoFieldset>
+    )}
 
     <SettingsGroup header={t("assistants.group.levels")}>
       <div className={`grid grid-cols-1 divide-y divide-line sm:divide-x

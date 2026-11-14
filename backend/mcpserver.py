@@ -25,6 +25,7 @@ import base64
 import collections
 import json
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -205,6 +206,22 @@ def owner_valid(rec: dict, resolve_tenant) -> bool:
         return False
 
 
+_HOST = re.compile(r"[A-Za-z0-9.\-]+(:\d{1,5})?|\[[0-9A-Fa-f:.]+\](:\d{1,5})?")
+
+
+def _origin(headers) -> str:
+    """This server's address as the caller reached it (behind a reverse
+    proxy, as it forwarded), for links into the UI; "" if the headers do
+    not look like an address."""
+    host = (headers.get("x-forwarded-host")
+            or headers.get("host") or "").split(",")[0].strip()
+    proto = (headers.get("x-forwarded-proto") or "http").split(
+        ",")[0].strip().lower()
+    if proto not in ("http", "https") or not _HOST.fullmatch(host):
+        return ""
+    return f"{proto}://{host}"
+
+
 def handle(method: str, headers, query: str, body: bytes,
            resolve_tenant) -> Reply:
     """One HTTP request to /mcp. The caller has already applied the Origin
@@ -261,7 +278,9 @@ def handle(method: str, headers, query: str, body: bytes,
     if not isinstance(params, dict):
         return _error(rid, INVALID_PARAMS, "params must be an object", 400)
 
-    ctx = mcptools.Ctx(accounts=names, subjects=bool(rec.get("subjects")))
+    ctx = mcptools.Ctx(accounts=names, subjects=bool(rec.get("subjects")),
+                       token_id=rec["id"], token_name=rec.get("name", ""),
+                       origin=_origin(headers))
     meta = params.get("_meta")
     meta = meta if isinstance(meta, dict) else {}
     header_version = headers.get("mcp-protocol-version")

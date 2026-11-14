@@ -30,9 +30,9 @@ TOKENS_PATH = Path(os.environ.get("ASSISTANT_TOKENS_PATH",
 
 PREFIX = "irk_"
 LEVELS = ("read", "propose", "act")
-# MCP1 hands out read tokens only; the other levels arrive with their tools
-# (they are accepted by `create` once listed here).
-AVAILABLE_LEVELS = ("read",)
+# The levels whose tools exist (a level is accepted by `create` once listed
+# here): read (MCP1), propose (MCP4); act arrives with its tools.
+AVAILABLE_LEVELS = ("read", "propose")
 EXPIRY_DAYS = (30, 90, None)
 DAILY_CAP_DEFAULT = 2000
 DAILY_CAP_MIN, DAILY_CAP_MAX = 100, 10_000

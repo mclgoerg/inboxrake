@@ -427,8 +427,13 @@ export interface Rule {
   mode: "report" | "execute";
   keep_latest: number | null;
   older_than_days: number | null;
-  /** "auto_empty": the Trash page's "Empty automatically" switch made it. */
-  origin: "manual" | "block" | "auto_empty";
+  /** "auto_empty": the Trash page's "Empty automatically" switch made it.
+   *  "mcp": an AI assistant proposed it (a proposal while it is in report
+   *  mode; still "mcp" once the user approved it, "manual" after an edit). */
+  origin: "manual" | "block" | "auto_empty" | "mcp";
+  /** Which assistant token proposed it, and when (kept as history after an
+   *  edit). */
+  proposed_by?: { token_id: string; name: string; at: number };
   report_runs: number;
   /** Purge rules: why an armed rule went back to report mode (shown on the
    *  card). */
@@ -864,6 +869,10 @@ export interface Config {
    *  older backends. */
   assistants?: { access: AssistantAccess; levels?: AssistantLevel[];
     options?: AssistantAccess[];
+    /** "Notify me about proposals": the email switch and, per account, where
+     *  the mail would go and whether the account can send one. */
+    notify?: { email: boolean;
+      accounts: Record<string, { to: string; can_send: boolean }> };
     /** Admin only: unexpired tokens of EVERY user per level (numbers only). */
     token_counts?: Record<AssistantLevel, number> };
   ai_stats: {

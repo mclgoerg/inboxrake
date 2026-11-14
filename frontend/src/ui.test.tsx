@@ -12,7 +12,7 @@ import {
   isModalOpen, AccountAvatar, BarButton, BulkBar, Button, Checkbox, Chip,
   ConfirmDialog, DIALOG_ARM_MS, choiceDialog, placeMenu, DialogProvider, PromptDialog, EmptyState, MailRow, Menu, MenuDivider,
   MenuGroup, MenuHeading, PopupSelect, SettingsGroup, SettingsRow, MenuItem, Modal, Meta, Notice, ProgressBar, Segmented, ToastProvider,
-  confirmDialog,
+  confirmDialog, checkDialog,
   LINK, RatingChips, Tag, AppearanceControl, getAppearance, applyTheme,
   ActionButton, ActionFace, ACTION_BTN, StatTile, Avatar, Ring, MiniBars, Donut,
   currentTheme, watchSystemTheme, ensureAiAck, promptDialog, ProtectButton, useToast,
@@ -1777,4 +1777,76 @@ test("Meta `shrink`: only that item truncates, the others keep their dots", () =
   expect(a.className).toContain("shrink-0");
   expect(b.className).toContain("truncate");
   expect(c.className).toContain("shrink-0");
+});
+
+describe("checkDialog (ConfirmOptions.check)", () => {
+  const opts = { title: "Approve?", confirmLabel: "Approve and move 5",
+    tone: "danger" as const,
+    check: { label: "Run it once now", checked: true,
+      uncheckedLabel: "Approve" } };
+
+  test("confirming resolves ok with the box's state", async () => {
+    render(<DialogProvider><span>app</span></DialogProvider>);
+    let p = checkDialog(opts);
+    const box = await screen.findByRole("checkbox", { name: "Run it once now" });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    await armed();
+    fireEvent.click(screen.getByRole("button", { name: "Approve and move 5" }));
+    expect(await p).toEqual({ ok: true, checked: true });
+    p = checkDialog(opts);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Run it once now" }));
+    await armed();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await p).toEqual({ ok: true, checked: false });
+  });
+
+  test("the confirm label follows the box", async () => {
+    render(<DialogProvider><span>app</span></DialogProvider>);
+    const p = checkDialog(opts);
+    const box = await screen.findByRole("checkbox", { name: "Run it once now" });
+    expect(screen.getByRole("button", { name: "Approve and move 5" })).toBeTruthy();
+    fireEvent.click(box);
+    expect(screen.queryByRole("button", { name: "Approve and move 5" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    fireEvent.click(box);
+    expect(screen.getByRole("button", { name: "Approve and move 5" })).toBeTruthy();
+    fireEvent.click(screen.getByText("Cancel"));
+    await p;
+  });
+
+  test("a box that starts unticked, and no label switch without uncheckedLabel", async () => {
+    render(<DialogProvider><span>app</span></DialogProvider>);
+    const p = checkDialog({ title: "T", confirmLabel: "Go",
+      check: { label: "Also", checked: false } });
+    const box = await screen.findByRole("checkbox", { name: "Also" });
+    expect((box as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+    fireEvent.click(box);
+    expect(screen.getByRole("button", { name: "Go" })).toBeTruthy();
+    fireEvent.click(screen.getByText("Cancel"));
+    await p;
+  });
+
+  test("Cancel and Esc resolve not ok, even with the box ticked", async () => {
+    render(<DialogProvider><span>app</span></DialogProvider>);
+    let p = checkDialog(opts);
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(await p).toEqual({ ok: false, checked: false });
+    p = checkDialog(opts);
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(await p).toEqual({ ok: false, checked: false });
+  });
+
+  test("a confirm tapped right after opening is ignored, as for any confirm", async () => {
+    render(<DialogProvider><span>app</span></DialogProvider>);
+    const p = checkDialog(opts);
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Approve and move 5" }),
+      { detail: 1 });
+    expect(screen.getByRole("dialog")).toBeTruthy();   // still open
+    fireEvent.click(screen.getByText("Cancel"));
+    await p;
+  });
 });

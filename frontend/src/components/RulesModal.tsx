@@ -1,15 +1,18 @@
-import { Archive, CalendarClock, ClipboardList, FileText, FolderInput, Info, MailOpen,
-  MoreHorizontal, Pencil, Pin, Play, Plus, Shield, Trash2, TriangleAlert, X } from "lucide-react";
+import { Archive, Bot, CalendarClock, Check, ClipboardList, FileText, FolderInput,
+  Info, MailOpen, MoreHorizontal, Pencil, Pin, Play, Plus, RefreshCw, Shield,
+  Trash2, TriangleAlert, WandSparkles, X } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
+import { isProposal } from "../proposals";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
 import { QueryBuilder } from "./QueryBuilder";
-import { Avatar, Button, confirmDialog, EmptyState, Input, LINK_ACCENT, Menu,
-  MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented, SettingsGroup,
-  SettingsRow, Spinner, Tag, useIsPage, useMediaQuery } from "./ui";
+import { Avatar, Button, checkDialog, confirmDialog, EmptyState, Input,
+  LINK_ACCENT, Menu, MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented,
+  SettingsGroup, SettingsRow, Spinner, Tag, useIsPage, useMediaQuery,
+  useOptionalToast } from "./ui";
 
 /** The rules section of the docs (cap, report mode, protected senders). */
 const RULES_DOCS_URL = "https://inboxrake.com/docs/features/#rules-and-scheduler";
@@ -127,6 +130,10 @@ function Sentence({ template, parts, className = "" }: {
 const GROUPING_KEY: Record<string, string> = {
   sender: "Sender", domain: "Domain", subject: "Subject", thread: "Thread" };
 
+/** The actions a proposal can carry (its Approve button says what it does). */
+const ACTION_VERB: Record<string, true> = {
+  trash: true, archive: true, move: true, mark_read: true };
+
 const ACTION_ICON: Record<string, ReactNode> = {
   trash: <Trash2 size={18} />, purge: <Trash2 size={18} />,
   archive: <Archive size={18} />, move: <FolderInput size={18} />,
@@ -181,6 +188,173 @@ function FormRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** A rule read as a sentence: "When a Sender group matches ... then ...". */
+function RuleSentence({ rule }: { rule: Rule }) {
+  const purge = isPurge(rule.scope);
+  const danger = purge || rule.action === "trash";
+  return (
+    <p className="mt-3 type-body leading-9 text-muted">
+      <Sentence template={t(purge ? "rule.sent_purge" : "rule.sent_mail")}
+        parts={{
+          grouping: <Part>{t(GROUPING_KEY[rule.grouping])}</Part>,
+          scope: purge ? <Part tone="danger">
+            {t(`rule.scope_${rule.scope}`)}</Part> : null,
+          filter: rule.query
+            ? <code className="inline-block max-w-full rounded-control bg-chip
+                px-2 py-0.5 type-meta text-chiptext
+                break-words">{rule.query}</code>
+            : <Part>{t(purge ? "rule.s_all_senders" : "rule.s_everything")}</Part>,
+          action: <Part tone={danger ? "danger" : "neutral"}>
+            {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
+          retention: rule.keep_latest != null
+            ? <>{t("rule.ret_pre")}<Part>
+                {t("rule.ret_keep", { n: rule.keep_latest })}</Part></>
+            : rule.older_than_days != null
+              ? <>{t("rule.ret_pre")}<Part>
+                  {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
+              : null,
+          // the dot travels with the schedule: it never ends a line
+          schedule: <span className="whitespace-nowrap">
+            <span aria-hidden>{"·\u00a0"}</span>
+            <Part><CalendarClock size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+              {t(`sched.${rule.schedule}`)}</Part></span>,
+        }} />
+    </p>
+  );
+}
+
+/** "Claude Code · proposed today, 10:42" - who proposed a rule and when. */
+const proposedLine = (rule: Rule): string => rule.proposed_by
+  ? t("proposal.by", { name: rule.proposed_by.name,
+    when: fmtTs(rule.proposed_by.at, getLang()) }) : "";
+
+/** The proposed rule's report, inline: the four numbers and the top senders
+ *  (the last run of a report-mode rule; nothing has moved). */
+function ProposalReport({ rule }: { rule: Rule }) {
+  const r = rule.last_run;
+  if (!r || r.pending) return (
+    <p className="mt-3 type-meta text-muted">{t("proposal.no_report")}</p>);
+  if (r.error) return (
+    <p role="alert" className="mt-3 type-meta text-danger-fg">
+      {t("proposal.report_failed")} {errorText(r.error)}</p>);
+  const stat = (n: number, caption: string) => (
+    <div key={caption}>
+      <div className="type-title2 tabular-nums">{fmtNum(n)}</div>
+      <div className="type-meta text-muted">{caption}</div>
+    </div>
+  );
+  const unit = rule.grouping === "domain" ? "domains" : "senders";
+  return (
+    <div className="mt-3 rounded-card bg-panel p-3">
+      <div className="type-meta text-muted">
+        <span className="font-medium text-body">{t("proposal.report")}</span>
+        {" "}{t("proposal.report_sub", { date: fmtTs(r.ts, getLang()) })}
+      </div>
+      {/* four columns on a phone (captions wrap), a row with room from sm up */}
+      <div className="mt-2 grid grid-cols-4 gap-x-3 sm:flex sm:flex-wrap
+        sm:gap-x-8 sm:gap-y-2">
+        {stat(r.mails, t("proposal.c_mails", { n: r.mails }))}
+        {stat(r.groups, t(`proposal.c_${unit}`, { n: r.groups }))}
+        {stat(r.skipped_protected, t("proposal.c_protected"))}
+        {stat(r.skipped_pinned, t("proposal.c_pinned"))}
+      </div>
+      {r.preview.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {r.preview.slice(0, 3).map((p) => (
+            <span key={p.key} className="inline-flex max-w-full items-center
+              gap-1.5 rounded-control bg-chip px-2 py-1 type-meta">
+              <Avatar name={p.label} />
+              <span className="truncate">{p.label} · {fmtNum(p.count)}</span>
+            </span>
+          ))}
+          {r.groups > Math.min(3, r.preview.length) && (
+            <span className="rounded-control bg-chip px-2 py-1 type-meta
+              text-muted">
+              {t("proposal.more", { n: r.groups - Math.min(3, r.preview.length) })}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A rule an AI assistant proposed, waiting for the user: accent outline,
+ *  who proposed it, its report inline and Approve… / Report again / Edit /
+ *  Decline. Nothing is moved until the user approves. */
+function ProposalCard({ rule, busy, error, onApprove, onAgain, onEdit,
+  onDecline }: {
+  rule: Rule; busy: boolean; error?: string;
+  onApprove: () => void; onAgain: () => void; onEdit: () => void;
+  onDecline: () => void;
+}) {
+  const phone = useMediaQuery("(max-width: 639px)");
+  const r = rule.last_run;
+  // the server's gate: no approval without a report of the current definition
+  const ready = rule.report_runs >= 1 && !!r && !r.error && !r.pending
+    && !rule.filter_invalid?.length;
+  const danger = rule.action === "trash";
+  return (
+    <section aria-label={t("proposal.tag")} data-proposal={rule.id}
+      className="rounded-card border border-accent bg-panel2 p-3
+        sm:p-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <span aria-hidden className={`flex size-10 shrink-0 items-center
+          justify-center rounded-control ${danger
+          ? "bg-review-bg text-review-fg" : "bg-chip text-chiptext"}`}>
+          {ACTION_ICON[rule.action] ?? <ClipboardList size={18} />}
+        </span>
+        <div className="min-w-0 flex-1 basis-40">
+          <div className="type-body font-medium">{rule.name}</div>
+          <div className="flex items-center gap-1 type-meta text-muted">
+            <Bot size={14} aria-hidden className="shrink-0 text-info-fg" />
+            <span className="min-w-0 break-words">{proposedLine(rule)}</span>
+          </div>
+        </div>
+        <Tag tone="accent" className="inline-flex items-center gap-1">
+          <WandSparkles size={14} aria-hidden />{t("proposal.tag")}
+        </Tag>
+      </div>
+      <RuleSentence rule={rule} />
+      <ProposalReport rule={rule} />
+      {error && (
+        <div role="alert" className="mt-2 type-meta text-danger-fg">{error}</div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={onApprove} disabled={busy || !ready}>
+          {busy ? <Spinner /> : <>
+            <Check size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+            {t("proposal.approve")}</>}
+        </Button>
+        {phone ? (
+          // phones: Approve… and Decline side by side as on the board; the
+          // two quieter actions stay one tap away in the menu
+          <Menu variant="quiet" icon label={t("rule.more", { name: rule.name })}
+            trigger={<MoreHorizontal size={18} aria-hidden />}>
+            <MenuItem onClick={onAgain}>{t("proposal.again")}</MenuItem>
+            <MenuItem onClick={onEdit}>{t("Edit")}</MenuItem>
+          </Menu>
+        ) : <>
+          <Button variant="secondary" size="sm" onClick={onAgain} disabled={busy}>
+            <RefreshCw size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+            {t("proposal.again")}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onEdit} disabled={busy}>
+            <Pencil size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />
+            {t("Edit")}
+          </Button>
+        </>}
+        <Button variant="danger-quiet" size="sm" className="ml-auto"
+          onClick={onDecline} disabled={busy}>{t("proposal.decline")}</Button>
+      </div>
+    </section>
+  );
+}
+
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
 function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete }: {
@@ -201,6 +375,12 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
         </span>
         <div className="min-w-0 flex-1 basis-40">
           <div className="type-body font-medium">{rule.name}</div>
+          {rule.proposed_by && (
+            <div className="flex items-center gap-1 type-meta text-muted">
+              <Bot size={14} aria-hidden className="shrink-0 text-info-fg" />
+              <span className="min-w-0 break-words">{proposedLine(rule)}</span>
+            </div>
+          )}
           <div className="type-meta text-muted"><RunSummary rule={rule} /></div>
         </div>
         {/* On phones the switch gets its own full-width line. */}
@@ -219,34 +399,7 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
           {t("rule.need_report")}
         </div>
       )}
-      <p className="mt-3 type-body leading-9 text-muted">
-        <Sentence template={t(purge ? "rule.sent_purge" : "rule.sent_mail")}
-          parts={{
-            grouping: <Part>{t(GROUPING_KEY[rule.grouping])}</Part>,
-            scope: purge ? <Part tone="danger">
-              {t(`rule.scope_${rule.scope}`)}</Part> : null,
-            filter: rule.query
-              ? <code className="inline-block max-w-full rounded-control bg-chip
-                  px-2 py-0.5 type-meta text-chiptext
-                  break-words">{rule.query}</code>
-              : <Part>{t(purge ? "rule.s_all_senders" : "rule.s_everything")}</Part>,
-            action: <Part tone={danger ? "danger" : "neutral"}>
-              {t(`rule.act_${rule.action}`, { folder: rule.dest })}</Part>,
-            retention: rule.keep_latest != null
-              ? <>{t("rule.ret_pre")}<Part>
-                  {t("rule.ret_keep", { n: rule.keep_latest })}</Part></>
-              : rule.older_than_days != null
-                ? <>{t("rule.ret_pre")}<Part>
-                    {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
-                : null,
-            // the dot travels with the schedule: it never ends a line
-            schedule: <span className="whitespace-nowrap">
-              <span aria-hidden>{"·\u00a0"}</span>
-              <Part><CalendarClock size={14} aria-hidden
-                className="mr-1 inline align-text-bottom" />
-                {t(`sched.${rule.schedule}`)}</Part></span>,
-          }} />
-      </p>
+      <RuleSentence rule={rule} />
       {!!rule.filter_invalid?.length && (
         <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
@@ -316,7 +469,16 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   const [filterErr, setFilterErr] = useState("");
   // the refusal belongs to the filter text it was given for
   useEffect(() => setFilterErr(""), [form.query, editId]);
-  const rules = state.rules ?? [];
+  const toast = useOptionalToast();
+  // Proposals first (oldest first: the one that has waited longest), then the
+  // rest in the server's order.
+  const rules = useMemo(() => {
+    const all = state.rules ?? [];
+    return [...all.filter(isProposal).sort((a, b) =>
+      (a.proposed_by?.at ?? 0) - (b.proposed_by?.at ?? 0)),
+    ...all.filter((r) => !isProposal(r))];
+  }, [state.rules]);
+  const waiting = rules.filter(isProposal).length;
 
   // The effective per-run cap, from the server (purge confirms name it).
   const capRef = useRef<number | null>(null);
@@ -463,6 +625,95 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
     try {
       await api.deleteRule(rule.id);
       if (editId === rule.id) closeEditor();
+      onChanged();
+    } catch (e: any) {
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
+    }
+  };
+
+  /** Approve a proposal: the destructive-action confirm (what moves, what is
+   *  skipped, how it runs; "Run it once now"), then the ordinary report ->
+   *  Active switch (the server's gate is unchanged) and, if asked, a run. */
+  const approve = async (rule: Rule) => {
+    setCardErr(null);
+    const r = rule.last_run;
+    if (!r) return;
+    // a run is capped: what the first run will really act on
+    const will = Math.max(0, r.mails - r.capped);
+    const bullets: ReactNode[] = [t(`proposal.b_${rule.action}`, {
+      mails: t("n.mails", { n: will }),
+      groups: t(rule.grouping === "domain" ? "n.domains" : "n.senders",
+        { n: r.groups }),
+      folder: rule.dest })];
+    if (r.capped > 0) {
+      const cap = await getCap().catch(() => 500);
+      bullets.push(t("proposal.b_capped", { cap }));
+    }
+    if (r.skipped_protected > 0)
+      bullets.push(t("proposal.b_prot", { n: r.skipped_protected }));
+    if (r.skipped_pinned > 0)
+      bullets.push(t("proposal.b_pin", { n: r.skipped_pinned }));
+    bullets.push(t(`proposal.b_runs_${rule.schedule}`));
+    const label = will > 0 && rule.action in ACTION_VERB
+      ? t(`proposal.ok_${rule.action}`, { n: will, folder: rule.dest })
+      : t("proposal.ok_only");
+    const { ok, checked } = await checkDialog({
+      title: t("proposal.approve_title", { name: rule.name }),
+      tone: rule.action === "mark_read" ? "primary" : "danger",
+      body: <>
+        <p>{t("proposal.approve_body", { by: rule.proposed_by?.name ?? "" })}</p>
+        <p className="mt-2">{t("proposal.numbers",
+          { date: fmtTs(r.ts, getLang()) })}</p>
+      </>,
+      bullets, confirmLabel: label,
+      check: { label: t("proposal.run_once"),
+        checked: rule.schedule === "manual",
+        uncheckedLabel: t("proposal.ok_only") } });
+    if (!ok) return;
+    setBusyId(rule.id);
+    try {
+      await api.updateRule(rule.id, { mode: "execute" });
+    } catch (e: any) {
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
+      setBusyId("");
+      return;
+    }
+    let ran = false;
+    if (checked) {
+      try {
+        await api.runRule(rule.id);
+        ran = true;
+      } catch (e: any) {
+        setCardErr({ id: rule.id,
+          text: t("err.generic", { msg: e.message ?? e }) });
+      }
+    }
+    toast?.show(t(ran ? "proposal.approved_run" : "proposal.approved",
+      { name: rule.name }), { variant: "success" });
+    setBusyId("");
+    onChanged();
+  };
+
+  const reportAgain = async (rule: Rule) => {
+    setCardErr(null);
+    setBusyId(rule.id);
+    try {
+      await api.runRule(rule.id);
+      onChanged();
+    } catch (e: any) {
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
+    }
+    setBusyId("");
+  };
+
+  const decline = async (rule: Rule) => {
+    if (!await confirmDialog({
+      title: t("proposal.decline_title"), body: t("proposal.decline_body"),
+      confirmLabel: t("proposal.decline"), tone: "danger" })) return;
+    try {
+      await api.deleteRule(rule.id);
+      if (editId === rule.id) closeEditor();
+      toast?.show(t("proposal.declined", { name: rule.name }));
       onChanged();
     } catch (e: any) {
       setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
@@ -686,7 +937,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       <PanelHeader title={<span className="inline-flex items-center gap-2">
         <ClipboardList size={18} /> {t("Rules")}
       </span>} onClose={onClose}
-        sub={rules.length ? t("rules.sub", { n: rules.length }) : undefined}
+        sub={waiting
+          ? `${t("n.rules", { n: rules.length })} · ${t("rules.waiting", { n: waiting })}`
+          : rules.length ? t("rules.sub", { n: rules.length }) : undefined}
         actions={<Button size="sm" onClick={openNew}>
           <Plus size={16} aria-hidden className="mr-1 inline align-text-bottom" />
           {t("rule.new_btn")}
@@ -703,7 +956,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
               className={`col-start-2 shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
               {t("rules.how")}</a>
           </p>
-          {rules.map((rule) => (
+          {rules.map((rule) => isProposal(rule) ? (
+            <ProposalCard key={rule.id} rule={rule} busy={busyId === rule.id}
+              error={cardErr?.id === rule.id ? cardErr.text : undefined}
+              onApprove={() => approve(rule)} onAgain={() => reportAgain(rule)}
+              onEdit={() => edit(rule)} onDecline={() => decline(rule)} />
+          ) : (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
               onRun={() => run(rule)} onEdit={() => edit(rule)}

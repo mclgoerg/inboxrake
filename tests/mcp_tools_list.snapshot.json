@@ -995,6 +995,17 @@
        "origin": {
         "type": "string"
        },
+       "proposed_by": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null
+       },
        "query": {
         "type": "string"
        },
@@ -1003,6 +1014,17 @@
        },
        "scope": {
         "type": "string"
+       },
+       "state": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null
        }
       },
       "required": [

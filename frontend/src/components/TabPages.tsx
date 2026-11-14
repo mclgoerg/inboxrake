@@ -9,12 +9,14 @@ import { getLang, t } from "../i18n";
 import { fmtAgo } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
+import { openProposals } from "../proposals";
 import { senderItem, toneOf } from "../spacemap";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp, TrackerReport,
   WrappedResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
+import { ProposalBadge } from "./Sidebar";
 import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
@@ -123,6 +125,7 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
   const aiSafe = useMemo(() => groups.reduce(
     (n, g) => n + (g.ratings?.delete_safe ?? 0), 0), [groups]);
   const rules = state?.rules ?? [];
+  const waiting = openProposals(rules).length;
   const lastRun = Math.max(0, ...rules.map((r) => r.last_run?.ts ?? 0));
   const ago = fmtAgo(lastRun);
 
@@ -248,8 +251,10 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<ClipboardList size={18} aria-hidden />}
             tone="bg-new-bg text-new-fg" label={t("Rules")}
-            value={t("n.rules", { n: rules.length })}
-            sub={ago ? t("tab.rules_last", { ago }) : t("tab.rules_none")}
+            value={waiting ? <ProposalBadge n={waiting} quiet />
+              : t("n.rules", { n: rules.length })}
+            sub={waiting ? t("proposal.badge", { n: waiting })
+              : ago ? t("tab.rules_last", { ago }) : t("tab.rules_none")}
             onClick={() => onOpen("rules")} />
         </li>
         <li className="contents">
