@@ -1235,9 +1235,9 @@ def test_masking_happens_before_the_output_cut(mbox):
     name = "MySecretCategory"
     cfgmod.update_config({"categories": {name: ["x.example"]}})
     Y = mcptools.YOUR_CATEGORY
-    long_head = "h" * 90 + ", " + "i" * 10          # 102 chars + ", "
-    # cut by the 120-character output limit: the name starts at 104 and
-    # would be sliced to "MySecretCa…" if the cut came first
+    long_head = "h" * 95 + ", " + "i" * 10          # 107 chars
+    # 125 characters in all: the name starts at 109 and the 120-character
+    # output cut would leave "MySecretCa…" if it came before the masking
     auditlog.record("trash", account="default", count=1,
                     label=f"{long_head}, {name}")
     # cut by the 200-character storage limit (no "…" is stored)
@@ -1253,8 +1253,9 @@ def test_masking_happens_before_the_output_cut(mbox):
     got = {e["count"]: e["label"]
            for e in ok(secret, "recent_activity")["entries"]
            if e["action"] == "trash"}
-    assert got[1].endswith(f", {Y}") and "MySecret" not in got[1]
-    assert got[1].startswith("h" * 90)
+    # masked, then cut: the stand-in is what gets shortened, not the name
+    assert got[1].endswith(", Your categ…") and "MySecret" not in got[1]
+    assert got[1].startswith("h" * 95)
     assert "MySec" not in got[2]
     assert "Shop Wee" in got[3] or got[3].endswith("…")
     assert Y not in got[3]
