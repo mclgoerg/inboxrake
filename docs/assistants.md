@@ -154,7 +154,7 @@ The assistant gets eight tools. All of them only read:
 | `list_rules` | Your cleanup rules and the numbers of their last run. |
 | `recent_activity` | The newest entries of the activity log: what was moved, by whom, when. At most 100. |
 
-Every result carries the time of the last scan, because the assistant reads the scan snapshot, not the live mailbox. The assistant's filters can use the same syntax as the app, including `has:tracker` and `att:`, which come from the local body index: they tell the assistant that a sender's mail carries a tracker or a large attachment, never what the mail says.
+Every result carries the time of the last scan, because the assistant reads the scan snapshot, not the live mailbox. The assistant's filters can use the same syntax as the app, including `has:tracker` (from the local body index) and `att:` (from the attachment analysis): they tell the assistant that a sender's mail carries a tracker or a large attachment, never what the mail says or what the attachment is called.
 
 **Subject lines** are left out unless the token has **Include subject lines** on. With it, groups carry up to three sample subjects, mail rows carry their subject, and free-text search also covers subjects. Without it, a free-text query in `list_mails` is refused and `search_mails` looks at senders only.
 
