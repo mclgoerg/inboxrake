@@ -192,9 +192,16 @@ def auth_fingerprint(acfg: dict) -> str:
         oidc.get("client_id"), "oidc-identity-v2" if acfg.get("mode") == "oidc" else None]).encode())
 
 
+# Admin cap on what AI assistants (MCP tokens) may do, server-wide:
+# off (no /mcp at all) < read_propose < act. Tokens are limited to the lower of
+# their own level and this cap (backend/mcpserver.py).
+ASSISTANT_ACCESS = ("off", "read_propose", "act")
+
+
 def _default_server() -> dict:
     return {
         "auth": _env_auth(),
+        "assistants": {"access": "off"},
         # The admin MAY configure one server-side AI key and share it with
         # every tenant; tenants without their own key then use it, capped
         # by default_tenant_budget_usd per tenant and month (0 = no cap).
@@ -228,6 +235,10 @@ def load_server() -> dict:
             server["auth"]["oidc"].update(auth_saved["oidc"])
     if isinstance(saved.get("shared_ai"), dict):
         server["shared_ai"].update(saved["shared_ai"])
+    if isinstance(saved.get("assistants"), dict):
+        server["assistants"].update(saved["assistants"])
+    if server["assistants"].get("access") not in ASSISTANT_ACCESS:
+        server["assistants"]["access"] = "off"      # a hand-edited file
     server["auth"]["oidc"]["client_secret"] = secretbox.unseal(
         server["auth"]["oidc"].get("client_secret"))
     server["shared_ai"]["api_key"] = secretbox.unseal(
@@ -244,6 +255,11 @@ def _write_server(server: dict) -> None:
     out["shared_ai"]["api_key"] = secretbox.seal(
         out["shared_ai"].get("api_key"))
     _write(SERVER_PATH, out)
+
+
+def assistant_access() -> str:
+    """The admin cap on AI assistant access: off | read_propose | act."""
+    return load_server()["assistants"]["access"]
 
 
 def save_server(server: dict) -> None:
@@ -904,10 +920,12 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
                 pass
         auth_in = body.get("auth") or {}
         shared_in = body.get("shared_ai") or {}
-        if (auth_in or shared_in) and not is_admin():
+        assistants_in = body.get("assistants") or {}
+        if (auth_in or shared_in or assistants_in) and not is_admin():
             raise PermissionError(
                 "only the admin can change server settings")
-        server = load_server() if (auth_in or shared_in) else None
+        server = load_server() if (auth_in or shared_in
+                                   or assistants_in) else None
         _SESSIONS_RENEWED.set(False)
         if auth_in:
             from . import auth as authmod
@@ -946,6 +964,13 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
                 acfg["mode"] = mode
             if acfg["mode"] == "oidc" and not acfg.get("admin") and len(acfg["oidc"].get("allowed") or []) != 1:
                 raise ValueError("Set the SSO administrator, or restrict allowed users to exactly one identity for bootstrap.")
+        if assistants_in:
+            access = assistants_in.get("access")
+            if access is not None:
+                if access not in ASSISTANT_ACCESS:
+                    raise ValueError("assistants.access must be one of "
+                                     + ", ".join(ASSISTANT_ACCESS))
+                server["assistants"]["access"] = access
         if shared_in:
             scfg = server["shared_ai"]
             if "enabled" in shared_in:
@@ -1063,8 +1088,12 @@ def masked_config(cfg: dict) -> dict:
                if ai_source == "shared" else 0},
         "ai_stats": load_stats(),
     }
+    # The cap is not a secret and the token dialog needs it; only the admin
+    # also gets its options (they are the Settings control).
+    out["assistants"] = {"access": load_server()["assistants"]["access"]}
     if admin:
         server = load_server()
+        out["assistants"]["options"] = list(ASSISTANT_ACCESS)
         out["auth"].update({
             "password_set": bool(cfg["auth"]["password_hash"]),
             "admin": cfg["auth"].get("admin") or "",

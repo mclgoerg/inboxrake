@@ -293,6 +293,11 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
         : tOr("audit.act", e.action);
       detail = "";
       break;
+    case "assistant_token_created": case "assistant_token_revoked":
+      title = label ? t(`audit.h.${e.action}`, { name: label })
+        : tOr("audit.act", e.action);
+      detail = "";   // the headline names the token
+      break;
     default:
       title = `${tOr("audit.act", e.action)}${n > 0
         ? ` · ${t("n.mails", { n })}` : ""}`;

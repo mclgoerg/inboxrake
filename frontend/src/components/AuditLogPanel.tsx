@@ -1,5 +1,5 @@
 import { Archive, BellOff, Ban, ChevronLeft, ChevronRight, CircleAlert,
-  CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, ListChecks,
+  CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, KeyRound, ListChecks,
   Circle, Mail, MailCheck, ScrollText, Send, Trash2, Undo2, type LucideIcon }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -45,6 +45,8 @@ const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   unsubscribe: { icon: BellOff, tone: "bg-info-bg text-info-fg" },
   undo: { icon: Undo2, tone: "bg-chip text-chiptext" },
   digest_sent: { icon: Send, tone: "bg-chip text-chiptext" },
+  assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
+  assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
 };
 const FALLBACK_LOOK = { icon: Mail, tone: "bg-chip text-chiptext" };
 

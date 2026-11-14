@@ -110,6 +110,18 @@ def for_subject(subject: str) -> Tenant:
     return Tenant(_slug(subject), subject, TENANTS_DIR / _slug(subject))
 
 
+def by_id(tenant_id: str) -> Tenant | None:
+    """The tenant with this id (DEFAULT, or one whose directory exists), or
+    None. Ids are what a stored reference (an assistant token) keeps."""
+    if tenant_id == DEFAULT_ID:
+        return DEFAULT
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,60}", tenant_id or "") \
+            or tenant_id in (".", ".."):
+        return None
+    root = TENANTS_DIR / tenant_id
+    return Tenant(tenant_id, "", root) if root.is_dir() else None
+
+
 def known() -> list[Tenant]:
     """Every tenant with data on disk: DEFAULT plus one per directory.
     Directory names don't recover the subject - not needed for the

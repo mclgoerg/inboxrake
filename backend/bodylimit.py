@@ -20,6 +20,7 @@ LIMIT_PUBLIC = 8 * 1024        # pre-session endpoints: a password and a name
 LIMIT_DEFAULT = 8 * MiB        # any other request body (group-key lists of a
                                # very large mailbox are the biggest)
 LIMIT_IMPORT = 64 * MiB        # settings backup (verdicts, replied, knowledge)
+LIMIT_MCP = 64 * 1024          # one JSON-RPC message of an AI assistant
 
 TOO_LARGE = "request_too_large"     # mailops.REQUEST_TOO_LARGE (same string)
 _BODY = json.dumps({"detail": TOO_LARGE}).encode()
@@ -31,6 +32,8 @@ def limit_for(path: str, public: frozenset[str] | set[str]) -> int:
         return LIMIT_PUBLIC
     if path == "/api/import_config":
         return LIMIT_IMPORT
+    if path == "/mcp":
+        return LIMIT_MCP
     return LIMIT_DEFAULT
 
 

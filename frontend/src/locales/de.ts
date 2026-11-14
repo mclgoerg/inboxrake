@@ -2040,6 +2040,10 @@ export const DE: Record<string, string> = {
   "audit.h.undo_one": "Rückgängig: 1\u00a0Mail wiederhergestellt",
   "audit.h.digest_sent": "Aktivitätsbericht an {to} gesendet",
   "audit.act.digest_sent": "Aktivitätsbericht gesendet",
+  "audit.h.assistant_token_created": "KI-Assistenten-Zugriffs-Token „{name}“ erstellt",
+  "audit.h.assistant_token_revoked": "KI-Assistenten-Zugriffs-Token „{name}“ widerrufen",
+  "audit.act.assistant_token_created": "Assistenten-Token erstellt",
+  "audit.act.assistant_token_revoked": "Assistenten-Token widerrufen",
   "audit.act.trash": "In den Papierkorb verschoben",
   "audit.act.archive": "Archiviert",
   "audit.act.move": "Verschoben",
@@ -2731,6 +2735,24 @@ export const DE: Record<string, string> = {
   "ferr.push_http": "Der Push-Dienst hat mit Fehler {status} geantwortet.",
   "ferr.push_unreachable":
     "Der Push-Dienst ist vom Server aus nicht erreichbar.",
+  "ferr.assistants_off":
+    "Der Zugriff für KI-Assistenten ist auf diesem Server ausgeschaltet - ein Administrator kann ihn in den Einstellungen einschalten.",
+  "ferr.level_not_available":
+    "Diese Zugriffsstufe ist noch nicht verfügbar.",
+  "ferr.assistant_token_name":
+    "Gib dem Zugriffs-Token einen Namen mit höchstens 60 Zeichen.",
+  "ferr.assistant_token_accounts":
+    "Wähle mindestens eines deiner Konten.",
+  "ferr.assistant_token_expiry":
+    "Wähle 30 Tage, 90 Tage oder kein Ablaufdatum.",
+  "ferr.assistant_token_cap":
+    "Das Tageslimit muss zwischen 100 und 10.000 Mails liegen.",
+  "ferr.assistant_token_level":
+    "Unbekannte Zugriffsstufe.",
+  "ferr.assistant_token_limit":
+    "Es gibt schon 20 Zugriffs-Token - widerrufe zuerst eines.",
+  "ferr.assistant_token_unknown":
+    "Dieses Zugriffs-Token gibt es nicht (mehr).",
   "ferr.cannot_flag":
     "Der Server hat das Markieren der Mails zum Löschen nicht "
     + "akzeptiert.",

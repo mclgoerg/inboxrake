@@ -215,6 +215,16 @@ PUSH_INVALID = "push_invalid"
 PUSH_UNKNOWN = "push_unknown"
 PUSH_HTTP = "push_http"
 PUSH_UNREACHABLE = "push_unreachable"
+# AI assistants (backend/assistanttokens.py, the token API)
+ASSISTANTS_OFF = "assistants_off"
+LEVEL_NOT_AVAILABLE = "level_not_available"
+ASSISTANT_TOKEN_NAME = "assistant_token_name"
+ASSISTANT_TOKEN_ACCOUNTS = "assistant_token_accounts"
+ASSISTANT_TOKEN_EXPIRY = "assistant_token_expiry"
+ASSISTANT_TOKEN_CAP = "assistant_token_cap"
+ASSISTANT_TOKEN_LEVEL = "assistant_token_level"
+ASSISTANT_TOKEN_LIMIT = "assistant_token_limit"
+ASSISTANT_TOKEN_UNKNOWN = "assistant_token_unknown"
 # password login (backend/auth.py LoginThrottle): n= minutes to wait
 LOGIN_THROTTLED = "login_throttled"
 # the sign-in page's other refusals (backend/main.py): a wrong password, and
@@ -228,6 +238,15 @@ FOLDER_ERROR_CODES = frozenset({
     MAILTO_UNSAFE, MOVE_FOREIGN_DELETED, *UNSUB_CODES, LOGIN_THROTTLED,
     LOGIN_WRONG_PASSWORD, LOGIN_PASSWORD_OFF, LOGIN_SSO_OFF,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
+    ASSISTANTS_OFF,
+    LEVEL_NOT_AVAILABLE,
+    ASSISTANT_TOKEN_NAME,
+    ASSISTANT_TOKEN_ACCOUNTS,
+    ASSISTANT_TOKEN_EXPIRY,
+    ASSISTANT_TOKEN_CAP,
+    ASSISTANT_TOKEN_LEVEL,
+    ASSISTANT_TOKEN_LIMIT,
+    ASSISTANT_TOKEN_UNKNOWN,
     NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
@@ -5642,8 +5661,11 @@ def _search_row(m: dict) -> dict:
             "size": m["size"], "seen": m["seen"]}
 
 
-def search_mails(query: str, limit: int = 500, acc=None) -> list[dict]:
-    """Substring search over the scanned index (subject + sender)."""
+def search_mails(query: str, limit: int = 500, acc=None,
+                 subjects: bool = True) -> list[dict]:
+    """Substring search over the scanned index (subject + sender).
+    `subjects=False` matches the sender only (the MCP endpoint, for a token
+    that may not see subject lines: a match on one would reveal its text)."""
     acc = acc or accounts.get()
     q = query.strip().lower()
     if len(q) < 2:
@@ -5651,7 +5673,7 @@ def search_mails(query: str, limit: int = 500, acc=None) -> list[dict]:
     out = []
     with acc.lock:
         for m in acc.index.values():
-            if q in m["subject"].lower() or q in m["addr"] \
+            if (subjects and q in m["subject"].lower()) or q in m["addr"] \
                     or q in m["name"].lower():
                 out.append(_search_row(m))
     out.sort(key=lambda m: -m["ts"])

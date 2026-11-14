@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend import accounts as accountsmod   # noqa: E402
 from backend import auditlog as auditlogmod   # noqa: E402
+from backend import assistanttokens          # noqa: E402
 from backend import auth as authmod            # noqa: E402
 from backend import autoscan as autoscanmod   # noqa: E402
 from backend import config as cfgmod          # noqa: E402
@@ -49,6 +50,8 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(cfgmod, "STATS_PATH", tmp_path / "stats.json")
     monkeypatch.setattr(cfgmod, "SERVER_PATH", tmp_path / "server.json")
     monkeypatch.setattr(tenantsmod, "TENANTS_DIR", tmp_path / "tenants")
+    monkeypatch.setattr(assistanttokens, "TOKENS_PATH",
+                        tmp_path / "assistant_tokens.json")
     monkeypatch.setattr(verdictstore, "VERDICTS_PATH",
                         tmp_path / "verdicts.json")
     monkeypatch.setattr(aisortstore, "AI_SORT_PATH", tmp_path / "ai_sort.json")

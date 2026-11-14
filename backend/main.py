@@ -22,12 +22,14 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                RedirectResponse, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 from pydantic import BaseModel, Field
 
 from . import FORMER_ENV
 from . import accounts as accountsmod
 from . import aifilter
 from . import aihelper
+from . import assistanttokens
 from . import auditlog
 from . import auth as authmod
 from . import bodyindex
@@ -45,6 +47,7 @@ from . import labelstore
 from . import knowledgestore
 from . import knownsenders
 from . import mailops
+from . import mcpserver
 from . import oauthflow
 from . import overview as overviewmod
 from . import pinstore
@@ -306,11 +309,15 @@ async def _cross_site_guard(request: Request, call_next):
     if cfgmod.load_server()["auth"]["mode"] == "none":
         host = request.headers.get("host", "")
         if not webguard.host_allowed(host):
-            if path.startswith("/api/"):
+            if path.startswith("/api/") or path == "/mcp":
                 return JSONResponse(
                     {"detail": "host_not_allowed",
                      "host": host[:100]}, status_code=403)
             return HTMLResponse(webguard.blocked_page(host), status_code=403)
+    # The MCP endpoint is for programs: a browser page of another origin
+    # must not reach it (spec: an invalid Origin gets 403).
+    if path == "/mcp" and not webguard.origin_allowed(request.headers):
+        return JSONResponse({"detail": "origin_not_allowed"}, status_code=403)
     if webguard.cross_site_write(request.method, path, request.headers):
         return JSONResponse({"detail": "cross_site_request"}, status_code=403)
     return await call_next(request)
@@ -854,6 +861,87 @@ def post_push_presence(body: PushPresenceBody):
     """The device says whether it is looking at the app (no pushes then)."""
     _push(webpush.set_presence, body.endpoint, body.visible)
     return {"ok": True}
+
+
+# ------------------------------------------------------------ AI assistants
+
+class AssistantTokenBody(BaseModel):
+    name: str = Field(max_length=200)
+    accounts: list[str] = Field(max_length=50)
+    level: str = Field("read", max_length=20)
+    subjects: bool = False
+    expires_days: int | None = 90        # 30 / 90 / null = never
+    daily_cap: int = assistanttokens.DAILY_CAP_DEFAULT
+
+
+def _assistants_gate() -> None:
+    if demomod.enabled():
+        raise HTTPException(500, mailops.coded(mailops.NOT_IN_DEMO))
+
+
+@app.get("/api/assistants/tokens")
+def get_assistant_tokens():
+    """This workspace's assistant access tokens (never their secrets), the
+    admin cap and the levels a token can have right now."""
+    _assistants_gate()
+    return {"tokens": assistanttokens.list_for(tenants.current().id),
+            "access": cfgmod.assistant_access(),
+            "levels": list(assistanttokens.AVAILABLE_LEVELS)}
+
+
+@app.post("/api/assistants/tokens")
+def post_assistant_token(body: AssistantTokenBody):
+    """Create a token; the secret is in this answer and nowhere else."""
+    _assistants_gate()
+    if cfgmod.assistant_access() == "off":
+        raise HTTPException(403, mailops.ASSISTANTS_OFF)
+    known = accountsmod.names()
+    if any(a not in known for a in body.accounts):
+        raise HTTPException(400, assistanttokens.BAD_ACCOUNTS)
+    try:
+        rec, secret = assistanttokens.create(
+            tenants.current().id, body.name, body.accounts, body.level,
+            body.subjects, body.expires_days, body.daily_cap)
+    except assistanttokens.TokenError as exc:
+        raise HTTPException(400, str(exc))
+    for account in rec["accounts"]:
+        auditlog.record("assistant_token_created", account=account,
+                        label=rec["name"])
+    return {"token": rec, "secret": secret}
+
+
+@app.delete("/api/assistants/tokens/{token_id}")
+def delete_assistant_token(token_id: str):
+    """Revoke one token: it stops working at once."""
+    _assistants_gate()
+    try:
+        rec = assistanttokens.revoke(tenants.current().id, token_id)
+    except assistanttokens.TokenError as exc:
+        raise HTTPException(404, str(exc))
+    for account in rec["accounts"]:
+        auditlog.record("assistant_token_revoked", account=account,
+                        label=rec["name"])
+    return {"ok": True}
+
+
+@app.api_route("/mcp", methods=["GET", "POST", "DELETE", "PUT", "PATCH"],
+               include_in_schema=False)
+async def mcp_endpoint(request: Request):
+    """The MCP endpoint for AI assistants (backend/mcpserver.py). It
+    authenticates by bearer token itself: no session cookie counts here."""
+    try:
+        body = await request.body() if request.method == "POST" else b""
+    except ClientDisconnect:        # a chunked body over the limit
+        return JSONResponse({"detail": bodylimit.TOO_LARGE},
+                            status_code=413)
+    reply = await run_in_threadpool(
+        mcpserver.handle, request.method, request.headers,
+        request.url.query, body)
+    headers = {**reply.headers, "Cache-Control": "no-store"}
+    if reply.body is None:
+        return Response(status_code=reply.status, headers=headers)
+    return JSONResponse(reply.body, status_code=reply.status,
+                        headers=headers)
 
 
 @app.get("/api/group")
@@ -2257,6 +2345,8 @@ def post_config(body: dict, request: Request, response: Response):
         pinstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
+        assistanttokens.drop_account(tenants.current().id,
+                                     str(body["delete_account"]))
         rulesmod.drop_account(str(body["delete_account"]))
         autoscanmod.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
@@ -2283,6 +2373,7 @@ def post_config(body: dict, request: Request, response: Response):
             dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)
             auditlog.rename_account(old, new)
+            assistanttokens.rename_account(tenants.current().id, old, new)
             logging.getLogger("inboxrake.mail").info(
                 "account renamed: %r -> %r (state, verdicts, unsubscribes, "
                 "replied, stats, rules, presets, digest, known senders, "
@@ -2310,7 +2401,10 @@ if STATIC_DIR.is_dir():
     def spa(path: str):
         # An unknown API path must be a real 404, not the HTML shell with
         # a 200 - clients and probes would otherwise take it for success.
-        if path == "api" or path.startswith("api/"):
+        # The same for /.well-known (MCP clients probe for OAuth metadata
+        # there after a 401) and any stray /mcp path.
+        if path in ("api", "mcp", ".well-known") or path.startswith(
+                ("api/", "mcp/", ".well-known/")):
             raise HTTPException(404, "not found")
         # Containment check: `path` is percent-decoded and may contain ../ or
         # be absolute (pathlib discards the left side then) - never serve

@@ -1861,6 +1861,10 @@ export const EN: Record<string, string> = {
   "audit.h.undo_one": "Undo: restored 1\u00a0mail",
   "audit.h.digest_sent": "Sent the activity report to {to}",
   "audit.act.digest_sent": "Activity report sent",
+  "audit.h.assistant_token_created": "Created the AI assistant access token “{name}”",
+  "audit.h.assistant_token_revoked": "Revoked the AI assistant access token “{name}”",
+  "audit.act.assistant_token_created": "Assistant token created",
+  "audit.act.assistant_token_revoked": "Assistant token revoked",
   "audit.act.trash": "Trashed",
   "audit.act.archive": "Archived",
   "audit.act.move": "Moved",
@@ -2484,6 +2488,24 @@ export const EN: Record<string, string> = {
   "ferr.push_unknown": "This device is not registered for notifications - turn them off and on again.",
   "ferr.push_http": "The push service answered with error {status}.",
   "ferr.push_unreachable": "The push service could not be reached from the server.",
+  "ferr.assistants_off":
+    "AI assistant access is switched off on this server - an administrator can turn it on in Settings.",
+  "ferr.level_not_available":
+    "This access level is not available yet.",
+  "ferr.assistant_token_name":
+    "Give the access token a name of up to 60 characters.",
+  "ferr.assistant_token_accounts":
+    "Choose at least one of your accounts.",
+  "ferr.assistant_token_expiry":
+    "Choose 30 days, 90 days or no expiry.",
+  "ferr.assistant_token_cap":
+    "The daily limit must be between 100 and 10,000 mails.",
+  "ferr.assistant_token_level":
+    "Unknown access level.",
+  "ferr.assistant_token_limit":
+    "There are already 20 access tokens - revoke one first.",
+  "ferr.assistant_token_unknown":
+    "This access token does not exist (any more).",
   "ferr.cannot_flag":
     "The server did not accept marking the mails for deletion.",
   "ferr.cannot_expunge": "The server did not remove the marked mails.",

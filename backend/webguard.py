@@ -105,6 +105,22 @@ def blocked_page(host: str) -> str:
         "(Settings &rarr; Server).</p></body>")
 
 
+def origin_allowed(headers) -> bool:
+    """The MCP endpoint's Origin rule (spec: an Origin that is present and
+    invalid gets 403). Clients that are not browsers send none; a browser
+    page may only reach us from our own origin (the Host the request used,
+    or the one the reverse proxy forwarded)."""
+    origin = headers.get("origin")
+    if origin is None:
+        return True
+    origin_host = urlsplit(origin).netloc.lower()
+    allowed = {(headers.get("host") or "").strip().lower()}
+    for part in (headers.get("x-forwarded-host") or "").split(","):
+        allowed.add(part.strip().lower())
+    allowed.discard("")
+    return bool(origin_host) and origin_host in allowed
+
+
 def cross_site_write(method: str, path: str, headers) -> bool:
     """True when a state-changing /api/ request comes from another site.
     No Sec-Fetch-Site and no Origin (curl, scripts) is allowed."""
