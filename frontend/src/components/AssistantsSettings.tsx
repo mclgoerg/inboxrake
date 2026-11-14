@@ -1,4 +1,4 @@
-import { Bot, Check, CircleCheck, Copy, Eye, EyeOff, Info, ListChecks,
+import { Bot, Check, ChevronRight, CircleCheck, Copy, Eye, EyeOff, Info, ListChecks,
   Plus, ExternalLink, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState,
   type ReactNode } from "react";
@@ -447,8 +447,9 @@ const tokenSummary = (tk: AssistantToken): string =>
 
 /* ------------------------------ token rows ------------------------------ */
 
-function TokenRow({ tk, busy, onRevoke }: {
+function TokenRow({ tk, busy, onRevoke, onOpen }: {
   tk: AssistantToken; busy: boolean; onRevoke: () => void;
+  onOpen: () => void;
 }) {
   const expired = isExpired(tk);
   const ago = fmtAgo(tk.last_used);
@@ -485,13 +486,131 @@ function TokenRow({ tk, busy, onRevoke }: {
           </div>
         )}
       </div>
-      <Button size="sm" disabled={busy}
+      {/* tablets and up: the detail has its own button; phones: a chevron
+          takes the place of the inline Revoke (Revoke lives in the detail) */}
+      <Button size="sm" variant="secondary" className="max-sm:hidden"
+        aria-label={t("assistants.details", { name: tk.name })}
+        onClick={onOpen}>{t("assistants.detail_open")}</Button>
+      <Button size="sm" disabled={busy} className="max-sm:hidden"
         aria-label={t(expired ? "assistants.remove_named"
           : "assistants.revoke_named", { name: tk.name })}
         variant={expired ? "secondary" : "danger-quiet"} onClick={onRevoke}>
         {t(expired ? "assistants.remove" : "assistants.revoke")}
       </Button>
+      <Button size="icon" variant="quiet" className="sm:hidden"
+        label={t("assistants.details", { name: tk.name })} onClick={onOpen}>
+        <ChevronRight size={18} aria-hidden />
+      </Button>
     </li>
+  );
+}
+
+/* ------------------------------ token detail ------------------------------ */
+
+/** Today's numbers of one token, its daily limit (saved on change) and the
+ *  way to its steps in Activity and to Revoke. */
+function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
+  tk: AssistantToken; busy: boolean; onClose: () => void;
+  onChanged: () => Promise<unknown>; onShowSteps?: () => void;
+  onRevoke: () => void;
+}) {
+  const titleId = useId();
+  const toast = useToast();
+  const [cap, setCap] = useState(tk.daily_cap);
+  const saved = useRef(tk.daily_cap);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const ago = fmtAgo(tk.last_used);
+  const act = tk.level === "act";
+  // the stepper changes at once; the server hears about it a moment later
+  const change = (v: number) => {
+    setCap(v);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      if (v === saved.current) return;
+      try {
+        await api.setAssistantCap(tk.id, v);
+        saved.current = v;
+        toast.show(t("assistants.detail_saved"), { variant: "success" });
+        await onChanged();
+      } catch (e: any) {
+        setCap(saved.current);
+        toast.show(String(e?.message ?? e), { variant: "error" });
+      }
+    }, 600);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const row = "flex items-center justify-between gap-3 border-b border-line "
+    + "py-2.5";
+  return (
+    <Modal size="sm" labelledBy={titleId} onClose={onClose}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div id={titleId} className="type-meta uppercase tracking-wide
+          text-muted">
+          {t("assistants.detail_title", { name: tk.name })}
+        </div>
+        <dl className="mt-2">
+          <div className={row}>
+            <dt className="type-body">{t("assistants.detail_calls")}</dt>
+            <dd className="type-body tabular-nums text-muted">
+              {tk.calls_today}</dd>
+          </div>
+          {act && (
+            <div className={row}>
+              <dt className="type-body">{t("assistants.detail_moved")}</dt>
+              <dd className="type-body tabular-nums text-muted">
+                {t("assistants.detail_moved_of", {
+                  n: tk.mails_today.toLocaleString(getLang()),
+                  cap: tk.daily_cap.toLocaleString(getLang()) })}</dd>
+            </div>
+          )}
+          {tk.level !== "read" && (
+            <div className={row}>
+              <dt className="type-body">{t("assistants.detail_proposals")}</dt>
+              <dd className="type-body text-muted">
+                {tk.proposals ? t("assistants.detail_proposals_n",
+                  { n: tk.proposals })
+                  : t("assistants.detail_proposals_none")}</dd>
+            </div>
+          )}
+          <div className={row}>
+            <dt className="type-body">{t("assistants.detail_last")}</dt>
+            <dd className="type-body text-muted">
+              {ago ? t("assistants.detail_ago", { ago })
+                : t("assistants.detail_never")}</dd>
+          </div>
+          {act && (
+            <div className={row}>
+              <dt className="min-w-0">
+                <span className="block type-body">{t("assistants.daily")}</span>
+                <span className="block type-meta text-muted">
+                  {t("assistants.detail_daily_sub")}</span>
+              </dt>
+              <dd>
+                <Stepper value={cap} onChange={change} min={100} max={10000}
+                  step={100} label={t("assistants.daily")}
+                  format={(n) => n.toLocaleString(getLang())} />
+              </dd>
+            </div>
+          )}
+        </dl>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          {onShowSteps ? (
+            <button type="button" className={LINK_ACCENT}
+              onClick={onShowSteps}>
+              {t("assistants.detail_steps")}</button>
+          ) : <span />}
+          <Button size="sm" variant="danger-quiet" disabled={busy}
+            onClick={onRevoke}>
+            {t(isExpired(tk) ? "assistants.remove" : "assistants.revoke")}
+          </Button>
+        </div>
+      </div>
+      <div className="flex justify-end border-t border-line px-4 py-3 sm:px-5">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          {t("assistants.detail_close")}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -536,7 +655,7 @@ function NotifyGroup({ cfg, email, onEmail }: {
 }
 
 export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
-  onNotifyEmail, tokens, tokensError, reload }: {
+  onNotifyEmail, tokens, tokensError, reload, onShowSteps }: {
   cfg: Config; admin: boolean;
   /** The cap as staged (the admin's control); the saved one is in `cfg`. */
   access: AssistantAccess;
@@ -546,6 +665,8 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   onNotifyEmail: (on: boolean) => void;
   tokens: AssistantToken[] | null; tokensError: string;
   reload: () => Promise<unknown>;
+  /** Open Activity narrowed to what assistants did. */
+  onShowSteps?: () => void;
 }) {
   const demo = useDemo();
   const toast = useToast();
@@ -561,6 +682,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   const [dialog, setDialog] = useState<{ token: AssistantToken;
     secret: string } | "new" | null>(null);
   const [busyId, setBusyId] = useState("");
+  const [detailId, setDetailId] = useState<string | null>(null);
   const list = tokens ?? [];
   // After a dialog closes the "New access token…" control takes focus (the
   // empty state's button is gone once the list reloads, so look it up then).
@@ -605,12 +727,12 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
     onAccess(next);
   };
 
-  const revoke = async (tk: AssistantToken) => {
+  const revoke = async (tk: AssistantToken): Promise<boolean> => {
     if (!isExpired(tk) && !await confirmDialog({
       title: t("assistants.revoke_title", { name: tk.name }),
       body: t("assistants.revoke_body"),
       confirmLabel: t("assistants.revoke"), tone: "danger",
-    })) return;
+    })) return false;
     setBusyId(tk.id);
     try {
       await api.revokeAssistantToken(tk.id);
@@ -622,6 +744,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
     }
     setBusyId("");
     await reload();
+    return true;
   };
 
   const revokeAll = async () => {
@@ -643,7 +766,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   const control = admin && (
     <DemoFieldset>
       <SettingsGroup header={t("assistants.group.server")}>
-        <SettingsRow label={t("assistants.access")}
+        <SettingsRow label={t("assistants.access")} stackOnPhone
           sub={t("assistants.access_sub")}>
           <Segmented<AssistantAccess> role="radio"
             label={t("assistants.access")} value={shown}
@@ -733,7 +856,8 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
           <ul className="divide-y divide-line">
             {list.map((tk) => (
               <TokenRow key={tk.id} tk={tk} busy={busyId === tk.id}
-                onRevoke={() => void revoke(tk)} />
+                onRevoke={() => void revoke(tk)}
+                onOpen={() => setDetailId(tk.id)} />
             ))}
           </ul>
           <button type="button" onClick={() => setDialog("new")}
@@ -780,6 +904,16 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
         onCreated={(token, secret) => {
           setDialog({ token, secret });
           void reload();
+        }} />
+    )}
+    {detailId && list.find((tk) => tk.id === detailId) && (
+      <TokenDetail tk={list.find((tk) => tk.id === detailId)!}
+        busy={busyId === detailId} onClose={() => setDetailId(null)}
+        onChanged={reload}
+        onShowSteps={onShowSteps && (() => { setDetailId(null); onShowSteps(); })}
+        onRevoke={async () => {
+          const tk = list.find((x) => x.id === detailId)!;
+          if (await revoke(tk)) setDetailId(null);
         }} />
     )}
     {dialog && dialog !== "new" && (

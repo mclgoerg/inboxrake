@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { Archive, BellOff, ChevronDown, ChevronsUpDown,
+import { Archive, BellOff, Bot, ChevronDown, ChevronsUpDown,
   Download, FolderInput, Info, ListChecks, Mail, Paperclip, Pencil,
   MoreHorizontal, RefreshCw, Search, Sparkles, Star,
   Undo2, User, Wand2, X }
@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode }
   from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
+import { assistantActorName } from "./activity";
 import { disablePush, pushMode, syncPush, watchPresence } from "./push";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { openProposals } from "./proposals";
@@ -72,7 +73,7 @@ import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
   KnowledgeStored,
-  StatusMsg, TrashResp, FolderRole, UndoIdent } from "./types";
+  StatusMsg, TrashResp, FolderRole, UndoIdent, UndoEntry, AuditBy } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -239,6 +240,8 @@ export default function App() {
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  // Activity opened narrowed to one kind (Settings > a token's steps)
+  const [activityBy, setActivityBy] = useState<AuditBy>("all");
   const [triageOpen, setTriageOpen] = useState(false);
   // Folders panel (Junk | Trash): which folder it opens on, null = closed
   const [foldersOpen, setFoldersOpen] = useState<FolderRole | null>(null);
@@ -485,7 +488,8 @@ export default function App() {
      toasts (a page load or account switch that finds an old "done" stays
      quiet); a scan error is the one exception, nothing else shows it. */
   const seenJobs = useRef<{ scan?: string; d?: string; a?: string;
-    u?: string; undo: string[]; seq?: number; maxSeq?: number } | null>(null);
+    u?: string; undo: string[]; aundo: string[]; seq?: number;
+    maxSeq?: number } | null>(null);
   const startToast = useRef<{ unsub?: number }>({});
   // The unsubscribe sheet (see UnsubscribeSheet): one for every way to
   // unsubscribe. `sheetRun` = the bulk run it is following, whose end it
@@ -500,6 +504,7 @@ export default function App() {
     const prev = seenJobs.current;
     const { delete: del, ai, unsub } = state;
     const ids = state.undo.map(undoId);
+    const aids = (state.assistant_undo ?? []).map(undoId);
     // `seq` only grows. A response carrying a LOWER one is older than what
     // we already saw (a slow full-state fetch landing after newer ticks):
     // its delete state and undo list are ignored, never toasted.
@@ -512,6 +517,8 @@ export default function App() {
       d: staleDel ? prev!.d : del.status,
       a: ai.status, u: unsub?.status, maxSeq,
       undo: staleDel || (del.status === "running" && prev) ? prev!.undo : ids,
+      aundo: staleDel || (del.status === "running" && prev)
+        ? prev!.aundo : aids,
       // Job sequence number BEFORE the current job (backend `delete.seq`,
       // bumped when a job starts). The baseline is set to "running" right
       // after a start call succeeds, so a stale tick still in flight from
@@ -528,8 +535,29 @@ export default function App() {
     const fresh = staleDel ? []
       : state.undo.filter((u) => !u.quiet && u.action !== "move_contents"
         && !prev.undo.includes(undoId(u)));
+    // An AI assistant's moves have their own list: the same toast, worded
+    // with the token's name.
+    const freshA = staleDel ? []
+      : (state.assistant_undo ?? []).filter((u) => !u.quiet
+        && !prev.aundo.includes(undoId(u)));
     const newJob = del.seq != null && prev.seq != null && del.seq > prev.seq;
-    if (!staleDel && del.status !== "running" && (fresh.length || newJob
+    if (!staleDel && del.status !== "running" && freshA.length
+        && !fresh.length) {
+      const entry = freshA.length === 1 ? freshA[0] : undefined;
+      const n = freshA.reduce((a, u) => a + u.count, 0);
+      const names = [...new Set(freshA.map(
+        (u) => assistantActorName(u.actor ?? "") ?? ""))].join(", ");
+      const kind = freshA.every((u) => u.action === "trash") ? "trash"
+        : freshA.every((u) => u.action === "archive") ? "archive" : "move";
+      toast.show(t(`toast.assistant_${kind}`, { name: names, n }), {
+        variant: "success",
+        action: entry ? { label: t("Undo"), onClick: () => {
+          const i = stateRef.current?.assistant_undo?.findIndex(
+            (u) => undoId(u) === undoId(entry)) ?? -1;
+          if (i >= 0) void undo(i, false, true);
+        } } : undefined,
+      });
+    } else if (!staleDel && del.status !== "running" && (fresh.length || newJob
         || (del.seq == null && del.status !== prev.d))) {
       if (del.status === "error") {
         notify(t("err.generic", { msg: errorText(del.error) }), "error");
@@ -1064,8 +1092,9 @@ export default function App() {
     try { await api.clearNotice(RESTORE_NOTICES); } catch { /* cosmetic */ }
   };
 
-  const undo = async (index: number, ask = true) => {
-    const entry = stateRef.current?.undo[index];
+  const undo = async (index: number, ask = true, assistant = false) => {
+    const entry = (assistant ? stateRef.current?.assistant_undo
+      : stateRef.current?.undo)?.[index];
     if (!entry) return;
     const generation = accountGeneration.current;
     const undoAccount = stateRef.current?.account;
@@ -1079,7 +1108,9 @@ export default function App() {
     if (generation !== accountGeneration.current) return;
     setPending(t("Restoring…"));
     try {
-      const r = await api.undo(-1, identity, undoAccount);
+      const r = assistant
+        ? await api.undo(-1, identity, undoAccount, true)
+        : await api.undo(-1, identity, undoAccount);
       if (generation !== accountGeneration.current) return;
       // The result is a toast, where the user is: the backend's notice for
       // it sits above the list (see the filter at the Notice) and would
@@ -2341,35 +2372,56 @@ export default function App() {
   // What can still be undone (the status line's Undo menu), as cards under
   // the Activity page's month summary: the newest three, the rest behind
   // "Show all".
-  const undoHistory = state?.undo.length ? (
+  const undoCard = (u: UndoEntry, i: number, assistant: boolean) => (
+    <div key={undoId(u)} className="flex items-center gap-3 rounded-card
+      bg-accent-tint px-3 py-3">
+      {assistant ? <Bot size={18} aria-hidden className="shrink-0" />
+        : <Undo2 size={18} aria-hidden className="shrink-0" />}
+      <span className="min-w-0 flex-1">
+        <span className="block type-body-mobile font-medium md:type-body">
+          {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
+        </span>
+        <span className="block type-meta text-muted">
+          {assistant && `${assistantActorName(u.actor ?? "") ?? ""} · `}
+          {assistant ? "" : undoLabel(u)}
+          {fmtAgo(u.ts) && `${assistant ? "" : " · "}${t("scan.ago",
+            { ago: fmtAgo(u.ts) })}`}
+        </span>
+      </span>
+      <Button variant="primary" size="sm" disabled={deleting}
+        onClick={() => undo(i, true, assistant)}>
+        {t("Undo")}
+      </Button>
+    </div>
+  );
+  const mine = state?.undo ?? [];
+  const theirs = state?.assistant_undo ?? [];
+  const undoHistory = mine.length || theirs.length ? (
     <section aria-label={t("activity.undo")} className="flex flex-col gap-2">
-      {[...state.undo].map((u, i) => ({ u, i })).reverse()
-        .slice(0, undoAll ? undefined : 3).map(({ u, i }) => (
-        <div key={undoId(u)} className="flex items-center gap-3 rounded-card
-          bg-accent-tint px-3 py-3">
-          <Undo2 size={18} aria-hidden className="shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className="block type-body-mobile font-medium md:type-body">
-              {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
-            </span>
-            <span className="block type-meta text-muted">
-              {undoLabel(u)}
-              {fmtAgo(u.ts) && ` · ${t("scan.ago", { ago: fmtAgo(u.ts) })}`}
-            </span>
-          </span>
-          <Button variant="primary" size="sm" disabled={deleting}
-            onClick={() => undo(i)}>
-            {t("Undo")}
+      {mine.length > 0 && (<>
+        <SectionLabel className="px-1">
+          {theirs.length ? t("activity.undo_head_yours")
+            : t("activity.undo")}</SectionLabel>
+        {[...mine].map((u, i) => ({ u, i })).reverse()
+          .slice(0, undoAll ? undefined : 3)
+          .map(({ u, i }) => undoCard(u, i, false))}
+        {mine.length > 3 && (
+          <Button variant="quiet" size="sm" className="self-start"
+            aria-expanded={undoAll} onClick={() => setUndoAll((v) => !v)}>
+            {undoAll ? t("activity.undo_fewer")
+              : t("activity.undo_all", { n: mine.length })}
           </Button>
-        </div>
-      ))}
-      {state.undo.length > 3 && (
-        <Button variant="quiet" size="sm" className="self-start"
-          aria-expanded={undoAll} onClick={() => setUndoAll((v) => !v)}>
-          {undoAll ? t("activity.undo_fewer")
-            : t("activity.undo_all", { n: state.undo.length })}
-        </Button>
-      )}
+        )}
+      </>)}
+      {theirs.length > 0 && (<>
+        <SectionLabel className="flex flex-wrap justify-between gap-x-2 px-1">
+          <span>{t("activity.undo_head_assistant")}</span>
+          <span className="font-normal normal-case">
+            {t("activity.undo_assistant_hint")}</span>
+        </SectionLabel>
+        {[...theirs].map((u, i) => ({ u, i })).reverse()
+          .map(({ u, i }) => undoCard(u, i, true))}
+      </>)}
     </section>
   ) : null;
 
@@ -2416,10 +2468,13 @@ export default function App() {
     )}
     {toolShown("activity") && (
       <AuditLogPanel key={account} rules={state?.rules ?? []}
-        above={undoHistory} reloadKey={undoRev}
+        above={undoHistory} reloadKey={undoRev} initialBy={activityBy}
         groups={state?.groups.sender}
         onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
-        onClose={() => closeTool(() => setAuditOpen(false))} />
+        onClose={() => closeTool(() => {
+          setAuditOpen(false);
+          setActivityBy("all");
+        })} />
     )}
     {(shownTool === "junk" || shownTool === "trash") && state && (
       <FoldersPanel
@@ -2871,11 +2926,12 @@ export default function App() {
         )}
       </div>
       {!bare && !(phone && !overview && !running
-        && !(state?.undo.length)) && <div className="mb-1 flex min-h-5
+        && !(state?.undo.length) && !(state?.assistant_undo?.length)) && <div className="mb-1 flex min-h-5
         items-center justify-between gap-2 type-meta text-muted">
         {/* Phone Senders / All mails pages: the summary sits in the toolbar above. */}
         <div>{phone && !overview && !running ? null : statusLine()}</div>
-        {(state?.undo.length ?? 0) > 0 && !deleting && (
+        {((state?.undo.length ?? 0) + (state?.assistant_undo?.length ?? 0)) > 0
+          && !deleting && (
           <span className="relative shrink-0">
             <Button variant="quiet" size="sm" className="whitespace-nowrap"
               onClick={() => setUndoOpen(!undoOpen)}>
@@ -2887,6 +2943,11 @@ export default function App() {
               <span className="absolute right-0 top-8 z-(--z-dropdown) block
                 w-72 rounded-card border border-line bg-panel p-1
                 shadow-popover">
+                {(state!.assistant_undo?.length ?? 0) > 0
+                  && state!.undo.length > 0 && (
+                  <span className="block px-2 pb-0.5 pt-1 type-meta
+                    font-medium text-muted">{t("activity.undo_yours")}</span>
+                )}
                 {[...state!.undo].map((u, i) => ({ u, i })).reverse()
                   .map(({ u, i }) => (
                   <button key={i}
@@ -2895,6 +2956,26 @@ export default function App() {
                     onClick={() => undo(i)}>
                     {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
                     {" "}- <span className="text-muted">{undoLabel(u)}</span>
+                  </button>
+                ))}
+                {(state!.assistant_undo?.length ?? 0) > 0 && (
+                  <span className="block px-2 pb-0.5 pt-1 type-meta
+                    font-medium text-muted">
+                    {t("activity.undo_assistant")}</span>
+                )}
+                {[...(state!.assistant_undo ?? [])]
+                  .map((u, i) => ({ u, i })).reverse().map(({ u, i }) => (
+                  <button key={`a${i}`}
+                    className="flex w-full items-center gap-1 rounded px-2
+                      py-1.5 text-left hover:bg-panel2"
+                    onClick={() => undo(i, true, true)}>
+                    <Bot size={14} aria-hidden className="shrink-0
+                      text-info-fg" />
+                    <span className="min-w-0">
+                      {actionVerb(u.action)}: {t("n.mails", { n: u.count })}
+                      {" "}- <span className="text-muted">
+                        {assistantActorName(u.actor ?? "") ?? ""}</span>
+                    </span>
                   </button>
                 ))}
               </span>
@@ -3093,6 +3174,7 @@ export default function App() {
           onClose={closeSettings}
           onAddAccount={() => setWizard({ mode: "add", previous: account })}
           onSaved={setCfg}
+          onShowAssistantSteps={() => { setActivityBy("assistants"); openTool("activity"); }}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
           scanState={state ? { account: state.account, status: state.status,
             scanned_ts: state.scanned_ts, error: state.error } : null}

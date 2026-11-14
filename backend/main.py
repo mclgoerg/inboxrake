@@ -885,7 +885,17 @@ def get_assistant_tokens():
     """This workspace's assistant access tokens (never their secrets), the
     admin cap and the levels a token can have right now."""
     _assistants_gate()
-    return {"tokens": assistanttokens.list_for(tenants.current().id),
+    # proposals of each token still waiting for the user (the token detail)
+    waiting: dict[str, int] = {}
+    for r in rulesmod.load_rules():
+        by = r.get("proposed_by")
+        if r.get("origin") == "mcp" and r.get("mode") == "report" \
+                and isinstance(by, dict):
+            waiting[by.get("token_id", "")] = \
+                waiting.get(by.get("token_id", ""), 0) + 1
+    return {"tokens": [{**t, "proposals": waiting.get(t["id"], 0)}
+                       for t in assistanttokens.list_for(
+                           tenants.current().id)],
             "access": cfgmod.assistant_access(),
             "levels": list(assistanttokens.AVAILABLE_LEVELS)}
 
@@ -1500,9 +1510,10 @@ def get_wrapped(year: int | None = Query(None, ge=1970, le=9999),
 
 @app.get("/api/audit")
 def get_audit(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500),
-             account: str | None = Query(None)):
+             account: str | None = Query(None),
+             by: str = Query("all", pattern="^(all|user|rules|assistants)$")):
     acc = _acc(account)
-    return auditlog.load(acc.name, offset, limit)
+    return auditlog.load(acc.name, offset, limit, by)
 
 
 @app.get("/api/audit/export")

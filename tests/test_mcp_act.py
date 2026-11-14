@@ -683,3 +683,34 @@ def test_protect_refuses_bare_endings_and_public_suffixes(mbox):
     assert not cfgmod.load_config().get("protected")
     assert ok(secret, "protect_senders", {
         "senders": ["@shop.example", "a@x.example"]})["added"] == 2
+
+
+def test_the_audit_log_can_be_filtered_by_who_did_it(mbox):
+    auditlog.record("trash", actor="user", account="default", count=1)
+    auditlog.record("trash", actor="rule:r1", account="default", count=2)
+    auditlog.record("trash", actor="mcp:Laptop", account="default", count=3)
+    auditlog.record("protect", actor="mcp:Other", account="default", count=1)
+
+    def counts(by):
+        r = client.get("/api/audit", params={"by": by, "limit": 10}).json()
+        assert r["total"] == len(r["entries"])
+        return sorted(e["count"] for e in r["entries"])
+    assert counts("user") == [1] and counts("rules") == [2]
+    assert counts("assistants") == [1, 3] and len(counts("all")) == 4
+    assert client.get("/api/audit", params={"by": "x"}).status_code == 422
+
+
+def test_the_token_list_counts_proposals_still_waiting(mbox):
+    from backend import rules as rulesmod
+    secret = act_token()
+    ident = token_id()
+    assert client.get("/api/assistants/tokens").json()["tokens"][0][
+        "proposals"] == 0
+    res = ok(secret, "propose_rule", {
+        "name": "Old shop mail", "query": "from:@shop.example",
+        "action": "trash"})
+    assert res["origin"] == "mcp"
+    assert client.get("/api/assistants/tokens").json()["tokens"][0][
+        "proposals"] == 1
+    assert [r for r in rulesmod.load_rules()
+            if r.get("proposed_by", {}).get("token_id") == ident]

@@ -752,10 +752,14 @@ Cursor, VS Code, Claude Desktop, Codex, ...) can ask questions about your
 mailbox: who fills it, what a filter would catch, which rules exist. An admin
 switches it on (off by default); each user creates access tokens limited to
 chosen accounts, with subject lines opt-in and an expiry. It sees metadata
-only - no bodies, no own tags - and cannot send, unsubscribe, delete or
-move anything. With the Propose level it can also suggest a cleanup rule: it
+only - no bodies, no own tags - and cannot send, unsubscribe or delete for
+good. With the Propose level it can also suggest a cleanup rule: it
 waits in Rules, in report mode, until you approve it, and you are told about
-a new one (toast, notification, optional email). What it reads goes to the
+a new one (toast, notification, optional email). With the opt-in Act level it
+can also move mail (Trash, Archive, a folder, mark read) from a preview, never
+protected or pinned mail, up to a daily limit per token, every step undoable
+and shown "by <token>" in Activity; only use that with an assistant you watch.
+What it reads goes to the
 assistant's own AI provider. See [Connect an AI assistant](assistants.md) for
 setup and the privacy notes.
 

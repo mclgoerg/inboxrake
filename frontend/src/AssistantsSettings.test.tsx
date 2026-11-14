@@ -20,6 +20,9 @@ let listed: AssistantToken[] = [];
 let freshCfg: Config | null = null;   // what GET /api/config answers (counts)
 const created: any[] = [];
 const revoked: string[] = [];
+const caps: [string, number][] = [];
+let capResult: () => Promise<unknown> = () => Promise.resolve({ token: {} });
+let steps = 0;
 const saveCalls: any[] = [];
 let createResult: () => Promise<unknown> = () => Promise.resolve({
   token: tok({ id: "new", name: "New one" }), secret: "irk_AbCd" + "x".repeat(43) });
@@ -28,6 +31,8 @@ vi.mock("./api", () => ({
     assistantTokens: () => Promise.resolve({ tokens: listed, access: "act",
       levels: ["read"] }),
     createAssistantToken: (b: unknown) => { created.push(b); return createResult(); },
+    setAssistantCap: (id: string, v: number) => { caps.push([id, v]);
+      return capResult(); },
     revokeAssistantToken: (id: string) => { revoked.push(id);
       return Promise.resolve({ ok: true }); },
     getConfig: () => freshCfg ? Promise.resolve(freshCfg)
@@ -86,7 +91,8 @@ function Settings({ cfg, section: first = "assistants" }: {
   goto = setSection;
   return <SettingsPage cfg={cfg} account="proton" section={section}
     onSection={setSection} onClose={() => {}} onAddAccount={() => {}}
-    onSaved={() => {}} onAccountsChanged={() => {}} />;
+    onSaved={() => {}} onAccountsChanged={() => {}}
+    onShowAssistantSteps={() => { steps += 1; }} />;
 }
 const show = async (cfg: Config, section: SettingsSection | null = "assistants") => {
   render(<Settings cfg={cfg} section={section} />);
@@ -97,6 +103,8 @@ beforeEach(() => {
   listed = [];
   freshCfg = null;
   created.length = 0; revoked.length = 0; saveCalls.length = 0;
+  caps.length = 0; steps = 0;
+  capResult = () => Promise.resolve({ token: {} });
   createResult = () => Promise.resolve({
     token: tok({ id: "new", name: "New one" }),
     secret: "irk_AbCd" + "x".repeat(43) });
@@ -570,3 +578,72 @@ test("German: the notify group", async () => {
   expect(screen.getByRole("switch", { name: "E-Mail" })).toBeTruthy();
   expect(screen.getByText("Browser-Benachrichtigung")).toBeTruthy();
 });
+
+
+/* ------------------------------- token detail ------------------------------- */
+
+const openDetail = async (name = "Claude Code · laptop") => {
+  fireEvent.click(screen.getAllByRole("button", { name: `Details of ${name}` })[0]);
+  return await screen.findByText(`${name} · today`);
+};
+
+test("a token opens its numbers for today: calls, mails against the cap, " +
+  "proposals, last call and the daily limit", async () => {
+  listed = [tok({ level: "act", mails_today: 160, proposals: 1 })];
+  await show(baseCfg(ALL));
+  await openDetail();
+  const dlg = screen.getByText("Claude Code · laptop · today").closest("div")!
+    .parentElement!;
+  const text = dlg.textContent!;
+  expect(text).toMatch(/Calls\s*38/);
+  expect(text).toMatch(/Mails moved\s*160 of 2,000/);
+  expect(text).toMatch(/Proposals\s*1 waiting/);
+  expect(text).toMatch(/Last call4m ago/);
+  expect(within(dlg).getByRole("spinbutton", { name: "Daily limit" })
+    .getAttribute("aria-valuenow")).toBe("2000");
+  expect(text).toMatch(/100-10,000 mails a day; each step at most 500/);
+});
+
+test("a Read token's detail has no mails-moved or daily-limit rows", async () => {
+  listed = [tok()];
+  await show(baseCfg(READ_ONLY));
+  await openDetail();
+  expect(screen.queryByText("Mails moved")).toBeNull();
+  expect(screen.queryByText("Daily limit")).toBeNull();
+  expect(screen.queryByText("Proposals")).toBeNull();
+});
+
+test("the daily limit stepper saves through PATCH a moment after the last " +
+  "click, and a refusal puts the old value back", async () => {
+  listed = [tok({ level: "act", daily_cap: 2000 })];
+  await show(baseCfg(ALL));
+  await openDetail();
+  const plus = screen.getByRole("button", { name: "Increase" });
+  fireEvent.click(plus); fireEvent.click(plus);
+  await waitFor(() => expect(caps).toEqual([["t1", 2200]]),
+    { timeout: 3000 });
+  await screen.findByText("Daily limit saved");
+  // refused: the stepper goes back
+  capResult = () => Promise.reject(new Error("no"));
+  fireEvent.click(screen.getByRole("button", { name: "Decrease" }));
+  await waitFor(() => expect(caps.length).toBe(2), { timeout: 3000 });
+  await waitFor(() => expect(screen.getByRole("spinbutton",
+    { name: "Daily limit" }).getAttribute("aria-valuenow")).toBe("2200"));
+});
+
+test("the detail links to the assistants' steps in Activity and holds Revoke",
+  async () => {
+    listed = [tok({ level: "act" })];
+    await show(baseCfg(ALL));
+    await openDetail();
+    fireEvent.click(screen.getByRole("button", {
+      name: "Show its steps in Activity" }));
+    expect(steps).toBe(1);
+    await expectNoDialog();
+    await openDetail();
+    const dlg = screen.getByText("Claude Code · laptop · today").closest("div")!
+      .parentElement!;
+    fireEvent.click(within(dlg).getByRole("button", { name: "Revoke" }));
+    await pressDialog("Revoke");
+    await waitFor(() => expect(revoked).toEqual(["t1"]));
+  });

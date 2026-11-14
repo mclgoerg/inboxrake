@@ -201,7 +201,8 @@ are internal and may change in any release.
 
 For AI assistants there is a separate, supported door: [MCP endpoint](assistants.md) at `/mcp` (off until an admin switches it on,
 one access token per assistant, metadata only; an assistant can propose
-cleanup rules, but only you can approve them). It is meant for assistants,
+cleanup rules, but only you can approve them, and with the opt-in Act level it
+can move mail within strict, undoable limits). It is meant for assistants,
 not as a general-purpose API.
 
 </details>

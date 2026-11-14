@@ -429,6 +429,30 @@ test("Activity: restoring an undo entry reloads the audit log below",
   await waitFor(() => expect(auditCalls).toBeGreaterThan(before));
 });
 
+test("Activity: assistant steps are their own group, undone from the " +
+  "assistant list", async () => {
+  mount();
+  state = { ...state, undo: [{ action: "archive", count: 2, label: "Older",
+    ts: 1, id: "u1" }],
+    assistant_undo: [{ action: "trash", count: 30, label: "30 selected mails",
+      ts: 2, id: "a1", actor: "mcp:Claude Code · laptop", token: "tk" }] };
+  fireEvent.click(within(await side()).getByRole("button", { name: /Activity/ }));
+  const region = await screen.findByRole("region", { name: "Undo history" });
+  expect(within(region).getByText("Can be undone · your steps")).toBeTruthy();
+  expect(within(region).getByText("Can be undone · assistant steps")).toBeTruthy();
+  expect(within(region).getByText("own list - never pushes yours out"))
+    .toBeTruthy();
+  expect(within(region).getByText(/Claude Code · laptop/)).toBeTruthy();
+  const undoButtons = within(region).getAllByRole("button", { name: "Undo" });
+  expect(undoButtons.length).toBe(2);
+  fireEvent.click(undoButtons[1]);               // the assistant's step
+  await findDialog();
+  await pressDialog("Restore");
+  await waitFor(() => expect(undoCall).toHaveBeenCalledWith(
+    -1, { ts: 2, label: "30 selected mails", count: 30, id: "a1" },
+    expect.anything(), true));
+});
+
 test("the back link of a tool modal names the page it returns to", async () => {
   mount(false);
   goto("#/overview");

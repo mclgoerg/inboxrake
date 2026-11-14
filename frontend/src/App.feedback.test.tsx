@@ -483,3 +483,48 @@ test("a cleanup delete refused because the scan is stale says rescan",
       "Error: The “INBOX” folder changed on the server - rescan and try "
       + "again.")).toBeTruthy();
   });
+
+/* ------------------------------ AI assistants ------------------------------ */
+
+const bot = (ts: number, count: number, action = "trash") => ({
+  id: `a${ts}`, ts, label: `${count} selected mails`, count, action,
+  actor: "mcp:Claude Code · laptop", token: "tk1" });
+
+test("an assistant's move toasts with its name and an Undo for ITS list",
+  async () => {
+    await mount({ ...baseState });
+    tick({ delete: job("done", { moved: 120 }) as any,
+      assistant_undo: [bot(5, 120)] });
+    const msg = await screen.findByText(
+      "Claude Code · laptop moved 120 mails to Trash");
+    // not also announced as the generic "Moved N" toast
+    expect(screen.queryByText(/^Moved 120/)).toBeNull();
+    fireEvent.click(within(msg.parentElement!)
+      .getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(undoApi).toHaveBeenCalledWith(-1,
+      { ts: 5, label: "120 selected mails", count: 120, id: "a5" },
+      "proton", true));
+  });
+
+test("an assistant's archive reads 'archived'; an old step found on load " +
+  "stays quiet", async () => {
+  await mount({ ...baseState, assistant_undo: [bot(1, 3)] });
+  expect(screen.queryByText(/moved|archived/)).toBeNull();
+  tick({ delete: job("done", { moved: 9 }) as any,
+    assistant_undo: [bot(1, 3), bot(2, 9, "archive")] });
+  expect(await screen.findByText(
+    "Claude Code · laptop archived 9 mails")).toBeTruthy();
+});
+
+test("the status line's Undo menu lists the user's and the assistants' " +
+  "steps in two sections, each undoing its own list", async () => {
+  await mount({ ...baseState, undo: [entry(1, 5)],
+    assistant_undo: [bot(2, 8)] });
+  fireEvent.click(await screen.findByRole("button", { name: /Undo/ }));
+  expect(screen.getByText("Your steps")).toBeTruthy();
+  expect(screen.getByText("Assistant steps")).toBeTruthy();
+  fireEvent.click(screen.getByText(/Move to Trash: 8 mails/));
+  await pressDialog(/Restore/);
+  await waitFor(() => expect(undoApi).toHaveBeenCalledWith(-1,
+    { ts: 2, label: "8 selected mails", count: 8, id: "a2" }, "proton", true));
+});

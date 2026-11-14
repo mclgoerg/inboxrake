@@ -194,7 +194,8 @@ type SecDef = {
 
 export function SettingsPage({ cfg, account, section, routeAccount = null,
   onSection, onClose, onAddAccount, onSaved, onAccountsChanged, aiAnswers = 0,
-  onKnowledgeChanged = () => {}, scanState = null, controlRef }: {
+  onKnowledgeChanged = () => {}, scanState = null, controlRef,
+  onShowAssistantSteps }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
   /** The open section (`#/settings/<section>`); null = the phone root list
@@ -210,6 +211,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   /** Leave the page (Esc / Back from the root): the app returns where the
    *  user came from. */
   onClose: () => void;
+  /** AI assistants: open Activity narrowed to what assistants did. */
+  onShowAssistantSteps?: () => void;
   onSaved: (c: Config) => void;
   /** Filed senders: AI answers of the active account that apply now (what
    *  "Keep all AI answers" would keep) and a refresh after a change. */
@@ -1705,7 +1708,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       notifyEmail={f.assistantNotifyEmail}
       onNotifyEmail={(v) => put("assistantNotifyEmail", v)}
       tokens={assistantTokens.tokens} tokensError={assistantTokens.error}
-      reload={assistantTokens.load} />
+      reload={assistantTokens.load}
+      onShowSteps={onShowAssistantSteps} />
   );
 
   const backupBody = (
