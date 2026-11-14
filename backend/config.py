@@ -1100,6 +1100,7 @@ def masked_config(cfg: dict) -> dict:
     if admin:
         server = load_server()
         out["assistants"]["options"] = list(ASSISTANT_ACCESS)
+        out["assistants"]["token_counts"] = assistanttokens.level_counts()
         out["auth"].update({
             "password_set": bool(cfg["auth"]["password_hash"]),
             "admin": cfg["auth"].get("admin") or "",

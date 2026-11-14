@@ -863,7 +863,9 @@ export interface Config {
    *  today; `options` (the cap's values) is for the admin only. Absent from
    *  older backends. */
   assistants?: { access: AssistantAccess; levels?: AssistantLevel[];
-    options?: AssistantAccess[] };
+    options?: AssistantAccess[];
+    /** Admin only: unexpired tokens of EVERY user per level (numbers only). */
+    token_counts?: Record<AssistantLevel, number> };
   ai_stats: {
     input_tokens: number;
     output_tokens: number;

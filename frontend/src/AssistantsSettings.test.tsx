@@ -17,6 +17,7 @@ const tok = (over: Partial<AssistantToken> = {}): AssistantToken => ({
   last_used: NOW - 240, calls_today: 38, mails_today: 0, ...over });
 
 let listed: AssistantToken[] = [];
+let freshCfg: Config | null = null;   // what GET /api/config answers (counts)
 const created: any[] = [];
 const revoked: string[] = [];
 const saveCalls: any[] = [];
@@ -29,6 +30,8 @@ vi.mock("./api", () => ({
     createAssistantToken: (b: unknown) => { created.push(b); return createResult(); },
     revokeAssistantToken: (id: string) => { revoked.push(id);
       return Promise.resolve({ ok: true }); },
+    getConfig: () => freshCfg ? Promise.resolve(freshCfg)
+      : Promise.reject(new Error("offline")),
     saveConfig: (b: unknown) => { saveCalls.push(b); return new Promise(() => {}); },
     folders: () => new Promise(() => {}),
   },
@@ -38,7 +41,7 @@ vi.mock("./api", () => ({
 import { SettingsPage } from "./components/SettingsPage";
 import { setupSnippet } from "./components/AssistantsSettings";
 import { DialogProvider, ToastProvider } from "./components/ui";
-import { cancelDialog, expectNoDialog, pressDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setDemo } from "./demoMode";
 import { setLang } from "./i18n";
 import type { SettingsSection } from "./nav";
@@ -92,6 +95,7 @@ const show = async (cfg: Config, section: SettingsSection | null = "assistants")
 
 beforeEach(() => {
   listed = [];
+  freshCfg = null;
   created.length = 0; revoked.length = 0; saveCalls.length = 0;
   createResult = () => Promise.resolve({
     token: tok({ id: "new", name: "New one" }),
@@ -145,13 +149,16 @@ test("turning access off asks first and names what stops", async () => {
   listed = [tok(), tok({ id: "t2", name: "Cursor" })];
   await show(baseCfg(READ_ONLY));
   await screen.findByText("Cursor");
+  freshCfg = baseCfg({ ...READ_ONLY,
+    token_counts: { read: 7, propose: 0, act: 0 } });
   fireEvent.click(screen.getByRole("radio", { name: "Off" }));
   await pressDialog("Cancel").catch(() => {});
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   fireEvent.click(screen.getByRole("radio", { name: "Off" }));
   const dlg = await screen.findByText("Turn assistant access off?");
   expect(dlg).toBeTruthy();
-  expect(screen.getByText(/2 tokens stop working/)).toBeTruthy();
+  // the cap is server-wide: the number is every user's, not this list's
+  expect(screen.getByText(/7 tokens stop working/)).toBeTruthy();
   await pressDialog("Turn off");
   await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeTruthy());
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -171,11 +178,22 @@ test("all three levels: Off / Read and propose / Also act; lowering Act asks", a
   expect(within(levels).getByText(/Never, at any level:/)).toBeTruthy();
   // an Act token shows how much of its daily cap it used
   expect(await screen.findByText(/160 of 2,000 mails moved today/)).toBeTruthy();
+  freshCfg = baseCfg({ ...ALL, token_counts: { read: 1, propose: 0, act: 3 } });
   fireEvent.click(within(group).getByRole("radio", { name: "Read and propose" }));
   await screen.findByText("Lower assistant access to “Read and propose”?");
-  expect(screen.getByText(/1 token has Act/)).toBeTruthy();
+  expect(screen.getByText(/3 tokens have Act/)).toBeTruthy();
   await cancelDialog();
   await expectNoDialog();
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+test("lowering is measured against the saved cap: raise, then lower again asks nothing", async () => {
+  await show(baseCfg({ ...ALL, access: "read_propose" }));
+  const group = screen.getByRole("radiogroup", { name: "Assistant access" });
+  fireEvent.click(within(group).getByRole("radio", { name: "Also act" }));
+  fireEvent.click(within(group).getByRole("radio", { name: "Read and propose" }));
+  await expectNoDialog();
+  // back at the saved value: nothing staged
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 });
 
@@ -209,13 +227,13 @@ test("a token row says everything board 90 does; Revoke names it and asks", asyn
   expect(screen.getByText("Used 4m ago · 38 calls today")).toBeTruthy();
   expect(screen.getByText(/irk_2bXe… .*subject lines off · expired/)).toBeTruthy();
   expect(screen.getByText("Never used · 0 calls today")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revoke Claude Code · laptop" }));
   await screen.findByText("Revoke “Claude Code · laptop”?");
   await cancelDialog();
   await expectNoDialog();
   expect(revoked).toEqual([]);
   // the expired one is removed without a question
-  fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove Open WebUI" }));
   await waitFor(() => expect(revoked).toEqual(["t2"]));
 });
 
@@ -223,7 +241,7 @@ test("Revoke asks, then revokes and reloads the list", async () => {
   listed = [tok()];
   await show(baseCfg(READ_ONLY));
   await screen.findByText("Claude Code · laptop");
-  fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Revoke Claude Code/ }));
   listed = [];
   await pressDialog("Revoke");
   await waitFor(() => expect(revoked).toEqual(["t1"]));
@@ -236,7 +254,11 @@ test("Revoke all… counts the tokens and revokes every one", async () => {
   await screen.findByText("Cursor");
   fireEvent.click(screen.getByRole("button", { name: "Revoke all…" }));
   await screen.findByText("Revoke all 2 access tokens?");
-  await pressDialog("Revoke all");
+  // verb + count, a danger dialog: Cancel has the focus
+  const dlg = await findDialog();
+  expect(within(dlg).getByRole("button", { name: "Cancel" })).toBe(document.activeElement);
+  expect(within(dlg).getByRole("button", { name: "Revoke all (2)" })).toBeTruthy();
+  await pressDialog("Revoke all (2)");
   await waitFor(() => expect(revoked.sort()).toEqual(["t1", "t2"]));
 });
 
@@ -277,6 +299,8 @@ test("Read only: the dialog has no level choice, just the one line", async () =>
 });
 
 test("creating a token sends the choices, then shows the secret once with setup lines", async () => {
+  const spies = (["log", "info", "warn", "error", "debug"] as const)
+    .map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
   const writeText = vi.fn(() => Promise.resolve());
   Object.assign(navigator, { clipboard: { writeText } });
   await show(baseCfg(READ_ONLY));
@@ -310,6 +334,18 @@ test("creating a token sends the choices, then shows the secret once with setup 
   // copied: Done closes without a question
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(screen.queryByText("Token “New one” created")).toBeNull());
+  // the secret is gone: not on the page, not stored, not logged
+  expect(screen.queryByDisplayValue(secret)).toBeNull();
+  expect(document.body.textContent).not.toContain(secret);
+  expect(document.body.innerHTML).not.toContain(secret);
+  for (const store of [localStorage, sessionStorage])
+    expect(JSON.stringify({ ...store })).not.toContain(secret);
+  for (const spy of spies)
+    expect(JSON.stringify(spy.mock.calls)).not.toContain(secret);
+  spies.forEach((spy) => spy.mockRestore());
+  // focus goes to the New access token… control, not <body>
+  await waitFor(() => expect(document.activeElement)
+    .toBe(newTokenButton()));
 });
 
 test("closing the created dialog without copying asks 'Did you copy the token?'", async () => {
@@ -391,7 +427,7 @@ test("a user with access on gets the quiet note about the admin's cap, no contro
 test("demo: the hint, the section as it would be, nothing to click", async () => {
   setDemo(true);
   await show(baseCfg({ ...READ_ONLY, access: "off" }));
-  expect(screen.getByText("Not available in the demo.")).toBeTruthy();
+  expect(screen.getByText(/Not in the demo: an assistant can.t reach a demo that runs inside your browser/)).toBeTruthy();
   expect(screen.getByText("Connect")).toBeTruthy();
   expect(screen.getByText("No access tokens yet")).toBeTruthy();
   expect(newTokenButton().closest("fieldset")!.disabled).toBe(true);
@@ -403,7 +439,7 @@ test("German: du, and the same canonical shape", async () => {
   await show(baseCfg(READ_ONLY));
   expect(screen.getByRole("radiogroup", { name: "Assistenten-Zugriff" })).toBeTruthy();
   expect(await screen.findByText("Zuletzt vor 4 Min. genutzt · 38 Aufrufe heute")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Widerrufen" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Claude Code · laptop widerrufen" })).toBeTruthy();
   expect(screen.getByText("Neues Zugriffs-Token…")).toBeTruthy();
 });
 

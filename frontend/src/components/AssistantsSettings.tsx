@@ -8,7 +8,7 @@ import { fmtAgo, fmtTs } from "../lib";
 import { useDemo } from "../demoMode";
 import type { AssistantAccess, AssistantLevel, AssistantToken,
   Config } from "../types";
-import { Button, Checkbox, confirmDialog, DemoFieldset, DemoHint, EmptyState,
+import { Button, Checkbox, confirmDialog, DemoFieldset, EmptyState,
   Field, IconTile, Input, LINK_ACCENT, Loading, Modal, Notice, ProgressBar,
   RadioRow, Segmented, SettingsGroup, SettingsRow, Stepper, Switch, Tag,
   tabPanelProps, type TagTone, useToast } from "./ui";
@@ -485,6 +485,8 @@ function TokenRow({ tk, busy, onRevoke }: {
         )}
       </div>
       <Button size="sm" disabled={busy}
+        aria-label={t(expired ? "assistants.remove_named"
+          : "assistants.revoke_named", { name: tk.name })}
         variant={expired ? "secondary" : "danger-quiet"} onClick={onRevoke}>
         {t(expired ? "assistants.remove" : "assistants.revoke")}
       </Button>
@@ -518,15 +520,33 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
     secret: string } | "new" | null>(null);
   const [busyId, setBusyId] = useState("");
   const list = tokens ?? [];
+  // After a dialog closes the "New access token…" control takes focus (the
+  // empty state's button is gone once the list reloads, so look it up then).
+  const refocus = useRef(false);
+  const closeDialog = () => { refocus.current = true; setDialog(null); };
+  useEffect(() => {
+    if (!refocus.current || dialog) return;
+    const el = document.querySelector<HTMLElement>("[data-new-token]");
+    if (el) { el.focus(); refocus.current = false; }
+  }, [dialog, tokens]);
   const live = list.filter((tk) => !isExpired(tk));
 
   const change = async (next: AssistantAccess) => {
     if (next === shown) return;
-    if (ACCESS_RANK[next] < ACCESS_RANK[shown]) {
-      const acting = live.filter((tk) => tk.level === "act").length;
+    // lowering is measured against what the server has now: raising and
+    // lowering again before Save changes nothing, so it asks nothing
+    if (ACCESS_RANK[next] < ACCESS_RANK[shownAccess(saved, levels)]) {
+      // the cap is server-wide: count the tokens of every user, as of now
+      const fresh = await api.getConfig().catch(() => null);
+      const counts = fresh?.assistants?.token_counts
+        ?? cfg.assistants?.token_counts;
+      const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0)
+        : live.length;
+      const acting = counts ? counts.act ?? 0
+        : live.filter((tk) => tk.level === "act").length;
       const off = next === "off";
       const bullets = off
-        ? (live.length ? [t("assistants.lower.off_tokens", { n: live.length }),
+        ? (total ? [t("assistants.lower.off_tokens", { n: total }),
           t("assistants.lower.off_back")] : [])
         : (acting ? [t("assistants.lower.act_tokens", { n: acting })] : []);
       if (!await confirmDialog({
@@ -566,7 +586,8 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
     if (!await confirmDialog({
       title: t("assistants.revoke_all_title", { n: list.length }),
       body: t("assistants.revoke_all_body"),
-      confirmLabel: t("assistants.revoke_all_confirm"), tone: "danger",
+      confirmLabel: t("assistants.revoke_all_confirm", { n: list.length }),
+      tone: "danger",
     })) return;
     const res = await Promise.allSettled(
       list.map((tk) => api.revokeAssistantToken(tk.id)));
@@ -610,7 +631,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
 
   const cap = topLevel(saved, levels);
   const newButton = (
-    <Button onClick={() => setDialog("new")}
+    <Button onClick={() => setDialog("new")} data-new-token
       className="inline-flex items-center gap-1.5">
       <Plus size={16} aria-hidden />{t("assistants.new")}
     </Button>
@@ -620,7 +641,11 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
 
   return (<>
     {intro}
-    <DemoHint className="mb-3" />
+    {demo && (
+      <Notice className="mb-3" icon={<Info size={16} aria-hidden />}>
+        {t("assistants.demo")}
+      </Notice>
+    )}
     {control}
     {!admin && !demo && cap && (
       <Notice className="mb-4" icon={<Info size={16} aria-hidden />}>
@@ -670,7 +695,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
             ))}
           </ul>
           <button type="button" onClick={() => setDialog("new")}
-            className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5
+            data-new-token className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5
               text-left text-accent transition-colors hover:bg-panel2">
             <IconTile tone="accent"><Plus size={16} /></IconTile>
             <span className="type-body">{t("assistants.new")}</span>
@@ -703,7 +728,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
 
     {dialog === "new" && (
       <NewTokenDialog accounts={accounts} levels={levels} access={saved}
-        onClose={() => setDialog(null)}
+        onClose={closeDialog}
         onCreated={(token, secret) => {
           setDialog({ token, secret });
           void reload();
@@ -711,7 +736,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, tokens,
     )}
     {dialog && dialog !== "new" && (
       <CreatedDialog token={dialog.token} secret={dialog.secret} url={url}
-        onClose={() => setDialog(null)} />
+        onClose={closeDialog} />
     )}
   </>);
 }
