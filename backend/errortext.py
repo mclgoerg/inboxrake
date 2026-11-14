@@ -182,6 +182,24 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The push service answered with error {status}.',
     'push_unreachable':
         'The push service could not be reached from the server.',
+    'assistants_off':
+        'AI assistant access is switched off on this server - an administrator can turn it on in Settings.',
+    'level_not_available':
+        'This access level is not available yet.',
+    'assistant_token_name':
+        'Give the access token a name of up to 60 characters.',
+    'assistant_token_accounts':
+        'Choose at least one of your accounts.',
+    'assistant_token_expiry':
+        'Choose 30 days, 90 days or no expiry.',
+    'assistant_token_cap':
+        'The daily limit must be between 100 and 10,000 mails.',
+    'assistant_token_level':
+        'Unknown access level.',
+    'assistant_token_limit':
+        'There are already 20 access tokens - revoke one first.',
+    'assistant_token_unknown':
+        'This access token does not exist (any more).',
     'data_not_writable':
         'Inboxrake cannot write to its data folder. On the host, give the user ID 1000 ownership of the folder mounted at /data (chown -R 1000:1000 <folder>) or start the container with --user, then restart it.',
 }

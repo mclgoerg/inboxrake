@@ -189,6 +189,16 @@ const ERROR_CODES: Record<string, string> = {
   push_unknown: "ferr.push_unknown",
   push_http: "ferr.push_http",
   push_unreachable: "ferr.push_unreachable",
+  // AI assistant access tokens (backend/assistanttokens.py)
+  assistants_off: "ferr.assistants_off",
+  level_not_available: "ferr.level_not_available",
+  assistant_token_name: "ferr.assistant_token_name",
+  assistant_token_accounts: "ferr.assistant_token_accounts",
+  assistant_token_expiry: "ferr.assistant_token_expiry",
+  assistant_token_cap: "ferr.assistant_token_cap",
+  assistant_token_level: "ferr.assistant_token_level",
+  assistant_token_limit: "ferr.assistant_token_limit",
+  assistant_token_unknown: "ferr.assistant_token_unknown",
 };
 
 /** The role names a `role=` param stands for (translated). */

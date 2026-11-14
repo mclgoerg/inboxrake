@@ -1,0 +1,53 @@
+name: MCP interop
+
+# Dev-only check that the official MCP Python SDK client can talk to our
+# /mcp endpoint (both protocol legs). The SDK is pinned with hashes in
+# scripts/mcp-interop/requirements.txt, outside the runtime and dev lockfiles,
+# and is never installed anywhere else. Path-filtered and NOT a required
+# check: a SDK release that changes behaviour should show up here, not block
+# unrelated PRs.
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "scripts/mcp-interop.py"
+      - "scripts/mcp-interop/**"
+      - "scripts/demo.py"
+      - ".github/workflows/mcp-interop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "scripts/mcp-interop.py"
+      - "scripts/mcp-interop/**"
+      - "scripts/demo.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.15"
+
+      - name: Install the backend and, separately, the SDK client
+        run: |
+          pip install --require-hashes -r backend/requirements.txt
+          python -m venv "$RUNNER_TEMP/mcp-sdk"
+          "$RUNNER_TEMP/mcp-sdk/bin/pip" install --require-hashes \
+            -r scripts/mcp-interop/requirements.txt
+
+      - name: List and call every tool with the SDK client
+        run: >
+          "$RUNNER_TEMP/mcp-sdk/bin/python" scripts/mcp-interop.py
+          --server-python python

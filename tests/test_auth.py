@@ -182,13 +182,27 @@ def test_every_api_route_is_locked_without_a_session():
             continue
         for method in (getattr(route, "methods", None) or {"GET"}) \
                 - {"HEAD", "OPTIONS"}:
-            url = path.replace("{rule_id}", "deadbeef")
+            url = path.replace("{rule_id}", "deadbeef").replace(
+                "{token_id}", "deadbeef")
             r = c.request(method, url,
                           json={} if method in ("POST", "PUT") else None)
             assert r.status_code == 401, f"{method} {path}: {r.status_code}"
             assert r.json() == {"detail": "login required"}
             checked.append(f"{method} {path}")
     assert len(checked) >= 25, checked
+    # the new assistant routes are in the walk (not silently skipped)
+    assert "GET /api/assistants/tokens" in checked
+    assert "POST /api/assistants/tokens" in checked
+    assert "DELETE /api/assistants/tokens/{token_id}" in checked
+
+    # /mcp is outside /api/ and authenticates itself: with the admin cap on
+    # it answers 401 + a Bearer challenge to anything but a token - a
+    # session cookie (here: a signed-in browser) does not count
+    cfgmod.update_config({"assistants": {"access": "read_propose"}})
+    r = c.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+    assert r.status_code == 401
+    assert r.headers["www-authenticate"].startswith("Bearer")
+    assert c.get("/.well-known/oauth-protected-resource").status_code == 404
 
     # the public probe leaks nothing but the mode
     assert set(c.get("/api/auth").json()) == {"mode", "authed"}

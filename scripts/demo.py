@@ -57,6 +57,7 @@ os.environ.update(
     AUDIT_LOG_PATH=str(DATA / "audit_log.jsonl"),
     SNAPSHOT_DIR=str(DATA),
     SERVER_PATH=str(DATA / "server.json"),
+    ASSISTANT_TOKENS_PATH=str(DATA / "assistant_tokens.json"),
     TENANTS_DIR=str(DATA / "tenants"),
     SESSION_SECRET_PATH=str(DATA / "session_secret"),
     PINS_PATH=str(DATA / "pinned_mails.json"),
