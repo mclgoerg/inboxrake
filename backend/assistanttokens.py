@@ -73,10 +73,9 @@ def _read() -> list[dict]:
 def _write(tokens: list[dict]) -> None:
     TOKENS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = TOKENS_PATH.with_suffix(".tmp")
-    # What is stored is the SHA-256 of a 256-bit random secret (a password
-    # hash would add nothing: there is no guessable input) and its 4-character
-    # display prefix - never the secret itself.
-    # codeql[py/clear-text-storage-sensitive-data]
+    # Only the SHA-256 of a 256-bit random secret (a password hash would add
+    # nothing: there is no guessable input) and a display prefix are stored,
+    # never the secret itself.
     tmp.write_text(json.dumps({"tokens": tokens}, indent=1))
     tmp.chmod(0o600)
     tmp.replace(TOKENS_PATH)
@@ -118,11 +117,14 @@ def create(tenant_id: str, name: str, accounts: list[str], level: str = "read",
     if isinstance(daily_cap, bool) or not isinstance(daily_cap, int) \
             or not DAILY_CAP_MIN <= daily_cap <= DAILY_CAP_MAX:
         raise TokenError(BAD_CAP)
-    secret = PREFIX + base64.urlsafe_b64encode(
-        secrets.token_bytes(32)).decode().rstrip("=")
+    # The 4 characters the list shows ("irk_ab12") are drawn on their own and
+    # made the start of the secret, so the stored prefix is not a slice of it.
+    shown = secrets.token_urlsafe(3)
+    secret = PREFIX + (shown + base64.urlsafe_b64encode(
+        secrets.token_bytes(32)).decode().rstrip("="))[:43]
     now = int(time.time())
     rec = {"id": secrets.token_hex(6), "tenant": tenant_id, "name": name,
-           "prefix": secret[:len(PREFIX) + 4], "hash": _hash(secret),
+           "prefix": PREFIX + shown, "hash": _hash(secret),
            "accounts": accounts, "level": level, "subjects": bool(subjects),
            "daily_cap": daily_cap, "created": now,
            "expires": now + expires_days * 86400 if expires_days else None,
