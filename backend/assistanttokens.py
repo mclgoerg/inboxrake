@@ -83,7 +83,7 @@ def _write(tokens: list[dict]) -> None:
 
 def public(rec: dict) -> dict:
     """A record as the API lists it: everything but the hash."""
-    out = {k: v for k, v in rec.items() if k != "hash"}
+    out = {k: v for k, v in rec.items() if k not in ("hash", "owner")}
     if out.get("usage_day") != _today():
         out["calls_today"] = 0
         out["mails_today"] = 0
@@ -97,9 +97,12 @@ def _today() -> str:
 
 def create(tenant_id: str, name: str, accounts: list[str], level: str = "read",
            subjects: bool = False, expires_days: int | None = None,
-           daily_cap: int = DAILY_CAP_DEFAULT) -> tuple[dict, str]:
+           daily_cap: int = DAILY_CAP_DEFAULT,
+           owner: str = "") -> tuple[dict, str]:
     """A new token of one tenant: (public record, secret). The caller has
-    checked that `accounts` exist in the tenant. Raises TokenError."""
+    checked that `accounts` exist in the tenant. `owner` is the creating
+    session's subject: the endpoint re-checks that this person could still
+    sign in and reach the tenant. Raises TokenError."""
     name = " ".join("".join(
         c if c.isprintable() else " " for c in str(name or "")).split())
     if not name or len(name) > NAME_MAX:
@@ -117,13 +120,15 @@ def create(tenant_id: str, name: str, accounts: list[str], level: str = "read",
     if isinstance(daily_cap, bool) or not isinstance(daily_cap, int) \
             or not DAILY_CAP_MIN <= daily_cap <= DAILY_CAP_MAX:
         raise TokenError(BAD_CAP)
-    # The 4 characters the list shows ("irk_ab12") are drawn on their own and
-    # made the start of the secret, so the stored prefix is not a slice of it.
+    # The secret is `irk_` + 4 random characters (the display prefix, drawn
+    # first and kept as such) + 32 random bytes in base64url: 256 bits stay
+    # unknown after the prefix.
     shown = secrets.token_urlsafe(3)
-    secret = PREFIX + (shown + base64.urlsafe_b64encode(
-        secrets.token_bytes(32)).decode().rstrip("="))[:43]
+    secret = PREFIX + shown + base64.urlsafe_b64encode(
+        secrets.token_bytes(32)).decode().rstrip("=")
     now = int(time.time())
-    rec = {"id": secrets.token_hex(6), "tenant": tenant_id, "name": name,
+    rec = {"id": secrets.token_hex(6), "tenant": tenant_id, "owner": owner,
+           "name": name,
            "prefix": PREFIX + shown, "hash": _hash(secret),
            "accounts": accounts, "level": level, "subjects": bool(subjects),
            "daily_cap": daily_cap, "created": now,

@@ -86,7 +86,13 @@ def _account(ctx: Ctx, name: Optional[str]):
 
 
 def _groups(acc, grouping: str) -> dict:
-    return mailops.public_state(acc)["groups"][grouping]
+    """The groups of one grouping, as the filter sees them. Their `tags` are
+    only what the keyword rules said (`auto_tags`): the user's own tags
+    (Edit labels) never leave the server, neither in a row nor through what
+    a `tag:` filter matches."""
+    return {k: {**g, "tags": g.get("auto_tags", g["tags"])}
+            for k, g in mailops.public_state(acc)["groups"][
+                grouping].items()}
 
 
 # ------------------------------------------------------------------- models
@@ -369,6 +375,19 @@ def _list_accounts(ctx: Ctx, args: NoInput) -> dict:
     return {"accounts": out}
 
 
+def _categories(senders: list[dict]) -> list[dict]:
+    """Mails and bytes per automatic category (user tags excluded), biggest
+    first."""
+    cats: dict[str, dict] = {}
+    for g in senders:
+        for tag in g.get("auto_tags", g["tags"]):
+            c = cats.setdefault(tag, {"tag": clean(tag, 40), "count": 0,
+                                      "size": 0})
+            c["count"] += g["count"]
+            c["size"] += g["size"]
+    return sorted(cats.values(), key=lambda c: (-c["count"], c["tag"]))[:15]
+
+
 def _mailbox_overview(ctx: Ctx, args: AccountIn) -> dict:
     acc = _account(ctx, args.account)
     stats = mailops.index_stats(acc)
@@ -388,8 +407,7 @@ def _mailbox_overview(ctx: Ctx, args: AccountIn) -> dict:
         "by_month": [{"month": m["month"], "count": m["count"],
                       "size": m["size"], "unread": m["unread"]}
                      for m in stats["months_all"][-24:]],
-        "categories": [{"tag": clean(c["tag"], 40), "count": c["count"],
-                        "size": c["size"]} for c in stats["categories"][:15]],
+        "categories": _categories(senders),
         "top_senders_by_size": [
             {"sender": clean(g["key"], 254), "label": clean(g["label"]),
              "count": g["count"], "size": g["size"]} for g in top],

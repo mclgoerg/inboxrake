@@ -22,8 +22,11 @@ route in main.py stays a thin shim and the browser demo can import it."""
 from __future__ import annotations
 
 import base64
+import collections
 import json
 import logging
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -55,6 +58,14 @@ UNSUPPORTED_VERSION = -32022
 # how long a client may reuse tools/list and server/discover: short, because
 # the admin cap and the token's level can change what they say
 TTL_MS = 60_000
+
+# Per token: this many requests in any window of RATE_WINDOW seconds (the
+# spec asks servers to rate-limit tool invocations). In memory, so it restarts
+# with the process; independent of the daily cap of later levels.
+RATE_LIMIT = 120
+RATE_WINDOW = 60.0
+_rate: dict[str, collections.deque] = {}
+_rate_lock = threading.Lock()
 
 _RANK = {"read": 1, "propose": 2, "act": 3}
 _CAP_LEVEL = {"read_propose": "propose", "act": "act"}
@@ -148,9 +159,54 @@ def _header_value(raw: str | None) -> str | None:
     return raw
 
 
-def handle(method: str, headers, query: str, body: bytes) -> Reply:
+def _rate_wait(token_id: str) -> int:
+    """0 and the request is counted, or the seconds until the token may call
+    again."""
+    now = time.monotonic()
+    with _rate_lock:
+        hits = _rate.setdefault(token_id, collections.deque())
+        while hits and now - hits[0] >= RATE_WINDOW:
+            hits.popleft()
+        if len(hits) >= RATE_LIMIT:
+            return max(1, int(RATE_WINDOW - (now - hits[0])) + 1)
+        hits.append(now)
+        if len(_rate) > 1000:           # forget tokens that went quiet
+            for k in [k for k, h in _rate.items()
+                      if not h or now - h[-1] >= RATE_WINDOW]:
+                del _rate[k]
+    return 0
+
+
+def owner_valid(rec: dict, resolve_tenant) -> bool:
+    """Whether the token's owner could sign in right now and would land in
+    the token's tenant: the login mode, the SSO allow-list and the tenant
+    mapping are re-checked on every request, so removing someone (or
+    changing the mode) ends their tokens at once. Without a login (none /
+    password) everyone reaches the DEFAULT tenant only."""
+    auth = cfgmod.load_server()["auth"]
+    mode = auth["mode"]
+    if mode != "oidc":
+        return rec.get("tenant") == tenants.DEFAULT_ID
+    owner = rec.get("owner") or ""
+    if not owner or owner == "password":
+        return False
+    allowed = {str(a).strip().lower()
+               for a in auth["oidc"].get("allowed") or [] if str(a).strip()}
+    if allowed:
+        label = auth.get("identity_labels", {}).get(owner, owner)
+        if str(label).strip().lower() not in allowed:
+            return False
+    try:
+        return resolve_tenant(mode, auth, owner).id == rec.get("tenant")
+    except Exception:
+        return False
+
+
+def handle(method: str, headers, query: str, body: bytes,
+           resolve_tenant) -> Reply:
     """One HTTP request to /mcp. The caller has already applied the Origin
-    and Host guards and the body limit."""
+    and Host guards and the body limit; `resolve_tenant(mode, auth_cfg, sub)`
+    is the login's own subject -> workspace mapping."""
     if demomod.enabled():
         return _plain(404, mailops.NOT_IN_DEMO)
     if cfgmod.assistant_access() == "off":
@@ -164,8 +220,11 @@ def handle(method: str, headers, query: str, body: bytes) -> Reply:
         return _unauthorized(False)
     rec = assistanttokens.lookup(secret)
     tenant = assistanttokens.tenant_of(rec) if rec else None
-    if rec is None or tenant is None:
+    if rec is None or tenant is None or not owner_valid(rec, resolve_tenant):
         return _unauthorized(True)
+    wait = _rate_wait(rec["id"])
+    if wait:
+        return _plain(429, "rate_limited", {"Retry-After": str(wait)})
     tenants.activate(tenant, "")
     level = effective_level(rec["level"])
     names = [a for a in rec["accounts"] if a in accountsmod.names()]

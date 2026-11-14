@@ -901,7 +901,8 @@ def post_assistant_token(body: AssistantTokenBody):
     try:
         rec, secret = assistanttokens.create(
             tenants.current().id, body.name, body.accounts, body.level,
-            body.subjects, body.expires_days, body.daily_cap)
+            body.subjects, body.expires_days, body.daily_cap,
+            tenants.current_subject())
     except assistanttokens.TokenError as exc:
         raise HTTPException(400, str(exc))
     for account in rec["accounts"]:
@@ -936,7 +937,7 @@ async def mcp_endpoint(request: Request):
                             status_code=413)
     reply = await run_in_threadpool(
         mcpserver.handle, request.method, request.headers,
-        request.url.query, body)
+        request.url.query, body, _resolve_tenant)
     headers = {**reply.headers, "Cache-Control": "no-store"}
     if reply.body is None:
         return Response(status_code=reply.status, headers=headers)
