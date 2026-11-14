@@ -105,6 +105,7 @@ const initialForm = (c: Config, name: string) => ({
     ? String(c.shared_ai.default_tenant_budget_usd) : "",
   newSenderWindowDays: String(c.new_sender_window_days ?? 7),
   assistantAccess: (c.assistants?.access ?? "off") as AssistantAccess,
+  assistantNotifyEmail: c.assistants?.notify?.email ?? true,
 });
 type Form = ReturnType<typeof initialForm>;
 
@@ -136,7 +137,8 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
     "oidcIssuer", "oidcClientId", "oidcSecret", "oidcRedirect", "oidcAllowed",
     "oidcAdmin", "sharedEnabled", "sharedProvider", "sharedModel",
     "sharedEndpoint", "sharedKey", "sharedBudget"] },
-  { label: "settings.sec.assistants", fields: ["assistantAccess"] },
+  { label: "settings.sec.assistants",
+    fields: ["assistantAccess", "assistantNotifyEmail"] },
 ];
 
 /** The save bar's text: one change is named ("Password changed", "AI review
@@ -415,6 +417,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           .map((s) => s.trim()).filter(Boolean),
         categories: parseCategories(),
         new_sender_window_days: +f.newSenderWindowDays || 7,
+        // the "Notify me about proposals" switch (a server that has it)
+        ...(cfg.assistants?.notify
+          ? { assistants_notify: { email: f.assistantNotifyEmail } } : {}),
         ai: { provider: f.provider, model: f.model,
           foundry_endpoint: f.endpoint,
           price_in: +f.priceIn || 0, price_out: +f.priceOut || 0,
@@ -447,6 +452,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       const nf: Form = { ...f, apiKey: "", authPassword: "", oidcSecret: "",
         sharedKey: "", authMode: next.auth.mode,
         assistantAccess: (next.assistants?.access ?? f.assistantAccess) as AssistantAccess,
+        assistantNotifyEmail: next.assistants?.notify?.email
+          ?? f.assistantNotifyEmail,
         newSenderWindowDays: String(next.new_sender_window_days),
         ...imapFields(next, editAcct) };
       const pt = (next.protected ?? []).join("\n");
@@ -1695,6 +1702,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const assistantsBody = (
     <AssistantsSection cfg={cfg} admin={admin} access={f.assistantAccess}
       onAccess={(a) => put("assistantAccess", a)}
+      notifyEmail={f.assistantNotifyEmail}
+      onNotifyEmail={(v) => put("assistantNotifyEmail", v)}
       tokens={assistantTokens.tokens} tokensError={assistantTokens.error}
       reload={assistantTokens.load} />
   );

@@ -2222,6 +2222,9 @@ export type ConfirmOptions = {
   confirmLabel: string; tone?: "danger" | "primary";
   /** Replaces "Cancel" where declining isn't a cancel (e.g. "Only block"). */
   cancelLabel?: string;
+  /** A checkbox under the text ("Run it once now"); see checkDialog.
+   *  `uncheckedLabel` replaces the confirm label while the box is off. */
+  check?: { label: string; checked: boolean; uncheckedLabel?: string };
 };
 /** A confirm with a second, equal-weight way forward (see choiceDialog):
  *  Cancel / Esc still do nothing. */
@@ -2247,11 +2250,13 @@ const useArmed = () => {
 
 /** Confirm sheet. Danger dialogs focus Cancel, the safe choice. */
 export function ConfirmDialog({ title, body, bullets, confirmLabel,
-  cancelLabel, altLabel, tone = "primary", onResult, onAlt }: ConfirmOptions & {
-  altLabel?: string;
-  onResult: (ok: boolean) => void;
-  onAlt?: () => void;
-}) {
+  cancelLabel, altLabel, tone = "primary", check, onResult, onAlt }:
+  ConfirmOptions & {
+    altLabel?: string;
+    onResult: (ok: boolean, checked?: boolean) => void;
+    onAlt?: () => void;
+  }) {
+  const [checked, setChecked] = useState(check?.checked ?? false);
   const safe = useRef<HTMLButtonElement>(null);
   const ok = useRef<HTMLButtonElement>(null);
   const armed = useArmed();
@@ -2281,6 +2286,10 @@ export function ConfirmDialog({ title, body, bullets, confirmLabel,
             )}
           </div>
         )}
+        {check && (
+          <Checkbox label={check.label} checked={checked}
+            onChange={(e) => setChecked(e.target.checked)} />
+        )}
       </div>
       <div className="flex flex-wrap justify-end gap-2 border-t border-line
         px-4 py-3 sm:px-5">
@@ -2293,8 +2302,12 @@ export function ConfirmDialog({ title, body, bullets, confirmLabel,
           </Button>
         )}
         <Button ref={ok} variant={tone === "danger" ? "danger" : "primary"}
-          onClick={(e) => { if (armed(e.detail === 0)) onResult(true); }}>
-          {confirmLabel}
+          onClick={(e) => {
+            if (!armed(e.detail === 0)) return;
+            if (check) onResult(true, checked); else onResult(true);
+          }}>
+          {check && !checked && check.uncheckedLabel
+            ? check.uncheckedLabel : confirmLabel}
         </Button>
       </div>
     </Modal>
@@ -2354,6 +2367,8 @@ export function PromptDialog({ title, label, initial = "", confirmLabel,
 
 type DialogRequest = { id?: number } & (
   | { kind: "confirm"; opts: ConfirmOptions; resolve: (ok: boolean) => void }
+  | { kind: "check"; opts: ConfirmOptions;
+      resolve: (v: { ok: boolean; checked: boolean }) => void }
   | { kind: "choice"; opts: ChoiceOptions;
       resolve: (v: "confirm" | "alt" | null) => void }
   | { kind: "prompt"; opts: PromptOptions;
@@ -2373,6 +2388,14 @@ export const confirmDialog = (opts: ConfirmOptions): Promise<boolean> =>
     ? new Promise((resolve) => pushDialog!({ kind: "confirm", opts, resolve }))
     : needProvider();
 
+/** A confirm with a checkbox (`opts.check`): resolves whether it was
+ *  confirmed and the box's state at that moment. */
+export const checkDialog = (opts: ConfirmOptions):
+  Promise<{ ok: boolean; checked: boolean }> =>
+  pushDialog
+    ? new Promise((resolve) => pushDialog!({ kind: "check", opts, resolve }))
+    : needProvider();
+
 /** Like confirmDialog with a second forward button: resolves "confirm" (the
  *  primary one), "alt", or null on Cancel / Esc / backdrop. */
 export const choiceDialog = (opts: ChoiceOptions):
@@ -2388,7 +2411,9 @@ export const promptDialog = (opts: PromptOptions): Promise<string | null> =>
     : needProvider();
 
 const cancelRequest = (r: DialogRequest) =>
-  r.kind === "confirm" ? r.resolve(false) : r.resolve(null);   // choice: null
+  r.kind === "confirm" ? r.resolve(false)
+  : r.kind === "check" ? r.resolve({ ok: false, checked: false })
+  : r.resolve(null);   // choice, prompt: null
 
 /** Mount once at the app root (main.tsx). Dialogs queue if several are
  *  requested; pending ones settle as cancelled on unmount, and focus goes
@@ -2431,6 +2456,11 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {cur?.kind === "confirm" && (
         <ConfirmDialog key={cur.id} {...cur.opts}
           onResult={(ok) => done(cur, () => cur.resolve(ok))} />
+      )}
+      {cur?.kind === "check" && (
+        <ConfirmDialog key={cur.id} {...cur.opts}
+          onResult={(ok, checked) => done(cur, () => cur.resolve(
+            { ok, checked: !!checked }))} />
       )}
       {cur?.kind === "choice" && (
         <ConfirmDialog key={cur.id} {...cur.opts}

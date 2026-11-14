@@ -747,14 +747,17 @@ provider - no mail data - and nothing is selected or changed.
 
 <small class="where">Settings → AI assistants</small>
 
-An optional, read-only endpoint (`/mcp`) so your own assistant (Claude Code,
+An optional endpoint (`/mcp`) so your own assistant (Claude Code,
 Cursor, VS Code, Claude Desktop, Codex, ...) can ask questions about your
 mailbox: who fills it, what a filter would catch, which rules exist. An admin
 switches it on (off by default); each user creates access tokens limited to
 chosen accounts, with subject lines opt-in and an expiry. It sees metadata
 only - no bodies, no own tags - and cannot send, unsubscribe, delete or
-change anything. What it reads goes to the assistant's own AI provider. See
-[Connect an AI assistant](assistants.md) for setup and the privacy notes.
+move anything. With the Propose level it can also suggest a cleanup rule: it
+waits in Rules, in report mode, until you approve it, and you are told about
+a new one (toast, notification, optional email). What it reads goes to the
+assistant's own AI provider. See [Connect an AI assistant](assistants.md) for
+setup and the privacy notes.
 
 </div>
 

@@ -3,10 +3,10 @@
 /mcp endpoint, on both protocol legs.
 
 Starts scripts/demo.py on its own port (it does not switch on the in-browser
-demo mode; login mode is "none"), switches the admin cap on, creates a read
+demo mode; login mode is "none"), switches the admin cap on, creates a propose
 token through /api/assistants/tokens, then - once per protocol leg (the
 2025-era initialize handshake, and 2026-07-28 stateless) - lists the tools and
-calls every one of them, checking that each answer is a success whose
+calls every one of them (a proposal is withdrawn again), checking that each answer is a success whose
 structured content matches its text block.
 
 The SDK is NOT a dependency of Inboxrake: it is pinned with hashes in
@@ -37,6 +37,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = ["list_accounts", "mailbox_overview", "list_groups", "list_mails",
             "search_mails", "count_matches", "list_rules", "recent_activity"]
+PROPOSE = ["propose_rule", "withdraw_proposal"]
 
 
 def http(url: str, method: str = "GET", body: dict | None = None,
@@ -90,10 +91,15 @@ async def leg(base: str, secret: str, mode: str, bad: Failures) -> None:
             else ("2025-11-25", "2025-06-18")),
             f"negotiated protocol {client.protocol_version}")
         tools = (await client.list_tools()).tools
-        bad.check([t.name for t in tools] == EXPECTED, "the 8 read tools")
-        bad.check(all(t.annotations and t.annotations.read_only_hint
-                      and t.output_schema for t in tools),
-                  "read-only annotations and output schemas")
+        bad.check([t.name for t in tools] == EXPECTED + PROPOSE,
+                  "the 8 read tools and the 2 propose tools")
+        bad.check(all(t.annotations and t.output_schema for t in tools)
+                  and all(t.annotations.read_only_hint for t in tools[:8])
+                  and not any(t.annotations.read_only_hint
+                              or t.annotations.destructive_hint
+                              for t in tools[8:]),
+                  "annotations (read-only reads, non-destructive proposals) "
+                  "and output schemas")
         first = await client.call_tool("list_groups", {"limit": 3})
         groups = (first.structured_content or {}).get("groups") or []
         key = groups[0]["key"] if groups else "example"
@@ -111,6 +117,18 @@ async def leg(base: str, secret: str, mode: str, bad: Failures) -> None:
                       f"{name}: success, structured content = text block")
         res = await client.call_tool("list_groups", {"limit": 0})
         bad.check(bool(res.is_error), "bad input is a tool error")
+        # a proposal: one report-mode rule, withdrawn again
+        res = await client.call_tool("propose_rule", {
+            "name": f"interop {mode}", "query": "is:unsub",
+            "action": "trash"})
+        text = json.loads(res.content[0].text)
+        bad.check(not res.is_error and res.structured_content == text
+                  and text["state"] == "waiting"
+                  and text["origin"] == "mcp",
+                  "propose_rule: a waiting proposal with its report")
+        res = await client.call_tool("withdraw_proposal",
+                                     {"rule_id": text.get("rule_id", "")})
+        bad.check(not res.is_error, "withdraw_proposal: gone again")
 
 
 async def run(base: str, secret: str) -> list[str]:
@@ -146,7 +164,7 @@ def main() -> int:
              {"assistants": {"access": "read_propose"}})
         accounts = list(http(base + "/api/accounts/summary"))
         made = http(base + "/api/assistants/tokens", "POST", {
-            "name": "interop", "accounts": accounts[:1], "level": "read",
+            "name": "interop", "accounts": accounts[:1], "level": "propose",
             "subjects": True, "expires_days": 30})
         failures = asyncio.run(run(base, made["secret"]))
     finally:

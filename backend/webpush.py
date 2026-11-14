@@ -14,7 +14,9 @@ Who gets what: a subscription (one browser on one device) belongs to the
 tenant that created it and hears about that tenant's accounts only; one
 endpoint belongs to exactly one tenant (subscribing again from another
 identity moves it). Only jobs a person started push - never the auto-scan,
-rules or restore rescans - and never to a device that reported the app
+rules or restore rescans - plus one deliberate exception, an AI assistant's
+rule proposal (`proposal`, the maintainer's decision for the MCP endpoint) -
+and never to a device that reported the app
 visible a moment ago (presence): the in-app toast covers that. Whatever IS
 sent shows a notification (browsers revoke a subscription that gets silent
 pushes), and carries short generic text - never a subject or an address.
@@ -421,6 +423,8 @@ STRINGS = {
         "error_body": "Open Inboxrake for the details.",
         "job_scan": "Scan", "job_delete": "Clean-up", "job_ai": "AI review",
         "job_atts": "Attachment analysis", "job_unsub": "Bulk unsubscribe",
+        "proposal": "An AI assistant proposes a rule",
+        "proposal_body": "Review it in Inboxrake. Nothing has moved yet.",
         "test": "Notifications work",
         "test_body": "You'll be told here when a scan or clean-up you started finishes.",
     },
@@ -437,6 +441,9 @@ STRINGS = {
         "job_scan": "Scan", "job_delete": "Aufräumen",
         "job_ai": "KI-Prüfung", "job_atts": "Anhang-Analyse",
         "job_unsub": "Massenabbestellen",
+        "proposal": "Ein KI-Assistent schlägt eine Regel vor",
+        "proposal_body": "Sieh sie dir in Inboxrake an. Es wurde noch nichts "
+                         "verschoben.",
         "test": "Benachrichtigungen funktionieren",
         "test_body": "Du bekommst hier Bescheid, wenn ein Scan oder Aufräumen fertig ist.",
     },
@@ -446,6 +453,10 @@ STRINGS = {
 def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
              n: int = 0) -> dict:
     t = STRINGS.get(lang) or STRINGS["en"]
+    if kind == "proposal":
+        # generic: no name, no filter, no token - only that one is waiting
+        return {"title": t["proposal"], "body": t["proposal_body"],
+                "tag": f"{account}:proposal", "url": "/#/rules"}
     if not ok:
         title, detail = t["error"].format(job=t["job_" + kind]), \
             t["error_body"]
@@ -477,8 +488,9 @@ def send_test(endpoint) -> None:
 
 def job_finished(acc, kind: str, ok: bool, **params) -> None:
     """A job somebody started has ended (kind: scan | delete | ai | atts |
-    unsub). Returns at once and never raises: the delivery runs on its own
-    thread, and a device that is looking at the app is left alone."""
+    unsub, or `proposal`: an AI assistant proposed a rule). Returns at once
+    and never raises: the delivery runs on its own thread, and a device
+    that is looking at the app is left alone."""
     try:
         if demo.enabled():
             return

@@ -328,6 +328,9 @@ DEFAULT_CONFIG = {
     # env var so an unconfigured tenant keeps today's default; editable
     # per tenant from Settings from then on.
     "new_sender_window_days": knownsenders.NEW_SENDER_WINDOW_DAYS,
+    # An email when an AI assistant proposes a rule (backend/proposalmail.py);
+    # on by default, switched off in Settings > AI assistants.
+    "assistants_notify": {"email": True},
     "ai": {
         # anthropic | foundry | openai | ollama (any OpenAI-compatible
         # endpoint works via "ollama" + base URL, e.g. LM Studio, vLLM).
@@ -553,6 +556,9 @@ def load_config() -> dict:
             cfg["categories"] = saved["categories"]
         if isinstance(saved.get("new_sender_window_days"), (int, float)):
             cfg["new_sender_window_days"] = saved["new_sender_window_days"]
+        if isinstance(saved.get("assistants_notify"), dict):
+            cfg["assistants_notify"]["email"] = \
+                saved["assistants_notify"].get("email") is not False
     except (OSError, json.JSONDecodeError):
         pass
     for block in cfg["accounts"].values():
@@ -922,6 +928,9 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
                 cfg["new_sender_window_days"] = max(0.0, min(365.0, days))
             except (TypeError, ValueError):
                 pass
+        notify_in = body.get("assistants_notify")
+        if isinstance(notify_in, dict) and "email" in notify_in:
+            cfg["assistants_notify"]["email"] = bool(notify_in["email"])
         auth_in = body.get("auth") or {}
         shared_in = body.get("shared_ai") or {}
         assistants_in = body.get("assistants") or {}
@@ -1024,6 +1033,32 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
         return cfg
 
 
+def mail_recipient(block: dict) -> str:
+    """Where an account's mails to the user go: the digest recipient, else
+    the account's own address."""
+    return ((block.get("digest") or {}).get("recipient") or "").strip() \
+        or (block.get("user") or "").strip()
+
+
+def can_send_mail(block: dict) -> bool:
+    """Whether the account has what an outgoing mail needs: a recipient and
+    a way to sign in (a stored password or a connected OAuth account)."""
+    if not mail_recipient(block):
+        return False
+    if auth_method(block) == "oauth":
+        return bool((block.get("oauth") or {}).get("refresh_token"))
+    return bool(block.get("password"))
+
+
+def notify_settings(cfg: dict) -> dict:
+    """The "Notify me about proposals" state for the UI: the email switch and,
+    per account, where it would go and whether the account can send."""
+    return {"email": cfg["assistants_notify"]["email"],
+            "accounts": {n: {"to": mail_recipient(b),
+                             "can_send": can_send_mail(b)}
+                         for n, b in cfg["accounts"].items()}}
+
+
 def effective_ai(cfg: dict) -> tuple[dict, str | None]:
     """The AI block this tenant actually runs on: their own key when set,
     else the admin's shared server key when enabled, else nothing.
@@ -1096,7 +1131,8 @@ def masked_config(cfg: dict) -> dict:
     # levels a token can have today (the UI shows only those); only the admin
     # also gets the cap's options (they are the Settings control).
     out["assistants"] = {"access": load_server()["assistants"]["access"],
-                         "levels": list(assistanttokens.AVAILABLE_LEVELS)}
+                         "levels": list(assistanttokens.AVAILABLE_LEVELS),
+                         "notify": notify_settings(cfg)}
     if admin:
         server = load_server()
         out["assistants"]["options"] = list(ASSISTANT_ACCESS)

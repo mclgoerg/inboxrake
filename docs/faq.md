@@ -199,9 +199,9 @@ is written there.
 No public one. The web UI talks to JSON endpoints under `/api/`, but they
 are internal and may change in any release.
 
-For AI assistants there is a separate, supported door: a read-only
-[MCP endpoint](assistants.md) at `/mcp` (off until an admin switches it on,
-one access token per assistant, metadata only). It is meant for assistants,
+For AI assistants there is a separate, supported door: [MCP endpoint](assistants.md) at `/mcp` (off until an admin switches it on,
+one access token per assistant, metadata only; an assistant can propose
+cleanup rules, but only you can approve them). It is meant for assistants,
 not as a general-purpose API.
 
 </details>

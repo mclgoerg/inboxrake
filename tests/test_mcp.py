@@ -143,7 +143,8 @@ def test_cap_is_off_by_default_and_the_endpoint_does_not_exist(mbox):
     # ... but listing works
     r = client.get("/api/assistants/tokens")
     assert r.status_code == 200
-    assert r.json() == {"tokens": [], "access": "off", "levels": ["read"]}
+    assert r.json() == {"tokens": [], "access": "off",
+                        "levels": ["read", "propose"]}
 
 
 def test_off_hides_the_endpoint_for_existing_tokens_but_not_the_list(mbox):
@@ -166,7 +167,10 @@ def test_only_the_admin_sets_the_cap_and_only_known_values(monkeypatch):
     cfgmod.update_config({"assistants": {"access": "act"}})
     assert cfgmod.assistant_access() == "act"
     cfg = client.get("/api/config").json()
-    assert cfg["assistants"] == {"access": "act", "levels": ["read"],
+    notify = cfg["assistants"].pop("notify")
+    assert notify["email"] is True
+    assert cfg["assistants"] == {"access": "act",
+                                 "levels": ["read", "propose"],
                                  "options": ["off", "read_propose", "act"],
                                  "token_counts": {"read": 0, "propose": 0,
                                                   "act": 0}}
@@ -178,11 +182,11 @@ def test_only_the_admin_sets_the_cap_and_only_known_values(monkeypatch):
 
 def test_config_lists_the_levels_a_token_can_have(monkeypatch):
     """The Settings UI offers exactly these (data-driven, no hard-coded list)."""
-    assert client.get("/api/config").json()["assistants"]["levels"] == ["read"]
-    monkeypatch.setattr(assistanttokens, "AVAILABLE_LEVELS",
-                        ("read", "propose"))
     assert client.get("/api/config").json()["assistants"]["levels"] == [
         "read", "propose"]
+    monkeypatch.setattr(assistanttokens, "AVAILABLE_LEVELS", ("read",))
+    assert client.get("/api/config").json()["assistants"]["levels"] == [
+        "read"]
 
 
 def test_non_admins_see_the_cap_but_cannot_change_it():
@@ -192,8 +196,9 @@ def test_non_admins_see_the_cap_but_cannot_change_it():
                  "client_secret": "sst"}}})
     alice = TestClient(app)
     alice.cookies.set("pmc_session", authmod.make_session("alice@x.example"))
-    assert alice.get("/api/config").json()["assistants"] == {
-        "access": "off", "levels": ["read"]}
+    seen = alice.get("/api/config").json()["assistants"]
+    assert seen.pop("notify")["email"] is True
+    assert seen == {"access": "off", "levels": ["read", "propose"]}
     r = alice.post("/api/config", json={"assistants": {"access": "act"}})
     assert r.status_code == 403
     assert cfgmod.assistant_access() == "off"
@@ -230,7 +235,6 @@ def test_token_creation_refusals(mbox):
         r = client.post("/api/assistants/tokens", json=body)
         assert (r.status_code, r.json()["detail"]) == (status, code), r.text
 
-    refused("level_not_available", level="propose")
     refused("level_not_available", level="act")
     refused("assistant_token_level", level="root")
     refused("assistant_token_accounts", accounts=["nope"])

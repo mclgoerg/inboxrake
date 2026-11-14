@@ -132,17 +132,19 @@ up and consent in the UI.
 ## AI assistants (MCP)
 
 The optional [MCP endpoint](assistants.md) lets an assistant you run read your
-mailbox metadata. It is off by default (an admin switches it on), read-only,
-and authenticated by per-user bearer tokens only: stored as SHA-256, limited
+mailbox metadata. It is off by default (an admin switches it on), changes no
+mail, and authenticated by per-user bearer tokens only: stored as SHA-256, limited
 to chosen accounts, optionally with subject lines, expiring, revocable, and
 dead the moment their owner can no longer sign in. It returns no mail bodies,
 no attachments, no unsubscribe links and none of your own tags or category
-names, and offers no way to send, unsubscribe, delete or change anything.
+names, and offers no way to send, unsubscribe, delete or move mail. With the
+Propose level it can leave a cleanup rule that waits in report mode: only you
+can switch it on, from the app, and a token cannot.
 
 What it cannot control is the assistant. Whatever it reads goes to that
 assistant's own AI provider, and sender names and subjects can carry
-instructions aimed at the model (prompt injection). With no write tool and no
-URL in any answer, Inboxrake cannot be the way out, but another tool in the
+instructions aimed at the model (prompt injection). With no tool that changes
+mail and no URL in any answer, Inboxrake cannot be the way out, but another tool in the
 same chat (web fetch, mail sending) could be: do not combine them. Details,
 limits and proxy advice are on the [assistants page](assistants.md#privacy).
 

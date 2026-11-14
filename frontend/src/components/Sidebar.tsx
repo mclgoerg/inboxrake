@@ -25,6 +25,8 @@ export interface SidebarProps {
   mailCount?: number;
   junkCount?: number | null;
   trashCount?: number | null;
+  /** Rules an AI assistant proposed that wait for the user (a badge on Rules). */
+  proposals?: number;
   /** Tools that are disabled today stay disabled with the same rule. */
   disabled: Partial<Record<SidebarTool, boolean>>;
 }
@@ -40,10 +42,26 @@ function Count({ n }: { n?: number | null }) {
     : <span className="ml-auto type-meta tabular-nums text-muted">{fmtNum(n)}</span>;
 }
 
+/** The count of proposals waiting: an accent disc, with the words for a
+ *  screen reader. */
+export function ProposalBadge({ n, quiet = false }: {
+  n?: number; /** the surrounding text already says it: no screen-reader words */
+  quiet?: boolean;
+}) {
+  return !n ? null : (
+    <span className="ml-auto inline-flex min-w-5 items-center justify-center
+      rounded-full bg-accent px-1.5 type-caption font-semibold tabular-nums
+      text-on-accent">
+      {quiet ? fmtNum(n) : <span aria-hidden>{fmtNum(n)}</span>}
+      {!quiet && <span className="sr-only">{t("proposal.badge", { n })}</span>}
+    </span>
+  );
+}
+
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, disabled }: SidebarProps) {
+  mailCount, junkCount, trashCount, proposals, disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
     <a href={hashOf(p)} aria-current={page === p ? "page" : undefined}
@@ -61,13 +79,13 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
     </a>
   );
   const tool = (id: SidebarTool, icon: ReactNode, label: string,
-    count?: number | null) => (
+    count?: number | null, badge?: ReactNode) => (
     <button type="button" aria-current={page === id ? "page" : undefined}
       className={`${ITEM} ${page === id ? CURRENT : IDLE}`}
       disabled={disabled[id]} onClick={() => onOpen(id)}>
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <Count n={count} />
+      <Count n={count} />{badge}
     </button>
   );
   const section = (label: string) => (
@@ -99,7 +117,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("duplicates", <Copy size={16} aria-hidden />, t("Duplicates"))}
       {tool("attachments", <Paperclip size={16} aria-hidden />,
         t("Attachments"))}
-      {tool("rules", <ClipboardList size={16} aria-hidden />, t("Rules"))}
+      {tool("rules", <ClipboardList size={16} aria-hidden />, t("Rules"),
+        undefined, <ProposalBadge n={proposals} />)}
       {tool("junk", <ShieldAlert size={16} aria-hidden />, t("role.junk"),
         junkCount)}
       {tool("trash", <Trash2 size={16} aria-hidden />, t("role.trash"),

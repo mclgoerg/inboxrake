@@ -33,6 +33,7 @@ from . import auth as authmod
 from . import config as cfgmod
 from . import mailops
 from . import overview as overviewmod
+from . import proposalmail
 from . import rules as rulesmod
 from . import tenants
 
@@ -54,6 +55,9 @@ class Ctx:
     """Who is calling: the token's record (its tenant is already active)."""
     accounts: list[str]        # the allow-list, in the token's order
     subjects: bool             # may subject lines be returned?
+    token_id: str = ""         # who is calling (proposals are bound to it)
+    token_name: str = ""
+    origin: str = ""           # this server's address, for links into the UI
 
 
 def clean(text: Any, limit: int = TEXT_MAX) -> str:
@@ -407,6 +411,10 @@ class RuleRow(_Out):
     scope: str
     grouping: str
     last_report: Optional[LastReport]
+    # only for a rule an assistant proposed: the token's name, and whether
+    # the user has approved it ("waiting" for them, or "active")
+    proposed_by: Optional[str] = None
+    state: Optional[str] = None
 
 
 class ListRulesOut(_Out):
@@ -670,6 +678,12 @@ def _list_rules(ctx: Ctx, args: AccountIn) -> dict:
                     "groups", "mails", "acted", "capped",
                     "skipped_protected", "skipped_pinned")}}
             if isinstance(run, dict) else None})
+        by = r.get("proposed_by")
+        if isinstance(by, dict):
+            out[-1]["proposed_by"] = clean(by.get("name"), 60)
+            if r.get("origin") == rulesmod.ORIGIN_MCP:
+                out[-1]["state"] = ("waiting" if r.get("mode") == "report"
+                                    else "active")
     return _fit({"account": acc.name, "rules": out}, "rules")
 
 
@@ -684,10 +698,195 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
             "action": clean(e["action"], 40), "count": int(e["count"] or 0),
             "bytes": int(e["bytes"] or 0),
             # a report's recipient is the user's own address: not needed
-            "label": "" if e["action"] == "digest_sent"
+            "label": "" if e["action"] in ("digest_sent",
+                                           "proposal_mail_sent")
             else _mask_label(e["label"], names),
             "outcome": clean(e["outcome"], 20)} for e in res["entries"]]},
         "entries")
+
+
+
+class ProposeRuleIn(_In):
+    account: Optional[str] = _ACCOUNT
+    name: str = Field(..., min_length=1, max_length=rulesmod.NAME_MAX,
+                      description="A short plain-text name for the rule.")
+    grouping: Literal["sender", "domain"] = Field(
+        "sender", description="Match the filter against sender addresses "
+        "or whole domains.")
+    query: str = Field(..., min_length=1, max_length=rulesmod.FILTER_MAX,
+                       description="The filter (grammar: see count_matches). "
+                       "Check it with count_matches first.")
+    action: Literal["trash", "archive", "move", "mark_read"]
+    dest: Optional[str] = Field(None, max_length=200, description=(
+        "For action move: an existing folder of the mailbox (not Junk or "
+        "Trash)."))
+    schedule: Literal["manual", "daily", "weekly"] = Field(
+        "manual", description="How often the rule runs once the user has "
+        "approved it. manual = only when they press Run.")
+    older_than_days: Optional[int] = Field(
+        None, ge=1, le=36500, description="Only mails older than this many "
+        "days.")
+
+
+class ProposalPreview(_Out):
+    key: str
+    label: str
+    count: int
+
+
+class ProposalReport(_Out):
+    groups: int
+    mails: int
+    skipped_protected: int
+    skipped_pinned: int
+    capped: int
+    top: list[ProposalPreview]
+
+
+class ProposeRuleOut(_Out):
+    account: str
+    rule_id: str
+    name: str
+    state: str
+    origin: str
+    grouping: str
+    query: str
+    action: str
+    dest: Optional[str] = None
+    schedule: str
+    older_than_days: Optional[int] = None
+    report: ProposalReport
+    open_proposals: int
+    link: str
+    note: str
+
+
+class WithdrawIn(_In):
+    rule_id: str = Field(..., min_length=1, max_length=40)
+
+
+class WithdrawOut(_Out):
+    withdrawn: bool
+    rule_id: str
+
+
+def _actor(ctx: Ctx) -> str:
+    """The audit actor of this token: `mcp:<token name>`."""
+    return "mcp:" + clean(ctx.token_name, 60)
+
+
+def _proposal_dest(acc, dest: Optional[str]) -> str:
+    """The raw folder a proposed move goes to: an existing folder that is
+    not Junk or Trash (given by its raw or its readable name)."""
+    with acc.lock:
+        raw = list(acc.state.get("folders_raw") or [])
+        roles = dict(acc.folder_roles)
+    shown = {mailops.decode_mutf7(f): f for f in raw}
+    found = dest if dest in raw else shown.get(dest or "")
+    if not found:
+        names = ", ".join(clean(mailops.decode_mutf7(f), 60)
+                          for f in raw[:30])
+        raise ToolError("Unknown folder for dest. Use the exact name of an "
+                        "existing folder: " + (names or "(none scanned)"))
+    if found in (roles.get("junk"), roles.get("trash")):
+        raise ToolError("A rule may not move mail into Junk or Trash "
+                        "(use action trash for Trash).")
+    return found
+
+
+def _propose_rule(ctx: Ctx, args: ProposeRuleIn) -> dict:
+    acc = _account(ctx, args.account)
+    name = clean(args.name, rulesmod.NAME_MAX)
+    if not name:
+        raise ToolError("The rule needs a name.")
+    bad = rulesmod.validate_filter(args.query, tags=BUILTIN_TAGS)
+    if bad:
+        raise ToolError("Invalid filter parts: " + ", ".join(
+            clean(b, 40) for b in bad[:10]) + ". Check the grammar in the "
+            "count_matches description (tag: takes the built-in tag names "
+            "only).")
+    if args.action == "move":
+        dest = _proposal_dest(acc, args.dest)
+    elif args.dest:
+        raise ToolError("dest is only for action move.")
+    else:
+        dest = ""
+    with acc.lock:
+        scanned = acc.state["status"] == "done"
+    if not scanned:
+        raise ToolError("This account has no finished scan yet; the user "
+                        "needs to scan it in Inboxrake first.")
+    body = {"name": name, "scope": "mail", "grouping": args.grouping,
+            "query": args.query, "action": args.action, "dest": dest,
+            "schedule": args.schedule, "account": acc.name}
+    if args.older_than_days is not None:
+        body["older_than_days"] = args.older_than_days
+    try:
+        rule = rulesmod.create_rule(body, proposed_by={
+            "token_id": ctx.token_id, "name": clean(ctx.token_name, 60),
+            "at": int(time.time())})
+    except ValueError as exc:
+        if str(exc) == rulesmod.PROPOSAL_LIMIT_CODE:
+            raise ToolError(
+                f"There are already {rulesmod.PROPOSAL_LIMIT} proposals "
+                "waiting for the user. Withdraw one with withdraw_proposal, "
+                "or ask the user to approve or decline some.")
+        raise ToolError("The rule was refused: " + clean(str(exc), 200))
+    try:
+        run = rulesmod.run_rule(rule["id"], rescan=False)
+    except (RuntimeError, KeyError) as exc:
+        rulesmod.delete_rule(rule["id"])     # a proposal without a report
+        raise ToolError("The report could not be made, so nothing was "
+                        "proposed: " + clean(str(exc), 200))
+    with acc.lock:            # the user is alerted by the proposal, not by the
+        note = acc.state.get("notice")   # run's own "report ready" notice
+        if note and note.get("key") == "rule_report" and (
+                note.get("params") or {}).get("name") == rule["name"]:
+            acc.state["notice"] = None
+    auditlog.record("rule_proposed", actor=_actor(ctx), account=acc.name,
+                    count=int(run.get("mails") or 0), label=name)
+    proposalmail.notify(acc, rule, ctx.token_name, run)
+    return {
+        "account": acc.name, "rule_id": rule["id"], "name": name,
+        "state": "waiting", "origin": rulesmod.ORIGIN_MCP,
+        "grouping": args.grouping, "query": args.query,
+        "action": args.action,
+        **({"dest": clean(mailops.decode_mutf7(dest), 120)} if dest else {}),
+        "schedule": args.schedule,
+        **({"older_than_days": args.older_than_days}
+           if args.older_than_days is not None else {}),
+        "report": {
+            "groups": int(run["groups"]), "mails": int(run["mails"]),
+            "skipped_protected": int(run["skipped_protected"]),
+            "skipped_pinned": int(run["skipped_pinned"]),
+            "capped": int(run["capped"]),
+            "top": [{"key": clean(p["key"], 254), "label": clean(p["label"]),
+                     "count": int(p["count"])}
+                    for p in run["preview"][:10]]},
+        "open_proposals": len(rulesmod.open_proposals(
+            rulesmod.load_rules())),
+        "link": ctx.origin + "/#/rules",
+        "note": "Nothing has changed in the mailbox. The rule waits in "
+                "report mode until the user approves it in Inboxrake."}
+
+
+def _withdraw_proposal(ctx: Ctx, args: WithdrawIn) -> dict:
+    rule = next((r for r in rulesmod.load_rules()
+                 if r["id"] == args.rule_id), None)
+    by = (rule or {}).get("proposed_by") or {}
+    if rule is None or rule.get("origin") != rulesmod.ORIGIN_MCP \
+            or rule.get("mode") != "report" \
+            or by.get("token_id") != ctx.token_id \
+            or rule.get("account") not in ctx.accounts:
+        raise ToolError("No open proposal of this token has that id (the "
+                        "user may have approved, edited or declined it).")
+    try:
+        rulesmod.delete_rule(rule["id"])
+    except KeyError:
+        raise ToolError("That proposal is already gone.")
+    auditlog.record("rule_withdrawn", actor=_actor(ctx),
+                    account=rule.get("account"), label=rule.get("name", ""))
+    return {"withdrawn": True, "rule_id": rule["id"]}
 
 
 @dataclass(frozen=True)
@@ -753,6 +952,23 @@ TOOLS: tuple[Tool, ...] = (
          _LEAD + "The newest entries of the account's activity log (what "
          "was moved, by whom, when). At most 100 per call.",
          "read", RecentActivityIn, RecentActivityOut, _recent_activity),
+    Tool("propose_rule", "Propose a cleanup rule",
+         "Propose a cleanup rule for the user to approve. It is saved in "
+         "report mode and one report is run at once: the mailbox is not "
+         "changed and the rule does nothing until the user approves it in "
+         "Inboxrake (you cannot approve, arm or run it). Returns the report "
+         "(mails and senders it would act on, protected and pinned mail "
+         "skipped, the top senders) and a link for the user. Check the "
+         "filter with count_matches first. At most 10 proposals can wait "
+         "for the user at a time. Filter grammar - words match sender key, "
+         "label and address; qualifiers:\n" + _grammar(),
+         "propose", ProposeRuleIn, ProposeRuleOut, _propose_rule),
+    Tool("withdraw_proposal", "Withdraw a proposal",
+         "Withdraw a rule this token proposed that the user has not "
+         "approved or edited yet. It is removed; nothing else is changed. "
+         "Proposals of other tokens, and rules the user approved, cannot "
+         "be withdrawn.",
+         "propose", WithdrawIn, WithdrawOut, _withdraw_proposal),
 )
 _BY_NAME = {t.name: t for t in TOOLS}
 _LEVEL_RANK = {"read": 1, "propose": 2, "act": 3}
@@ -790,8 +1006,13 @@ def describe(tool: Tool) -> dict:
         "description": f"{tool.description}\n\n{DATA_SENTENCE}",
         "inputSchema": _schema(tool.inputs),
         "outputSchema": _schema(tool.outputs),
-        "annotations": {"title": tool.title, "readOnlyHint": True,
-                        "idempotentHint": True, "openWorldHint": False}}
+        "annotations": (
+            {"title": tool.title, "readOnlyHint": True,
+             "idempotentHint": True, "openWorldHint": False}
+            if tool.level == "read" else
+            {"title": tool.title, "readOnlyHint": False,
+             "destructiveHint": False, "idempotentHint": False,
+             "openWorldHint": False})}
 
 
 def _error(text: str) -> dict:

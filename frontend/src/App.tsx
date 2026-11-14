@@ -10,6 +10,7 @@ import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
 import { disablePush, pushMode, syncPush, watchPresence } from "./push";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
+import { openProposals } from "./proposals";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
@@ -427,16 +428,16 @@ export default function App() {
      finishes while the tab is hidden. */
   const prevJobs = useRef<{ s?: string; d?: string; a?: string; t?: string;
     u?: string }>({});
+  const fire = (body: string) => {
+    if (localStorage.getItem("pmc_notify") !== "1") return;
+    if (typeof Notification === "undefined"
+        || Notification.permission !== "granted" || !document.hidden) return;
+    try {
+      new Notification("Inboxrake", { body, icon: "/icon.svg" });
+    } catch { /* not supported */ }
+  };
   useEffect(() => {
     if (!state) return;
-    const fire = (body: string) => {
-      if (localStorage.getItem("pmc_notify") !== "1") return;
-      if (typeof Notification === "undefined"
-          || Notification.permission !== "granted" || !document.hidden) return;
-      try {
-        new Notification("Inboxrake", { body, icon: "/icon.svg" });
-      } catch { /* not supported */ }
-    };
     const p = prevJobs.current;
     if (p.s === "scanning" && state.status === "done")
       fire(t("notify.scan_done"));
@@ -451,6 +452,32 @@ export default function App() {
     prevJobs.current = { s: state.status, d: state.delete.status, a: state.ai.status,
       t: state.atts?.status, u: state.unsub?.status };
   }, [state]);
+
+  /* A rule an AI assistant just proposed: a toast that opens Rules, and the
+     browser notification when this device has them on and the page is hidden.
+     Only a proposal that appears while the page is open counts: the ones
+     already waiting at load (or after an account switch) are in the badges. */
+  const seenProposals = useRef<{ account: string; ids: Set<string> } | null>(
+    null);
+  const openRulesRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!state) return;
+    const open = openProposals(state.rules);
+    const seen = seenProposals.current;
+    if (seen && seen.account === state.account) {
+      for (const p of open) {
+        if (seen.ids.has(p.id)) continue;
+        // the name is the assistant's: plain text, never markup
+        const name = (p.proposed_by?.name ?? "").slice(0, 80);
+        toast.show(t("proposal.toast", { name }), { action: {
+          label: t("proposal.review"), onClick: () => openRulesRef.current() } });
+        fire(t("notify.proposal", { name }));
+      }
+    }
+    seenProposals.current = { account: state.account,
+      ids: new Set(open.map((p) => p.id)) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.rules, state?.account]);
 
   /* Job outcomes as toasts. A finished move is detected by NEW undo entries
      as well as by its status changing: SSE ticks once a second, so a short
@@ -1855,6 +1882,7 @@ export default function App() {
 
   // What the folder picker needs next to the raw folder names.
   const openRules = () => openTool("rules");
+  openRulesRef.current = openRules;
   const pickEnv = { labels: state?.folders, account: state?.account ?? "",
     onOpenRules: openRules };
 
@@ -2519,6 +2547,7 @@ export default function App() {
           ? Object.values(state.groups.sender ?? {})
             .reduce((n, g) => n + g.count, 0) : undefined}
         junkCount={state?.junk_count} trashCount={state?.trash_count}
+        proposals={openProposals(state?.rules).length}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />

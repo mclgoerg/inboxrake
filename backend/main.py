@@ -2174,6 +2174,9 @@ def post_import_config(body: dict):
                 # always lands in report mode; a filter with mistyped parts
                 # (a backup of a flagged rule) comes in flagged, its execute
                 # runs blocked
+                # an assistant's proposal comes back as the user's own rule
+                if r.get("origin") == rulesmod.ORIGIN_MCP:
+                    r = {**r, "origin": "manual"}
                 rulesmod.create_rule(r, lenient_filter=True)
                 nrules += 1
             except ValueError:
