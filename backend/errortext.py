@@ -174,6 +174,14 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "The sign-in provider isn't reachable. Try again in a moment.",
     'not_in_demo':
         'Not available in the demo.',
+    'push_invalid':
+        "This device's notification registration is not valid - turn notifications off and on again.",
+    'push_unknown':
+        'This device is not registered for notifications - turn them off and on again.',
+    'push_http':
+        'The push service answered with error {status}.',
+    'push_unreachable':
+        'The push service could not be reached from the server.',
     'data_not_writable':
         'Inboxrake cannot write to its data folder. On the host, give the user ID 1000 ownership of the folder mounted at /data (chown -R 1000:1000 <folder>) or start the container with --user, then restart it.',
 }

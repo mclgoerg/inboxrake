@@ -21,6 +21,7 @@ from . import pinstore
 from . import tenants
 from . import labelstore
 from . import verdictstore
+from . import webpush
 
 log = logging.getLogger("inboxrake.ai")
 
@@ -382,11 +383,14 @@ def _run_ai(grouping: str, acc=None, keys: set[str] | None = None,
                                     "cost": spent["cost"] if spent else 0,
                                     "total_cost": spent["total"]["cost"]
                                     if spent else 0}
+        if not cancelled:
+            webpush.job_finished(acc, "ai", True)
     except Exception as exc:
         log.exception("AI review failed")
         with STATE_LOCK:
             STATE["ai"]["status"] = "error"
             STATE["ai"]["error"] = f"{type(exc).__name__}: {exc}"
+        webpush.job_finished(acc, "ai", False)
 
 
 def start_group_review(grouping: str, acc=None,

@@ -866,12 +866,34 @@ the app, is remembered per browser and leaves exports unchanged.
 
 <small class="where">First run · Settings</small>
 
-Installable as a PWA (manifest + icon), optional desktop
-notifications when background jobs finish, monthly AI budget cap, a welcome
+Installable as a PWA (manifest + icon), optional notifications when
+a scan or clean-up you started finishes (below), monthly AI budget cap, a welcome
 screen and a short first-run setup (provider -> sign in and test, with
 folders as an optional step -> optional password -> first scan; also behind
 "Add account"), and error messages that are translated rather than raw
 server text.
+
+### Notifications
+
+<small class="where">Settings · Notifications</small>
+
+Switch them on once per device. When a job **you started** ends - Scan now,
+a clean-up (move, delete, mark read), AI review or sorting, attachment
+analysis, bulk unsubscribe - the server sends a real Web Push, so the
+notification arrives with Inboxrake closed. Automatic scans and rules never
+notify, nor does a cancelled job, and a device that is looking at Inboxrake
+right now gets the in-app message instead. The text is short and generic
+(for example "Scan finished.") and travels encrypted through the browser
+vendor's push service; no mail subject or address is in it. "Send test
+notification" checks a device. Each device belongs to the signed-in user,
+and notifies about that user's accounts only.
+
+Requirements: Inboxrake served over **HTTPS**, and the server must be able to
+reach the push services over outbound HTTPS (Apple, Google, Mozilla,
+Microsoft). **iPhone and iPad** only deliver pushes to an app added to the
+Home Screen (Share, then Add to Home Screen; iOS 16.4 or later): open it from
+there and turn the switch on. A browser without Web Push keeps the older
+in-tab notification while the page is in the background.
 
 ### Languages
 

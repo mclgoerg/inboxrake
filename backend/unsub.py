@@ -40,6 +40,7 @@ from . import pinstore
 from . import smtpout
 from . import tenants
 from . import unsubstore
+from . import webpush
 
 log = logging.getLogger("inboxrake.unsub")
 
@@ -400,6 +401,9 @@ def _run_bulk(acc, items: list) -> None:
                  "confirmation page, %d failed", acc.name,
                  "cancelled" if cancelled else "finished", time.time() - t0,
                  st["done"], st["links"], st["failed"])
+        failed_run = bool(st["error"])
+    if not cancelled:
+        webpush.job_finished(acc, "unsub", not failed_run)
 
 
 def start_bulk(grouping: str, keys: list[str], acc=None) -> dict:

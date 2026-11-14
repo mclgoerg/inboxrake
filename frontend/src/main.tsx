@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { DialogProvider, ToastProvider, watchSystemTheme } from "./components/ui";
+import { registerServiceWorker } from "./push";
 import { installViewportGuard } from "./viewport";
 
 installViewportGuard();
@@ -15,6 +16,7 @@ if (import.meta.env.VITE_DEMO === "1") {
   // contains none of it.
   void import("./demo/entry").then((m) => m.mountDemo(root));
 } else {
+  registerServiceWorker();       // for Web Push; early, see push.ts
   root.render(
     <StrictMode>
       <ToastProvider>

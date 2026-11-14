@@ -1391,9 +1391,16 @@ export const DE: Record<string, string> = {
   "onboard.testing": "Teste Verbindung…",
   "onboard.test_ok": "Verbunden - {n}\u00a0Ordner sichtbar. Bereit zum Scannen!",
   "onboard.test_fail": "Verbindung fehlgeschlagen",
-  "notify.title": "Desktop-Benachrichtigungen",
-  "notify.sub": "Wenn ein Scan oder Aufräumen fertig ist, während der Tab im Hintergrund ist",
-  "notify.denied": "Benachrichtigungen wurden vom Browser blockiert.",
+  "notify.title": "Benachrichtigungen",
+  "notify.sub": "Auf diesem Gerät, wenn ein von dir gestarteter Scan oder ein Aufräumen fertig ist - auch wenn Inboxrake geschlossen ist.",
+  "notify.denied": "Benachrichtigungen sind blockiert. Erlaube sie für Inboxrake in den Browser- oder Systemeinstellungen.",
+  "notify.hint_home_screen": "Auf iPhone und iPad: Füge Inboxrake zum Home-Bildschirm hinzu (Teilen \u2192 Zum Home-Bildschirm), öffne die App von dort und schalte das hier ein.",
+  "notify.hint_insecure": "Benötigt HTTPS.",
+  "notify.hint_unsupported": "Dieser Browser kann keine Benachrichtigungen anzeigen.",
+  "notify.test": "Testbenachrichtigung senden",
+  "notify.test_sent": "Testbenachrichtigung gesendet.",
+  "notify.failed": "Benachrichtigungen konnten nicht eingeschaltet werden: {msg}",
+  "notify.scan_done": "Scan fertig.",
   "notify.delete_done": "Fertig: {n}\u00a0Mails verarbeitet.",
   "notify.delete_done_one": "Fertig: 1\u00a0Mail verarbeitet.",
   "notify.ai_done": "KI-Prüfung abgeschlossen.",
@@ -2717,6 +2724,13 @@ export const DE: Record<string, string> = {
   "ferr.unsub_failed":
     "Das Abbestellen ist unerwartet fehlgeschlagen. Details stehen im Server-Log.",
   "ferr.not_in_demo": "In der Demo nicht verfügbar.",
+  "ferr.push_invalid":
+    "Die Benachrichtigungs-Anmeldung dieses Geräts ist ungültig - schalte Benachrichtigungen aus und wieder ein.",
+  "ferr.push_unknown":
+    "Dieses Gerät ist nicht für Benachrichtigungen angemeldet - schalte sie aus und wieder ein.",
+  "ferr.push_http": "Der Push-Dienst hat mit Fehler {status} geantwortet.",
+  "ferr.push_unreachable":
+    "Der Push-Dienst ist vom Server aus nicht erreichbar.",
   "ferr.cannot_flag":
     "Der Server hat das Markieren der Mails zum Löschen nicht "
     + "akzeptiert.",

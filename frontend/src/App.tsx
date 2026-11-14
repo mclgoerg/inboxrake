@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode }
   from "react";
 import { api, downloadFile, errorText, noticeParams,
   setAccount as apiSetAccount, undoLabel, withAccount } from "./api";
+import { disablePush, pushMode, syncPush, watchPresence } from "./push";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
@@ -57,7 +58,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
 import { nowMs } from "./clock";
 import { demoHint, setDemo, useDemo } from "./demoMode";
 import { fmtNum } from "./numfmt";
-import { t } from "./i18n";
+import { getLang, t } from "./i18n";
 import { usePaneHeight, useSplitPane } from "./splitPane";
 import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
   parseFilter,
@@ -424,8 +425,8 @@ export default function App() {
 
   /* Web notifications (opt-in via settings): fire when a background job
      finishes while the tab is hidden. */
-  const prevJobs = useRef<{ d?: string; a?: string; t?: string; u?: string }>(
-    {});
+  const prevJobs = useRef<{ s?: string; d?: string; a?: string; t?: string;
+    u?: string }>({});
   useEffect(() => {
     if (!state) return;
     const fire = (body: string) => {
@@ -437,6 +438,8 @@ export default function App() {
       } catch { /* not supported */ }
     };
     const p = prevJobs.current;
+    if (p.s === "scanning" && state.status === "done")
+      fire(t("notify.scan_done"));
     if (p.d === "running" && state.delete.status === "done")
       fire(t("notify.delete_done", { n: state.delete.moved }));
     if (p.a === "running" && state.ai.status === "done")
@@ -445,7 +448,7 @@ export default function App() {
       fire(t("notify.atts_done"));
     if (p.u === "running" && state.unsub?.status === "done")
       fire(t("notify.unsub_done"));
-    prevJobs.current = { d: state.delete.status, a: state.ai.status,
+    prevJobs.current = { s: state.status, d: state.delete.status, a: state.ai.status,
       t: state.atts?.status, u: state.unsub?.status };
   }, [state]);
 
@@ -748,6 +751,13 @@ export default function App() {
   const unsubRunning = state?.unsub?.status === "running";
   const aiEnabled = !!cfg?.ai.available;
   const demo = useDemo();
+  // Web Push: keep this device's subscription in step with the server, and
+  // tell it while the app is in view (no push then). Nothing in the demo.
+  useEffect(() => {
+    if (!authOk || demo) return;
+    void syncPush(getLang());
+    return watchPresence();
+  }, [authOk, demo]);
   const acct = cfg?.accounts[account] ?? null;
   // Credentials are saved but no test, connect or scan has worked yet.
   const unverified = !cfg?.setup_needed && acct?.verified === false;
@@ -2094,6 +2104,9 @@ export default function App() {
       onSettings={() => { close(); openTool("settings"); }}
       onActivity={() => { close(); openTool("activity"); }}
       onLogout={auth.mode !== "none" ? async () => {
+        // this device stops hearing about the account that signs out
+        if (pushMode()) await Promise.race([disablePush(),
+          new Promise((r) => setTimeout(r, 3000))]);
         try { await api.logout(); } catch { /* session gone */ }
         window.location.reload();
       } : undefined}
