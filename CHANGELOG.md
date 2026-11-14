@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.0](https://github.com/mclgoerg/inboxrake/compare/v2.3.0...v2.4.0) (2026-11-14)
+
+
+### Features
+
+* AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+* notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+* read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+
+
+### Bug Fixes
+
+* notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
 
