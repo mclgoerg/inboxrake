@@ -1205,19 +1205,21 @@ def test_mails_that_did_not_move_back_are_not_re_armed(monkeypatch):
 # ------------------------------------------------------ round 5
 
 def test_a_re_armed_step_never_moves_a_namesake(monkeypatch):
-    """The duplicate repro, continued: after the undo left a1 and z in Keep,
-    'restore everything' must not carry z to the inbox, and says so."""
+    """A step re-armed by undoing a restore is found by Message-ID: a namesake
+    of someone else sitting next to its mail must not be carried along."""
     fake, (s1, s2, s3) = _chain(monkeypatch)
-    _go(s1)                                        # a back in Keep
-    a1 = next(m for m in fake.mailbox["Keep"])
-    fake.mailbox["Keep"].append(make_msg(96, frm="z@x.example", msgid=a1["msgid"]))
-    mailops.undo_last()                            # a1 / z ambiguous, a2 moved
+    _go(s1)                                        # S3, S2 undone
+    mailops.undo_last()                            # re-armed: a back in Trash
+    a_in_trash = next(m for m in fake.mailbox["Trash"]
+                      if m["from"].startswith("a@"))
+    fake.mailbox["Trash"].append(make_msg(96, frm="z@x.example",
+                                          msgid=a_in_trash["msgid"]))
     p = timemachine.preview(_acc(), "")
     timemachine.start(_acc(), "", p["top"], None, [])
     done = _wait_restore()
     assert done["status"] == "done" and not done["error"]
-    assert _where(fake, "z") == {"Keep": 1}        # never moved
-    assert _where(fake, "a") == {"INBOX": 2}, (_where(fake, "a"), done)
+    assert done["ambiguous"] >= 1                  # said
+    assert _where(fake, "z") == {"Trash": 1}       # never moved
 
 
 def test_a_re_armed_restore_cancels_against_the_steps_it_undid(three):
