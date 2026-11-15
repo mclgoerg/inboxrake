@@ -6,25 +6,73 @@
 ### Features
 
 * AI assistants can clean up mail (opt-in) ([#364](https://github.com/mclgoerg/inboxrake/issues/364)) ([1eb880c](https://github.com/mclgoerg/inboxrake/commit/1eb880ce0a991166345b352d394272b32ac6ca6a))
+  <!-- release-notes:364 -->
+  AI assistants can now clean up mail if you opt in. With an Act token an assistant can move mail to Trash, Archive or a folder, mark it read, protect senders and pin mails, always from a preview of exact mails, never touching protected or pinned mail, within a daily limit per token, with every step shown "by <token>" in Activity and undoable. Off by default: an admin sets the cap to "Also act" and you create an Act token. Only use it with an assistant you watch, and never together with tools that can send data out, because mail text written by strangers can try to instruct the assistant.
 * AI assistants can propose rules for you to approve ([#365](https://github.com/mclgoerg/inboxrake/issues/365)) ([46475dc](https://github.com/mclgoerg/inboxrake/commit/46475dc74c1a917b02480482acf50f0a6e95b96e))
+  <!-- release-notes:365 -->
+  - AI assistants you connect (Settings › AI assistants) can now be allowed to propose cleanup rules. A proposal waits in Rules, with its report, until you approve, edit or decline it; the assistant cannot approve or run it.
+  - You are told about a new proposal in the app, by browser notification and push (generic text), and by email (on by default, switch in Settings › AI assistants).
 * AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+  <!-- release-notes:363 -->
+  - Settings has a new section, **AI assistants**: an admin switches assistant access on there (it is off by default).
+  - Create an access token for Claude Code, Cursor, VS Code or Claude Desktop; the token is shown once with a ready-to-paste setup line. Revoke it any time.
+  - Only the Read level exists so far; assistants can ask about your mailbox but change nothing.
 * approve and manage AI app connections ([#368](https://github.com/mclgoerg/inboxrake/issues/368)) ([8d5a942](https://github.com/mclgoerg/inboxrake/commit/8d5a9429133b38edaa0841c6040f2e264b0a317d))
+  <!-- release-notes:368 -->
+  You can approve claude.ai and ChatGPT connections from a page in Inboxrake and manage them under Settings › AI assistants. Admins switch the feature on there; it needs a sign-in and `INBOXRAKE_PUBLIC_URL`.
 * copy what matters to another account ([#370](https://github.com/mclgoerg/inboxrake/issues/370)) ([463e4d7](https://github.com/mclgoerg/inboxrake/commit/463e4d78f56bbb9822c4d94b73f6c25ff42e1134))
+  <!-- release-notes:370 -->
+  - New: **Settings › your account › Move to another account…** copies what matters - people you write to, orders, account mail, bookings, protected senders and pinned mails - into a new folder of another of your accounts, keeping dates, read state and flags. Nothing is deleted; the originals stay where they are.
+  - The copy runs on the server (pause, resume, carries on after a restart), skips mails that are already there and checks each one afterwards. A "Tell them" checklist lists the senders that still write to your old address; newsletters lead to the unsubscribe review instead.
+  - Needs both accounts connected and the source scanned once.
 * find the subscriptions you still pay for ([#373](https://github.com/mclgoerg/inboxrake/issues/373)) ([30f77dd](https://github.com/mclgoerg/inboxrake/commit/30f77dd4c6a6bab057e1e406b793b32a12d87b00))
+  <!-- release-notes:373 -->
+  - New: Insights › Subscriptions shows the senders that bill you monthly or yearly, what the last receipt says they cost, when the next one is due, and which ones look unused (no sign-in alert, nothing opened for 90 days). It also adds a reminder 3 days before a renewal, a calendar file, and a line on the Overview when something looks unused.
+  - Everything is read from mail already in your scan - no AI. Amounts come from the receipt's subject; an optional switch (off by default) also reads the text of the latest receipt on your own server to find the amount, and keeps only the amount.
 * hosted AI apps can connect over OAuth ([#366](https://github.com/mclgoerg/inboxrake/issues/366)) ([458867b](https://github.com/mclgoerg/inboxrake/commit/458867b51a51d30102dfecb09e7516cb8b0fa014))
+  <!-- release-notes:366 -->
+  Groundwork for connecting hosted AI apps (claude.ai custom connectors, OpenAI's apps) over OAuth. It is off by default and the admin switch and consent page arrive with the next update, so nothing changes yet. Needs `INBOXRAKE_PUBLIC_URL` set when you turn it on later.
 * keep invoices, bookings and contracts out of big cleanups ([#371](https://github.com/mclgoerg/inboxrake/issues/371)) ([2ec6fdb](https://github.com/mclgoerg/inboxrake/commit/2ec6fdb2d7b9cde40cdc9908db390996b04aec60))
+  <!-- release-notes:371 -->
+  - Before a big cleanup (more than 20 mails to Trash) Inboxrake now points out invoices, bookings, contracts and job applications among them; the ones you leave ticked are protected and stay.
+  - Settings › Keep-safe switches each kind (account & security mail is off by default) and whether rule runs skip them too; a rule's report shows how many it kept safe.
 * notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+  <!-- release-notes:358 -->
+  - Notifications now reach you with Inboxrake closed, including on iPhone and iPad (add Inboxrake to the Home Screen first, iOS 16.4+), when a scan or clean-up you started finishes.
+  - Turn it on once per device in Settings -> Notifications. Needs HTTPS and outbound HTTPS from the server to the push services.
 * read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+  <!-- release-notes:361 -->
+  - New, off by default: an administrator can switch on read-only access for AI assistants (Claude Code, Cursor, ...) over MCP; each user creates their own access tokens for chosen accounts. Assistants see sender names and addresses, counts, sizes, dates, folder, rule and activity names - subject lines only if you allow them, never mail bodies.
+  - No Settings screen yet: it follows in a separate PR; until then the cap is `assistants.access` in the server settings and tokens come from `/api/assistants/tokens`.
 * restore your mailbox to an earlier point in time ([#374](https://github.com/mclgoerg/inboxrake/issues/374)) ([d996b3e](https://github.com/mclgoerg/inboxrake/commit/d996b3e1708f928e463de226638b15311f7ee2be))
+  <!-- release-notes:374 -->
+  - Activity has a new **Time machine**: pick any point of the last 30 days and restore everything Inboxrake moved since, newest step first, in one job. You see what comes back first (mails, size, folders, senders, what can't, and rules that would move them again, which you can pause). Protected senders and pinned mails stay put, you can restore only some senders, and the restore itself can be undone.
+  - Undo steps are kept for **30 days** (up to 500 steps) and survive restarts and updates, instead of the last 10 until restart. Steps from before this update are not in the Time machine.
 * see when your mail arrives ([#369](https://github.com/mclgoerg/inboxrake/issues/369)) ([4029560](https://github.com/mclgoerg/inboxrake/commit/40295608e6c6cb621776497f2eced8c1421d4711))
+  <!-- release-notes:369 -->
+  - Statistics shows **When mail arrives**: a weekday × hour map of your mail in your own time zone, filterable by Newsletters / People / Orders; click an hour to see those mails.
+  - "What stands out" points out patterns (a morning newsletter wave, a sender that mails every day with Unsubscribe, a weekday shop-mail peak); a sender's detail shows its usual hours.
+  - On phones the Insights tab gets two matching widgets. No upgrade steps.
 * see which of your addresses leaked and retire an alias ([#372](https://github.com/mclgoerg/inboxrake/issues/372)) ([c89e28d](https://github.com/mclgoerg/inboxrake/commit/c89e28d13341e33c93f0925b098a37a0695c5dd4))
+  <!-- release-notes:372 -->
+  - New page **Your addresses** (Insights): see every address your mail arrived on - aliases, `+tags`, a catch-all, forwarding addresses - who you gave it to, and which one looks leaked, with a timeline and the strangers behind it.
+  - Optional **Settings › Alias service** (SimpleLogin or addy.io): retire a leaked alias in one step (reversible), get a fresh alias for the sender and send the strangers' mail to Junk. Without it everything else works.
+  - The first scan after the update also reads the receiving address of the mails already scanned (a light header-only request); it can take a little longer on large mailboxes.
 * start a rule from a recipe ([#367](https://github.com/mclgoerg/inboxrake/issues/367)) ([df1ed8c](https://github.com/mclgoerg/inboxrake/commit/df1ed8c0d97795f4b15554cbd92ecc553489cb55))
+  <!-- release-notes:367 -->
+  - New rule starts from a recipe: nine ready-made rules, each showing how many mails it would catch right now.
+  - Add creates a normal rule in Report only mode and runs its report once; you switch it to Active when it looks right.
+  - On a fresh install the empty Rules page offers the top three recipes.
 
 
 ### Bug Fixes
 
 * clearer assistant access choice in Settings ([#377](https://github.com/mclgoerg/inboxrake/issues/377)) ([df4bfec](https://github.com/mclgoerg/inboxrake/commit/df4bfec673651f90130839051271f8a0eb404463))
+  <!-- release-notes:377 -->
+  Settings › AI assistants now shows the assistant access choice as a list with a short description under each option, instead of cramped buttons on phones.
 * notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+  <!-- release-notes:360 -->
+  - Notifications no longer repeat the app name: the title now says what happened (for example "Scan finished"), with the account and details below it.
 
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
