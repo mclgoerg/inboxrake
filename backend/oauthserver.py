@@ -121,14 +121,14 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
-def _s256(verifier: str) -> str:
+def _s256(text: str) -> str:
     """The PKCE S256 challenge of a verifier (SHA-256 by definition, RFC 7636)."""
-    return _b64(hashlib.sha256(verifier.encode()).digest())
+    return _b64(hashlib.sha256(text.encode()).digest())
 
 
-def _hash(secret: str) -> str:
+def _hash(text: str) -> str:
     # a 256-bit random code: nothing to brute force, so no slow hash is needed
-    return hashlib.sha256(secret.encode()).hexdigest()
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------- discovery
