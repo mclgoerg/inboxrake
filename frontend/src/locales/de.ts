@@ -1726,6 +1726,8 @@ export const DE: Record<string, string> = {
   "toast.restored_one": "1\u00a0Mail wiederhergestellt ({label})",
   "toast.restored_partial": "{restored} von {of}\u00a0Mails wiederhergestellt ({label})",
   "toast.restored_rescan": "{restored} von {of}\u00a0Mails wiederhergestellt ({label}) - zum Anzeigen neu scannen",
+  "toast.restored_ambiguous": "{n}\u00a0Mails teilen ihre Message-ID mit einer anderen Mail und blieben, wo sie sind.",
+  "toast.restored_ambiguous_one": "1\u00a0Mail teilt ihre Message-ID mit einer anderen Mail und blieb, wo sie ist.",
   "toast.moved_trash": "{n}\u00a0Mails in den Papierkorb verschoben",
   "toast.moved_trash_one": "1\u00a0Mail in den Papierkorb verschoben",
   "status.filter_none": "0 von {n}\u00a0Gruppen passen",

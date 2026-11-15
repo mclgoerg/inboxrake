@@ -770,6 +770,8 @@ export default function App() {
         msg: errorText(r.error) }), "info");
     else
       toast.show(t("tm.done", { n: r.moved, when }), { variant: "success" });
+    if (r.ambiguous)
+      notify(t("toast.restored_ambiguous", { n: r.ambiguous }), "info");
     setUndoRev((n) => n + 1);
     void clearRestoreNotice();
     refresh();
@@ -1295,6 +1297,7 @@ export default function App() {
       notify(rescan ? t("toast.restored_rescan", params)
         : t(partial ? "toast.restored_partial" : "toast.restored", params),
       partial || rescan ? "info" : "success");
+      if (r.ambiguous) notify(t("toast.restored_ambiguous", { n: r.ambiguous }), "info");
       await clearRestoreNotice();
       setUndoRev((n) => n + 1);
       refresh();

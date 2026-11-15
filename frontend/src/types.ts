@@ -1361,5 +1361,7 @@ export interface RestoreState {
   skipped_protected?: number;
   skipped_pinned?: number;
   cant?: number;
+  /** mails left alone because their Message-ID belongs to another mail too */
+  ambiguous?: number;
   paused?: string[];
 }

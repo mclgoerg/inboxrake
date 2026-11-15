@@ -452,7 +452,8 @@ export const api = {
   /** `assistant`: the step is in the AI assistants' list. */
   undo: (index = -1, ident?: UndoIdent, account?: string,
       assistant = false) =>
-    req<{ restored: number; of: number; rescan: boolean }>(
+    req<{ restored: number; of: number; rescan: boolean;
+      ambiguous?: number }>(
       forAccount("/api/undo", account),
       { index, ...(ident ? { ident } : {}),
         ...(assistant ? { assistant: true } : {}) }),

@@ -170,3 +170,12 @@ test("the same finished job is not announced twice", async () => {
   tick({ restore: restoring({ status: "done", moved: 8 }) as any });
   expect(screen.getAllByText(/^Restored 8.mails/)).toHaveLength(1);
 });
+
+test("a restore that left mails with a shared Message-ID says so", async () => {
+  await mount([]);
+  tick({ restore: restoring() as any });
+  tick({ restore: restoring({ status: "done", moved: 8, ambiguous: 2 }) as any });
+  expect(await screen.findByText(
+    "2 mails share their Message-ID with another mail and stayed where they are."))
+    .toBeTruthy();
+});
