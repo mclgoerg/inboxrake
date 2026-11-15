@@ -2185,7 +2185,7 @@ export const DE: Record<string, string> = {
   "alias.disconnect_body": "Inboxrake vergisst den API-Schlüssel und die Alias-Liste. Bei deinem Dienst ändert sich nichts.",
   "alias.footnote": "Der API-Schlüssel wird wie deine anderen Geheimnisse gespeichert und nur an die API deines Dienstes geschickt. Inboxrake liest dort deine Aliase und kann einen ab- oder wieder einschalten und einen neuen anlegen - sonst nichts.",
   "assistants.access": "Assistenten-Zugriff",
-  "assistants.access_sub": "Das Meiste, was ein Token darf. Nur Admins sehen das.",
+  "assistants.access_sub": "Mehr darf kein Token. Nur Admins sehen das.",
   "assistants.access.off": "Aus",
   "assistants.access.on": "An",
   "assistants.access.propose": "Lesen und vorschlagen",
