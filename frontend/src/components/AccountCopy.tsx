@@ -231,8 +231,10 @@ function CopyState({ job, onPause, onResume, onCancel, onTell, onMore,
   );
   if (job.status === "done") {
     const parts: string[] = [
-      job.failed === 0 && job.unchecked === 0 ? t("copy.done_all_checked") : "",
+      job.failed === 0 && job.unchecked === 0 && !job.unsure
+        ? t("copy.done_all_checked") : "",
       job.unchecked > 0 ? t("copy.done_unchecked", { n: job.unchecked }) : "",
+      job.unsure > 0 ? t("copy.done_unsure", { n: job.unsure }) : "",
       // "nothing new" says it in the title
       job.skipped > 0 && job.copied > 0
         ? t("copy.done_skipped", { n: job.skipped }) : "",
@@ -255,10 +257,11 @@ function CopyState({ job, onPause, onResume, onCancel, onTell, onMore,
             <p className="type-meta text-muted">{parts.join(" · ")}</p>
           </div>
         </div>
-        {job.failed > 0 && (
+        {(job.failed > 0 || job.unsure > 0) && (
           <Notice tone="warn" className="mt-3"
             icon={<Info size={16} />}>
-            <div>{t("copy.done_failed", { n: job.failed })}</div>
+            <div>{job.failed > 0 ? t("copy.done_failed", { n: job.failed })
+              : t("copy.done_unsure", { n: job.unsure })}</div>
             <Button variant="tinted" size="sm" className="mt-1.5"
               disabled={busy} onClick={onRest}>{t("copy.copy_rest")}</Button>
           </Notice>
@@ -278,6 +281,20 @@ function CopyState({ job, onPause, onResume, onCancel, onTell, onMore,
       <section className="rounded-card border border-line bg-panel p-4">
         <Notice icon={<Info size={16} />}>
           {t("copy.cancelled", { n: job.copied })}</Notice>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button onClick={onMore}>{t("copy.start_over")}</Button>
+        </div>
+      </section>
+    );
+  }
+  if (job.status === "error" && job.error.startsWith("copy_same_mailbox")) {
+    // nothing to resume: the two accounts are one mailbox
+    return (
+      <section className="rounded-card border border-line bg-panel p-4">
+        <Notice tone="danger" role="alert">
+          <div className="font-medium">{t("copy.failed_title")}</div>
+          {errorText(job.error)}
+        </Notice>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={onMore}>{t("copy.start_over")}</Button>
         </div>

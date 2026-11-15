@@ -133,8 +133,8 @@ def _ledger_reset(job_id: str) -> None:
 # What a ledger line says about one mail (the last line of a key wins):
 #   pending    a mail without a Message-ID is about to be appended
 #   appended   the target acknowledged the APPEND
-#   ok / unchecked / dup / big / gone   final (see `_Run.copy_chunk`)
-FINAL = ("ok", "unchecked", "dup", "big", "gone")
+#   ok / unchecked / unsure / dup / big / gone   final (see `_Run.copy_chunk`)
+FINAL = ("ok", "unchecked", "unsure", "dup", "big", "gone")
 
 
 def _ledger_read(job_id: str) -> dict[str, str]:
@@ -185,8 +185,8 @@ _GMAIL_HOSTS = ("gmail.com", "googlemail.com")
 
 def _identity(name: str) -> tuple[str, str]:
     """Which mailbox an account points at: (IMAP host, login), compared
-    case-insensitively; Gmail ignores dots and +tags in the login and treats
-    googlemail.com as gmail.com."""
+    case-insensitively; a gmail.com / googlemail.com login ignores dots and
+    +tags (and the two domains are one)."""
     try:
         im = cfgmod.account_imap(name)
     except ValueError:
@@ -194,9 +194,9 @@ def _identity(name: str) -> tuple[str, str]:
     host = str(im.get("host") or "").strip().lower()
     user = str(im.get("user") or "").strip().lower()
     local, _, domain = user.rpartition("@")
-    if domain in _GMAIL_HOSTS or host.endswith(_GMAIL_HOSTS):
-        user = local.split("+")[0].replace(".", "") + "@gmail.com" \
-            if domain else user
+    if domain in _GMAIL_HOSTS:           # only the consumer logins: a Workspace
+        user = local.split("+")[0].replace(".", "") + "@gmail.com"  # domain
+    # on imap.gmail.com keeps its dots and tags
     return (host, user)
 
 
@@ -424,6 +424,87 @@ def _reserved(conn, acc, enc: str, names, delim: str) -> bool:
                for v in mailops._ROLE_NAMES.values())
 
 
+def _status(conn, folder: str) -> dict[str, int]:
+    st, data = conn.status(mailops.quote_folder(folder),
+                           "(MESSAGES UIDNEXT UIDVALIDITY)")
+    text = data[0].decode("utf-8", "replace") \
+        if st == "OK" and data and data[0] else ""
+    return {k: int(v) for k, v in re.findall(
+        r"(MESSAGES|UIDNEXT|UIDVALIDITY) (\d+)", text)}
+
+
+def _recent_ids(conn, uidnext: int) -> set[str]:
+    """Message-IDs of the newest few mails of INBOX (read only)."""
+    st, _ = conn.select(mailops.quote_folder("INBOX"), readonly=True)
+    if st != "OK":
+        return set()
+    st, data = conn.uid("SEARCH", None, "UID", f"{max(1, uidnext - 40)}:*")
+    uids = sorted(int(u) for u in (data[0].split() if st == "OK" and data
+                                   and data[0] else []))[-5:]
+    ids: set[str] = set()
+    for u in uids:
+        st, got = conn.uid("FETCH", str(u),
+                           "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        for item in (got or []) if st == "OK" else []:
+            if isinstance(item, tuple) and len(item) >= 2:
+                mid = mailops.header_text(email.message_from_bytes(
+                    item[1]).get("Message-ID")).strip()[:300]
+                if mid:
+                    ids.add(mid)
+    return ids
+
+
+def _signature(conn) -> dict[str, tuple[int, int]]:
+    """{folder: (UIDVALIDITY, mails)} of every folder (at most 60)."""
+    out: dict[str, tuple[int, int]] = {}
+    for name in mailops.selectable_folders(conn)[:60]:
+        got = _status(conn, name)
+        out[name] = (got.get("UIDVALIDITY", 0), got.get("MESSAGES", 0))
+    return out
+
+
+def same_server_mailbox(a, b) -> bool:
+    """Whether two open connections reach the SAME mailbox (an alias, a second
+    host name, a second login) - read only, before anything is created or
+    written. INBOX with the same UIDVALIDITY, UIDNEXT and mail count whose
+    newest Message-IDs are the same; with an empty INBOX on both sides, every
+    folder's UIDVALIDITY and mail count the same (and some mail in them). A
+    server that cannot answer says "not the same"."""
+    try:
+        x, y = _status(a, "INBOX"), _status(b, "INBOX")
+        if x and y and (x.get("UIDVALIDITY"), x.get("UIDNEXT"),
+                        x.get("MESSAGES")) != (
+                y.get("UIDVALIDITY"), y.get("UIDNEXT"), y.get("MESSAGES")):
+            return False
+        if x and y and x.get("MESSAGES"):
+            ids = _recent_ids(a, x.get("UIDNEXT", 1))
+            return bool(ids) and ids == _recent_ids(b, y.get("UIDNEXT", 1))
+        sig = _signature(a)
+        return any(n for _, n in sig.values()) and sig == _signature(b)
+    except (imaplib.IMAP4.error, OSError, ValueError):
+        return False
+
+
+def ensure_distinct(src, tgt) -> None:
+    """Refuse (copy_same_mailbox) when the two accounts reach one mailbox."""
+    a = _connect(src)
+    try:
+        b = _connect(tgt)
+        try:
+            if same_server_mailbox(a, b):
+                raise ValueError(mailops.COPY_SAME_MAILBOX)
+        finally:
+            try:
+                b.logout()
+            except Exception:
+                pass
+    finally:
+        try:
+            a.logout()
+        except Exception:
+            pass
+
+
 def folder_check(tgt, name: str) -> dict:
     """What the new folder would be on the target's server: its real name
     (separator replaced, below the personal namespace), whether it already
@@ -500,8 +581,9 @@ def _public(job: dict | None) -> dict | None:
         "bytes_total", "copied", "skipped", "checked", "unchecked",
         "too_large", "missing", "failed", "bytes_done", "started",
         "finished", "error", "active_s")}
+    out["unsure"] = job.get("unsure", 0)
     out["processed"] = (job["copied"] + job["skipped"] + job["too_large"]
-                        + job["missing"])
+                        + job["missing"] + out["unsure"])
     rate = job["bytes_done"] / job["active_s"] if job["active_s"] >= 2 else 0
     out["eta_s"] = int(max(0, job["bytes_total"] - job["bytes_done"]) / rate) \
         if rate > 0 and job["status"] == "running" else None
@@ -533,6 +615,7 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
                          else mailops.COPY_NOTHING)
     # the folder as the target's server will have it (and never one it uses
     # for something else); read before anything is written
+    ensure_distinct(src, tgt)
     where = folder_check(tgt, name)
     if where["reserved"]:
         raise ValueError(mailops.coded(mailops.COPY_FOLDER_RESERVED,
@@ -541,8 +624,8 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
     with _LOCK:
         data = _read()
         old = data["job"]
-        if old and old["status"] in LIVE:
-            raise RuntimeError(mailops.COPY_BUSY)
+        if old and old["status"] in LIVE or tenant.id in _THREADS:
+            raise RuntimeError(mailops.COPY_BUSY)   # (a finishing thread too)
         job = {"id": f"{time.time_ns():x}", "source": source,
                "target": target, "folder": where["shown"],
                "folder_enc": where["enc"],
@@ -550,8 +633,8 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
                "total": len(items), "bytes_total": sum(i["size"]
                                                        for i in items),
                "copied": 0, "skipped": 0, "checked": 0, "unchecked": 0,
-               "too_large": 0, "missing": 0, "failed": 0, "bytes_done": 0,
-               "started": int(time.time()), "finished": 0, "error": "",
+               "too_large": 0, "missing": 0, "failed": 0, "unsure": 0,
+               "bytes_done": 0, "started": int(time.time()), "finished": 0, "error": "",
                "active_s": 0.0}
         _ledger_reset(job["id"])
         _write({**data, "job": job})
@@ -606,6 +689,9 @@ def resume() -> dict:
         job = data["job"]
         if not job or job["status"] not in ("paused", "error", "running"):
             raise ValueError(mailops.COPY_NO_JOB)
+        if job["status"] == "error" and str(job.get("error") or "").startswith(
+                mailops.COPY_SAME_MAILBOX):
+            raise ValueError(mailops.COPY_SAME_MAILBOX)   # nothing to resume
         if _alive():
             if _STOP.get(tid) == "pause":
                 _STOP.pop(tid, None)      # pressed Resume before it paused
@@ -754,6 +840,9 @@ class _Run:
         self.t = mailops.connect(cfgmod.account_imap(self.tgt.name),
                                  self.tgt.name)
         self.sel = None
+        # before any CREATE or APPEND, on every (re)connect - a Resume too
+        if same_server_mailbox(self.s, self.t):
+            raise ValueError(mailops.COPY_SAME_MAILBOX)
         self._ensure_folder()
         self.top, ids, weak = self._read_dest()
         with self.tgt.lock:
@@ -775,16 +864,11 @@ class _Run:
 
     # -- the new folder ------------------------------------------------
     def _ensure_folder(self) -> None:
-        """Create the folder if the target lacks it. If the SOURCE shows it
-        right after, the two accounts are one mailbox under different logins
-        (an alias, a second host name): stop before a mail is written."""
+        """Create the folder if the target lacks it."""
         self.side = "target"
         enc = self.job["folder_enc"]
         names = mailops.list_folders_ex(self.t)
         if not any(n == enc for n, _ in names):
-            self.side = "source"
-            before = set(mailops.list_folders(self.s))
-            self.side = "target"
             st, _ = self.t.create(mailops.quote_folder(enc))
             if st != "OK" and enc not in mailops.list_folders(self.t):
                 raise RuntimeError(mailops.coded(
@@ -793,10 +877,6 @@ class _Run:
                 self.t.subscribe(mailops.quote_folder(enc))
             except Exception:
                 pass            # only makes the folder show up in some apps
-            self.side = "source"
-            if enc not in before and enc in mailops.list_folders(self.s):
-                raise ValueError(mailops.COPY_SAME_MAILBOX)
-            self.side = "target"
         self.dest = enc
 
     def _read_dest(self) -> tuple[int, set[str], set[str]]:
@@ -942,7 +1022,10 @@ class _Run:
                     todo.append(it)
             elif key in self.prior:            # id-less, tried before
                 weak = _weak(it["ts"], it["size"], it["subject"])
-                result[key] = "ok" if weak in self.skip_weak else "unchecked"
+                # found: ok. Acknowledged but not found: unchecked. Never
+                # acknowledged (pending) and not found: it may not be there
+                result[key] = "ok" if weak in self.skip_weak else (
+                    "unchecked" if self.prior[key] == "appended" else "unsure")
             else:
                 todo.append(it)
         appended: list[dict] = []
@@ -1108,7 +1191,7 @@ def _work() -> None:
                    checked=counts["ok"], unchecked=counts["unchecked"],
                    skipped=counts["dup"] + repeats,
                    too_large=counts["big"], missing=counts["gone"],
-                   bytes_done=done_bytes, error="")
+                   unsure=counts["unsure"], bytes_done=done_bytes, error="")
         todo = [i for i in items if ledger.get(i["key"]) not in FINAL]
         todo.sort(key=lambda i: (i["folder"], i["uid"]))
         run.connect()
@@ -1149,6 +1232,8 @@ def _work() -> None:
                     job["checked" if st == "ok" else "unchecked"] += 1
                 elif st == "dup":
                     job["skipped"] += 1
+                elif st == "unsure":
+                    job["unsure"] = job.get("unsure", 0) + 1
                 elif st == "big":
                     job["too_large"] += 1
                 else:
@@ -1229,7 +1314,8 @@ def tell(source: str, target: str) -> dict:
             continue
         s = per.setdefault(it["addr"], {"addr": it["addr"], "name": "",
                                         "mails": 0, "last": 0, "news": 0,
-                                        "kept": False, "bulk": False})
+                                        "kept": False, "bulk": False,
+                                        "purpose": False})
         s["mails"] += 1
         if it["ts"] >= s["last"]:
             s["last"] = it["ts"]
@@ -1238,6 +1324,9 @@ def tell(source: str, target: str) -> dict:
             s["news"] += 1
         if it["bulk"]:
             s["bulk"] = True               # offers List-Unsubscribe
+        if it["mask"] & (BIT["orders"] | BIT["accounts"]
+                         | BIT["appointments"]):
+            s["purpose"] = True            # order / account / booking mail
         if it["mask"] & (BIT["replied"] | BIT["protected"]):
             s["kept"] = True
     ticks = set(_read()["tell"].get(source, {}).get(target, ()))
@@ -1245,7 +1334,9 @@ def tell(source: str, target: str) -> dict:
     for s in per.values():
         # a newsletter: mostly newsletter mails, or any bulk sender (it
         # offers List-Unsubscribe) the user neither writes to nor protects
-        if not s["kept"] and (s["bulk"] or 2 * s["news"] >= s["mails"]):
+        # (a shop with a promo AND its order mails stays on the checklist)
+        if not s["kept"] and not s["purpose"] and (
+                s["bulk"] or 2 * s["news"] >= s["mails"]):
             news.append(s["addr"])
         else:
             senders.append({"addr": s["addr"], "name": s["name"],

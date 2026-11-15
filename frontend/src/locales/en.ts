@@ -125,6 +125,8 @@ export const EN: Record<string, string> = {
   "copy.done_all_checked": "All checked",
   "copy.done_unchecked": "{n} without a Message-ID could not be checked",
   "copy.done_unchecked_one": "1 without a Message-ID could not be checked",
+  "copy.done_unsure": "{n}\u00a0mails may not have been copied - the server never confirmed them",
+  "copy.done_unsure_one": "1\u00a0mail may not have been copied - the server never confirmed it",
   "copy.done_skipped": "{n} were already there and skipped",
   "copy.done_skipped_one": "1 was already there and skipped",
   "copy.done_big": "{n} over 50\u00a0MB were skipped",

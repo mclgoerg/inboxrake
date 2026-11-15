@@ -2183,6 +2183,8 @@ export const DE: Record<string, string> = {
   "copy.done_all_checked": "Alles geprüft",
   "copy.done_unchecked": "{n} ohne Message-ID ließen sich nicht prüfen",
   "copy.done_unchecked_one": "1 ohne Message-ID ließ sich nicht prüfen",
+  "copy.done_unsure": "{n}\u00a0Mails wurden womöglich nicht kopiert – der Server hat sie nie bestätigt",
+  "copy.done_unsure_one": "1\u00a0Mail wurde womöglich nicht kopiert – der Server hat sie nie bestätigt",
   "copy.done_skipped": "{n} waren schon da und wurden übersprungen",
   "copy.done_skipped_one": "1 war schon da und wurde übersprungen",
   "copy.done_big": "{n} über 50\u00a0MB wurden übersprungen",

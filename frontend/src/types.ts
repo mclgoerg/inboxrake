@@ -1097,6 +1097,9 @@ export interface CopyJob {
   too_large: number;
   missing: number;
   failed: number;
+  /** Id-less mails whose APPEND was never confirmed and that the target does
+   *  not show: they may not have been copied. */
+  unsure: number;
   bytes_done: number;
   started: number;
   finished: number;

@@ -353,7 +353,10 @@ class FakeIMAP:
         name = qname.strip('"')
         if name not in self.mailbox:
             return "NO", [b""]
-        return "OK", [f'"{name}" (MESSAGES {len(self.mailbox[name])})'.encode()]
+        held = self.mailbox[name]
+        nxt = max([self._high.get(name, 0)] + [m["uid"] for m in held]) + 1
+        return "OK", [f'"{name}" (MESSAGES {len(held)} UIDNEXT {nxt} '
+                      f'UIDVALIDITY {self.uv.get(name, 1)})'.encode()]
 
     # -- data ------------------------------------------------------------
     def _header_blob(self, m) -> bytes:

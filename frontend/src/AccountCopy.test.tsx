@@ -89,7 +89,7 @@ const job = (over: Partial<CopyJob> = {}): CopyJob => ({
   id: "j1", source: "gmail", target: "proton", folder: "From gmail",
   kinds: ["replied", "orders"], status: "running", total: 2152,
   bytes_total: 484_000_000, processed: 1420, copied: 1420, skipped: 0,
-  checked: 1420, unchecked: 0, too_large: 0, missing: 0, failed: 0,
+  checked: 1420, unchecked: 0, too_large: 0, missing: 0, failed: 0, unsure: 0,
   bytes_done: 318_000_000, started: 1, finished: 0, error: "", active_s: 120,
   eta_s: 360, ...over,
 });
@@ -365,6 +365,36 @@ test("a stopped copy says why, with Resume", async () => {
   expect(screen.getByText("[copy_target_full]")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Resume" })).toBeTruthy();
 });
+
+test("two accounts that are one mailbox: nothing to resume, only Start over",
+  async () => {
+    copyStatus.mockResolvedValue({ job: job({ status: "error",
+      error: "copy_same_mailbox" }) });
+    copyDismiss.mockResolvedValue({ job: null });
+    show();
+    await screen.findByText("The copy stopped");
+    expect(screen.getByText("[copy_same_mailbox]")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start over" }));
+    await waitFor(() => expect(copyDismiss).toHaveBeenCalled());
+    await screen.findByText("People you write to");
+  });
+
+test("done with mails the server never confirmed says they may be missing",
+  async () => {
+    copyStatus.mockResolvedValue({ job: job({ status: "done", processed: 9,
+      copied: 8, checked: 8, unsure: 1 }) });
+    copyStart.mockResolvedValue({ job: job() });
+    show();
+    await screen.findByText(/8 mails are in proton/);
+    expect(screen.queryByText(/All checked/)).toBeNull();
+    expect(screen.getAllByText(
+      "1 mail may not have been copied - the server never confirmed it"))
+      .toHaveLength(2);                 // the sub line and the notice
+    fireEvent.click(screen.getByRole("button", { name: "Copy the rest" }));
+    await waitFor(() => expect(copyStart).toHaveBeenCalled());
+  });
 
 test("done: the card as decided - originals stay, no trash offer", async () => {
   copyStatus.mockResolvedValue({ job: job({ status: "done", total: 2152,

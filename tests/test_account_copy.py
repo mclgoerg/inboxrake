@@ -919,7 +919,10 @@ def test_an_idless_mail_whose_append_never_answered_is_not_appended_again(
     accountcopy.resume_all()
     job = _wait()
     assert job["status"] == "done"
-    assert job["unchecked"] == 1                     # said so, not hidden
+    # never acknowledged and not in the target: "may not be there", NOT
+    # counted as copied - and not appended a second time
+    assert job["unsure"] == 1 and job["unchecked"] == 0
+    assert job["copied"] == 6 and job["processed"] == 7
     assert not [m for m in _folder(env) if m["subject"] == IDLESS[2]]
     assert len(_folder(env)) == 6
 
@@ -1011,22 +1014,134 @@ def test_other_logins_on_one_host_are_two_mailboxes(env):
     assert accountcopy._resolve("gmail", "proton")
 
 
-def test_two_names_for_one_server_mailbox_stop_before_a_mail_is_written(env):
-    """Different host names and logins, but the very same mailbox (an alias):
-    the folder the copy creates in the "target" shows up in the source - the
-    copy stops, with no mail written."""
+def _alias(env, empty_inbox=False):
+    """`proton` is another name for the source's mailbox (a second host name
+    and login the config does not reveal)."""
     _config(env, host="host-alias", user="alias@other.example")
+    if empty_inbox:
+        env["host-g"].mailbox["Archive"] = list(env["host-g"].mailbox["INBOX"])
+        env["host-g"].mailbox["INBOX"] = []
     fakes = {"host-g": env["host-g"], "host-alias": env["host-g"]}
-    # the same server answers both names
-    import backend.mailops as mo
-    mo.connect = lambda im, name=None: fakes[im["host"]]
-    _start()
+    mailops.connect = lambda im, name=None: fakes[im["host"]]
+
+
+def _no_writes(env):
+    return not [c for c in env["host-g"].commands
+                if c[0] in ("APPEND", "CREATE")]
+
+
+def _record(**over):
+    return {"id": "x", "source": "gmail", "target": "proton",
+            "folder": "From gmail", "folder_enc": "From gmail",
+            "kinds": list(accountcopy.DEFAULT_KINDS), "status": "running",
+            "total": 7, "bytes_total": 1, "copied": 0, "skipped": 0,
+            "checked": 0, "unchecked": 0, "too_large": 0, "missing": 0,
+            "failed": 0, "unsure": 0, "bytes_done": 0, "started": 1,
+            "finished": 0, "error": "", "active_s": 0.0, **over}
+
+
+@pytest.mark.parametrize("empty_inbox", [False, True])
+def test_one_mailbox_under_two_names_is_refused_before_anything_is_written(
+        env, empty_inbox):
+    _alias(env, empty_inbox)
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert accountcopy.status() == {"job": None} and _no_writes(env)
+
+
+@pytest.mark.parametrize("empty_inbox", [False, True])
+def test_the_guard_also_runs_when_a_run_connects_and_resume_is_refused(
+        env, empty_inbox):
+    """Resume and Start over cannot walk round the check: a run that
+    connects looks first, and an error of this kind has nothing to resume."""
+    _alias(env, empty_inbox)
+    accountcopy._write({"job": _record(), "tell": {}})
+    accountcopy._ledger_reset("x")
+    accountcopy.resume_all()                    # a start-up picks it up
     job = _wait()
     assert job["status"] == "error" and job["error"] == "copy_same_mailbox"
-    assert job["copied"] == 0
-    assert not [c for c in env["host-g"].commands if c[0] == "APPEND"]
-    assert "From gmail" not in {m["folder"] for m in
-                                accountsmod.get("gmail").index.values()}
+    assert _no_writes(env)
+    r = client.post("/api/account_copy/resume")          # the card's button
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert accountcopy.status()["job"]["status"] == "error"
+    # a job someone forces back to running still stops at connect()
+    data = accountcopy._read()
+    data["job"].update(status="running", error="")
+    accountcopy._write(data)
+    accountcopy.resume_all()
+    assert _wait()["error"] == "copy_same_mailbox" and _no_writes(env)
+    # Start over: the same refusal, still nothing written
+    assert client.post("/api/account_copy/dismiss").status_code == 200
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert _no_writes(env)
+
+
+def _two(a_ids, b_ids, uv=(1, 1)):
+    mk = lambda ids, v: FakeIMAP({"INBOX": [
+        make_msg(i + 1, msgid=m) for i, m in enumerate(ids)]})
+    a, b = mk(a_ids, uv[0]), mk(b_ids, uv[1])
+    a.uv["INBOX"], b.uv["INBOX"] = uv
+    return a, b
+
+
+def test_two_different_mailboxes_with_the_same_numbers_are_not_the_same():
+    """Equal UIDVALIDITY, UIDNEXT and count by coincidence: the Message-IDs
+    of the newest mails tell them apart."""
+    a, b = _two(["<a1@x>", "<a2@x>"], ["<b1@x>", "<b2@x>"])
+    assert accountcopy.same_server_mailbox(a, b) is False
+    a, b = _two(["<s1@x>", "<s2@x>"], ["<s1@x>", "<s2@x>"])
+    assert accountcopy.same_server_mailbox(a, b) is True
+    a, b = _two(["<s1@x>"], ["<s1@x>"], uv=(1, 2))
+    assert accountcopy.same_server_mailbox(a, b) is False
+
+
+def test_two_empty_inboxes_are_compared_by_every_folders_mail_count():
+    a = FakeIMAP({"INBOX": [], "Archive": [make_msg(1)]})
+    b = FakeIMAP({"INBOX": [], "Archive": [make_msg(1)]})
+    assert accountcopy.same_server_mailbox(a, b) is True
+    c = FakeIMAP({"INBOX": [], "Archive": [make_msg(1), make_msg(2)]})
+    assert accountcopy.same_server_mailbox(a, c) is False
+    # two fresh, empty accounts are not "the same" (there is nothing to tell)
+    assert accountcopy.same_server_mailbox(
+        FakeIMAP({"INBOX": [], "Sent": []}),
+        FakeIMAP({"INBOX": [], "Sent": []})) is False
+
+
+def test_a_server_that_cannot_answer_is_not_called_the_same():
+    a, b = _two(["<s1@x>"], ["<s1@x>"])
+    a.status = lambda *x: (_ for _ in ()).throw(OSError("no"))
+    assert accountcopy.same_server_mailbox(a, b) is False
+
+
+def test_google_workspace_logins_keep_their_dots_and_tags(env):
+    _config(env, host="imap.gmail.com", user="a.b@work.example")
+    cfg = json.loads(cfgmod.CONFIG_PATH.read_text())
+    cfg["accounts"]["gmail"].update(host="imap.gmail.com",
+                                    user="ab@work.example")
+    cfgmod.CONFIG_PATH.write_text(json.dumps(cfg))
+    assert accountcopy._resolve("gmail", "proton")      # two mailboxes
+
+
+def test_a_start_while_a_finishing_thread_is_still_registered_is_refused(env):
+    import threading
+    accountcopy._THREADS["default"] = threading.Thread()
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (409, "copy_busy")
+    assert accountcopy.status() == {"job": None}
+    accountcopy._THREADS.clear()
+    assert _start().status_code == 200
+    _wait()
+
+
+def test_tell_them_keeps_a_shop_with_promos_and_orders_on_the_checklist(env):
+    for m in accountsmod.get("gmail").index.values():
+        if m["addr"] == "shop@acme.example":
+            m["unsub"] = "<https://acme.example/u>"        # promo header too
+    body = client.get("/api/account_copy/tell",
+                      params={"source": "gmail", "target": "proton"}).json()
+    assert "shop@acme.example" in [s["addr"] for s in body["senders"]]
+    assert "shop@acme.example" not in body["newsletter_keys"]
 
 
 # ------------------------------------------------------------ the new folder
@@ -1193,7 +1308,7 @@ def test_an_error_names_the_host_of_the_side_that_failed(env, monkeypatch):
     def connect(im, name=None):
         if im["host"] == "host-p":
             calls["host-p"] += 1
-            if calls["host-p"] > 1:              # start() read it fine
+            if calls["host-p"] > 2:              # start() read it fine twice
                 raise ConnectionRefusedError()
         return real(im, name)
     monkeypatch.setattr(mailops, "connect", connect)
@@ -1205,9 +1320,13 @@ def test_an_error_names_the_host_of_the_side_that_failed(env, monkeypatch):
     accountcopy.dismiss()
     real2 = mailops.connect
 
+    seen = {"n": 0}
+
     def connect2(im, name=None):
         if im["host"] == "host-g":
-            raise ConnectionRefusedError()
+            seen["n"] += 1
+            if seen["n"] > 1:                # start() read it fine once
+                raise ConnectionRefusedError()
         return real2(im, name)
     monkeypatch.setattr(mailops, "connect", connect2)
     _start()
@@ -1216,8 +1335,12 @@ def test_an_error_names_the_host_of_the_side_that_failed(env, monkeypatch):
 
 
 def test_start_names_the_target_host_when_it_cannot_be_reached(env, monkeypatch):
+    real = mailops.connect
+
     def connect(im, name=None):
-        raise ConnectionRefusedError()
+        if im["host"] == "host-p":
+            raise ConnectionRefusedError()
+        return real(im, name)
     monkeypatch.setattr(mailops, "connect", connect)
     r = _start()
     assert (r.status_code, r.json()["detail"]) == (409, "conn_refused:host=host-p")
