@@ -4543,6 +4543,46 @@ def _present_in_targets(conn, items) -> set[tuple[str, str]]:
     return present
 
 
+def _senders_of(conn, uids) -> dict[int, str]:
+    """`{uid: sender address (lower case)}` of mails in the selected folder."""
+    out: dict[int, str] = {}
+    uids = [int(u) for u in uids]
+    for start in range(0, len(uids), FETCH_CHUNK):
+        part = uids[start:start + FETCH_CHUNK]
+        status, data = conn.uid("FETCH", ",".join(str(u) for u in part),
+                                "(UID BODY.PEEK[HEADER.FIELDS (FROM)])")
+        if status != "OK":
+            raise RuntimeError(CANNOT_READ_MOVED)
+        for item in data or []:
+            if isinstance(item, tuple) and len(item) >= 2:
+                m = _UID_RE.search(item[0])
+                if m:
+                    out[int(m.group(1))] = parseaddr(header_text(
+                        email.message_from_bytes(item[1]).get("From")
+                    ))[1].lower()
+    return out
+
+
+def _present_strict(conn, mails: list[dict]) -> set[tuple[str, str]]:
+    """Like `_present_in_targets`, for a step whose Message-IDs may belong to
+    OTHER mails (a restore step): a mail counts as already there only when a
+    mail with its Message-ID AND its recorded sender is in the folder."""
+    present: set[tuple[str, str]] = set()
+    by_folder: dict[str, list[dict]] = {}
+    for m in mails:
+        if m["msgid"] and m["addr"]:
+            by_folder.setdefault(m["folder"], []).append(m)
+    for folder, ms in by_folder.items():
+        status, _ = conn.select(quote_folder(folder), readonly=True)
+        if status != "OK":
+            continue
+        for m in ms:
+            found = _search_message_id(conn, m["msgid"])
+            if found and m["addr"] in _senders_of(conn, found).values():
+                present.add((folder, m["msgid"]))
+    return present
+
+
 def _reinsert_undo(acc, entry: dict, pos: int) -> None:
     """Put a taken-off undo entry back (acc.lock held). The list may have
     changed while the IMAP work ran (new entries, front-trimming, pruning),
@@ -4719,8 +4759,12 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
         # target with the originals still in Trash. What the target already
         # holds by Message-ID counts as restored.
         exact_copies = entry.get("copies")
-        present = (_present_in_targets(conn, entry["items"])
-                   if exact_copies is None else set())
+        if exact_copies is not None:
+            present = set()
+        elif entry.get("strict"):
+            present = _present_strict(conn, undo_mails(entry))
+        else:
+            present = _present_in_targets(conn, entry["items"])
         status, _ = conn.select(quote_folder(trash), readonly=False)
         if status != "OK":
             raise RuntimeError(coded(CANNOT_OPEN, folder=decode_mutf7(trash)))
@@ -4764,9 +4808,12 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
             if not msgid or (folder, msgid) in present:
                 continue
             found = _search_message_id(conn, msgid)
-            if entry.get("strict") and len(found) > want[msgid]:
-                # more mails carry this Message-ID than the step recorded:
-                # one of them is not ours - move none of them
+            if entry.get("strict") and found and (
+                    len(found) > want[msgid] or (mail["addr"] and any(
+                        a != mail["addr"]
+                        for a in _senders_of(conn, found).values()))):
+                # more mails carry this Message-ID than the step recorded, or
+                # one is from someone else: it is not (only) ours - none moves
                 run["ambiguous"] = run.get("ambiguous", 0) + 1
                 continue
             for u in found:
@@ -4990,6 +5037,8 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
     try:
         if only is not None:
             take, keep = _split_entry(entry, only)
+        if entry.get("action") == "restore" and entry.get("parts") is None:
+            take = {**take, "strict": True}   # (a re-armed restore step)
         run["of"] = take["count"]
         conn = connect(cfgmod.account_imap(acc.name), acc.name)
         if entry.get("parts") is not None:
@@ -5014,11 +5063,22 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
             pass
     run["short"] = 0
     if run["failed"] is None:
-        if expected is not None and entry.get("parts") is None \
-                and run["restored"] < expected:
-            # fewer found than the caller counted: what was not found is
+        parts = entry.get("parts") is not None
+        if parts:
+            moved, rest_parts = _moved_parts(take, run)
+            rest_parts += (keep or {}).get("parts", [])
+            if rest_parts:
+                n = sum(len(p["mails"]) for p in rest_parts)
+                with acc.lock:
+                    _reinsert_undo(acc, {**entry, "parts": rest_parts,
+                                         "count": n}, pos)
+            _reinstate_steps(acc, moved)
+        elif (expected is not None and run["restored"] < expected) \
+                or run.get("ambiguous"):
+            # fewer found than the caller counted, or mails that share a
+            # Message-ID with another mail stayed: what did not move is
             # still in the step (restored copies are marked), never lost
-            run["short"] = expected - run["restored"]
+            run["short"] = max(0, (expected or 0) - run["restored"])
             rest = _unmoved(entry, run)
             if rest is not None:
                 with acc.lock:
@@ -5026,9 +5086,27 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
         elif keep is not None:
             with acc.lock:
                 _reinsert_undo(acc, keep, pos)
-        if entry.get("parts") is not None:
-            _reinstate_steps(acc, take)
     return run
+
+
+def _moved_parts(entry: dict, run: dict) -> tuple[dict, list[dict]]:
+    """Split a taken restore step's parts into what went back (an entry with
+    only those mails) and the parts of what did not move."""
+    moved = Counter((f, mid) for _, mid, _, _, f in run["items"])
+    went, rest = [], []
+    for p in entry["parts"]:
+        yes, no = [], []
+        for m in p["mails"]:
+            if moved[(m[0], m[1])] > 0:
+                moved[(m[0], m[1])] -= 1
+                yes.append(m)
+            else:
+                no.append(m)
+        if yes:
+            went.append({**p, "mails": yes})
+        if no:
+            rest.append({**p, "mails": no})
+    return {**entry, "parts": went}, rest
 
 
 def apply_undo_counts(acc, run: dict) -> None:
@@ -5072,8 +5150,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
     entry, pos = pop_undo(acc, index, ident, assistant, token)
     # undoing a restore never moves protected senders' or pinned mail either
     run = run_undo(acc, entry, pos,
-                   only=undo_skipper(acc) if entry.get("parts") is not None
-                   else None)
+                   only=undo_skipper(acc)
+                   if entry.get("action") == "restore" else None)
     flush_undo(acc)
     restored, failed = run["restored"], run["failed"]
     log.info("undo: restored %d/%d mails (%s)", restored, entry["count"],
@@ -5097,7 +5175,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
     if entry.get("action") == "move_contents":
         # the mails went back to a folder that is never scanned: nothing
         # in the index changes, so no rescan and no "rescan" notice
-        return {"restored": restored, "of": entry["count"], "rescan": False}
+        return {"restored": restored, "of": entry["count"], "rescan": False,
+                "ambiguous": run.get("ambiguous", 0)}
     params = {"restored": restored, "of": entry["count"],
               "label": entry["label"]}
     if entry.get("label_key"):     # the notice words the label itself, too
@@ -5105,7 +5184,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
         params.update({f"label_{k}": v
                        for k, v in entry["label_params"].items()})
     rescan = _rescan_after_restore(acc, restored, "restored", params)
-    return {"restored": restored, "of": entry["count"], "rescan": rescan}
+    return {"restored": restored, "of": entry["count"], "rescan": rescan,
+            "ambiguous": run.get("ambiguous", 0)}
 
 
 # -- role indexes ----------------------------------------------------------

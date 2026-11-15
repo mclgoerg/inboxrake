@@ -610,6 +610,7 @@ def _worker(acc, job: dict) -> None:
             run = mailops.run_undo(acc, taken, pos, only=skip,
                                    expected=len(res["come"]))
             cant["left_folder"] += run["short"]
+            cant["ambiguous"] += run.get("ambiguous", 0)
             mailops.apply_undo_counts(acc, run)
             virtual |= {(to, msgid) for to, msgid, *_ in run["items"]}
             steps_done += 1
@@ -686,6 +687,7 @@ def _finish(acc, job: dict, parts: list[dict], undone: list[dict],
                 progress="", error=error, steps_done=steps_done,
                 moved=restored, skipped_protected=skipped["protected"],
                 skipped_pinned=skipped["pinned"], cant=sum(cant.values()),
+                ambiguous=cant["ambiguous"],
                 paused=paused)
             acc.state["groups_rev"] += 1
     log.info("[%s] time machine: restored %d mails in %d steps%s", acc.name,

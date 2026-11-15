@@ -1107,3 +1107,73 @@ def test_a_failing_split_puts_the_step_back(three, monkeypatch):
     run = mailops.run_undo(acc, entry, pos, only=lambda *a: False)
     assert isinstance(run["failed"], ValueError)
     assert entry in acc.undo_log and acc.undo_busy == 0
+
+
+# ------------------------------------------------------ round 4
+
+def _rearmed_restore(three):
+    """R1 restores everything; R2 restores to before R1 (a, b, c in Trash);
+    undoing R2 re-arms R1 as a plain Message-ID step of action 'restore'."""
+    _go("")
+    steps = _steps()
+    trashed = [s for s in steps if s["action"] == "trash"]
+    _go(trashed[0]["id"])                      # newest trash stays: R1 undone
+    assert _where(three, "a") == {"Trash": 2}
+    mailops.undo_last()                        # undo R2
+    assert _where(three, "a") == {"INBOX": 2}
+    rearmed = [e for e in _acc().undo_log if e["action"] == "restore"]
+    assert rearmed and all(e.get("parts") is None for e in rearmed)
+
+
+def test_undoing_a_re_armed_restore_leaves_protected_mail_alone(three):
+    _rearmed_restore(three)
+    cfgmod.update_config({"protected": ["a@x.example"]})
+    mailops.undo_last()
+    assert _where(three, "a") == {"INBOX": 2}      # never moved
+    assert _where(three, "b") == {"Trash": 2} and _where(three, "c") == {"Trash": 2}
+
+
+def test_undoing_a_re_armed_restore_leaves_a_pinned_mail_alone(three):
+    _rearmed_restore(three)
+    a1 = next(m for m in three.mailbox["INBOX"] if m["from"].startswith("a@"))
+    pinstore.set_pinned(a1["msgid"], True, _acc().name)
+    mailops.undo_last()
+    assert _where(three, "a") == {"INBOX": 1, "Trash": 1}
+    assert any(m["msgid"] == a1["msgid"] for m in three.mailbox["INBOX"])
+
+
+def test_a_shared_message_id_in_the_folder_stays_and_is_said(monkeypatch):
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    _go(s1)                                        # a back in Keep
+    a1 = next(m for m in fake.mailbox["Keep"])
+    fake.mailbox["Keep"].append(make_msg(91, frm="z@x.example",
+                                         msgid=a1["msgid"]))
+    r = mailops.undo_last()                        # undo the restore
+    assert r["ambiguous"] == 1                     # said, not silent
+    assert _where(fake, "z") == {"Keep": 1}        # never moved
+    assert any(m["from"].startswith("a@") and m["msgid"] == a1["msgid"]
+               for m in fake.mailbox["Keep"])      # a1 stayed too
+    # what did not move is still a step, not lost
+    assert any(e["action"] == "restore" for e in _acc().undo_log)
+
+
+def test_a_lookalike_in_the_target_does_not_count_as_already_there(monkeypatch):
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    _go(s1)
+    a1 = next(m for m in fake.mailbox["Keep"])
+    fake.mailbox["Trash"].append(make_msg(92, frm="z@x.example",
+                                          msgid=a1["msgid"]))   # not a1
+    r = mailops.undo_last()
+    assert r["ambiguous"] == 0 and r["restored"] >= 2
+    assert not any(m["from"].startswith("a@") for m in fake.mailbox["Keep"])
+    assert _where(fake, "z") == {"Trash": 1}
+
+
+def test_a_sole_lookalike_is_not_moved_for_the_wrong_sender(monkeypatch):
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    _go(s1)
+    a1 = next(m for m in fake.mailbox["Keep"])
+    fake.mailbox["Keep"].remove(a1)                # a1 is gone, z stands in
+    fake.mailbox["Keep"].append(make_msg(93, frm="z@x.example", msgid=a1["msgid"]))
+    r = mailops.undo_last()
+    assert r["ambiguous"] == 1 and _where(fake, "z") == {"Keep": 1}
