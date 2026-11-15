@@ -4655,13 +4655,25 @@ def _netted(skip, part: dict) -> bool:
     return bool(net) and (head.get("audit_id") in net or head.get("id") in net)
 
 
+def _netted_entry(skip, entry: dict) -> bool:
+    """A re-armed restore step (a plain Message-ID step of action `restore`,
+    `undid` = the steps it had undone) whose steps this restore undoes
+    anyway: it cancels out, like the parts of a restore step."""
+    undid = entry.get("undid")
+    return bool(undid) and entry.get("action") == "restore" \
+        and entry.get("parts") is None \
+        and set(undid) <= getattr(skip, "net", set())
+
+
 def _split_entry(entry: dict, skip) -> tuple[dict, dict | None]:
     """`(take, keep)`: the part of a step that goes back and the part that
     stays where it is (`skip(addr, msgid, folder)` is true for the mails to
     leave). `take` shares the step's copy records, so their `restored` marks
     live on in the step if the restore fails half-way. `keep` is None when
     nothing is left behind. A restore step (`parts`) is split part by part;
-    parts `_netted` are in neither."""
+    parts `_netted` are in neither (nor is a `_netted_entry`)."""
+    if _netted_entry(skip, entry):
+        return {**entry, "count": 0, "items": [], "who": []}, None
     if entry.get("parts") is not None:
         take_p, keep_p = [], []
         for p in entry["parts"]:
@@ -5007,7 +5019,10 @@ def _reinstate_steps(acc, entry: dict) -> None:
                 **fresh, "count": len(mails),
                 "items": [(m[0], m[1]) for m in mails],
                 "who": [[m[2], m[3]] for m in mails],
-                "bytes": sum(m[3] for m in mails)}, len(lst))
+                "bytes": sum(m[3] for m in mails),
+                # a re-armed step is found by Message-ID: never move a mail
+                # that is merely another mail's namesake
+                "strict": True}, len(lst))
 
 
 def run_undo(acc, entry: dict, pos: int, only=None,

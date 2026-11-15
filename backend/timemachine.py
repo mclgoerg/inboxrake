@@ -323,6 +323,9 @@ def _assess(acc, entry: dict, live: dict, skip,
         else:
             skipped[why] += 1
 
+    if mailops._netted_entry(skip, entry):
+        return {"come": [], "lost": lost, "skipped": skipped,
+                "untracked": False}
     if entry.get("parts") is not None:
         for p in entry["parts"]:
             if mailops._netted(skip, p):
@@ -596,8 +599,8 @@ def _worker(acc, job: dict) -> None:
             skipped.update(res["skipped"])
             for k, n in res["lost"].items():
                 cant[k] += n
-            cancelling = any(mailops._netted(skip, p)
-                             for p in entry.get("parts") or ())
+            cancelling = mailops._netted_entry(skip, entry) or any(
+                mailops._netted(skip, p) for p in entry.get("parts") or ())
             if res["untracked"] or not (res["come"] or cancelling):
                 steps_done += 1
                 _set(acc, steps_done=steps_done)
@@ -620,8 +623,14 @@ def _worker(acc, job: dict) -> None:
                 moved.setdefault(frm, []).append((to, msgid, addr, sz))
                 size += sz
             for frm, mails in moved.items():
-                parts.append({"head": {**_head(taken), "in": frm},
-                              "mails": mails})
+                parts.append({"head": {
+                    **_head(taken), "in": frm,
+                    # the steps this restore step undid (to cancel it out
+                    # against them when it is re-armed)
+                    **({"undid": [p["head"].get("audit_id") or p["head"]["id"]
+                                  for p in taken["parts"]]}
+                       if taken.get("parts") else {})},
+                    "mails": mails})
             if taken.get("audit_id") and run["failed"] is None and (
                     run["restored"] or cancelling):
                 # (a restore this one cancelled out counts as undone too)
