@@ -1,5 +1,5 @@
 import { Archive, Bell, Bot, Check, Folder, KeyRound, Mail, Plus,
-  RefreshCw, Search, Settings as SettingsIcon, Shield, Sparkles, Star,
+  RefreshCw, Search, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Star,
   Tag as TagIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState,
   type MutableRefObject, type ReactNode } from "react";
@@ -12,10 +12,11 @@ import { gotoSettings, SETTINGS_SECTIONS, useSidebar,
   type SettingsSection } from "../nav";
 import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
 import type { AdminTenantStats, AppState, AssistantAccess, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
-  DigestSchedule, FoldersResp, ImapAccount, OauthProvider, Preset, Security,
+  DigestSchedule, FoldersResp, ImapAccount, KeepSafeClass, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
 import { AssistantsSection, useAssistantTokens } from "./AssistantsSettings";
 import { FolderSettings } from "./FolderSettings";
+import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { BUILTIN_CATEGORIES, CategoryList,
@@ -106,6 +107,13 @@ const initialForm = (c: Config, name: string) => ({
   newSenderWindowDays: String(c.new_sender_window_days ?? 7),
   assistantAccess: (c.assistants?.access ?? "off") as AssistantAccess,
   assistantNotifyEmail: c.assistants?.notify?.email ?? true,
+  // Keep-safe: the same defaults as the backend (an older one sends none)
+  ksInvoices: c.keep_safe?.invoices ?? true,
+  ksBookings: c.keep_safe?.bookings ?? true,
+  ksContracts: c.keep_safe?.contracts ?? true,
+  ksJobs: c.keep_safe?.jobs ?? true,
+  ksAccounts: c.keep_safe?.accounts ?? false,
+  ksRules: c.keep_safe?.rules ?? true,
 });
 type Form = ReturnType<typeof initialForm>;
 
@@ -139,6 +147,8 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
     "sharedEndpoint", "sharedKey", "sharedBudget"] },
   { label: "settings.sec.assistants",
     fields: ["assistantAccess", "assistantNotifyEmail"] },
+  { label: "settings.sec.keepsafe", fields: ["ksInvoices", "ksBookings",
+    "ksContracts", "ksJobs", "ksAccounts", "ksRules"] },
 ];
 
 /** The save bar's text: one change is named ("Password changed", "AI review
@@ -423,6 +433,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         // the "Notify me about proposals" switch (a server that has it)
         ...(cfg.assistants?.notify
           ? { assistants_notify: { email: f.assistantNotifyEmail } } : {}),
+        // Keep-safe switches (a server that has them)
+        ...(cfg.keep_safe ? { keep_safe: { invoices: f.ksInvoices,
+          bookings: f.ksBookings, contracts: f.ksContracts, jobs: f.ksJobs,
+          accounts: f.ksAccounts, rules: f.ksRules } } : {}),
         ai: { provider: f.provider, model: f.model,
           foundry_endpoint: f.endpoint,
           price_in: +f.priceIn || 0, price_out: +f.priceOut || 0,
@@ -458,6 +472,11 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         assistantNotifyEmail: next.assistants?.notify?.email
           ?? f.assistantNotifyEmail,
         newSenderWindowDays: String(next.new_sender_window_days),
+        ...(next.keep_safe ? { ksInvoices: next.keep_safe.invoices,
+          ksBookings: next.keep_safe.bookings,
+          ksContracts: next.keep_safe.contracts, ksJobs: next.keep_safe.jobs,
+          ksAccounts: next.keep_safe.accounts,
+          ksRules: next.keep_safe.rules } : {}),
         ...imapFields(next, editAcct) };
       const pt = (next.protected ?? []).join("\n");
       const ct = catText(next.categories);
@@ -771,6 +790,10 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       [t("notify.title")]),
     protected: sec("protected", <Shield size={16} />, "safe",
       cfg.protected?.length ? String(cfg.protected.length) : undefined, []),
+    keepsafe: sec("keepsafe", <ShieldCheck size={16} />, "safe", undefined,
+      [t("keepsafe.class.invoices"), t("keepsafe.class.bookings"),
+        t("keepsafe.class.contracts"), t("keepsafe.class.jobs"),
+        t("keepsafe.class.accounts"), t("keepsafe.set.rules")]),
     categories: sec("categories", <TagIcon size={16} />, "review",
       ownCategories ? String(ownCategories) : undefined,
       [t("Custom categories")]),
@@ -804,7 +827,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   };
   const groups: { key: string; label?: string; ids: SettingsSection[] }[] = [
     { key: "app", label: t("settings.group.app"),
-      ids: ["general", "notifications", "protected", "categories", "filed",
+      ids: ["general", "notifications", "protected", "keepsafe", "categories",
+        "filed",
         ...(admin ? [] : ["backup" as const])] },
     { key: "automation", label: t("settings.group.automation"),
       ids: ["digest", "autoscan"] },
@@ -1702,6 +1726,32 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     </SettingsGroup>
   </>);
 
+  // Keep-safe: which kinds of mail a big cleanup offers to keep. Staged like
+  // every other setting (saved with the Save bar).
+  const keepRows: { id: KeepSafeClass; field: keyof Form }[] = [
+    { id: "invoices", field: "ksInvoices" },
+    { id: "bookings", field: "ksBookings" },
+    { id: "contracts", field: "ksContracts" },
+    { id: "jobs", field: "ksJobs" },
+    { id: "accounts", field: "ksAccounts" }];
+  const keepsafeBody = (
+    <SettingsGroup footnote={t("keepsafe.set.help")}>
+      {keepRows.map(({ id, field }) => (
+        <SettingsRow key={id} label={t(`keepsafe.class.${id}`)}
+          sub={t(`keepsafe.set.${id}_sub`)}
+          icon={<IconTile tone={KEEP_SAFE_LOOK[id].tone}>
+            {KEEP_SAFE_LOOK[id].icon}</IconTile>}>
+          <Switch checked={f[field] as boolean}
+            onChange={(on) => put(field, on as never)} />
+        </SettingsRow>
+      ))}
+      <SettingsRow label={t("keepsafe.set.rules")}
+        sub={t("keepsafe.set.rules_sub")}>
+        <Switch checked={f.ksRules} onChange={(on) => put("ksRules", on)} />
+      </SettingsRow>
+    </SettingsGroup>
+  );
+
   const assistantsBody = (
     <AssistantsSection cfg={cfg} admin={admin} access={f.assistantAccess}
       onAccess={(a) => put("assistantAccess", a)}
@@ -1733,7 +1783,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const bodies: Record<SettingsSection, ReactNode> = {
     account: accountBody, general: generalBody,
     notifications: notificationsBody, protected: protectedBody,
-    categories: categoriesBody, filed: filedBody, digest: digestBody,
+    keepsafe: keepsafeBody, categories: categoriesBody, filed: filedBody, digest: digestBody,
     autoscan: autoscanBody, ai: aiBody, assistants: assistantsBody,
     signin: signinBody,
     backup: backupBody,

@@ -5,7 +5,7 @@ import { api, fmtSize, mailKey } from "../api";
 import { nowDate, nowMs } from "../clock";
 import { t } from "../i18n";
 import { matchGroup, olderThan, parseFilter } from "../lib";
-import { confirmTrashMails } from "../mailActions";
+import { confirmTrashItems } from "../mailActions";
 import type { Group, Mail, SearchNote } from "../types";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
@@ -216,13 +216,18 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
     if (!res || go.length === 0) return false;
-    // (one mail: its subject is named, not "1 mail")
-    if (!await confirmTrashMails(go.length, subject
-      ?? (go.length === 1 ? go[0].subject ?? "" : undefined))) return false;
     try {
-      const items = go.map((m) => [m.folder, m.uid] as [string, number]);
+      // (one mail: its subject is named, not "1 mail"; a big move carries
+      // the keep-safe box - the mails kept safe are protected and stay)
+      const items = await confirmTrashItems(
+        go.map((m) => [m.folder, m.uid] as [string, number]), subject
+          ?? (go.length === 1 ? go[0].subject ?? "" : undefined));
+      if (!items) return false;
+      if (!items.length) { setNote(t("toast.all_pinned")); return false; }
       await api.deleteMessages(items);
-      const gone = new Set(go.map(mailKey));
+      const moved = new Set(items.map(([folder, uid]) =>
+        mailKey({ folder, uid })));
+      const gone = new Set(go.map(mailKey).filter((k) => moved.has(k)));
       // (against the CURRENT results: a search that finished while the
       // confirm was open must not be overwritten by the old one)
       setRes((cur) => cur && { ...cur,

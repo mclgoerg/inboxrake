@@ -10,6 +10,8 @@ import { afterEach, expect, test, vi } from "vitest";
 
 let state: any;
 const deleteGroups = vi.fn().mockResolvedValue({ ok: true });
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 const mails = vi.fn().mockResolvedValue({
   total: 1, offset: 0, ignored: [],
   mails: [{ uid: 7, folder: "INBOX", date: "2026-01-02", ts: 1,
@@ -30,6 +32,8 @@ vi.mock("./api", () => ({
     mails: (...a: unknown[]) => mails(...a),
     group: () => Promise.resolve([]),
     deleteGroups: (...a: unknown[]) => deleteGroups(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
@@ -41,7 +45,8 @@ vi.mock("./api", () => ({
 
 import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
-import { cancelDialog, expectNoDialog, findDialog } from "./dialogTestUtils";
+import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState, Config } from "./types";
 
 const cfg = {
@@ -120,6 +125,8 @@ const tickDomain = (map: HTMLElement, re: RegExp) => {
 afterEach(() => {
   cleanup();
   deleteGroups.mockClear();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   localStorage.clear();
 });
 
@@ -206,3 +213,32 @@ test("switching account closes the map (it must not reopen on the other one)",
       expect(screen.queryByTestId("space-map")).toBeNull();
     } finally { delete (cfg.accounts as any).second; }
   });
+
+test("keep-safe: a Space map tile's Trash (42 mails) shows the box; the ticked "
+  + "groups are protected, then the move runs", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
+  state = { ...baseState, groups: { ...baseState.groups, sender: SENDERS } };
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  await screen.findByPlaceholderText("Search or filter…");
+  await waitFor(() => expect(screen.getAllByText("a@big.example").length)
+    .toBeGreaterThan(0));
+  await openMapTool();
+  const map = await screen.findByTestId("space-map");
+  tickDomain(map, /^big\.example/);
+  fireEvent.click(screen.getByRole("button", { name: "Review in Senders" }));
+  await waitFor(() => expect(screen.getByText(/^2 groups · 42 mails/)).toBeTruthy());
+  fireEvent.click(screen.getByText("Trash 42"));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0]).toMatchObject({
+    grouping: "sender", keys: ["a@big.example", "b@big.example"] });
+  // 42 selected - 4 kept: the button counts only what moves
+  expect(dlg.textContent).toContain("42 selected · 4 kept safe");
+  await pressDialog(/^Move to Trash \(38\)$/);
+  await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());
+  expect(keepSafePin.mock.calls[0][1]).toEqual(["invoices", "bookings"]);
+  // pinned before the move
+  expect(keepSafePin.mock.invocationCallOrder[0])
+    .toBeLessThan(deleteGroups.mock.invocationCallOrder[0]);
+});

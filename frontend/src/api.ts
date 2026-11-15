@@ -8,7 +8,7 @@ import type {
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
-  UnsubRunItem,
+  UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -365,6 +365,15 @@ export const api = {
   pin: (folder: string, uid: number, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean }>("/api/pin",
       { folder, uid, pinned }),
+  // Keep-safe: which mails of a Trash move look worth keeping, and the pin of
+  // the ticked classes before the move (the server decides the classes).
+  // `account`: the one the move belongs to (a pin must never land in another).
+  keepSafeCheck: (scope: KeepSafeScope, account?: string) =>
+    req<KeepSafeCheck>(forAccount("/api/keepsafe/check", account), scope),
+  keepSafePin: (scope: KeepSafeScope, classes: KeepSafeClass[],
+                account?: string) =>
+    req<{ pinned: number; items: [string, number][] }>(
+      forAccount("/api/keepsafe/pin", account), { ...scope, classes }),
   pinGroup: (grouping: Grouping, key: string, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean; changed: number; skipped: number }>(
       "/api/pin_group", { grouping, key, pinned }),

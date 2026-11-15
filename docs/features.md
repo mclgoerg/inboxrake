@@ -853,6 +853,26 @@ asks first. "Protect all mails in this group" (in the detail view's ... menu) pi
 rescans and folder moves. Filter groups with `has:pinned`. (This is a
 protection against accidental cleanup, not a PIN code or privacy lock.)
 
+### Keep-safe
+
+<small class="where">Trash confirm · Settings › Keep-safe · Rules</small>
+
+Before any move to Trash of more than 20 mails (a selection, a Suggestion's
+Clean up, Swipe triage's Apply, a Space map selection, Search, Attachments,
+Duplicates) the confirm checks the mails for things you may need later:
+**invoices & receipts, bookings & tickets, contracts & policy notices, job
+applications**. They show as a green "N look worth keeping" box inside the
+confirm, one row per kind, each ticked and expandable to its subjects. Ticked
+mails are protected (see Protected mails) before the move, so it skips them;
+the button counts only what really moves. Unticking a kind is the one-click
+"no, it's fine". Account & security mail (sign-in codes go stale) is off by
+default; **Settings › Keep-safe** switches each kind on or off. With "Check
+rule runs too" a rule that moves mail to Trash skips these mails (without
+protecting them) and its report and Activity line say how many it kept safe.
+Block rules and moves by an AI assistant are not changed. The check reads
+only subjects, senders and dates already in the index - no AI, nothing leaves
+the server.
+
 ### Persistent audit log
 
 <small class="where">Activity</small>

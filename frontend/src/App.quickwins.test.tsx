@@ -9,6 +9,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 let state: any;
 const deleteGroups = vi.fn()
   .mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", () => ({
   api: {
@@ -17,6 +19,8 @@ vi.mock("./api", () => ({
     state: () => Promise.resolve(state),
     version: () => Promise.resolve({ build: "v1" }),
     deleteGroups: (...a: unknown[]) => deleteGroups(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     group: () => Promise.resolve([]),
     overview: () => Promise.reject(new Error("offline")),
     audit: () => Promise.resolve({ total: 0, entries: [] }),
@@ -35,6 +39,7 @@ import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from
   "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import { saveDismissed } from "./quickwins";
 import type { AppState, Config, Group } from "./types";
 
@@ -125,6 +130,8 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   deleteGroups.mockClear();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   setLang("en");
 });
 
@@ -353,4 +360,61 @@ test("the chip row is gone: quick filters live in the Filter menu", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
   expect(screen.getByRole("menuitemradio", { name: /^AI-safe groups/ }))
     .toBeTruthy();
+});
+
+test("keep-safe: Clean up (30 mails) shows the box, pins the ticked groups " +
+  "and then trashes only what moves", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
+  setup();
+  await ready();
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
+    keys: ["quiet@x.example"], keep_latest: null, older_than_days: null,
+    only_addrs: null });
+  expect(deleteGroups).not.toHaveBeenCalled();
+  await pressDialog(/^Move to Trash \(26\)$/);          // 30 - 4 kept safe
+  await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());
+  expect(keepSafePin).toHaveBeenCalledWith(
+    expect.objectContaining({ keys: ["quiet@x.example"] }),
+    ["invoices", "bookings"], "proton");
+  expect(keepSafePin.mock.invocationCallOrder[0])
+    .toBeLessThan(deleteGroups.mock.invocationCallOrder[0]);
+});
+
+test("keep-safe: Cancel on the box pins nothing and moves nothing", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  setup();
+  await ready();
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
+  await findDialog();
+  await cancelDialog();
+  await expectNoDialog();
+  expect(keepSafePin).not.toHaveBeenCalled();
+  expect(deleteGroups).not.toHaveBeenCalled();
+});
+
+test("keep-safe: a card of 20 mails or fewer is not checked", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  setup({}, [news]);                       // old newsletters: 20 mails
+  await ready();
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
+  const dlg = await findDialog();
+  expect(dlg.textContent).not.toContain("look worth keeping");
+  expect(keepSafeCheck).not.toHaveBeenCalled();
+  await cancelDialog();
+});
+
+test("keep-safe: a pin that fails is reported and nothing is trashed", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockRejectedValue(new Error("could not protect"));
+  setup();
+  await ready();
+  fireEvent.click(screen.getAllByRole("button", { name: "Clean up…" })[0]);
+  await findDialog();
+  await pressDialog(/^Move to Trash \(26\)$/);
+  expect(await screen.findByText(/could not protect/)).toBeTruthy();
+  expect(deleteGroups).not.toHaveBeenCalled();
 });

@@ -37,11 +37,11 @@ export const DEFAULT_PAGE: Page = "overview";
 
 /** The sections of the Settings page, in the order of its section column. */
 export type SettingsSection = "account" | "general" | "notifications"
-  | "protected" | "categories" | "filed" | "digest" | "autoscan" | "ai"
+  | "protected" | "keepsafe" | "categories" | "filed" | "digest" | "autoscan" | "ai"
   | "assistants" | "signin" | "backup";
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = ["account",
-  "general", "notifications", "protected", "categories", "filed", "digest",
+  "general", "notifications", "protected", "keepsafe", "categories", "filed", "digest",
   "autoscan", "ai", "assistants", "signin", "backup"];
 
 /** `#/settings/ai` -> { section: "ai" }; `#/settings/account/work` -> the

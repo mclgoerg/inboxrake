@@ -393,6 +393,8 @@ export interface AuditEntry {
   from_role?: "junk" | "trash";
   /** On an undo entry: it restored `count` mails of the entry `id`. */
   undoes?: { id: string; count: number };
+  /** A rule run: mails it left alone because they look worth keeping. */
+  kept_safe?: number;
 }
 
 /** Who did it, for the Activity filter. */
@@ -402,6 +404,32 @@ export type AuditBy = "all" | "user" | "rules" | "assistants"
 export interface AuditResp {
   total: number;
   entries: AuditEntry[];
+}
+
+/** The kinds of mail a big cleanup offers to keep (backend/keepsafe.py). */
+export type KeepSafeClass = "invoices" | "bookings" | "contracts" | "jobs"
+  | "accounts";
+export type KeepSafeSettings = Record<KeepSafeClass, boolean>
+  & { rules: boolean };
+/** The mails a Trash move would act on: a selection of mails or groups (with
+ *  the move's own retention / sender limits). */
+export type KeepSafeScope =
+  | { items: [string, number][]; role?: "junk" | "trash" }
+  | { grouping: Grouping; keys: string[]; keep_latest?: number | null;
+      older_than_days?: number | null; only_addrs?: string[] | null };
+export interface KeepSafeGroup {
+  id: KeepSafeClass;
+  count: number;
+  senders: { name: string; count: number }[];
+  subjects: { subject: string; sender: string; ts: number }[];
+}
+export interface KeepSafeCheck {
+  /** The account the answer is for: the pin goes to the same one. */
+  account?: string;
+  /** Mails the move would act on, and how many of them look worth keeping. */
+  total: number;
+  kept: number;
+  classes: KeepSafeGroup[];
 }
 
 export interface RuleRun {
@@ -421,6 +449,9 @@ export interface RuleRun {
   error: string;
   /** Purge rules: mails moved to Trash but not verified for deletion. */
   unverified?: number;
+  /** Keep-safe: mails a Trash run left alone, per class (absent on older
+   *  runs and on rules that do not check). */
+  kept_safe?: Partial<Record<KeepSafeClass, number>>;
 }
 
 /** Where a rule looks: the main cleanup index, or the Junk / Trash folder
@@ -861,6 +892,9 @@ export interface Config {
    *  absent from older backends. */
   builtin_categories?: Record<string, string[]>;
   new_sender_window_days: number;
+  /** Keep-safe switches (per class, plus "Check rule runs too"). Absent from
+   *  older backends. */
+  keep_safe?: KeepSafeSettings;
   ai: {
     provider: "anthropic" | "foundry" | "openai" | "ollama";
     model: string;

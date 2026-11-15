@@ -32,6 +32,8 @@ vi.mock("./api", async (importOriginal) => ({
     exportUrl: (mode: string) => `/api/export?grouping=${mode}`,
     version: () => Promise.resolve({ build: "v1" }),
     deleteGroups: vi.fn().mockResolvedValue({ ok: true, queued: 1, skipped: 0 }),
+    keepSafeCheck: vi.fn(),
+    keepSafePin: vi.fn(),
     group: vi.fn().mockResolvedValue([]),
   },
   setAccount: () => {},
@@ -41,10 +43,13 @@ vi.mock("./api", async (importOriginal) => ({
 const { api } = await import("./api");
 const deleteGroups = api.deleteGroups as ReturnType<typeof vi.fn>;
 const groupApi = api.group as ReturnType<typeof vi.fn>;
+const keepSafeCheck = api.keepSafeCheck as ReturnType<typeof vi.fn>;
+const keepSafePin = api.keepSafePin as ReturnType<typeof vi.fn>;
 
 import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState, Config, Group } from "./types";
 
 const acctCfg = {
@@ -100,6 +105,8 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   deleteGroups.mockClear();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   groupApi.mockClear();
   groupApi.mockResolvedValue([]);
   FakeEventSource.instances.length = 0;
@@ -314,4 +321,41 @@ test("the limit editor is closed again after the selection was cleared",
   await selectFirstGroup();
   expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
   expect(screen.getByRole("button", { name: "Move" })).toBeTruthy();
+});
+
+test("keep-safe: the bulk bar's Trash of a big selection shows the box and " +
+  "counts only what moves", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
+  const big = { ...group, count: 30, size: 30000 };
+  state = { ...baseState, groups: { ...baseState.groups,
+    sender: { [big.key]: big } } };
+  mountReady();
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  await selectFirstGroup();
+  fireEvent.click(screen.getByText(/^Trash \d+$/));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
+    keys: [big.key], keep_latest: null, older_than_days: null,
+    only_addrs: null });
+  await pressDialog(/^Move to Trash \(26\)$/);        // 30 - 4 kept safe
+  await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());
+  expect(keepSafePin).toHaveBeenCalledOnce();
+  expect(keepSafePin.mock.invocationCallOrder[0])
+    .toBeLessThan(deleteGroups.mock.invocationCallOrder[0]);
+});
+
+test("keep-safe: 20 mails or fewer are not checked",
+  async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  state = { ...baseState };                              // 12 mails
+  mountReady();
+  render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+  await selectFirstGroup();
+  fireEvent.click(screen.getByText(/^Trash \d+$/));
+  const dlg = await findDialog();
+  expect(dlg.textContent).not.toContain("look worth keeping");
+  await cancelDialog();
+  expect(keepSafeCheck).not.toHaveBeenCalled();
 });

@@ -357,8 +357,18 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       setNote(t("toast.all_pinned"));
       return false;
     }
-    const { acting, force } = plan;
+    if (plan.kind === "error") {
+      setNote(t("err.generic", { msg: (plan.error as Error)?.message
+        ?? String(plan.error) }));
+      return false;
+    }
+    const { acting, force, protectedNow } = plan;
     const actingKeys = new Set(acting.map(mailKey));
+    // (mails the keep-safe box just protected stay, shown as protected)
+    const keptKeys = new Set(protectedNow.map(mailKey));
+    const withKept = (list: Mail[]) => keptKeys.size
+      ? list.map((m) => keptKeys.has(mailKey(m)) ? { ...m, pinned: true } : m)
+      : list;
     // (the acted mails can be another sender's card of a conversation: it
     // takes every mail of THIS group to empty it, not just as many)
     const wholeGroup = mails.every((m) => actingKeys.has(mailKey(m)))
@@ -373,7 +383,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         return true;
       }
       if (action !== "mark_read") {
-        setMails(mails.filter((m) => !actingKeys.has(mailKey(m))));
+        setMails(withKept(mails.filter((m) => !actingKeys.has(mailKey(m)))));
         // The mail open in the reader is gone: back to the list.
         setView(null);
         setReading(null);

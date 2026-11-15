@@ -14,6 +14,8 @@ const bulk = vi.fn();
 const single = vi.fn();
 const results = vi.fn();
 const ack = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
@@ -25,6 +27,8 @@ vi.mock("./api", async (importOriginal) => {
       unsubscribe: (...a: unknown[]) => single(...a),
       unsubscribeResults: (...a: unknown[]) => results(...a),
       unsubscribeAck: (...a: unknown[]) => ack(...a),
+      keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+      keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     },
   };
 });
@@ -32,6 +36,8 @@ vi.mock("./api", async (importOriginal) => {
 import { outcomeTitle, UnsubscribeSheet, type UnsubRequest }
   from "./components/UnsubscribeSheet";
 import { DialogProvider, ToastProvider } from "./components/ui";
+import { cancelDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 
 const sender = (addr: string, name: string, via: UnsubPreview["senders"][0]["via"],
     mails = 10, size = 1000) => ({ addr, name, via, mails, size });
@@ -94,6 +100,8 @@ beforeEach(() => {
   single.mockReset();
   results.mockReset();
   ack.mockReset().mockResolvedValue({ status: "done" });
+  keepSafeCheck.mockReset().mockResolvedValue({ total: 288, kept: 0, classes: [] });
+  keepSafePin.mockReset().mockResolvedValue({ pinned: 4, items: [] });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -654,5 +662,86 @@ describe("outcomeTitle", () => {
     expect(outcomeTitle(s("link", "link"))).toBe("2 need you");
     expect(outcomeTitle(s("done", "failed", "failed"))).toBe("1 done · 2 failed");
     expect(outcomeTitle(s())).toBe("Nothing was unsubscribed");
+  });
+});
+
+describe("keep-safe on 'also move to Trash'", () => {
+  const withTrash = async () => {
+    render(tree());
+    fireEvent.click(await screen.findByRole("switch",
+      { name: "Also move their 288\u00a0mails to Trash" }));
+  };
+
+  it("a big move shows the box first; confirming protects the ticked groups "
+    + "and then unsubscribes", async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    await withTrash();
+    press("Unsubscribe and move to Trash");
+    await screen.findByText("4 look worth keeping");   // (the sheet is a dialog too)
+    const dlg = await findDialog();
+    expectKeepBox(dlg);
+    expect(bulk).not.toHaveBeenCalled();
+    expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
+      keys: ["one@chirper.example", "hello@gadget.example", "news@stream.example"],
+      only_addrs: ["one@chirper.example", "hello@gadget.example",
+        "news@stream.example"] });
+    await pressDialog(/^Move to Trash \(284\)$/);          // 288 - 4 kept safe
+    await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+    expect(keepSafePin).toHaveBeenCalledOnce();
+    expect(keepSafePin.mock.invocationCallOrder[0])
+      .toBeLessThan(bulk.mock.invocationCallOrder[0]);
+  });
+
+  it("Cancel on the box stops everything: nothing is protected or "
+    + "unsubscribed and the sheet stays open", async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    await withTrash();
+    press("Unsubscribe and move to Trash");
+    await screen.findByText("4 look worth keeping");
+    await cancelDialog();
+    await waitFor(() => expect(screen.queryByText("4 look worth keeping"))
+      .toBeNull());
+    expect(keepSafePin).not.toHaveBeenCalled();
+    expect(bulk).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Unsubscribe and move to Trash" }))
+      .toBeTruthy();
+  });
+
+  it("nothing worth keeping: no extra dialog, the run starts", async () => {
+    await withTrash();
+    press("Unsubscribe and move to Trash");
+    await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+    expect(keepSafeCheck).toHaveBeenCalledOnce();
+    expect(keepSafePin).not.toHaveBeenCalled();
+  });
+
+  it("20 mails or fewer are not checked; neither is a run without the switch",
+    async () => {
+    preview.mockResolvedValue({ ...PREVIEW,
+      trash: { ...PREVIEW.trash, mails: 20 } });
+    render(tree());
+    fireEvent.click(await screen.findByRole("switch",
+      { name: /Also move their 20\u00a0mails to Trash/ }));
+    press("Unsubscribe and move to Trash");
+    await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+    cleanup();
+    bulk.mockClear();
+    preview.mockResolvedValue(PREVIEW);
+    render(tree());
+    await screen.findByText("Chirper");
+    press("Unsubscribe 3\u00a0senders");
+    await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+    expect(keepSafeCheck).not.toHaveBeenCalled();
+  });
+
+  it("a protection that fails starts nothing and says so", async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    keepSafePin.mockRejectedValue(new Error("could not protect"));
+    await withTrash();
+    press("Unsubscribe and move to Trash");
+    await screen.findByText("4 look worth keeping");
+    await pressDialog(/^Move to Trash \(284\)$/);
+    expect(await screen.findByText(/could not protect/)).toBeTruthy();
+    expect(bulk).not.toHaveBeenCalled();
   });
 });

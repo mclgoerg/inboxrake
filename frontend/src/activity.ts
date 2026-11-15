@@ -287,12 +287,15 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       // what the rule does, when it still exists; the name is in the title
       detail = rule && RULE_ACTION_TITLE[rule.action]
         ? tOr("audit.act", rule.action) : "";
+      // second line: what the run left alone because it looks worth keeping
+      if (e.kept_safe) detail = [detail,
+        t("audit.kept_safe", { n: e.kept_safe })].filter(Boolean).join(" · ");
       return { title, who: "", detail };
     }
     case "rule_report":
       title = n > 0 ? t("audit.h.rule_report", { n })
         : t("audit.h.rule_report_none");
-      detail = "";
+      detail = e.kept_safe ? t("audit.kept_safe", { n: e.kept_safe }) : "";
       break;
     case "unsubscribe": {
       const key = failed ? "unsubscribe_failed"

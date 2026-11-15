@@ -11,18 +11,23 @@ import { ReaderHostProvider } from "./components/MailReader";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { pickFolder } from "./folderPickerTestUtil";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import { popupPick } from "./toolTestUtils";
 import type { AppState, Mail, MailsResp } from "./types";
 
 const mails = vi.fn();
 const deleteMessages = vi.fn();
 const pin = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", () => ({
   api: {
     mails: (...a: unknown[]) => mails(...a),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a),
     pin: (...a: unknown[]) => pin(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
       subject: "s", text: "body text" }),
@@ -66,6 +71,8 @@ afterEach(() => {
   mails.mockReset();
   deleteMessages.mockReset();
   pin.mockReset();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   onChanged.mockReset();
 });
 
@@ -435,4 +442,47 @@ test("a slot of 'When mail arrives' filters the list, shows a chip and can be dr
   fireEvent.click(screen.getByRole("button", { name: "Show all mails" }));
   await waitFor(() => expect(mails.mock.calls.at(-1)![0].slot).toBeUndefined());
   expect(screen.queryByText(/Showing mails that arrive/)).toBeNull();
+});
+
+test("keep-safe: Trash selected of 25 mails shows the box; the protected mails "
+  + "stay, shown as protected, and are not sent", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 2,
+    items: [["INBOX", 1], ["Archive", 2]] });
+  const list = Array.from({ length: 25 }, (_, i) => mk(i + 1));
+  mails.mockResolvedValue(resp(list, 25));
+  renderView();
+  await screen.findByText("Subject 1");
+  for (let i = 1; i <= 25; i++) fireEvent.click(tick(i));
+  fireEvent.click(screen.getByText(/Trash selected/));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(25);
+  await pressDialog("Move to Trash (21)");               // 25 - 4 kept safe
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  const [sent, action] = deleteMessages.mock.calls[0];
+  expect(action).toBe("trash");
+  expect(sent).toHaveLength(23);
+  expect(sent).not.toContainEqual(["INBOX", 1]);
+  // the protected ones stay in the list; the others left it
+  await waitFor(() => expect(screen.queryByText("Subject 3")).toBeNull());
+  expect(screen.getByText("Subject 1")).toBeTruthy();
+});
+
+test("keep-safe: 20 mails or fewer are never checked; Archive never is",
+  async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  const list = Array.from({ length: 25 }, (_, i) => mk(i + 1));
+  mails.mockResolvedValue(resp(list, 25));
+  renderView();
+  await screen.findByText("Subject 1");
+  for (let i = 1; i <= 20; i++) fireEvent.click(tick(i));
+  fireEvent.click(screen.getByText(/Trash selected/));
+  expect((await findDialog()).textContent).not.toContain("look worth keeping");
+  await cancelDialog();
+  for (let i = 21; i <= 25; i++) fireEvent.click(tick(i));
+  barAction("archive");
+  await pressDialog(/^Archive \(25\)$/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  expect(keepSafeCheck).not.toHaveBeenCalled();
 });

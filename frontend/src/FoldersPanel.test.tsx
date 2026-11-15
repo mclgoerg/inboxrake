@@ -13,12 +13,15 @@ import { findPicker, pickFolder } from "./folderPickerTestUtil";
 import { popupOptions, popupPick } from "./toolTestUtils";
 import { findDialog, pressDialog, cancelDialog, expectNoDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState } from "./types";
 
 const trashRestore = vi.fn();
 const folderMove = vi.fn();
 const foldersPanel = vi.fn();
 const clearNotice = vi.fn().mockResolvedValue({ ok: true });
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 const fmtSize = vi.fn((_b: number) => "1 KB");
 
 vi.mock("./api", () => ({
@@ -27,6 +30,8 @@ vi.mock("./api", () => ({
     folderMove: (...a: unknown[]) => folderMove(...a),
     trashRestore: (...a: unknown[]) => trashRestore(...a),
     clearNotice: (...a: unknown[]) => clearNotice(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
     purgePreview: vi.fn().mockResolvedValue({ count: 0, size: 0 }),
     message: () => Promise.resolve({ from: "x", to: "", date: "d",
@@ -87,6 +92,8 @@ afterEach(() => {
   foldersPanel.mockReset();
   trashRestore.mockReset();
   clearNotice.mockClear();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   total = 1;
   emptyList = false;
   setLang("en");
@@ -727,4 +734,59 @@ test("Trash on a phone: the oldest month has no count when older mails "
   await screen.findByText("Mail 3");
   expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
     .toEqual(["October 2026 · 2\u00a0mails", "March 2025"]);
+});
+
+/* Junk > Block's "also move their mails to Trash" carries the keep-safe box. */
+const bigJunk = () => {
+  const uids = Array.from({ length: 25 }, (_, i) => 100 + i);
+  foldersPanel.mockImplementation(() => Promise.resolve({
+    folder: "Spam", uv: 4, total: 25, max_uid: 200,
+    mails: uids.map((uid) => ({ uid, folder: "Spam", date: "2026-01-02",
+      ts: 2, subject: `Mail ${uid}`, addr: "bulk@deals.example", size: 500,
+      seen: true, ai: null })),
+    senders: [{ addr: "bulk@deals.example", count: 25, size: 12500,
+      unread: 0, ts: 2, date: "2026-01-02", first_ts: 2,
+      first_date: "2026-01-02", uids }] }));
+  return uids;
+};
+
+test("keep-safe: Junk Block of a sender with 25 mails shows the box; the "
+  + "protected mails stay in Junk, the rest move", async () => {
+  const uids = bigJunk();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 2,
+    items: [["Spam", 100], ["Spam", 101]] });
+  folderMove.mockResolvedValue({ moved: 23, rescan: false, senders: [],
+    undo: null });
+  const onBlock = vi.fn().mockResolvedValue(true);
+  panel({ initialRole: "junk", onBlock });
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Block: bulk@deals.example" }));
+  await waitFor(() => expect(onBlock).toHaveBeenCalled());
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0]).toEqual({
+    items: uids.map((u) => ["Spam", u]), role: "junk" });
+  expect(within(dlg).getByRole("button", { name: "Keep them in Junk" }))
+    .toBeTruthy();
+  await pressDialog(/Move to Trash \(21\)/);              // 25 - 4 kept safe
+  await waitFor(() => expect(folderMove).toHaveBeenCalledOnce());
+  expect(folderMove.mock.calls[0].slice(0, 3)).toEqual(
+    ["junk", "trash", uids.slice(2)]);
+});
+
+test("keep-safe: 'Keep them in Junk' on the box blocks and moves nothing",
+  async () => {
+  bigJunk();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  const onBlock = vi.fn().mockResolvedValue(true);
+  panel({ initialRole: "junk", onBlock });
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Block: bulk@deals.example" }));
+  await findDialog();
+  await pressDialog("Keep them in Junk");
+  await expectNoDialog();
+  expect(onBlock).toHaveBeenCalledOnce();
+  expect(folderMove).not.toHaveBeenCalled();
+  expect(keepSafePin).not.toHaveBeenCalled();
 });

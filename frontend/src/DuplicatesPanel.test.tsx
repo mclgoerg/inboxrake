@@ -12,6 +12,7 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { KEEP_FOUND } from "./keepSafeTestUtil";
 
 const duplicates = vi.fn();
 const possibleDuplicates = vi.fn();
@@ -21,6 +22,8 @@ const deleteMessages = vi.fn();
 const dismissDuplicates = vi.fn();
 const restoreDuplicates = vi.fn();
 const jobState = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", async (orig) => ({
   ...(await orig<typeof import("./api")>()),
@@ -31,6 +34,8 @@ vi.mock("./api", async (orig) => ({
     duplicatesSummary: () => duplicatesSummary(),
     dismissDuplicates: (...a: unknown[]) => dismissDuplicates(...a),
     restoreDuplicates: (...a: unknown[]) => restoreDuplicates(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
 }));
 
@@ -88,7 +93,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   [duplicates, possibleDuplicates, duplicateVersions, duplicatesSummary,
-    deleteMessages, dismissDuplicates, restoreDuplicates, jobState]
+    deleteMessages, dismissDuplicates, restoreDuplicates, jobState,
+    keepSafeCheck, keepSafePin]
     .forEach((f) => f.mockReset());
   setLang("en");
 });
@@ -805,4 +811,31 @@ test("review mode on a tab with nothing to tick shows no empty toolbar strip",
   expect(container.ownerDocument.querySelector(".border-b.border-line.flex-wrap")).toBeNull();
   fireEvent.click(screen.getAllByRole("checkbox", { name: /Offer/ })[0]);
   expect(screen.getByRole("button", { name: "Trash selected (1)" })).toBeTruthy();
+});
+
+// eleven sets of three identical mails: Remove 22 copies
+const bigWorld = () => {
+  duplicates.mockResolvedValue(Array.from({ length: 11 }, (_, i) =>
+    dset(`<k${i}@x.example>`, [mk(300 + 3 * i, "INBOX", { msgid: `<k${i}@x.example>` }),
+      mk(301 + 3 * i, "Archive", { msgid: `<k${i}@x.example>` }),
+      mk(302 + 3 * i, "INBOX", { msgid: `<k${i}@x.example>` })])));
+  duplicatesSummary.mockResolvedValue(summaryOf({ sets: 11, wasted: 45056 }));
+};
+
+test("keep-safe: Duplicates never shows the box - a copy always stays, and a "
+  + "pin by Message-ID would lock every copy of the set", async () => {
+  bigWorld();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  deleteMessages.mockResolvedValue({ ok: true, queued: 22 });
+  show();
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Remove 22\u00a0copies" }));
+  const dlg = await findDialog();
+  expect(dlg.textContent).toContain("22 selected mails");
+  expect(dlg.textContent).not.toContain("look worth keeping");
+  await pressDialog(/^Move to Trash \(22\)$/);          // every copy but one
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  expect(deleteMessages.mock.calls[0][0]).toHaveLength(22);
+  expect(keepSafeCheck).not.toHaveBeenCalled();
+  expect(keepSafePin).not.toHaveBeenCalled();
 });

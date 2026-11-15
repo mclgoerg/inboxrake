@@ -11,10 +11,13 @@ import { SearchPanel } from "./components/SearchPanel";
 import { DialogProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { Group, SearchResp } from "./types";
 
 const search = vi.fn();
 const deleteMessages = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 const threadOf = vi.fn();
 let threaded: { count: number } | null = null;     // the opened mail's thread
 
@@ -26,7 +29,9 @@ vi.mock("./api", () => ({
     messages: (items: [string, number][]) => Promise.resolve({
       messages: items.map(([folder, uid]) => ({ folder, uid, from: "x",
         to: "", date: "d", subject: "s", text: `text ${uid}` })) }),
-    deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
+    deleteMessages: (...a: unknown[]) => deleteMessages(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a) },
   fmtSize: () => "1 KB",
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
 }));
@@ -37,6 +42,8 @@ afterEach(() => {
   vi.useRealTimers();
   search.mockReset();
   deleteMessages.mockReset();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   threadOf.mockReset();
   threaded = null;
   setLang("en");
@@ -412,4 +419,45 @@ test("a search that finished while the trash confirm was open is not "
   await waitFor(() => expect(deleteMessages).toHaveBeenCalled());
   expect(subject("Newer 5")).toHaveLength(1);
   expect(subject("Parcel 2")).toHaveLength(0);
+});
+
+test("keep-safe: Trash selected of 25 results shows the box; the protected "
+  + "mails stay in the results and out of the move", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 2,
+    items: [["INBOX", 1], ["INBOX", 2]] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  search.mockResolvedValue({ notes: [], mails:
+    Array.from({ length: 25 }, (_, i) => mail(i + 1)) });
+  withDialogs(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByRole("button", { name: "Select all 25" }));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (25)" }));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(25);
+  await pressDialog(/^Move to Trash \(21\)$/);          // 25 - 4 kept safe
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  const sent = deleteMessages.mock.calls[0][0] as [string, number][];
+  expect(sent).toHaveLength(23);                          // the 2 pinned left out
+  expect(sent.map(([, u]) => u)).not.toContain(1);
+  await waitFor(() => expect(subject("Parcel 3")).toHaveLength(0));
+  expect(subject("Parcel 1")).toHaveLength(1);            // still listed
+});
+
+test("keep-safe: a pin that fails moves nothing and says so", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockRejectedValue(new Error("could not protect"));
+  search.mockResolvedValue({ notes: [], mails:
+    Array.from({ length: 25 }, (_, i) => mail(i + 1)) });
+  withDialogs(<SearchPanel onClose={() => {}} onDeleted={() => {}} />);
+  type("parcel");
+  await waitFor(() => expect(subject("Parcel 1")).toHaveLength(1));
+  fireEvent.click(screen.getByRole("button", { name: "Select all 25" }));
+  fireEvent.click(screen.getByRole("button", { name: "Trash selected (25)" }));
+  await findDialog();
+  await pressDialog(/^Move to Trash \(21\)$/);
+  expect(await screen.findByText(/could not protect/)).toBeTruthy();
+  expect(deleteMessages).not.toHaveBeenCalled();
 });

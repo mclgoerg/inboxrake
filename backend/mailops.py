@@ -3327,12 +3327,14 @@ def delete_groups(grouping: str, keys: list[str],
                   force: bool = False, keep_latest: int | None = None,
                   older_than_days: int | None = None, acc=None,
                   actor: str = "user", completion: dict | None = None,
-                  only_addrs: list[str] | None = None) -> dict:
+                  only_addrs: list[str] | None = None,
+                  exempt: set[str] | None = None) -> dict:
     """Queue `action` for the mails of the given groups. `only_addrs` limits
     it to mails from those sender addresses: a caller that decided on a group
     because it held only those senders (the unsubscribe sheet's "also move
     to Trash") is not acting on a mail from anyone else that joined the
-    group since."""
+    group since. `exempt` is a set of Message-IDs left alone like pinned
+    mails, without being pinned (a rule run's keep-safe mails)."""
     acc = acc or accounts.get()
     only = {a.lower() for a in only_addrs} if only_addrs is not None else None
     if keep_latest is not None and older_than_days is not None:
@@ -3344,7 +3346,7 @@ def delete_groups(grouping: str, keys: list[str],
     # place (trash/archive/move) - NOT from mark_read, which is
     # non-destructive. `force` does not lift this: it only confirms a
     # protected GROUP; pinned mails are never part of a bulk action.
-    pinned = (pinstore.load_account(acc.name)
+    pinned = (pinstore.load_account(acc.name) | (exempt or set())
               if action != "mark_read" else set())
     with acc.lock:
         if acc.state["status"] != "done":
@@ -3394,6 +3396,59 @@ def delete_groups(grouping: str, keys: list[str],
         _start_delete(by_folder, label, acc, action, dest, actor, completion)
     return {"ok": True, "queued": sum(len(s) for s in by_folder.values()),
             "skipped": skipped, "skipped_pinned": skipped_pinned}
+
+
+def group_move_mails(grouping: str, keys: list[str],
+                     keep_latest: int | None = None,
+                     older_than_days: int | None = None,
+                     only_addrs: list[str] | None = None,
+                     acc=None) -> list[dict]:
+    """The index entries a Trash move of these groups would act on, decided
+    the way `delete_groups` decides it (protected groups dropped, the
+    retention keep-window and pinned mails left out, `only_addrs` limiting
+    the senders) - a read-only preview for the keep-safe check, so the
+    confirm names the mails that really move. Unknown keys are ignored."""
+    acc = acc or accounts.get()
+    only = {a.lower() for a in only_addrs} if only_addrs is not None else None
+    pinned = pinstore.load_account(acc.name)
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    out: list[dict] = []
+    with acc.lock:
+        recs = acc.state["groups"].get(grouping) or {}
+        paddrs = _protected_addrs(plist, acc)
+        for key in keys:
+            rec = recs.get(key)
+            if not rec or _group_protected(rec, paddrs, acc):
+                continue
+            keep = retained_mails(rec, acc, keep_latest, older_than_days,
+                                  pinned)
+            for folder, uids in rec["folders"].items():
+                held = keep.get(folder, set())
+                for uid in uids:
+                    m = acc.index.get(ikey(folder, uid))
+                    if m and uid not in held and (
+                            only is None or m["addr"].lower() in only):
+                        out.append(m)
+    return out
+
+
+def item_mails(items: list, acc=None, role: str | None = None) -> list[dict]:
+    """The unpinned index entries of ([folder, uid], ...) pairs - what a
+    Trash move of a mail selection would act on. Unknown pairs are
+    ignored. `role` ("junk" / "trash") reads that special folder's own
+    cache instead of the main index."""
+    acc = acc or accounts.get()
+    pinned = pinstore.load_account(acc.name)
+    out: list[dict] = []
+    with acc.lock:
+        index = acc.role_index.get(role, {}) if role else acc.index
+        for it in items:
+            if not (isinstance(it, (list, tuple)) and len(it) == 2):
+                continue
+            m = index.get(ikey(str(it[0]), int(it[1])))
+            if m and m["msgid"] not in pinned:
+                out.append(m)
+    return out
 
 
 def set_pin(folder: str, uid: int, pinned: bool, acc=None) -> dict:

@@ -12,16 +12,21 @@ import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogT
 import { noteAccountSwitch } from "./accountGuard";
 import { setClockShift } from "./clock";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState } from "./types";
 
 const attachments = vi.fn();
 const deleteMessages = vi.fn();
 const summary = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", () => ({
   api: { attachments: () => attachments(),
     attachmentsSummary: () => summary(),
-    deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
+    deleteMessages: (...a: unknown[]) => deleteMessages(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a) },
   fmtSize: () => "2 MB",
   mailKey: (m: { folder: string; uid: number }) => `${m.folder}\0${m.uid}`,
 }));
@@ -70,6 +75,8 @@ afterEach(() => {
   cleanup();
   attachments.mockReset();
   deleteMessages.mockReset();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   summary.mockReset();
   localStorage.clear();
   setClockShift(0);
@@ -396,4 +403,42 @@ test.each(["grid", "list"])("clicking the round check selects the file once "
   expect((box as HTMLInputElement).checked).toBe(true);
   fireEvent.click(box.closest("label")!);
   expect(screen.queryByText("1 mail · 2 MB")).toBeNull();
+});
+
+test("keep-safe: trashing 25 mails shows the box; the protected ones are left "
+  + "out of the move and stay listed", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 2,
+    items: [["INBOX", 1], ["INBOX", 2]] });
+  deleteMessages.mockResolvedValue({ ok: true });
+  const many = Array.from({ length: 25 }, (_, i) => mk(i + 1, [REPEAT]));
+  attachments.mockResolvedValue(many);
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(25);
+  await pressDialog(/^Move to Trash \(21\)$/);
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  const [sent, action] = deleteMessages.mock.calls[0];
+  expect(action).toBe("trash");
+  expect(sent).toHaveLength(23);
+  expect(sent.map(([, u]: [string, number]) => u)).not.toContain(2);
+});
+
+test("keep-safe: the same trash of 20 mails or fewer is never checked",
+  async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  expect((await findDialog()).textContent).not.toContain("look worth keeping");
+  expect(keepSafeCheck).not.toHaveBeenCalled();
+  await cancelDialog();
 });

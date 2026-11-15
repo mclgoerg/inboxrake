@@ -14,6 +14,7 @@ import { Check, ExternalLink, Eye, Send, Zap } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorText } from "../api";
 import { t } from "../i18n";
+import { confirmTrash } from "../keepsafe";
 import { fmtSize } from "../lib";
 import { openUnsubPage } from "../unsub";
 import type { Group, Grouping, UnsubPreview, UnsubRunItem, UnsubState,
@@ -298,6 +299,27 @@ export function UnsubscribeSheet({ request, groups, unsub, demo, onTrash,
   const start = async () => {
     if (request.kind === "run" || !preview) return;
     setProblem("");
+    // "Also move to Trash" on a big move: the keep-safe box asks first, and
+    // only when something looks worth keeping (the sheet is the confirm).
+    const trashing = preview.trash;
+    if (alsoTrash && trashing && trashing.groups.length) {
+      try {
+        const verb = t("Move to Trash");
+        const answer = await confirmTrash({ title: verb, onlyIfFound: true,
+          bullets: [t("confirm.b_selected", { n: trashing.mails }),
+            t("confirm.b_space")],
+          label: (k) => t("confirm.btn_n", { verb, n: k }),
+          n: trashing.mails,
+          scope: { grouping: request.grouping,
+            keys: trashing.groups.map((g) => g.key),
+            only_addrs: [...new Set(trashing.groups.flatMap((g) => g.addrs))] } });
+        if (!answer.ok || !alive.current) return;
+      } catch (e: any) {
+        setProblem(e.message ?? String(e));
+        armedAt.current = Date.now();
+        return;
+      }
+    }
     setPhase("running");
     if (request.kind === "single") {
       const addr = preview.senders[0]?.addr ?? "";
