@@ -130,8 +130,11 @@ const FILTERS: (RecipeGroup | "all")[] = ["all", "tidy", "short", "protect"];
 /** New rule > From a recipe: the nine recipes sorted by what they would
  *  catch now. Add creates an ordinary rule (report mode, report run once);
  *  the caller does that and returns an error text, or nothing. */
-export function RecipeDialog({ state, ai, onClose, onMode, onAdd }: {
+export function RecipeDialog({ state, ai, onClose, onMode, onAdd, highlight }: {
   state: AppState;
+  /** A recipe to show first, marked and (on phones) opened - e.g. the one a
+   *  "What stands out" sentence points to. */
+  highlight?: string;
   ai?: RuleAi;
   onClose: () => void;
   onMode: (m: NewRuleMode) => void;
@@ -143,8 +146,9 @@ export function RecipeDialog({ state, ai, onClose, onMode, onAdd }: {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState<{ id: string; text: string } | null>(null);
   // phones: a tap opens the recipe (preview + Add)
-  const [open, setOpen] = useState<string | null>(null);
-  const rows = ranked.filter((x) => filter === "all" || x.recipe.group === filter);
+  const [open, setOpen] = useState<string | null>(highlight ?? null);
+  const rows = ranked.filter((x) => filter === "all" || x.recipe.group === filter)
+    .sort((a, b) => Number(b.recipe.id === highlight) - Number(a.recipe.id === highlight));
   const known = ranked.some((x) => x.count);
 
   const add = async (r: Recipe) => {
@@ -165,7 +169,8 @@ export function RecipeDialog({ state, ai, onClose, onMode, onAdd }: {
     <RecipeCard key={row.recipe.id} row={row}
       added={addedAlready(row.recipe)}
       folderLabel={folderLabel(row.recipe)}
-      lead={i === 0 && !row.empty && filter === "all"}
+      lead={highlight ? row.recipe.id === highlight
+        : i === 0 && !row.empty && filter === "all"}
       busy={busy === row.recipe.id}
       error={err?.id === row.recipe.id ? err.text : undefined}
       onAdd={() => add(row.recipe)} />);

@@ -297,6 +297,11 @@ def thread_chains(msgs: list[dict], sent: list[dict], me: str = ME) -> list[dict
             t -= rng.uniform(3, 40) * 3600
             stamps.append(t)
         stamps.reverse()
+        # a conversation happens during the working day (the hours the
+        # "When mail arrives" card shows); the order of the turns is kept
+        for k, ts in enumerate(stamps):
+            snapped = _arrival((NOW - ts) / 86400, "work")
+            stamps[k] = max(snapped, stamps[k - 1] + 1800) if k else snapped
         refs: list[str] = []
         for k, m in enumerate(run):
             m["date"] = time.strftime("%d-%b-%Y %H:%M:%S +0000",
@@ -329,14 +334,48 @@ def _atts_for(i: int, atts, att_n: int):
     return atts[i % len(atts)] if isinstance(atts[0], list) else atts
 
 
+# When mail arrives (Statistics): each kind of sender has its own rhythm, so
+# the weekday x hour card shows a believable week. A separate random stream,
+# so the shared one - and with it every other demo number - is untouched.
+_RHYTHM = random.Random(105)
+# profile -> (hour weights {hour: weight}, weekdays allowed (Mon = 0) or None)
+_PROFILES: dict[str, tuple[dict[int, int], tuple[int, ...] | None]] = {
+    "mixed": ({8: 2, 9: 4, 10: 4, 11: 3, 12: 3, 13: 3, 14: 3, 15: 3, 16: 3,
+               17: 3, 18: 3, 19: 3, 20: 2, 21: 2, 22: 1, 2: 1}, None),
+    "newsletter": ({4: 2, 5: 8, 6: 5, 7: 3, 8: 2, 11: 2, 17: 2, 19: 2}, None),
+    "work": ({9: 3, 10: 4, 11: 4, 12: 2, 13: 2, 14: 4, 15: 4, 16: 3},
+             (0, 1, 2, 3)),
+    "shop": ({18: 4, 19: 5, 20: 4, 21: 2}, (3, 4)),      # Thursday / Friday
+    "daily": ({5: 1}, None),
+}
+
+
+def _arrival(days_ago: float, profile: str) -> float:
+    """`days_ago` as an epoch time on that day (or the nearest earlier one the
+    profile allows) at an hour the profile likes."""
+    if profile == "shop" and _RHYTHM.random() < 0.65:
+        profile = "mixed"              # the rest of the shop mail is spread out
+    hours, weekdays = _PROFILES[profile]
+    day0 = int((NOW - days_ago * 86400) // 86400)
+    while weekdays is not None and (day0 + 3) % 7 not in weekdays:
+        day0 -= 1                      # 1970-01-01 was a Thursday
+    hour = _RHYTHM.choices(list(hours), list(hours.values()))[0]
+    ts = day0 * 86400 + hour * 3600 + _RHYTHM.randrange(0, 3600)
+    return ts if ts < NOW - 60 else ts - 86400
+
+
 def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
           span_days=700.0, unread=0.7, size=(9000, 60000), unsub=False,
           atts=None, att_n=3, html=None, chain: list | None = None,
-          me: str = ME) -> list[dict]:
+          me: str = ME, at: str | None = None) -> list[dict]:
     out = []
+    profile = at or ("work" if chain is not None
+                     else "newsletter" if unsub else "mixed")
     for i in range(n):
         days = newest_days + (span_days - newest_days) * (i / max(1, n - 1)) \
             * random.uniform(0.6, 1.15)
+        if profile == "daily":         # one a day, every day
+            days = newest_days + i
         subj = subjects[i % len(subjects)]
         if "{n}" in subj:
             subj = subj.replace("{n}", str(random.randint(10000, 99999)))
@@ -346,7 +385,8 @@ def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
             msgid=f"<demo-{next(_UID)}@demo.example>",
             size=random.randint(*size),
             seen=random.random() > unread,
-            date=_date(days),
+            date=time.strftime("%d-%b-%Y %H:%M:%S +0000",
+                               time.gmtime(_arrival(days, profile))),
             atts=_atts_for(i, atts, att_n),
             html=html(i) if html else None,
             body=None))
@@ -402,7 +442,7 @@ PROTON_INBOX = WANDER + (
           html=newsletter_html(PIXEL_HOST, CLICK_HOST))
     + mails('"PaketFix" <noreply@paketfix.example>',
             ["Ihre Sendung {n} ist unterwegs", "Zustellung heute: Paket {n}",
-             "Ihr Paket {n} wurde zugestellt"], 96, unread=0.85)
+             "Ihr Paket {n} wurde zugestellt"], 96, unread=0.85, at="shop")
     + mails('"Chirper" <notify@chirper.example>',
             ["You have 3 new followers", "Trending now on Chirper",
              "@rob mentioned you"], 168, unsub=True, unread=0.9,
@@ -448,7 +488,7 @@ PROTON_INBOX = WANDER + (
     # shared domain), so the Space map has something to drill into
     + mails('"Northwind Shop" <shop@northwind.example>',
             ["Your order {n} is confirmed", "Autumn collection is here"],
-            60, unread=0.6, size=(40000, 120000))
+            60, unread=0.6, size=(40000, 120000), at="shop")
     + mails('"Northwind News" <news@northwind.example>',
             ["Northwind weekly", "Members only: early access"],
             80, unsub=True, unread=0.9, size=(30000, 90000))
@@ -484,6 +524,20 @@ PROTON_INBOX = WANDER + (
             size=(7000000, 8000000),
             atts=[("scan-1.pdf", 6000000), ("scan-2.pdf", 6000000)])
 )
+
+# A daily sender for "When mail arrives": one mail every morning for 75 days
+# (some days two), mostly unread. The shared random stream is restored so the
+# data after it stays unchanged.
+_rs = random.getstate()
+PROTON_INBOX += (
+    mails('"Deals Daily" <deals@dealsdaily.example>',
+          ["Today's top deals", "Only today: flash prices",
+           "Your daily picks"], 75, newest_days=0.2, unread=0.98, unsub=True,
+          at="daily")
+    + mails('"Deals Daily" <deals@dealsdaily.example>',
+            ["Deal ends at midnight"], 18, newest_days=0.4, span_days=75,
+            unread=0.98, unsub=True, at="daily"))
+random.setstate(_rs)
 
 # A "ghost" sender for Your year in mail: plenty of mail, never opened. The
 # shared random stream is restored so the data after it stays unchanged.

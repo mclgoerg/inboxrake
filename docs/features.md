@@ -545,6 +545,20 @@ domains by size, mails per year, engagement, the AI verdicts, a per-month
 cleanup table ("moved to Trash" and, for permanent deletes only, "freed") and
 the scan history; it is all persisted across restarts.
 
+**When mail arrives** is a card of its own: 7 weekdays by 24 hours in your
+own time zone, one colour in five steps from "fewer" to "more" (a legend always
+shows, and **Show as table** lists the same numbers for screen readers and
+copying). It follows the period switch and narrows to Newsletters, People or
+Orders. Hover a square (tap on a phone) to see the hour, the count and the top
+senders; a click opens All mail for exactly that slot. **What stands out**
+turns the grid into sentences with an action - most newsletters arrive before
+8:00, a sender that mails at the same hour every day (with Unsubscribe), the
+weekday evening your shop mail piles up (with Show them), when the people you
+write to write to you - and four shares (before 8:00, office hours, after
+18:00, weekend). A sender's detail shows the same for that sender: the usual
+hours, the weekdays and how many mails a day. Counts only; nothing leaves the
+server.
+
 ### Space map
 
 <small class="where">Insights → Space map</small>

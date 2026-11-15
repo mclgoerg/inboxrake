@@ -1,5 +1,5 @@
-import { BarChart3, ChevronRight, ClipboardList, Copy, Eye, History,
-  Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Trash2, Wand2 }
+import { BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye, History,
+  Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
@@ -20,7 +20,10 @@ import { ProposalBadge } from "./Sidebar";
 import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
-import { Avatar, Button, MiniBars, Ring }
+import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
+  from "../rhythm";
+import { HeatGrid, HeatLegend } from "./RhythmCard";
+import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
   from "./ui";
 
 /* The Clean up / Insights tab pages (below 1024 px): a "what is waiting"
@@ -299,7 +302,8 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
+export function InsightsPage({ groups, state, onOpen, onRetryUnsub,
+  onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
@@ -307,6 +311,8 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
   onRetryUnsub?: (g: Group) => Promise<void>;
+  /** Opens the unsubscribe sheet of a sender (What stands out). */
+  onUnsubscribe?: (key: string) => void;
 }) {
   type Load<T> = { data: T | null; failed: boolean };
   const [stats, setStats] = useState<Load<StatsResp>>(
@@ -316,6 +322,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
   const [audit, setAudit] = useState<Load<AuditEntry[]>>(
     { data: null, failed: false });
   const [wrapped, setWrapped] = useState<WrappedResp | null>(null);
+  const [rhythm, setRhythm] = useState<RhythmResp | null>(null);
   const [retrying, setRetrying] = useState(false);
   // Bumped after a retry: the audit list is fetched again (not stats / trackers).
   const [auditTick, setAuditTick] = useState(0);
@@ -331,6 +338,9 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
     api.stats().then((d) => alive && setStats({ data: d, failed: false }))
       .catch(() => alive && setStats({ data: null, failed: true }));
     api.wrapped().then((d) => alive && setWrapped(d)).catch(() => {});
+    // (a throw before the request - an older API object - is a failure too)
+    Promise.resolve().then(() => api.rhythm("30d"))
+      .then((d) => alive && setRhythm(d)).catch(() => {});
     api.trackers().then((d) => alive && setTrk({ data: d, failed: false }))
       .catch(() => alive && setTrk({ data: null, failed: true }));
     return () => { alive = false; };
@@ -415,6 +425,59 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
         ) : <Skeleton className="h-32" />}
         </span>
       </button>
+
+      {rhythm && rhythm.kinds.all.total > 0 && (<>
+        <button type="button" onClick={() => onOpen("stats")} className={CARD_BTN}>
+          <span className="flex items-center gap-2 type-meta font-semibold text-muted">
+            <span aria-hidden className="text-accent"><Clock size={16} /></span>
+            <span className="min-w-0 flex-1 truncate">{t("stats.rhythm")}</span>
+            <span>{periodTitle("30d")}</span>
+          </span>
+          <span className="mt-3 block">
+            <HeatGrid mini grid={rhythm.kinds.all.grid}
+              label={`${t("stats.rhythm")}. ${periodTitle("30d")}`} />
+          </span>
+          <span className="mt-2 flex items-center justify-between gap-2 type-caption
+            text-muted">
+            <HeatLegend />
+            {(() => {
+              const b = busiest(rhythm.kinds.all.grid);
+              return b && <span>{t("rhythm.busiest_short",
+                { slot: slotText(b.day, b.hour) })}</span>;
+            })()}
+          </span>
+        </button>
+        {(() => {
+          const first = standsOut(rhythm)[0];
+          const daily = rhythm.daily[0];
+          if (!first) return null;
+          return (
+            <div className={`${CARD} flex w-full min-w-0 flex-col`}>
+              {/* the card opens Statistics; Unsubscribe is a target of its
+                  own (a button inside a button is not allowed) */}
+              <button type="button" onClick={() => onOpen("stats")}
+                className="-m-1 flex min-w-0 cursor-pointer flex-col rounded-control
+                  p-1 text-left">
+                <span className="flex items-center gap-2 type-meta font-semibold text-muted">
+                  <span aria-hidden className="text-accent"><Sparkles size={16} /></span>
+                  <span className="min-w-0 flex-1 truncate">{t("rhythm.stands_out")}</span>
+                  <ChevronRight size={16} aria-hidden className="text-faint" />
+                </span>
+                <span className="mt-2 block type-body font-semibold">{first.title}</span>
+              </button>
+              <div className="mt-0.5 type-meta text-muted">
+                {daily ? <>{t("rhythm.w_daily", { name: daily.label,
+                  hour: hh(daily.hour).slice(0, 2) })}
+                  {onUnsubscribe && <>{" · "}<button type="button"
+                    onClick={() => onUnsubscribe(daily.key)}
+                    className={`${LINK_ACCENT} coarse:min-h-11`}>
+                    {t("rhythm.unsub")}</button></>}</>
+                  : first.detail}
+              </div>
+            </div>
+          );
+        })()}
+      </>)}
 
       <div className="grid grid-cols-2 gap-3">
         <button type="button" disabled={!done} onClick={() => onOpen("space")}

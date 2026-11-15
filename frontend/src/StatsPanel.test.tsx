@@ -3,15 +3,16 @@
  * is only shown from the version that added them on; the old move-based
  * `freed` of earlier months is history and never shown as freed space. */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { StatsPanel } from "./components/StatsPanel";
 import { setLang } from "./i18n";
 
 let actions: Record<string, object> = {};
 let extra: Record<string, unknown> = {};
+const rhythm = vi.fn();
 vi.mock("./api", () => ({
-  api: { stats: () => Promise.resolve({
+  api: { rhythm: (...a: unknown[]) => rhythm(...a), stats: () => Promise.resolve({
     mails: 10, size: 1000, senders: 2, unread: 1, bulk: 1, replied_senders: 0,
     oldest: "2025-01-01", years: [], months: [], categories: [],
     top_domains: [], top_senders: [], scans: [], actions,
@@ -23,7 +24,7 @@ vi.mock("./api", () => ({
 
 const thisMonth = new Date().toISOString().slice(0, 7);
 afterEach(() => {
-  cleanup(); setLang("en"); extra = {}; vi.unstubAllGlobals();
+  cleanup(); setLang("en"); extra = {}; vi.unstubAllGlobals(); rhythm.mockReset();
 });
 /** jsdom has no matchMedia: the page renders its phone layout. This makes it
  *  a >= 640 px screen (tables instead of stacked rows). */
@@ -336,3 +337,35 @@ test("the KPI tiles share one shape: figure, label, one detail line",
     for (const s of ["received", "unread", "this month · 2 archived"])
       expect(document.body.textContent).toContain(s);
   });
+
+test("When mail arrives sits in Statistics, follows the period switch and opens a slot", async () => {
+  actions = {};
+  extra = { days: [], months_all: [{ month: thisMonth, count: 10, size: 1000,
+    unread: 1 }] };
+  const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+  grid[2][8] = 5;
+  const zero = { total: 0, grid: Array.from({ length: 7 }, () => Array(24).fill(0)),
+    top: {} };
+  rhythm.mockImplementation((period: string) => Promise.resolve({
+    period, tz: "UTC", from: 0, daily: [], kinds: {
+      all: { total: 5, grid, top: {} }, newsletters: zero, people: zero,
+      orders: zero } }));
+  const onOpenSlot = vi.fn();
+  render(<StatsPanel onClose={() => {}} onOpenSlot={onOpenSlot} />);
+  await screen.findByRole("heading", { name: "When mail arrives" });
+  await waitFor(() => expect(rhythm).toHaveBeenCalledWith("12m"));
+  fireEvent.click(screen.getByRole("tab", { name: "30\u00a0days" }));
+  await waitFor(() => expect(rhythm).toHaveBeenCalledWith("30d"));
+  await waitFor(() => expect(screen.getByText(/last 30 days, your time zone/)).toBeTruthy());
+  fireEvent.click(document.querySelector('[data-cell="2-8"]')!);
+  expect(onOpenSlot).toHaveBeenCalledWith({ kind: "all", period: "30d",
+    days: [2], from: 8, to: 9 });
+});
+
+test("an empty mailbox shows no arrival card", async () => {
+  actions = {};
+  extra = { mails: 0 };
+  render(<StatsPanel onClose={() => {}} />);
+  await screen.findByText("moved to Trash");
+  expect(rhythm).not.toHaveBeenCalled();
+});

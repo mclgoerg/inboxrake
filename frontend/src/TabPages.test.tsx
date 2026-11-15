@@ -2,19 +2,21 @@
 import { cleanup, fireEvent, render, screen, waitFor } from
   "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { setLang } from "./i18n";
 import type { AppState, Group } from "./types";
 
 const stats = vi.fn();
 const trackers = vi.fn();
 const audit = vi.fn();
 const wrapped = vi.fn();
+const rhythm = vi.fn();
 const duplicates = vi.fn();
 const sum = (o: object) => ({ sets: 0, wasted: 0, versions: 0, possible: 0,
   ...o });
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   api: { duplicatesSummary: () => duplicates(), stats: () => stats(), trackers: () => trackers(),
-    wrapped: () => wrapped(),
+    wrapped: () => wrapped(), rhythm: (...a: unknown[]) => rhythm(...a),
     audit: (...a: unknown[]) => audit(...a) },
 }));
 
@@ -33,7 +35,7 @@ const state = (over: Partial<AppState> = {}) => ({
 }) as unknown as AppState;
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
-beforeEach(() => { duplicates.mockRejectedValue(new Error("x")); wrapped.mockRejectedValue(new Error("x")); });
+beforeEach(() => { duplicates.mockRejectedValue(new Error("x")); wrapped.mockRejectedValue(new Error("x")); rhythm.mockRejectedValue(new Error("x")); });
 
 const cleanupProps = (over = {}) => ({
   account: "a", groups: [] as Group[], state: state(), deckSize: 0,
@@ -355,4 +357,75 @@ test("Clean up: a failed duplicates fetch shows Check", async () => {
   render(<CleanupPage {...cleanupProps()} />);
   await waitFor(() => expect(screen.getByRole("button",
     { name: /^Duplicates/ }).textContent).toContain("Check"));
+});
+
+// ------------------------------------------------------------ When mail arrives
+
+const heat = () => {
+  const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+  grid[1][6] = 46; grid[0][6] = 30;
+  const zero = { total: 0, grid: Array.from({ length: 7 }, () => Array(24).fill(0)),
+    top: {} };
+  return { period: "30d", tz: "UTC", from: 0, kinds: {
+    all: { total: 76, grid, top: {} }, newsletters: zero, people: zero,
+    orders: zero },
+  daily: [{ key: "d@x.example", label: "Deals Daily", hour: 6, per_day: 4.1,
+    mails: 90, open_pct: 2 }] };
+};
+
+test("Insights: When mail arrives widget - the small grid, the legend, the busiest slot", async () => {
+  rhythm.mockResolvedValue(heat());
+  stats.mockRejectedValue(new Error("x")); trackers.mockRejectedValue(new Error("x"));
+  audit.mockResolvedValue({ entries: [] });
+  const onOpen = vi.fn();
+  render(<InsightsPage groups={[]} state={state()} onOpen={onOpen} />);
+  const widget = (await screen.findByText("busiest Tue 06:00")).closest("button")!;
+  expect(rhythm).toHaveBeenCalledWith("30d");
+  expect(widget.textContent).toContain("When mail arrives");
+  expect(widget.textContent).toContain("30\u00a0days");
+  expect(widget.querySelectorAll("[data-cell]")).toHaveLength(168);
+  expect(widget.querySelector("div")).toBeNull();      // no div inside a button
+  expect(widget.textContent).toContain("fewer");
+  fireEvent.click(widget);
+  expect(onOpen).toHaveBeenLastCalledWith("stats");
+  cleanup(); setLang("de");
+  render(<InsightsPage groups={[]} state={state()} onOpen={vi.fn()} />);
+  const de = (await screen.findByText("am meisten Di 06:00", { exact: false })).closest("button")!;
+  expect(de.textContent).toContain("30\u00a0Tage");
+  expect(de.textContent).not.toContain("Tagen");
+  setLang("en");
+});
+
+test("Insights: What stands out shows the first sentence and the sender line", async () => {
+  rhythm.mockResolvedValue(heat());
+  stats.mockRejectedValue(new Error("x")); trackers.mockRejectedValue(new Error("x"));
+  audit.mockResolvedValue({ entries: [] });
+  const onOpen = vi.fn();
+  const onUnsubscribe = vi.fn();
+  render(<InsightsPage groups={[]} state={state()} onOpen={onOpen}
+    onUnsubscribe={onUnsubscribe} />);
+  const open = (await screen.findByText("What stands out")).closest("button")!;
+  // (no newsletter sample: the daily sender is the first sentence)
+  expect(open.textContent).toContain("Deals Daily mails you every day at 06:0x");
+  expect(screen.getByText(/Deals Daily: every day at 06:0x/)).toBeTruthy();
+  fireEvent.click(open);
+  expect(onOpen).toHaveBeenLastCalledWith("stats");
+  // Unsubscribe is a button of its own, not nested in another button
+  const un = screen.getByRole("button", { name: "Unsubscribe…" });
+  expect(un.closest("button:not([name])")).toBe(un);
+  expect(un.parentElement!.closest("button")).toBeNull();
+  fireEvent.click(un);
+  expect(onUnsubscribe).toHaveBeenCalledWith("d@x.example");
+  expect(onOpen).toHaveBeenCalledTimes(1);
+});
+
+test("Insights: no rhythm widgets without mail or when the call fails", async () => {
+  rhythm.mockResolvedValue({ ...heat(), kinds: { ...heat().kinds,
+    all: { total: 0, grid: heat().kinds.newsletters.grid, top: {} } } });
+  stats.mockRejectedValue(new Error("x")); trackers.mockRejectedValue(new Error("x"));
+  audit.mockResolvedValue({ entries: [] });
+  render(<InsightsPage groups={[]} state={state()} onOpen={vi.fn()} />);
+  await waitFor(() => expect(rhythm).toHaveBeenCalled());
+  expect(screen.queryByText("What stands out")).toBeNull();
+  expect(screen.queryByText(/busiest/)).toBeNull();
 });

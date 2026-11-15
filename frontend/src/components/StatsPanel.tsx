@@ -7,6 +7,8 @@ import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
 import type { StatsResp } from "../types";
+import type { ArrivalSlot } from "../rhythm";
+import { RhythmCard } from "./RhythmCard";
 import {
   Avatar, Button, Donut, hueFillAt, IconTile, Loading, MiniBars, Modal,
   PanelHeader, ProgressBar, Ring, Segmented, useMediaQuery,
@@ -199,9 +201,16 @@ function Columns({ rows }: {
 /** Mailbox statistics: KPI tiles, volume charts, categories, top senders
  *  and domains, engagement, AI coverage, cleanup progress and scan history.
  *  `onOpenSender` (top senders are buttons when given) opens a sender. */
-export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
+export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
+  onUnsubscribe, onOpenRecipe }: {
   onClose: () => void; onWrapped?: () => void;
   onOpenSender?: (key: string) => void;
+  /** Opens All mail filtered to a slot of "When mail arrives". */
+  onOpenSlot?: (slot: ArrivalSlot) => void;
+  /** Opens the unsubscribe sheet of a sender (What stands out). */
+  onUnsubscribe?: (key: string) => void;
+  /** Opens New rule > From a recipe with this recipe marked. */
+  onOpenRecipe?: (id: string) => void;
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
@@ -431,6 +440,12 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender }: {
                 </ChartCard>
               )}
             </div>
+
+            {stats.mails > 0 && (
+              <RhythmCard period={per} className={TWO_COLS}
+                onOpenSlot={(s) => onOpenSlot?.(s)} onUnsubscribe={onUnsubscribe}
+                onOpenRecipe={onOpenRecipe} />
+            )}
 
             <div className={`grid items-start gap-3 ${TWO_COLS}`}>
               <div className="min-w-0 space-y-3">

@@ -200,7 +200,8 @@ optional AI review and a "describe a filter" box, Triage, Duplicates,
 Attachments, rules and a scheduler (start one from a ready-made recipe),
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a Trash/Junk browser, trackers, space
-map, statistics, "Your year in mail", audit log, multiple strictly separate
+map, statistics (including when your mail arrives, by weekday and hour),
+"Your year in mail", audit log, multiple strictly separate
 accounts, system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant
 ask questions about the mailbox and propose rules for you to approve

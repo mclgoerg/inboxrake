@@ -10,6 +10,8 @@ import type {
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem,
 } from "./types";
+import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
+  from "./rhythm";
 
 /* Active account: every API call is scoped to exactly one account (strict
  * separation - the backend never mixes them). Set once by App on startup
@@ -417,10 +419,18 @@ export const api = {
     req<{ ok: boolean }>("/api/cancel", { target }),
   clearNotice: (keys?: string[]) =>
     req<{ ok: boolean }>("/api/notice/clear", keys ? { keys } : {}),
+  /** `slot`: only the mails that arrive in one slot of the "When mail
+   *  arrives" card (a view parameter beside `q`). */
   mails: (p: { offset: number; limit: number; sort: string; dir: string;
-            q: string }) =>
-    req<MailsResp>(`/api/mails?offset=${p.offset}&limit=${p.limit}`
-      + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`),
+            q: string; slot?: ArrivalSlot | null }) => {
+    const z = userZone();
+    return req<MailsResp>(`/api/mails?offset=${p.offset}&limit=${p.limit}`
+      + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
+      + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
+        + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
+        + `&slot_days=${p.slot.days.join(",")}`
+        + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}` : ""));
+  },
   search: (q: string, body = false) =>
     req<SearchResp>(`/api/search?q=${encodeURIComponent(q)}`
       + (body ? "&scope=body" : "")),
@@ -483,6 +493,12 @@ export const api = {
     req<{ ok: boolean }>("/api/duplicates/restore",
       set ? { ...set } : { all: true }),
   stats: () => req<StatsResp>("/api/stats"),
+  /** When mail arrives: weekday x hour counts in the browser's time zone. */
+  rhythm: (period: RhythmPeriod) => {
+    const z = userZone();
+    return req<RhythmResp>(`/api/rhythm?period=${period}`
+      + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}`);
+  },
   /** `tz` = the browser's offset in minutes EAST of UTC. */
   wrapped: (year?: number) =>
     req<WrappedResp>(`/api/wrapped?tz=${-new Date().getTimezoneOffset()}`
