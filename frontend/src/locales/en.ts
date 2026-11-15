@@ -324,6 +324,48 @@ export const EN: Record<string, string> = {
   "assistants.group.connect": "Connect",
   "assistants.group.tokens": "Access tokens",
   "assistants.group.levels": "What each level allows",
+  "assistants.oauth": "Let hosted apps connect",
+  "assistants.oauth_sub": "claude.ai, ChatGPT and other apps in the cloud ask you to approve them here, instead of using a token.",
+  "assistants.oauth_needs": "Can't be switched on yet: {reason}",
+  "assistants.oauth_idle": "Not active right now: {reason}",
+  "assistants.oauth.reason.oauth_needs_login": "this server has no sign-in (Settings › Sign-in & users).",
+  "assistants.oauth.reason.oauth_needs_public_url": "the environment variable INBOXRAKE_PUBLIC_URL is not set to this server's public https:// address.",
+  "assistants.oauth.reason.oauth_needs_access": "assistant access is Off.",
+  "assistants.oauth_public": "Public address:",
+  "assistants.oauth_notice": "Hosted apps reach this server from the internet. Each one needs your approval before it gets in, every new connection sends you an alert, and you can disconnect it below at any time.",
+  "assistants.group.hosted": "Connect a hosted app",
+  "assistants.hosted.apps": "App",
+  "assistants.hosted.claude.1": "In claude.ai open Settings › Connectors and choose “Add custom connector”.",
+  "assistants.hosted.claude.2": "Paste the address above and connect.",
+  "assistants.hosted.claude.3": "Sign in here if asked, check who is asking and what it may do, then choose Allow.",
+  "assistants.hosted.chatgpt.1": "In ChatGPT turn on developer mode and create a new app.",
+  "assistants.hosted.chatgpt.2": "Paste the address above and choose OAuth as the sign-in.",
+  "assistants.hosted.chatgpt.3": "Sign in here if asked, check who is asking and what it may do, then choose Allow.",
+  "assistants.group.connections": "Connections",
+  "assistants.connections_note": "An app stays connected until its approval expires or you disconnect it. Disconnecting works at once.",
+  "assistants.connections_off": "Hosted apps can't connect while this is off. Connections stay in the list and work again when it is back on.",
+  "assistants.apps_none_title": "No hosted apps connected",
+  "assistants.apps_none_hint": "Paste the address above into claude.ai or ChatGPT. The app shows up here after you allow it.",
+  "assistants.disconnect": "Disconnect",
+  "assistants.disconnect_named": "Disconnect {name}",
+  "assistants.disconnect_title": "Disconnect “{name}”?",
+  "assistants.disconnect_body": "{host} loses access at once and has to ask you again to reconnect. This cannot be undone.",
+  "assistants.disconnected": "Disconnected “{name}”.",
+  "assistants.new_connection": "New AI connection: {host} ({level})",
+  "assistants.name_taken": "This name is already used - pick another.",
+  "connect.loading": "Checking the request…",
+  "connect.leaving": "Going back to {host}…",
+  "connect.wants": "wants to access your Inboxrake",
+  "connect.calls_itself": "It calls itself “{name}”. That is its own claim.",
+  "connect.back_to": "After you decide, you go back to {host}.",
+  "connect.notice": "Only continue if you started connecting this app yourself, just now.",
+  "connect.above_ceiling": "More than this app asked for, or your admin allows.",
+  "connect.deny": "Deny",
+  "connect.allow": "Allow",
+  "connect.err.title": "This connection can't be set up",
+  "connect.err.hint": "Nothing was shared. Go back to the app and start again.",
+  "connect.err.leave": "Open Inboxrake",
+  "connect.err.unavailable": "Hosted apps can't connect to this server right now.",
   "assistants.off_admin": "While this is off, no assistant can reach this server. Turn it on and save to create access tokens here.",
   "assistants.save_first": "Save to switch assistant access on. Then you can create access tokens here.",
   "assistants.off_title": "Assistant access is off",
@@ -2598,6 +2640,10 @@ export const EN: Record<string, string> = {
   "audit.act.alias_retired": "Alias retired",
   "audit.act.alias_restored": "Alias turned back on",
   "audit.act.alias_created": "Alias created",
+  "audit.h.assistant_connected": "Connected the hosted app “{name}”",
+  "audit.h.assistant_disconnected": "Disconnected the hosted app “{name}”",
+  "audit.act.assistant_connected": "Hosted app connected",
+  "audit.act.assistant_disconnected": "Hosted app disconnected",
   "audit.h.assistant_protect": "Protected {n}\u00a0senders",
   "audit.h.assistant_protect_one": "Protected 1\u00a0sender",
   "audit.h.assistant_pin": "Pinned {n}\u00a0mails",
@@ -3459,6 +3505,40 @@ export const EN: Record<string, string> = {
     "There are already 20 access tokens - revoke one first.",
   "ferr.assistant_token_unknown":
     "This access token does not exist (any more).",
+  "ferr.name_taken":
+    "An access token or connection already has this name - pick another.",
+  "ferr.assistant_grant_limit":
+    "There are already 20 hosted app connections - disconnect one first.",
+  "ferr.oauth_needs_login":
+    "Hosted apps need a sign-in: set a password or SSO first.",
+  "ferr.oauth_needs_public_url":
+    "Hosted apps need INBOXRAKE_PUBLIC_URL set to this server's public https:// address.",
+  "ferr.oauth_needs_access":
+    "Hosted apps need assistant access above Off.",
+  "ferr.connect_request_gone":
+    "This request has expired or was already answered. Start connecting again in the app.",
+  "ferr.connect_request_mismatch":
+    "This request does not belong to this browser session. Start connecting again in the app.",
+  "ferr.connect_request_invalid":
+    "The app's request is malformed (a parameter was sent twice). Start connecting again.",
+  "ferr.connect_redirect_uri":
+    "The app asked to return to an address it has not registered, so Inboxrake will not send you there.",
+  "ferr.connect_no_accounts":
+    "Add a mail account first - an app needs one to look at.",
+  "ferr.connect_level_above_ceiling":
+    "That level is more than this app asked for or your admin allows.",
+  "ferr.client_invalid_url":
+    "The app's identifying address is not acceptable.",
+  "ferr.client_unreachable":
+    "Inboxrake could not reach the app to check who it is. Try again in a minute.",
+  "ferr.client_blocked":
+    "The app's address points somewhere Inboxrake does not connect to.",
+  "ferr.client_bad_response":
+    "The app's description could not be read.",
+  "ferr.client_invalid_document":
+    "The app's description is not valid, so Inboxrake cannot tell who is asking.",
+  "ferr.client_rate_limited":
+    "Too many apps are being checked right now. Try again in a minute.",
   "ferr.cannot_flag":
     "The server did not accept marking the mails for deletion.",
   "ferr.cannot_expunge": "The server did not remove the marked mails.",

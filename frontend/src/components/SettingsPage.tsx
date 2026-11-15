@@ -116,6 +116,7 @@ const initialForm = (c: Config, name: string) => ({
   ksJobs: c.keep_safe?.jobs ?? true,
   ksAccounts: c.keep_safe?.accounts ?? false,
   ksRules: c.keep_safe?.rules ?? true,
+  assistantOauth: c.assistants?.oauth?.enabled ?? false,
 });
 type Form = ReturnType<typeof initialForm>;
 
@@ -148,7 +149,7 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
     "oidcAdmin", "sharedEnabled", "sharedProvider", "sharedModel",
     "sharedEndpoint", "sharedKey", "sharedBudget"] },
   { label: "settings.sec.assistants",
-    fields: ["assistantAccess", "assistantNotifyEmail"] },
+    fields: ["assistantAccess", "assistantNotifyEmail", "assistantOauth"] },
   { label: "settings.sec.keepsafe", fields: ["ksInvoices", "ksBookings",
     "ksContracts", "ksJobs", "ksAccounts", "ksRules"] },
 ];
@@ -463,7 +464,12 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
             default_tenant_budget_usd: +f.sharedBudget || 0,
             ...(f.sharedKey ? { api_key: f.sharedKey } : {}) },
           // only where the server knows the setting (an older one rejects it)
-          ...(cfg.assistants ? { assistants: { access: f.assistantAccess } }
+          // (`oauth` only where the server has it, and only when it changed:
+          // a save that leaves it alone never trips its preconditions)
+          ...(cfg.assistants ? { assistants: { access: f.assistantAccess,
+            ...(cfg.assistants.oauth
+              && f.assistantOauth !== cfg.assistants.oauth.enabled
+              ? { oauth: f.assistantOauth } : {}) } }
             : {}),
         } : {}),
         ...extra,
@@ -475,6 +481,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         assistantAccess: (next.assistants?.access ?? f.assistantAccess) as AssistantAccess,
         assistantNotifyEmail: next.assistants?.notify?.email
           ?? f.assistantNotifyEmail,
+        assistantOauth: next.assistants?.oauth?.enabled ?? f.assistantOauth,
         newSenderWindowDays: String(next.new_sender_window_days),
         ...(next.keep_safe ? { ksInvoices: next.keep_safe.invoices,
           ksBookings: next.keep_safe.bookings,
@@ -819,7 +826,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         : undefined,
       [t("assistants.access"), t("assistants.address"),
         t("assistants.setup_title"), t("assistants.new"),
-        t("assistants.revoke_all"), t("assistants.group.levels")]),
+        t("assistants.revoke_all"), t("assistants.group.levels"),
+        t("assistants.oauth"), t("assistants.group.hosted"),
+        t("assistants.group.connections")]),
     ai: sec("ai", <Sparkles size={16} />, "attach",
       cfg.ai.api_key_set || cfg.ai.source === "shared" ? aiProvider
         : t("settings.not_set_up"),
@@ -1772,6 +1781,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       onAccess={(a) => put("assistantAccess", a)}
       notifyEmail={f.assistantNotifyEmail}
       onNotifyEmail={(v) => put("assistantNotifyEmail", v)}
+      oauth={f.assistantOauth}
+      onOauth={(v) => put("assistantOauth", v)}
       tokens={assistantTokens.tokens} tokensError={assistantTokens.error}
       reload={assistantTokens.load}
       onShowSteps={onShowAssistantSteps} />

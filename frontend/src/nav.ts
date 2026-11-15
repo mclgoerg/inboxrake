@@ -93,6 +93,22 @@ export function gotoSettings(section: SettingsSection | null,
   });
 }
 
+/** The consent page of a hosted app (`/oauth/authorize` ends there). It is
+ *  not a `Page`: no app shell, and only while signed in. */
+export const isConnectHash = (hash: string): boolean =>
+  /^#\/connect(?:[/?]|$)/.test(hash);
+
+/** Whether the URL hash is the consent page, kept in sync with the URL. */
+export function useConnectRoute(): boolean {
+  const [on, setOn] = useState(() => isConnectHash(window.location.hash));
+  useEffect(() => {
+    const read = () => setOn(isConnectHash(window.location.hash));
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  return on;
+}
+
 /** `#/senders` -> "senders"; anything else (empty, unknown) -> null. */
 export function parseHash(hash: string): Page | null {
   const name = hash.replace(/^#\/?/, "").split(/[/?]/)[0];

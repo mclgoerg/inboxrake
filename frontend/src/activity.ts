@@ -380,6 +380,7 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       detail = "";   // the headline names the alias
       break;
     case "assistant_token_created": case "assistant_token_revoked":
+    case "assistant_connected": case "assistant_disconnected":
       title = label ? t(`audit.h.${e.action}`, { name: label })
         : tOr("audit.act", e.action);
       detail = "";   // the headline names the token

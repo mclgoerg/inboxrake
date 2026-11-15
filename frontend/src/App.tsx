@@ -15,13 +15,15 @@ import { openProposals } from "./proposals";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
-  restoreScrollOnNext, useScrollPerPage, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
+  restoreScrollOnNext, useScrollPerPage, useConnectRoute, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { whenText } from "./timemachine";
 import { DetailPanel } from "./components/DetailPanel";
 import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
+import { useNewConnections } from "./newConnections";
+import { ConnectPage } from "./components/ConnectPage";
 import { Login } from "./components/Login";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
@@ -155,6 +157,7 @@ export default function App() {
   const settingsCtl = useRef<SettingsControl | null>(null);
   const navGuard = useRef<((to: Page) => boolean) | null>(null);
   const [navPage, setPage] = useNav(undefined, navGuard);
+  const connectRoute = useConnectRoute();
   navGuard.current = (to) => {
     const c = settingsCtl.current;
     if (!c?.dirty()) return true;
@@ -986,6 +989,14 @@ export default function App() {
     void syncPush(getLang());
     return watchPresence();
   }, [authOk, demo]);
+  // A hosted app that connects while the page is open: a toast to Settings.
+  const openAssistantsRef = useRef<() => void>(() => {});
+  const oauthCfg = cfg?.assistants?.oauth;
+  useNewConnections(authOk && !demo && !!oauthCfg?.enabled
+    && oauthCfg.available, (g) => toast.show(t("assistants.new_connection", {
+    host: (g.client_host || g.name).slice(0, 80),
+    level: t(`assistants.level.${g.level}`) }), { action: {
+    label: t("proposal.review"), onClick: () => openAssistantsRef.current() } }));
   const acct = cfg?.accounts[account] ?? null;
   // Credentials are saved but no test, connect or scan has worked yet.
   const unverified = !cfg?.setup_needed && acct?.verified === false;
@@ -2121,6 +2132,10 @@ export default function App() {
     return <Login mode={auth.mode} idpHost={auth.idp_host}
       onLogin={() => setAuth({ ...auth, authed: true })} />;
   }
+  // A hosted app's consent page: no shell, only once signed in.
+  if (connectRoute) {
+    return <ConnectPage onLeave={() => { window.location.hash = "#/"; }} />;
+  }
 
   // What the folder picker needs next to the raw folder names.
   const openRules = () => openTool("rules");
@@ -2351,6 +2366,7 @@ export default function App() {
     settingsPushed.current = push;
     gotoSettings(s, acct, push);
   };
+  openAssistantsRef.current = () => openSettingsSection("assistants", null, true);
   /** A broken account's card: its settings (leaving edits asks first). */
   const fixAccount = async (name: string) => {
     if (navPage === "settings") {

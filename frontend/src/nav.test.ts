@@ -210,3 +210,12 @@ test("Your addresses is a tool page listed on the Insights tab, and Alias servic
     .toEqual({ section: "alias", account: null });
   expect(settingsHash("alias")).toBe("#/settings/alias");
 });
+
+test("isConnectHash is the consent page route and nothing that merely starts like it", async () => {
+  const { isConnectHash } = await import("./nav");
+  expect(isConnectHash("#/connect")).toBe(true);
+  expect(isConnectHash("#/connect/")).toBe(true);
+  expect(isConnectHash("#/connect?x=1")).toBe(true);
+  for (const h of ["", "#/", "#/connections", "#/settings/connect", "#connect"])
+    expect(isConnectHash(h)).toBe(false);
+});

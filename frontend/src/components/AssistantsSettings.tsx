@@ -1,5 +1,5 @@
-import { Bot, Check, ChevronRight, CircleCheck, Copy, Eye, EyeOff, Info, ListChecks,
-  Plus, ExternalLink, WandSparkles } from "lucide-react";
+import { Bot, Check, ChevronRight, CircleCheck, Copy, Eye, EyeOff, Globe, Info,
+  ListChecks, Plus, ExternalLink, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState,
   type ReactNode } from "react";
 import { api, errorText } from "../api";
@@ -10,10 +10,12 @@ import { fmtNum } from "../numfmt";
 import { useDemo } from "../demoMode";
 import type { AssistantAccess, AssistantLevel, AssistantToken,
   Config } from "../types";
-import { Button, Checkbox, confirmDialog, DemoFieldset, EmptyState,
-  Field, IconTile, Input, LINK_ACCENT, Loading, Modal, Notice, ProgressBar,
-  RadioRow, Segmented, SettingsGroup, SettingsRow, Stepper, Switch, Tag,
-  tabPanelProps, type TagTone, useToast } from "./ui";
+import { Button, confirmDialog, DemoFieldset, EmptyState, IconTile, Input,
+  LINK_ACCENT, Loading, Modal, Notice, ProgressBar, Segmented, SettingsGroup,
+  SettingsRow, Stepper, Switch, Tag, tabPanelProps, type TagTone,
+  useToast } from "./ui";
+import { type Choices, choiceErrors, DAILY_DEFAULT, expiryDays, TokenChoices,
+  topLevel } from "./TokenChoices";
 
 /* Settings > AI assistants: the admin's cap, the address to connect, the
  * access tokens (create / revoke) and what each level allows. Which levels
@@ -28,18 +30,6 @@ export const ASSISTANTS_DOCS_URL = "https://inboxrake.com/docs/assistants/";
 const ALL_LEVELS: readonly AssistantLevel[] = ["read", "propose", "act"];
 const ACCESS_RANK: Record<AssistantAccess, number> =
   { off: 0, read_propose: 1, act: 2 };
-const NAME_MAX = 60;
-const DAILY_DEFAULT = 2000;
-
-/** Whether tokens of `level` may work under the admin's cap. */
-export const capAllows = (access: AssistantAccess,
-    level: AssistantLevel): boolean =>
-  access === "act" || (access === "read_propose" && level !== "act");
-
-/** The highest of the offered levels the cap lets a token have (null = off). */
-const topLevel = (access: AssistantAccess,
-    levels: AssistantLevel[]): AssistantLevel | null =>
-  [...levels].reverse().find((l) => capAllows(access, l)) ?? null;
 
 /** The cap's values the admin can pick, with their labels: only what the
  *  server offers. With Read alone the control is Off / On. */
@@ -185,46 +175,42 @@ export function CopyButton({ text, name, labelled = false, onCopied }: {
 
 /* ------------------------------ new token ------------------------------ */
 
-type Expiry = "30" | "90" | "never";
-
 function NewTokenDialog({ accounts, levels, access, onClose, onCreated }: {
   accounts: string[]; levels: AssistantLevel[]; access: AssistantAccess;
   onClose: () => void;
   onCreated: (token: AssistantToken, secret: string) => void;
 }) {
   const titleId = useId();
-  const [name, setName] = useState("");
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(accounts));
-  const [level, setLevel] = useState<AssistantLevel>(levels[0] ?? "read");
-  const [subjects, setSubjects] = useState(false);
-  const [expiry, setExpiry] = useState<Expiry>("90");
-  const [daily, setDaily] = useState(DAILY_DEFAULT);
+  const [choices, setChoices] = useState<Choices>(() => ({
+    name: "", accounts: new Set(accounts), level: levels[0] ?? "read",
+    subjects: false, expiry: "90", daily: DAILY_DEFAULT }));
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const nameError = !name.trim() ? t("assistants.name_required") : null;
-  const acctError = picked.size === 0 ? t("assistants.accounts_required")
-    : null;
-  const single = levels.length <= 1;
+  const [nameTaken, setNameTaken] = useState(false);
+  const ceiling = topLevel(access, levels);
 
   const submit = async () => {
     setTouched(true);
-    if (nameError || acctError || busy) return;
+    const bad = choiceErrors(choices);
+    if (bad.name || bad.accounts || busy) return;
     setBusy(true);
     setError("");
     try {
       const r = await api.createAssistantToken({
-        name: name.trim(),
-        accounts: accounts.filter((a) => picked.has(a)),
-        level, subjects,
-        expires_days: expiry === "never" ? null : expiry === "30" ? 30 : 90,
-        ...(level === "act" ? { daily_cap: daily } : {}),
+        name: choices.name.trim(),
+        accounts: accounts.filter((a) => choices.accounts.has(a)),
+        level: choices.level, subjects: choices.subjects,
+        expires_days: expiryDays(choices.expiry),
+        ...(choices.level === "act" ? { daily_cap: choices.daily } : {}),
       });
       onCreated(r.token, r.secret);
     } catch (e: any) {
       // coded refusals (assistants off, level not offered, 20 tokens, an
-      // unknown account) arrive already worded by the api layer
-      setError(String(e?.message ?? e));
+      // unknown account) arrive already worded by the api layer; a name in
+      // use is shown at the name field
+      if (e?.code === "name_taken") setNameTaken(true);
+      else setError(String(e?.message ?? e));
       setBusy(false);
     }
   };
@@ -237,100 +223,12 @@ function NewTokenDialog({ accounts, levels, access, onClose, onCreated }: {
           <div id={titleId} className="type-heading">
             {t("assistants.new_title")}
           </div>
-          <div>
-            <Field label={t("assistants.name")}>
-              <Input className="w-full" value={name} maxLength={NAME_MAX}
-                autoFocus aria-invalid={touched && !!nameError}
-                placeholder={t("assistants.name_ph")}
-                onChange={(e) => { setName(e.target.value); }} />
-            </Field>
-            {touched && nameError
-              ? <p role="alert" className="mt-1 type-meta text-danger-fg">
-                {nameError}</p>
-              : <p className="mt-1 type-meta text-muted">
-                {t("assistants.name_help")}</p>}
-          </div>
-          <fieldset className="min-w-0">
-            <legend className="mb-1 type-meta text-muted">
-              {t("assistants.accounts")}
-            </legend>
-            <div className="flex flex-wrap gap-x-4">
-              {accounts.map((a) => (
-                <Checkbox key={a} label={a} checked={picked.has(a)}
-                  onChange={(e) => setPicked((p) => {
-                    const n = new Set(p);
-                    if (e.target.checked) n.add(a); else n.delete(a);
-                    return n;
-                  })} />
-              ))}
-            </div>
-            {touched && acctError && (
-              <p role="alert" className="mt-1 type-meta text-danger-fg">
-                {acctError}</p>
-            )}
-          </fieldset>
-          <div>
-            <div className="mb-1 type-meta text-muted">
-              {t("assistants.may_do")}
-            </div>
-            {single ? (
-              <p className="type-body">
-                <span className="font-medium">
-                  {t(`assistants.level.${levels[0] ?? "read"}`)}
-                </span>
-                {" - "}{t(`assistants.level_sub.${levels[0] ?? "read"}`)}
-              </p>
-            ) : (
-              <div role="radiogroup" aria-label={t("assistants.may_do")}
-                className="divide-y divide-line overflow-hidden rounded-card
-                  border border-line bg-panel">
-                {levels.map((l) => {
-                  const allowed = capAllows(access, l);
-                  return (
-                    <RadioRow key={l} checked={level === l}
-                      disabled={!allowed}
-                      label={t(`assistants.level_row.${l}`)}
-                      sub={allowed ? t(`assistants.level_sub.${l}`)
-                        : t("assistants.above_cap", { level: t(
-                          `assistants.upto.${topLevel(access, levels)
-                            ?? "read"}`) })}
-                      onSelect={() => setLevel(l)} />
-                  );
-                })}
-              </div>
-            )}
-            {level === "act" && (<>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <span className="type-body">{t("assistants.daily")}</span>
-                <Stepper value={daily} onChange={setDaily} min={100}
-                  max={10000} step={100} label={t("assistants.daily")}
-                  format={(n) => t("assistants.daily_fmt", { n })} />
-              </div>
-              <Notice tone="warn" className="mt-3"
-                icon={<Info size={16} aria-hidden />}>
-                {t("assistants.act_warn")}
-              </Notice>
-            </>)}
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="type-body">{t("assistants.subjects")}</div>
-              <p className="type-meta text-muted">
-                {t("assistants.subjects_help")}
-              </p>
-            </div>
-            <Switch checked={subjects} onChange={setSubjects}
-              label={t("assistants.subjects")} />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="type-body">{t("assistants.expires")}</span>
-            <Segmented<Expiry> role="radio" label={t("assistants.expires")}
-              value={expiry} onChange={setExpiry} options={[
-                { value: "30", label: t("assistants.exp.30") },
-                { value: "90", label: t("assistants.exp.90") },
-                { value: "never", label: t("assistants.exp.never") }]} />
-          </div>
-          <p className="type-meta text-muted">{t("assistants.provider_note")}</p>
+          <TokenChoices value={choices} accounts={accounts} levels={levels}
+            ceiling={ceiling} touched={touched} nameTaken={nameTaken}
+            autoFocusName
+            capNote={t("assistants.above_cap", { level: t(
+              `assistants.upto.${ceiling ?? "read"}`) })}
+            onChange={(c) => { setNameTaken(false); setChoices(c); }} />
           {error && (
             <p role="alert" className="type-meta text-danger-fg">{error}</p>
           )}
@@ -468,7 +366,7 @@ function TokenRow({ tk, busy, onRevoke, onOpen }: {
           <LevelPill level={tk.level} />
         </div>
         <div className="type-meta text-muted">
-          {[`${tk.prefix}…`, tk.accounts.join(", "),
+          {[...(tk.prefix ? [`${tk.prefix}…`] : []), tk.accounts.join(", "),
             t(tk.subjects ? "assistants.subjects_on"
               : "assistants.subjects_off"),
             expiryText(tk)].join(" · ")}
@@ -503,6 +401,98 @@ function TokenRow({ tk, busy, onRevoke, onOpen }: {
         <ChevronRight size={18} aria-hidden />
       </Button>
     </li>
+  );
+}
+
+/* --------------------------- hosted app connections --------------------------- */
+
+/** One hosted app's connection (an OAuth grant): its host first - the name it
+ *  gives itself is its own claim - then what it may do. */
+function GrantRow({ tk, busy, onRevoke, onOpen }: {
+  tk: AssistantToken; busy: boolean; onRevoke: () => void;
+  onOpen: () => void;
+}) {
+  const expired = isExpired(tk);
+  const ago = fmtAgo(tk.last_used);
+  const host = tk.client_host || tk.name;
+  return (
+    <li className="flex items-start gap-3 px-4 py-3">
+      <span className={expired ? "opacity-60" : ""}>
+        <IconTile tone="info"><Globe size={16} /></IconTile>
+      </span>
+      <div className={`min-w-0 flex-1 space-y-0.5 ${expired
+        ? "text-muted" : ""}`}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 break-all type-body font-medium">
+            {host}
+          </span>
+          <LevelPill level={tk.level} />
+        </div>
+        <div className="type-meta text-muted">
+          {[...(tk.name !== host ? [tk.name] : []),
+            tk.accounts.join(", "), expiryText(tk)].join(" · ")}
+        </div>
+        <div className="type-meta text-muted">
+          {[ago ? t("assistants.used", { ago })
+            : t("assistants.never_used"),
+          t("assistants.calls", { n: tk.calls_today })].join(" · ")}
+        </div>
+        {tk.level === "act" && !expired && (
+          <div className="flex items-center gap-2 pt-1 type-meta text-muted">
+            <ProgressBar className="max-w-40 flex-1" value={tk.mails_today}
+              max={tk.daily_cap} label={t("assistants.daily")} thin />
+            <span>{t("assistants.moved", { n: tk.mails_today,
+              cap: tk.daily_cap })}</span>
+          </div>
+        )}
+      </div>
+      <Button size="sm" variant="secondary" className="max-sm:hidden"
+        aria-label={t("assistants.details", { name: tk.name })}
+        onClick={onOpen}>{t("assistants.detail_open")}</Button>
+      <Button size="sm" disabled={busy} className="max-sm:hidden"
+        aria-label={t(expired ? "assistants.remove_named"
+          : "assistants.disconnect_named", { name: tk.name })}
+        variant={expired ? "secondary" : "danger-quiet"} onClick={onRevoke}>
+        {t(expired ? "assistants.remove" : "assistants.disconnect")}
+      </Button>
+      <Button size="icon" variant="quiet" className="sm:hidden"
+        label={t("assistants.details", { name: tk.name })} onClick={onOpen}>
+        <ChevronRight size={18} aria-hidden />
+      </Button>
+    </li>
+  );
+}
+
+type HostedApp = "claude" | "chatgpt";
+
+/** "Connect a hosted app": the address to paste into claude.ai or ChatGPT and
+ *  the few steps there. The approval itself happens on the consent page. */
+function HostedAppGroup({ url }: { url: string }) {
+  const [app, setApp] = useState<HostedApp>("claude");
+  const steps = [1, 2, 3];
+  return (
+    <SettingsGroup header={t("assistants.group.hosted")}
+      footnote={<a href={ASSISTANTS_DOCS_URL} target="_blank"
+        rel="noopener noreferrer" className={LINK_ACCENT}>
+        {t("assistants.guide")}</a>}>
+      <SettingsRow label={t("assistants.address")}
+        sub={<span className="break-all font-mono">{url}</span>}>
+        <CopyButton text={url} name={t("assistants.copy_address")} />
+      </SettingsRow>
+      <div className="space-y-3 px-4 py-3">
+        <Segmented<HostedApp> label={t("assistants.hosted.apps")}
+          idPrefix="assistant-hosted" value={app} onChange={setApp}
+          options={[{ value: "claude", label: "claude.ai" },
+            { value: "chatgpt", label: "ChatGPT" }]} />
+        <div {...tabPanelProps("assistant-hosted", app)}>
+          <ol className="list-decimal space-y-1 pl-5 type-meta text-muted">
+            {steps.map((n) => (
+              <li key={n}>{t(`assistants.hosted.${app}.${n}`)}</li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </SettingsGroup>
   );
 }
 
@@ -615,7 +605,9 @@ function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
           <Button size="sm" variant="danger-quiet" disabled={busy}
             onClick={() => wanted.current === null ? onRevoke()
               : void flush().then(onRevoke)}>
-            {t(isExpired(tk) ? "assistants.remove" : "assistants.revoke")}
+            {t(isExpired(tk) ? "assistants.remove"
+              : tk.kind === "oauth" ? "assistants.disconnect"
+                : "assistants.revoke")}
           </Button>
         </div>
       </div>
@@ -669,7 +661,7 @@ function NotifyGroup({ cfg, email, onEmail }: {
 }
 
 export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
-  onNotifyEmail, tokens, tokensError, reload, onShowSteps }: {
+  onNotifyEmail, oauth, onOauth, tokens, tokensError, reload, onShowSteps }: {
   cfg: Config; admin: boolean;
   /** The cap as staged (the admin's control); the saved one is in `cfg`. */
   access: AssistantAccess;
@@ -677,6 +669,9 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   /** The staged "email me about proposals" switch. */
   notifyEmail: boolean;
   onNotifyEmail: (on: boolean) => void;
+  /** The staged "hosted apps may connect" switch (the admin's). */
+  oauth: boolean;
+  onOauth: (on: boolean) => void;
   tokens: AssistantToken[] | null; tokensError: string;
   reload: () => Promise<unknown>;
   /** Open Activity narrowed to this token's steps. */
@@ -698,6 +693,11 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   const [busyId, setBusyId] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const list = tokens ?? [];
+  const grants = list.filter((tk) => tk.kind === "oauth");
+  const plain = list.filter((tk) => tk.kind !== "oauth");
+  const oauthCfg = cfg.assistants?.oauth;
+  // hosted apps can connect right now (the saved state, like the rest)
+  const oauthOn = !!oauthCfg?.enabled && oauthCfg.available;
   // After a dialog closes the "New access token…" control takes focus (the
   // empty state's button is gone once the list reloads, so look it up then).
   const refocus = useRef(false);
@@ -742,16 +742,21 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   };
 
   const revoke = async (tk: AssistantToken): Promise<boolean> => {
+    const app = tk.kind === "oauth";
     if (!isExpired(tk) && !await confirmDialog({
-      title: t("assistants.revoke_title", { name: tk.name }),
-      body: t("assistants.revoke_body"),
-      confirmLabel: t("assistants.revoke"), tone: "danger",
+      title: t(app ? "assistants.disconnect_title" : "assistants.revoke_title",
+        { name: tk.name }),
+      body: app ? t("assistants.disconnect_body",
+        { host: tk.client_host || tk.name }) : t("assistants.revoke_body"),
+      confirmLabel: t(app ? "assistants.disconnect" : "assistants.revoke"),
+      tone: "danger",
     })) return false;
     setBusyId(tk.id);
     try {
       await api.revokeAssistantToken(tk.id);
       toast.show(t(isExpired(tk) ? "assistants.removed"
-        : "assistants.revoked", { name: tk.name }), { variant: "success" });
+        : app ? "assistants.disconnected" : "assistants.revoked",
+      { name: tk.name }), { variant: "success" });
     } catch (e: any) {
       toast.show(t("err.generic", { msg: e?.message ?? e }),
         { variant: "error" });
@@ -763,19 +768,27 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
 
   const revokeAll = async () => {
     if (!await confirmDialog({
-      title: t("assistants.revoke_all_title", { n: list.length }),
+      title: t("assistants.revoke_all_title", { n: plain.length }),
       body: t("assistants.revoke_all_body"),
-      confirmLabel: t("assistants.revoke_all_confirm", { n: list.length }),
+      confirmLabel: t("assistants.revoke_all_confirm", { n: plain.length }),
       tone: "danger",
     })) return;
     const res = await Promise.allSettled(
-      list.map((tk) => api.revokeAssistantToken(tk.id)));
+      plain.map((tk) => api.revokeAssistantToken(tk.id)));
     const failed = res.filter((r) => r.status === "rejected").length;
     if (failed) toast.show(t("assistants.revoke_all_failed", { n: failed }),
       { variant: "error" });
     else toast.show(t("assistants.revoked_all"), { variant: "success" });
     await reload();
   };
+
+  // Why hosted apps cannot be switched on: the saved state's reason, except
+  // that a staged (unsaved) access cap above Off already meets its condition.
+  const oauthReason = oauthCfg && !oauthCfg.available
+    && !(oauthCfg.reason === "oauth_needs_access" && shown !== "off")
+    ? oauthCfg.reason || "oauth_needs_public_url" : "";
+  // switching off stays possible whatever the reason
+  const oauthBlocked = !!oauthReason && !oauth;
 
   const control = admin && (
     <DemoFieldset>
@@ -786,6 +799,23 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
             label={t("assistants.access")} value={shown}
             onChange={(v) => void change(v)} options={accessChoices(levels)} />
         </SettingsRow>
+        {oauthCfg && (
+          <SettingsRow label={t("assistants.oauth")}
+            sub={<>
+              {t("assistants.oauth_sub")}
+              {oauthReason && (<>{" "}<span className="font-medium
+                text-review-fg">{t(oauthBlocked ? "assistants.oauth_needs"
+                  : "assistants.oauth_idle", { reason: t(
+                    `assistants.oauth.reason.${oauthReason}`) })}</span></>)}
+              {oauthCfg.public_url && !oauthReason && (<>{" "}
+                {t("assistants.oauth_public")}{" "}
+                <span className="break-all font-mono">
+                  {oauthCfg.public_url}</span></>)}
+            </>}>
+            <Switch checked={oauth} onChange={onOauth}
+              disabled={oauthBlocked} />
+          </SettingsRow>
+        )}
       </SettingsGroup>
     </DemoFieldset>
   );
@@ -831,7 +861,39 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
         {t("assistants.admin_allows", { level: t(`assistants.upto.${cap}`) })}
       </Notice>
     )}
+    {oauthOn && (
+      <Notice tone="warn" className="mb-4"
+        icon={<Info size={16} aria-hidden />}>
+        {t("assistants.oauth_notice")}
+      </Notice>
+    )}
     <DemoFieldset>
+      {oauthOn && <HostedAppGroup url={oauthCfg!.mcp_url} />}
+
+      {(oauthOn || grants.length > 0) && (
+        <SettingsGroup header={t("assistants.group.connections")}
+          footnote={oauthOn ? t("assistants.connections_note")
+            : t("assistants.connections_off")}>
+          {tokens === null && !tokensError && !demo && (
+            <Loading className="!p-3" />
+          )}
+          {(tokens !== null || demo) && !grants.length && (
+            <EmptyState icon={<Globe size={18} aria-hidden />}
+              title={t("assistants.apps_none_title")}
+              hint={t("assistants.apps_none_hint")} />
+          )}
+          {grants.length > 0 && (
+            <ul className="divide-y divide-line">
+              {grants.map((tk) => (
+                <GrantRow key={tk.id} tk={tk} busy={busyId === tk.id}
+                  onRevoke={() => void revoke(tk)}
+                  onOpen={() => setDetailId(tk.id)} />
+              ))}
+            </ul>
+          )}
+        </SettingsGroup>
+      )}
+
       <SettingsGroup header={t("assistants.group.connect")}>
         <SettingsRow label={t("assistants.address")}
           sub={<span className="break-all font-mono">{url}</span>}>
@@ -848,7 +910,7 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
       </SettingsGroup>
 
       <SettingsGroup header={t("assistants.group.tokens")}
-        footnote={list.length ? (<>
+        footnote={plain.length ? (<>
           {t("assistants.tokens_note")}{" "}
           <button type="button" className={LINK_ACCENT}
             onClick={() => void revokeAll()}>
@@ -861,14 +923,14 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
           <p role="alert" className="px-4 py-3 type-meta text-danger-fg">
             {tokensError}</p>
         )}
-        {(tokens !== null || demo) && !list.length && (
+        {(tokens !== null || demo) && !plain.length && (
           <EmptyState icon={<Bot size={18} aria-hidden />}
             title={t("assistants.none_title")} hint={t("assistants.none_hint")}
             action={newButton} />
         )}
-        {list.length > 0 && (<>
+        {plain.length > 0 && (<>
           <ul className="divide-y divide-line">
-            {list.map((tk) => (
+            {plain.map((tk) => (
               <TokenRow key={tk.id} tk={tk} busy={busyId === tk.id}
                 onRevoke={() => void revoke(tk)}
                 onOpen={() => setDetailId(tk.id)} />

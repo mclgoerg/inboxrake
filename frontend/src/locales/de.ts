@@ -2195,6 +2195,48 @@ export const DE: Record<string, string> = {
   "assistants.group.connect": "Verbinden",
   "assistants.group.tokens": "Zugriffs-Token",
   "assistants.group.levels": "Was jede Stufe erlaubt",
+  "assistants.oauth": "Gehostete Apps verbinden lassen",
+  "assistants.oauth_sub": "claude.ai, ChatGPT und andere Apps in der Cloud fragen hier nach deiner Zustimmung, statt ein Token zu nutzen.",
+  "assistants.oauth_needs": "Lässt sich noch nicht einschalten: {reason}",
+  "assistants.oauth_idle": "Gerade nicht aktiv: {reason}",
+  "assistants.oauth.reason.oauth_needs_login": "dieser Server hat keine Anmeldung (Einstellungen › Anmeldung & Nutzer).",
+  "assistants.oauth.reason.oauth_needs_public_url": "die Umgebungsvariable INBOXRAKE_PUBLIC_URL ist nicht auf die öffentliche https://-Adresse dieses Servers gesetzt.",
+  "assistants.oauth.reason.oauth_needs_access": "der Assistenten-Zugriff ist aus.",
+  "assistants.oauth_public": "Öffentliche Adresse:",
+  "assistants.oauth_notice": "Gehostete Apps erreichen diesen Server über das Internet. Jede braucht deine Zustimmung, bevor sie hineinkommt, jede neue Verbindung löst eine Benachrichtigung aus, und du kannst sie unten jederzeit trennen.",
+  "assistants.group.hosted": "Gehostete App verbinden",
+  "assistants.hosted.apps": "App",
+  "assistants.hosted.claude.1": "Öffne in claude.ai Einstellungen › Konnektoren und wähle „Benutzerdefinierten Konnektor hinzufügen“.",
+  "assistants.hosted.claude.2": "Füge die Adresse von oben ein und verbinde.",
+  "assistants.hosted.claude.3": "Melde dich hier an, falls gefragt, prüfe, wer anfragt und was die App darf, und wähle dann Erlauben.",
+  "assistants.hosted.chatgpt.1": "Schalte in ChatGPT den Entwicklermodus ein und erstelle eine neue App.",
+  "assistants.hosted.chatgpt.2": "Füge die Adresse von oben ein und wähle OAuth als Anmeldung.",
+  "assistants.hosted.chatgpt.3": "Melde dich hier an, falls gefragt, prüfe, wer anfragt und was die App darf, und wähle dann Erlauben.",
+  "assistants.group.connections": "Verbindungen",
+  "assistants.connections_note": "Eine App bleibt verbunden, bis ihre Zustimmung abläuft oder du sie trennst. Trennen wirkt sofort.",
+  "assistants.connections_off": "Solange das aus ist, können sich keine gehosteten Apps verbinden. Die Verbindungen bleiben in der Liste und funktionieren wieder, sobald es eingeschaltet ist.",
+  "assistants.apps_none_title": "Keine gehosteten Apps verbunden",
+  "assistants.apps_none_hint": "Füge die Adresse von oben in claude.ai oder ChatGPT ein. Die App erscheint hier, nachdem du sie erlaubt hast.",
+  "assistants.disconnect": "Trennen",
+  "assistants.disconnect_named": "{name} trennen",
+  "assistants.disconnect_title": "„{name}“ trennen?",
+  "assistants.disconnect_body": "{host} verliert sofort den Zugriff und muss dich zum erneuten Verbinden wieder fragen. Das lässt sich nicht rückgängig machen.",
+  "assistants.disconnected": "„{name}“ getrennt.",
+  "assistants.new_connection": "Neue KI-Verbindung: {host} ({level})",
+  "assistants.name_taken": "Dieser Name ist schon vergeben - wähle einen anderen.",
+  "connect.loading": "Anfrage wird geprüft …",
+  "connect.leaving": "Zurück zu {host} …",
+  "connect.wants": "möchte auf dein Inboxrake zugreifen",
+  "connect.calls_itself": "Die App nennt sich „{name}“. Das ist ihre eigene Angabe.",
+  "connect.back_to": "Nach deiner Entscheidung geht es zurück zu {host}.",
+  "connect.notice": "Mach nur weiter, wenn du das Verbinden dieser App selbst und gerade eben gestartet hast.",
+  "connect.above_ceiling": "Mehr, als diese App angefragt hat oder dein Admin erlaubt.",
+  "connect.deny": "Ablehnen",
+  "connect.allow": "Erlauben",
+  "connect.err.title": "Diese Verbindung lässt sich nicht einrichten",
+  "connect.err.hint": "Es wurde nichts freigegeben. Geh zurück zur App und starte neu.",
+  "connect.err.leave": "Inboxrake öffnen",
+  "connect.err.unavailable": "Gehostete Apps können sich gerade nicht mit diesem Server verbinden.",
   "assistants.off_admin": "Solange das aus ist, erreicht kein Assistent diesen Server. Schalte es ein und speichere, um hier Zugriffs-Token zu erstellen.",
   "assistants.save_first": "Speichere, um den Assistenten-Zugriff einzuschalten. Dann kannst du hier Zugriffs-Token erstellen.",
   "assistants.off_title": "Der Assistenten-Zugriff ist aus",
@@ -2780,6 +2822,10 @@ export const DE: Record<string, string> = {
   "audit.act.alias_retired": "Alias stillgelegt",
   "audit.act.alias_restored": "Alias wieder eingeschaltet",
   "audit.act.alias_created": "Alias angelegt",
+  "audit.h.assistant_connected": "Gehostete App „{name}“ verbunden",
+  "audit.h.assistant_disconnected": "Gehostete App „{name}“ getrennt",
+  "audit.act.assistant_connected": "Gehostete App verbunden",
+  "audit.act.assistant_disconnected": "Gehostete App getrennt",
   "audit.h.assistant_protect": "{n}\u00a0Absender geschützt",
   "audit.h.assistant_protect_one": "1\u00a0Absender geschützt",
   "audit.h.assistant_pin": "{n}\u00a0Mails angepinnt",
@@ -3710,6 +3756,40 @@ export const DE: Record<string, string> = {
     "Es gibt schon 20 Zugriffs-Token - widerrufe zuerst eines.",
   "ferr.assistant_token_unknown":
     "Dieses Zugriffs-Token gibt es nicht (mehr).",
+  "ferr.name_taken":
+    "Ein Zugriffs-Token oder eine Verbindung heißt schon so - wähle einen anderen Namen.",
+  "ferr.assistant_grant_limit":
+    "Es gibt schon 20 Verbindungen gehosteter Apps - trenne zuerst eine.",
+  "ferr.oauth_needs_login":
+    "Gehostete Apps brauchen eine Anmeldung: Richte zuerst ein Passwort oder SSO ein.",
+  "ferr.oauth_needs_public_url":
+    "Gehostete Apps brauchen INBOXRAKE_PUBLIC_URL, gesetzt auf die öffentliche https://-Adresse dieses Servers.",
+  "ferr.oauth_needs_access":
+    "Gehostete Apps brauchen einen Assistenten-Zugriff über „Aus“.",
+  "ferr.connect_request_gone":
+    "Diese Anfrage ist abgelaufen oder wurde schon beantwortet. Starte das Verbinden in der App neu.",
+  "ferr.connect_request_mismatch":
+    "Diese Anfrage gehört nicht zu dieser Browser-Sitzung. Starte das Verbinden in der App neu.",
+  "ferr.connect_request_invalid":
+    "Die Anfrage der App ist fehlerhaft (ein Parameter kam doppelt vor). Starte das Verbinden neu.",
+  "ferr.connect_redirect_uri":
+    "Die App wollte zu einer Adresse zurück, die sie nicht angemeldet hat - Inboxrake schickt dich nicht dorthin.",
+  "ferr.connect_no_accounts":
+    "Lege zuerst ein Mail-Konto an - eine App braucht eines, das sie ansehen kann.",
+  "ferr.connect_level_above_ceiling":
+    "Diese Stufe ist mehr, als die App angefragt hat oder dein Admin erlaubt.",
+  "ferr.client_invalid_url":
+    "Die Kennadresse der App ist nicht zulässig.",
+  "ferr.client_unreachable":
+    "Inboxrake konnte die App nicht erreichen, um zu prüfen, wer sie ist. Versuche es in einer Minute noch einmal.",
+  "ferr.client_blocked":
+    "Die Adresse der App zeigt auf etwas, mit dem sich Inboxrake nicht verbindet.",
+  "ferr.client_bad_response":
+    "Die Beschreibung der App ließ sich nicht lesen.",
+  "ferr.client_invalid_document":
+    "Die Beschreibung der App ist ungültig, daher kann Inboxrake nicht sagen, wer anfragt.",
+  "ferr.client_rate_limited":
+    "Gerade werden zu viele Apps geprüft. Versuche es in einer Minute noch einmal.",
   "ferr.cannot_flag":
     "Der Server hat das Markieren der Mails zum Löschen nicht "
     + "akzeptiert.",

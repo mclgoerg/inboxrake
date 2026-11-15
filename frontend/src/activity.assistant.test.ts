@@ -82,3 +82,17 @@ test("what an assistant did besides moving mail has its own headlines", () => {
   expect(a("assistant_scan", 0).title).toBe("Neuen Scan gestartet");
   expect(a("assistant_protect", 3).title).toBe("3 Absender geschützt");
 });
+
+test("a hosted app's connection and its end have their own headlines", () => {
+  const ev = (action: string, over: Partial<AuditEntry> = {}) => entryText(e({
+    actor: "user", action, count: 0, label: "Claude · claude.example", ...over }), []);
+  expect(ev("assistant_connected").title)
+    .toBe("Connected the hosted app “Claude · claude.example”");
+  expect(ev("assistant_disconnected").title)
+    .toBe("Disconnected the hosted app “Claude · claude.example”");
+  expect(ev("assistant_connected", { label: "" }).title)
+    .toBe("Hosted app connected");
+  setLang("de");
+  expect(ev("assistant_disconnected").title)
+    .toBe("Gehostete App „Claude · claude.example“ getrennt");
+});
