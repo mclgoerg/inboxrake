@@ -758,6 +758,23 @@ def bridge(monkeypatch):
     return fake
 
 
+def join_scan_threads(timeout=10.0):
+    """Wait for every scan worker thread to END, not just for the status to
+    leave "scanning": run_scan reports "done" first and only then writes the
+    config (mark_verified), saves the snapshot and pushes - a test that writes
+    the config meanwhile races it (config.tmp FileNotFoundError). The thread
+    is start_scan's `Thread(target=tenants.call_in, args=(tenant, run_scan,
+    ...))`."""
+    import threading
+    import time
+    end = time.time() + timeout
+    for th in threading.enumerate():
+        args = getattr(th, "_args", ()) or ()
+        if th is not threading.current_thread() and len(args) > 1 \
+                and args[1] is mailops.run_scan:
+            th.join(max(0.0, end - time.time()))
+
+
 def wait_scan_done(timeout=5.0):
     """A `start_scan()`-dispatched scan runs in a worker thread; wait for
     it to leave "scanning"."""

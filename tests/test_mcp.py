@@ -23,7 +23,7 @@ from backend import config as cfgmod
 from backend import mcptools, tenants, webguard
 from backend import rules as rulesmod
 from backend.main import app
-from conftest import FakeIMAP, make_msg, wait_scan_done
+from conftest import FakeIMAP, make_msg, join_scan_threads, wait_scan_done
 
 client = TestClient(app)
 
@@ -75,6 +75,7 @@ def mbox(monkeypatch):
                                    "password": M_PASS}})
     assert client.post("/api/scan").status_code == 200
     wait_scan_done()
+    join_scan_threads()      # its tail still writes the config after "done"
     return fake
 
 

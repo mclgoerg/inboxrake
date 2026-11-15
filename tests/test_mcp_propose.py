@@ -705,9 +705,10 @@ def test_the_switch_off_sends_nothing_even_for_a_held_batch(
 
 def test_an_account_that_cannot_send_is_skipped_silently(
         mbox, mails, clock):
-    cfg = cfgmod.load_config()
-    cfg["accounts"]["default"]["password"] = ""
-    cfgmod._write_tenant_config(cfg)
+    with cfgmod._LOCK:          # the app's own writers hold this lock too
+        cfg = cfgmod.load_config()
+        cfg["accounts"]["default"]["password"] = ""
+        cfgmod._write_tenant_config(cfg)
     out = ok(proposer(), "propose_rule", PROPOSAL)
     assert out["state"] == "waiting" and mails == []
     seen = client.get("/api/config").json()["assistants"]["notify"]
