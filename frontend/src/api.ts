@@ -197,6 +197,8 @@ const ERROR_CODES: Record<string, string> = {
   copy_append_refused: "ferr.copy_append_refused",
   copy_target_full: "ferr.copy_target_full",
   copy_no_job: "ferr.copy_no_job",
+  copy_same_mailbox: "ferr.copy_same_mailbox",
+  copy_folder_reserved: "ferr.copy_folder_reserved",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -601,9 +603,12 @@ export const api = {
   copyPlan: (source: string, target: string) =>
     req<CopyPlan>(`/api/account_copy/plan?source=${encodeURIComponent(source)}`
       + `&target=${encodeURIComponent(target)}`),
-  copySpace: (target: string) =>
-    req<{ free: number | null }>(
-      `/api/account_copy/space?target=${encodeURIComponent(target)}`),
+  /** The target's free space (null: no quota) and, for a folder name,
+   *  whether it exists (the mails are added) or is reserved (refused). */
+  copySpace: (target: string, folder = "") =>
+    req<{ free: number | null; exists: boolean; reserved: boolean }>(
+      `/api/account_copy/space?target=${encodeURIComponent(target)}`
+      + (folder ? `&folder=${encodeURIComponent(folder)}` : "")),
   copyStatus: () => req<{ job: CopyJob | null }>("/api/account_copy/status"),
   copyStart: (source: string, target: string, kinds: CopyKindId[],
               folder: string) =>

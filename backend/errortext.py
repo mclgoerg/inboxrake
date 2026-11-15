@@ -41,6 +41,10 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The other account is full, so the copy stopped. Nothing was deleted.',
     'copy_no_job':
         'There is no copy to do that with.',
+    'copy_same_mailbox':
+        'These two accounts are the same mailbox (same server and login) - pick two different ones.',
+    'copy_folder_reserved':
+        '“{folder}” is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

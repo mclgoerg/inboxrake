@@ -115,8 +115,13 @@ free space of the target when its server reports a quota. Step 2, *Copy*,
 runs on the server like a scan, with progress, Pause / Resume / Cancel, and
 carries on after a restart without copying a mail twice. Every mail keeps its
 date, read / unread, starred and answered flags; a mail already in the
-target (same Message-ID) is skipped, mails over 50 MB are skipped and
-reported, and each batch is checked in the target afterwards. The copy only
+target (same Message-ID - or, for a mail without one, the same date, size and
+subject) is skipped, mails over 50 MB are skipped and reported, and each batch
+is checked in the target afterwards. The new folder is created where the
+target's server wants folders; a folder the server uses for something else
+(Inbox, Trash, Junk, Sent, Drafts, Archive - in any language) is refused, an
+existing ordinary folder is added to. Two accounts that are one mailbox (same
+server and login) cannot be chosen. The copy only
 reads the source: nothing is deleted, moved or marked read there - the
 originals stay until you clean up with the usual tools. Step 3, *Tell them*,
 lists the senders that still wrote to the old address in the last 90 days as

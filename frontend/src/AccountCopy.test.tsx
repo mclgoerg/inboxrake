@@ -201,7 +201,7 @@ test("the notes: dates and flags, duplicates, free space, nothing deleted",
       "Mails already in proton (same Message-ID) are skipped.")).toBeTruthy();
     expect(within(card).getByText(
       "Nothing is deleted. gmail stays as it is until you decide.")).toBeTruthy();
-    expect(copySpace).toHaveBeenCalledWith("proton");
+    expect(copySpace).toHaveBeenCalledWith("proton", "From gmail");
   });
 
 test("without a quota the free-space line is left out, not guessed",
@@ -212,6 +212,31 @@ test("without a quota the free-space line is left out, not guessed",
     await waitFor(() => expect(copySpace).toHaveBeenCalled());
     expect(within(card).queryByText(/free\./)).toBeNull();
     expect(within(card).getByText(/Nothing is deleted/)).toBeTruthy();
+  });
+
+test("a folder that exists is said to be added to", async () => {
+  copySpace.mockResolvedValue({ free: null, exists: true, reserved: false });
+  show();
+  const card = await screen.findByRole("region", { name: "You bring" });
+  await within(card).findByText(
+    "That folder already exists in proton - the mails are added to it.");
+  expect((goButtons()[0] as HTMLButtonElement).disabled).toBe(false);
+});
+
+test("a folder the server uses for something else switches Copy off",
+  async () => {
+    copySpace.mockImplementation((_t: string, folder: string) =>
+      Promise.resolve({ free: null, exists: true, reserved: folder === "Trash" }));
+    show();
+    const input = await screen.findByRole("textbox", { name: "Folder name" });
+    fireEvent.change(input, { target: { value: "Trash" } });
+    await screen.findByText(/“Trash” is a folder the server uses for something else/);
+    for (const b of goButtons()) expect((b as HTMLButtonElement).disabled)
+      .toBe(true);
+    fireEvent.change(input, { target: { value: "Old mail" } });
+    await waitFor(() => expect(screen.queryByText(/uses for something else/))
+      .toBeNull());
+    expect((goButtons()[0] as HTMLButtonElement).disabled).toBe(false);
   });
 
 test("a target with too little room warns", async () => {
@@ -354,6 +379,19 @@ test("done: the card as decided - originals stay, no trash offer", async () => {
   expect(screen.queryByText(/Trash/)).toBeNull();
   expect(screen.getByRole("button", { name: "Tell them…" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Copy more…" })).toBeTruthy();
+});
+
+test("done with nothing new has a title of its own", async () => {
+  copyStatus.mockResolvedValue({ job: job({ status: "done", processed: 7,
+    copied: 0, skipped: 7, checked: 0 }) });
+  show();
+  await screen.findByText("Nothing new to copy - 7 mails were already in proton");
+  expect(screen.queryByText(/0 mails are in/)).toBeNull();
+  expect(screen.getByText("All checked")).toBeTruthy();
+  cleanup();
+  setLang("de");
+  show();
+  await screen.findByText("Nichts Neues zu kopieren – 7 Mails waren schon in proton");
 });
 
 test("done with leftovers names each kind of leftover", async () => {

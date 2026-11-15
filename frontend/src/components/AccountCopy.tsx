@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowLeftRight, ArrowRight, CalendarCheck, Check, ChevronsUpDown,
-  Copy, HardDrive, Info, Inbox, KeyRound, Newspaper, Package, Pause, Pin, Play,
+  Copy, FolderPlus, HardDrive, Info, Inbox, KeyRound, Newspaper, Package, Pause, Pin, Play,
   Shield, ShieldCheck, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState,
   type ReactNode } from "react";
@@ -38,6 +38,10 @@ const kindLabel = (k: CopyKindId): string =>
   t(k === "pinned" ? "copy.kind.pinned" : `smart.kind.${k}`);
 
 const POLL_MS = 1500;
+
+/** What the target's server says about the folder name typed: it exists (the
+ *  mails are added to it) or it is one the server uses for something else. */
+type FolderState = { exists: boolean; reserved: boolean };
 
 /** "about 6 min left" - minutes, then hours; under a minute says so. */
 export function etaText(sec: number | null): string {
@@ -125,16 +129,19 @@ function AccountBox({ label, name, names, taken, address, children, onPick,
 
 /** The summary of a copy that is not started: how much comes along, what
  *  stays, the four notes and the button. */
-function Summary({ plan, bring, free, busy, folderOk, blocked, onStart }: {
+function Summary({ plan, bring, free, folder, busy, folderOk, blocked,
+  onStart }: {
   plan: CopyPlan; bring: { mails: number; size: number };
-  free: number | null | undefined; busy: boolean; folderOk: boolean;
-  blocked: string; onStart: () => void;
+  free: number | null | undefined; folder: FolderState; busy: boolean;
+  folderOk: boolean; blocked: string; onStart: () => void;
 }) {
   const total = plan.source.size;
   const frac = total > 0 ? Math.min(100, (100 * bring.size) / total) : 0;
   const tight = typeof free === "number" && bring.size > free;
   const notes: { icon: ReactNode; text: string; warn?: boolean }[] = [
     { icon: <Check size={14} />, text: t("copy.note_flags") },
+    ...(folder.exists ? [{ icon: <FolderPlus size={14} />,
+      text: t("copy.note_exists", { name: plan.target.name }) }] : []),
     { icon: <Copy size={14} />,
       text: t("copy.note_dups", { name: plan.target.name }) },
     ...(typeof free === "number" ? [{ icon: <HardDrive size={14} />,
@@ -226,7 +233,9 @@ function CopyState({ job, onPause, onResume, onCancel, onTell, onMore,
     const parts: string[] = [
       job.failed === 0 && job.unchecked === 0 ? t("copy.done_all_checked") : "",
       job.unchecked > 0 ? t("copy.done_unchecked", { n: job.unchecked }) : "",
-      job.skipped > 0 ? t("copy.done_skipped", { n: job.skipped }) : "",
+      // "nothing new" says it in the title
+      job.skipped > 0 && job.copied > 0
+        ? t("copy.done_skipped", { n: job.skipped }) : "",
       job.too_large > 0 ? t("copy.done_big", { n: job.too_large }) : "",
       job.missing > 0 ? t("copy.done_missing",
         { n: job.missing, name: job.source }) : "",
@@ -238,8 +247,11 @@ function CopyState({ job, onPause, onResume, onCancel, onTell, onMore,
             rounded-full bg-safe-bg text-safe-fg"><Check size={18} /></span>
           <div className="min-w-0">
             <h2 className="type-heading">
-              {t("copy.done_title", { n: job.copied, name: job.target,
-                folder: job.folder })}</h2>
+              {job.copied > 0
+                ? t("copy.done_title", { n: job.copied, name: job.target,
+                  folder: job.folder })
+                : t("copy.done_nothing_new", { n: job.skipped,
+                  name: job.target })}</h2>
             <p className="type-meta text-muted">{parts.join(" · ")}</p>
           </div>
         </div>
@@ -327,6 +339,8 @@ export function AccountCopyPanel({ cfg, from: startFrom, onClose,
   const [ticked, setTicked] = useState<Set<CopyKindId>>(new Set());
   const [folder, setFolder] = useState("");
   const [free, setFree] = useState<number | null | undefined>(undefined);
+  const [folderState, setFolderState] =
+    useState<FolderState>({ exists: false, reserved: false });
   const [job, setJob] = useState<CopyJob | null | undefined>(undefined);
   const [step, setStep] = useState<Step>("bring");
   const [busy, setBusy] = useState(false);
@@ -388,14 +402,21 @@ export function AccountCopyPanel({ cfg, from: startFrom, onClose,
     const h = setInterval(() => { if (!stale) void load(); }, 4000);
     return () => { stale = true; clearInterval(h); };
   }, [from, to, job?.status === "done"]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // The target's free space and what its server says about the folder name
+  // (asked a moment after the last keystroke).
   useEffect(() => {
     if (!to) return;
     let stale = false;
-    setFree(undefined);
-    api.copySpace(to).then((r) => { if (!stale) setFree(r.free); })
-      .catch(() => { if (!stale) setFree(null); });
-    return () => { stale = true; };
-  }, [to]);
+    const h = setTimeout(() => {
+      api.copySpace(to, folder.trim()).then((r) => {
+        if (stale) return;
+        setFree(r.free);
+        setFolderState({ exists: !!r.exists, reserved: !!r.reserved });
+      }).catch(() => { if (!stale) setFree(null); });
+    }, 350);
+    return () => { stale = true; clearTimeout(h); };
+  }, [to, folder]);
+  useEffect(() => { setFree(undefined); }, [to]);
 
   const bring = useMemo(() => {
     if (!plan) return { mails: 0, size: 0 };
@@ -431,6 +452,7 @@ export function AccountCopyPanel({ cfg, from: startFrom, onClose,
   const pair = job ? { from: job.source, to: job.target } : { from, to };
   const folderOk = folder.trim().length > 0;
   const blocked = live ? t("copy.busy")
+    : folderState.reserved ? t("ferr.copy_folder_reserved", { folder: folder.trim() })
     : plan && !plan.scanned ? ""
     : plan && bring.mails === 0 ? t("copy.nothing") : "";
   const reach: Record<Step, boolean> = {
@@ -523,8 +545,9 @@ export function AccountCopyPanel({ cfg, from: startFrom, onClose,
         </ul>
         <p className="mt-2 px-1 type-meta text-muted">{t("copy.kinds_note")}</p>
       </div>
-      <Summary plan={plan} bring={bring} free={free} busy={busy}
-        folderOk={folderOk} blocked={blocked}
+      <Summary plan={plan} bring={bring} free={free} folder={folderState}
+        busy={busy} folderOk={folderOk && !folderState.reserved}
+        blocked={blocked}
         onStart={() => void start([...ticked], folder)} />
     </div>
   );

@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import base64
 import email
+import email.parser
+import hashlib
 import imaplib
 import json
 import logging
@@ -128,8 +130,15 @@ def _ledger_reset(job_id: str) -> None:
     path.chmod(0o600)
 
 
+# What a ledger line says about one mail (the last line of a key wins):
+#   pending    a mail without a Message-ID is about to be appended
+#   appended   the target acknowledged the APPEND
+#   ok / unchecked / dup / big / gone   final (see `_Run.copy_chunk`)
+FINAL = ("ok", "unchecked", "dup", "big", "gone")
+
+
 def _ledger_read(job_id: str) -> dict[str, str]:
-    """{key: final status} of the job's finished mails ({} for a ledger that
+    """{key: last status} of the job's mails ({} for a ledger that
     belongs to another job - the Message-ID check of the target still keeps
     a mail from being copied twice)."""
     out: dict[str, str] = {}
@@ -152,29 +161,57 @@ def _ledger_read(job_id: str) -> dict[str, str]:
     return out
 
 
-def _ledger_append(rows: list[tuple[str, str]]) -> None:
+def _ledger_append(rows: list[tuple[str, str]], sync: bool = True) -> None:
+    """Append lines. `sync`: also to disk (one mail's line is only flushed to
+    the OS - a crashed process loses nothing - and the chunk's final lines
+    are synced)."""
     if not rows:
         return
     with _ledger_path().open("a") as f:
         f.write("".join(json.dumps(list(r)) + "\n" for r in rows))
         f.flush()
-        try:
-            os.fsync(f.fileno())
-        except OSError:
-            pass            # a file system without fsync: the flush is all
+        if sync:
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass        # a file system without fsync: the flush is all
 
 
 
 # --------------------------------------------------------- the accounts
 
+_GMAIL_HOSTS = ("gmail.com", "googlemail.com")
+
+
+def _identity(name: str) -> tuple[str, str]:
+    """Which mailbox an account points at: (IMAP host, login), compared
+    case-insensitively; Gmail ignores dots and +tags in the login and treats
+    googlemail.com as gmail.com."""
+    try:
+        im = cfgmod.account_imap(name)
+    except ValueError:
+        return ("", name)
+    host = str(im.get("host") or "").strip().lower()
+    user = str(im.get("user") or "").strip().lower()
+    local, _, domain = user.rpartition("@")
+    if domain in _GMAIL_HOSTS or host.endswith(_GMAIL_HOSTS):
+        user = local.split("+")[0].replace(".", "") + "@gmail.com" \
+            if domain else user
+    return (host, user)
+
+
 def _resolve(source: str, target: str):
     """(source AccountState, target AccountState) - two different accounts
-    of the CURRENT tenant, else a coded refusal."""
+    of the CURRENT tenant that point at two different mailboxes, else a
+    coded refusal."""
     known = accounts.names()
     if source not in known or target not in known:
         raise ValueError(mailops.COPY_UNKNOWN_ACCOUNT)
     if source == target:
         raise ValueError(mailops.COPY_SAME_ACCOUNT)
+    a, b = _identity(source), _identity(target)
+    if a[0] and a == b:
+        raise ValueError(mailops.COPY_SAME_MAILBOX)
     src, tgt = accounts.get(source), accounts.get(target)
     tid = tenants.current().id
     if src.tenant.id != tid or tgt.tenant.id != tid:
@@ -196,11 +233,11 @@ def default_folder(source: str) -> str:
 def clean_folder(name: str) -> str:
     """The new folder's name as typed, made safe: no control characters,
     quotes, backslash or slash, single spaces, <= FOLDER_MAX characters;
-    never INBOX."""
+    never empty."""
     name = "".join(c for c in str(name or "")
                    if c.isprintable() and c not in '"\\/')
     name = re.sub(r"\s+", " ", name).strip()[:FOLDER_MAX].strip()
-    if not name or name.upper() == "INBOX":
+    if not name:
         raise ValueError(mailops.COPY_FOLDER_NAME)
     return name
 
@@ -271,6 +308,8 @@ def classify(acc) -> list[dict]:
                 "msgid": m.get("msgid") or "", "size": int(m.get("size") or 0),
                 "ts": int(m.get("ts") or 0), "addr": addr,
                 "name": m.get("name") or "",
+                "subject": m.get("subject") or "",
+                "bulk": bool(m.get("unsub")),
                 "mask": mask or BIT["other"]})
     return out
 
@@ -326,24 +365,109 @@ def plan(source: str, target: str) -> dict:
     }
 
 
-def free_space(target: str) -> int | None:
-    """Free bytes in the target mailbox when its server has QUOTA, else None
-    (the page leaves the line out: no guessing)."""
-    if target not in accounts.names():
-        raise ValueError(mailops.COPY_UNKNOWN_ACCOUNT)
+def _connect(acc):
+    """A connection to `acc`; a failure names that account's host."""
     try:
-        conn = mailops.connect(cfgmod.account_imap(target), target)
-    except Exception:
-        return None
+        return mailops.connect(cfgmod.account_imap(acc.name), acc.name)
+    except Exception as exc:
+        raise RuntimeError(mailops.error_text(
+            exc, _host(acc.name), mailops.INTERNAL_ERROR)) from exc
+
+
+def _host(name: str) -> str:
     try:
-        return _quota_free(conn)
-    except Exception:
-        return None
+        return str(cfgmod.account_imap(name).get("host") or "")
+    except ValueError:
+        return ""
+
+
+def _layout(conn, names) -> tuple[str, str]:
+    """(prefix, delimiter) where this user's own folders live: the personal
+    namespace the server announces (NAMESPACE), else - when every folder
+    sits below `INBOX<delimiter>` - that prefix, else none. Some servers
+    refuse a folder anywhere else."""
+    delim = names.delims.get("INBOX") or next(iter(names.delims.values()), "")
+    caps = {str(c if isinstance(c, str) else c.decode()).upper()
+            for c in (getattr(conn, "capabilities", ()) or ())}
+    if "NAMESPACE" in caps and hasattr(conn, "namespace"):
+        try:
+            typ, data = conn.namespace()
+            m = re.search(rb'\(\(\s*"([^"]*)"\s+(?:"([^"]*)"|NIL)',
+                          data[0] if data and data[0] else b"")
+            if typ == "OK" and m:
+                return (m.group(1).decode("utf-8", "replace"),
+                        m.group(2).decode("utf-8", "replace") if m.group(2)
+                        else delim)
+        except Exception:
+            pass                              # fall through to the folders
+    own = [n for n, _ in names if n.upper() != "INBOX"
+           and not n.startswith("[")]
+    if delim and own and all(n.startswith("INBOX" + delim) for n in own):
+        return "INBOX" + delim, delim
+    return "", delim
+
+
+def _reserved(conn, acc, enc: str, names, delim: str) -> bool:
+    """Whether the folder `enc` is one the server uses for something else:
+    INBOX, or any role folder (Trash, Junk, Sent, Drafts, Archive, All Mail
+    - by SPECIAL-USE flag or by a name in any language, as the rest of the app
+    detects them, look-alikes included)."""
+    if enc.upper() == "INBOX":
+        return True
+    found = mailops.resolve_roles(conn, acc, names)
+    held = set(found["roles"].values()) | set(found["looks_like"]) | {
+        n for c in found["candidates"].values() for n in c}
+    if enc in held:
+        return True
+    full, short = mailops._name_keys(enc, delim or None)
+    return any(full in v or (short is not None and short in v)
+               for v in mailops._ROLE_NAMES.values())
+
+
+def folder_check(tgt, name: str) -> dict:
+    """What the new folder would be on the target's server: its real name
+    (separator replaced, below the personal namespace), whether it already
+    exists (the mails are then added to it) and whether it is a folder the
+    server uses for something else (refused). Reads only."""
+    conn = _connect(tgt)
+    try:
+        try:
+            names = mailops.list_folders_ex(conn)
+            prefix, delim = _layout(conn, names)
+            shown = name.replace(delim, "-") if delim else name
+            enc = prefix + encode_mutf7(shown)
+            return {"enc": enc, "shown": shown, "exists": enc in
+                    {n for n, _ in names},
+                    "reserved": _reserved(conn, tgt, enc, names, delim),
+                    "free": _quota_free(conn)}
+        except (imaplib.IMAP4.error, OSError) as exc:
+            raise RuntimeError(mailops.error_text(
+                exc, _host(tgt.name), mailops.INTERNAL_ERROR)) from exc
     finally:
         try:
             conn.logout()
         except Exception:
             pass
+
+
+def target_info(target: str, folder: str = "") -> dict:
+    """The target's free space (None without QUOTA: the page leaves the line
+    out, no guessing) and, for a folder name, whether it exists or is
+    reserved."""
+    if target not in accounts.names():
+        raise ValueError(mailops.COPY_UNKNOWN_ACCOUNT)
+    tgt = accounts.get(target)
+    try:
+        name = clean_folder(folder) if folder.strip() else ""
+    except ValueError:
+        name = ""
+    try:
+        info = folder_check(tgt, name or "x")
+    except RuntimeError:
+        return {"free": None, "exists": False, "reserved": False}
+    return {"free": info["free"],
+            "exists": bool(name) and info["exists"],
+            "reserved": bool(name) and info["reserved"]}
 
 
 def _quota_free(conn) -> int | None:
@@ -407,6 +531,12 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
     if not items:
         raise ValueError(mailops.COPY_NOT_SCANNED if not src.index
                          else mailops.COPY_NOTHING)
+    # the folder as the target's server will have it (and never one it uses
+    # for something else); read before anything is written
+    where = folder_check(tgt, name)
+    if where["reserved"]:
+        raise ValueError(mailops.coded(mailops.COPY_FOLDER_RESERVED,
+                                       folder=where["shown"]))
     tenant = tenants.current()
     with _LOCK:
         data = _read()
@@ -414,7 +544,8 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
         if old and old["status"] in LIVE:
             raise RuntimeError(mailops.COPY_BUSY)
         job = {"id": f"{time.time_ns():x}", "source": source,
-               "target": target, "folder": name, "folder_enc": "",
+               "target": target, "folder": where["shown"],
+               "folder_enc": where["enc"],
                "kinds": picked, "status": "running",
                "total": len(items), "bytes_total": sum(i["size"]
                                                        for i in items),
@@ -424,22 +555,33 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
                "active_s": 0.0}
         _ledger_reset(job["id"])
         _write({**data, "job": job})
-    _spawn(tenant)
+        _spawn(tenant)
     return {"job": _public(job)}
 
 
 def _spawn(tenant) -> None:
-    thread = threading.Thread(target=tenants.call_in,
-                              args=(tenant, _run), daemon=True)
+    """Start the copy thread - at most one per tenant. Called with `_LOCK`
+    held, so two Resumes (or a Resume and the start-up) cannot both start
+    one; the thread stays registered until it has finished."""
     with _LOCK:
+        if tenant.id in _THREADS:
+            return
+        mine: list[threading.Thread] = []
+        thread = threading.Thread(target=tenants.call_in,
+                                  args=(tenant, _run, mine), daemon=True)
+        mine.append(thread)
         _STOP.pop(tenant.id, None)
         _THREADS[tenant.id] = thread
-    thread.start()
+        try:
+            thread.start()
+        except Exception:
+            _THREADS.pop(tenant.id, None)
+            raise
 
 
 def _alive() -> bool:
-    t = _THREADS.get(tenants.current().id)
-    return t is not None and t.is_alive()
+    """A copy thread is registered (started, or about to start)."""
+    return tenants.current().id in _THREADS
 
 
 def pause() -> dict:
@@ -470,7 +612,7 @@ def resume() -> dict:
             return {"job": _public(job)}
         job.update(status="running", error="", finished=0)
         _write(data)
-    _spawn(tenants.current())
+        _spawn(tenants.current())
     return {"job": _public(job)}
 
 
@@ -554,34 +696,73 @@ def drop_account(name: str) -> None:
 
 # ----------------------------------------------------------- the worker
 
+def _idate_epoch(text: str | None) -> int | None:
+    """An INTERNALDATE string as epoch seconds (None if it is none)."""
+    if not text:
+        return None
+    try:
+        tt = imaplib.Internaldate2tuple(f'INTERNALDATE "{text}"'.encode())
+        return int(time.mktime(tt)) if tt else None
+    except (ValueError, OverflowError):
+        return None
+
+
+def _weak(epoch, size, subject: str) -> str:
+    """A fingerprint to find a mail WITHOUT a Message-ID in the target:
+    its date (to the second), size and subject."""
+    return "%s:%s:%s" % (
+        epoch, size, hashlib.sha1(
+            (subject or "").strip().encode("utf-8", "replace")).hexdigest()[:12])
+
+
+def _raw_subject(raw: bytes) -> str:
+    msg = email.parser.BytesHeaderParser().parsebytes(raw[:262144])
+    return mailops.decode_mime(msg.get("Subject", ""))[:150]
+
+
 class _Run:
     """One run of the copy thread: both connections, what the target already
-    holds, and the counters."""
+    holds, and what the ledger says about each mail."""
 
     def __init__(self, job: dict, src, tgt):
         self.job, self.src, self.tgt = job, src, tgt
         self.s = self.t = None
+        self.side = "source"                 # which server the last call hit
         self.sel: str | None = None          # the folder open in the source
         self.dest = ""                       # the new folder, encoded
-        self.dest_uids: set[int] = set()
+        self.top = 0                         # highest UID in the new folder
         self.skip_ids: set[str] = set()      # Message-IDs the target has
-        self.ledger: dict[str, str] = {}
+        self.skip_weak: set[str] = set()     # fingerprints of its id-less mails
+        # keys this job already appended (or was about to): a mail of them
+        # that the target now holds is OUR copy, not "already there"
+        self.attempted: set[str] = set()
+        self.prior: dict[str, str] = {}      # ledger: key -> pending|appended
         self.streak = 0
+
+    @property
+    def host(self) -> str:
+        """The host of the side that was being talked to (for an error)."""
+        return _host((self.src if self.side == "source" else self.tgt).name)
 
     # -- connections ---------------------------------------------------
     def connect(self) -> None:
         self.close()
+        self.side = "source"
         self.s = mailops.connect(cfgmod.account_imap(self.src.name),
                                  self.src.name)
+        self.side = "target"
         self.t = mailops.connect(cfgmod.account_imap(self.tgt.name),
                                  self.tgt.name)
         self.sel = None
         self._ensure_folder()
-        self.dest_uids, ids = self._read_dest()
+        self.top, ids, weak = self._read_dest()
         with self.tgt.lock:
             ids |= {m["msgid"] for m in self.tgt.index.values()
                     if m.get("msgid")}
-        self.skip_ids = ids
+            weak |= {_weak(m.get("ts") or 0, m.get("size") or 0,
+                           m.get("subject") or "")
+                     for m in self.tgt.index.values() if not m.get("msgid")}
+        self.skip_ids, self.skip_weak = ids, weak
 
     def close(self) -> None:
         for conn in (self.s, self.t):
@@ -594,27 +775,34 @@ class _Run:
 
     # -- the new folder ------------------------------------------------
     def _ensure_folder(self) -> None:
+        """Create the folder if the target lacks it. If the SOURCE shows it
+        right after, the two accounts are one mailbox under different logins
+        (an alias, a second host name): stop before a mail is written."""
+        self.side = "target"
+        enc = self.job["folder_enc"]
         names = mailops.list_folders_ex(self.t)
-        delim = next(iter(names.delims.values()), "")
-        raw = self.job["folder"].replace(delim, "-") if delim \
-            else self.job["folder"]
-        enc = self.job.get("folder_enc") or encode_mutf7(raw)
         if not any(n == enc for n, _ in names):
+            self.side = "source"
+            before = set(mailops.list_folders(self.s))
+            self.side = "target"
             st, _ = self.t.create(mailops.quote_folder(enc))
-            if st != "OK":
-                again = mailops.list_folders(self.t)
-                if enc not in again:
-                    raise RuntimeError(mailops.coded(
-                        mailops.COPY_CANNOT_CREATE, folder=self.job["folder"]))
+            if st != "OK" and enc not in mailops.list_folders(self.t):
+                raise RuntimeError(mailops.coded(
+                    mailops.COPY_CANNOT_CREATE, folder=self.job["folder"]))
             try:
                 self.t.subscribe(mailops.quote_folder(enc))
             except Exception:
                 pass            # only makes the folder show up in some apps
+            self.side = "source"
+            if enc not in before and enc in mailops.list_folders(self.s):
+                raise ValueError(mailops.COPY_SAME_MAILBOX)
+            self.side = "target"
         self.dest = enc
-        self.job["folder_enc"] = enc
 
-    def _read_dest(self) -> tuple[set[int], set[str]]:
-        """(UIDs, Message-IDs) of the new folder."""
+    def _read_dest(self) -> tuple[int, set[str], set[str]]:
+        """(highest UID, Message-IDs, fingerprints of the id-less mails) of
+        the new folder."""
+        self.side = "target"
         st, _ = self.t.select(mailops.quote_folder(self.dest), readonly=True)
         if st != "OK":
             raise RuntimeError(mailops.coded(
@@ -622,41 +810,61 @@ class _Run:
         st, data = self.t.uid("SEARCH", None, "ALL")
         uids = [int(u) for u in (data[0].split() if st == "OK" and data
                                  and data[0] else [])]
-        return set(uids), self._header_ids(uids)
+        ids, weak = self._header_info(uids)
+        return max(uids, default=0), ids, weak
 
-    def _header_ids(self, uids: list[int]) -> set[str]:
+    def _header_info(self, uids: list[int]) -> tuple[set[str], set[str]]:
+        """(Message-IDs, fingerprints of the id-less mails) of these UIDs of
+        the new folder (the folder is selected)."""
         ids: set[str] = set()
+        weak: set[str] = set()
         for i in range(0, len(uids), mailops.MOVE_CHUNK):
             part = ",".join(str(u) for u in uids[i:i + mailops.MOVE_CHUNK])
             st, data = self.t.uid(
-                "FETCH", part, "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                "FETCH", part, "(UID INTERNALDATE RFC822.SIZE "
+                "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
             if st != "OK":
                 raise imaplib.IMAP4.error(f"FETCH failed: {st}")
             for item in data or []:
-                if isinstance(item, tuple) and len(item) >= 2:
-                    mid = mailops.header_text(
-                        email.message_from_bytes(item[1]).get(
-                            "Message-ID")).strip()[:300]
-                    if mid:
-                        ids.add(mid)
-        return ids
+                if not (isinstance(item, tuple) and len(item) >= 2):
+                    continue
+                msg = email.message_from_bytes(item[1])
+                mid = mailops.header_text(msg.get("Message-ID")).strip()[:300]
+                if mid:
+                    ids.add(mid)
+                    continue
+                dm = _INTERNALDATE_RE.search(item[0])
+                sm = re.search(rb"RFC822\.SIZE (\d+)", item[0])
+                if dm and sm:
+                    weak.add(_weak(
+                        _idate_epoch(dm.group(1).decode()),
+                        int(sm.group(1)),
+                        mailops.decode_mime(msg.get("Subject", ""))[:150]))
+        return ids, weak
 
-    def _new_dest_ids(self) -> set[str]:
-        """Message-IDs of what landed in the new folder since the last look."""
+    def _landed(self) -> tuple[int, set[str], set[str]]:
+        """What arrived in the new folder since the last look: (how many
+        mails, their Message-IDs, fingerprints) - one targeted SEARCH for the
+        UIDs above the highest known one, not a listing of the folder."""
+        self.side = "target"
         st, _ = self.t.select(mailops.quote_folder(self.dest), readonly=True)
         if st != "OK":
-            return set()
-        st, data = self.t.uid("SEARCH", None, "ALL")
-        uids = {int(u) for u in (data[0].split() if st == "OK" and data
-                                 and data[0] else [])}
-        new = sorted(uids - self.dest_uids)
-        self.dest_uids |= uids
-        return self._header_ids(new)
+            return 0, set(), set()
+        st, data = self.t.uid("SEARCH", None, "UID", f"{self.top + 1}:*")
+        # `n:*` always answers the newest mail, even below n: filter
+        new = sorted(u for u in (int(x) for x in (
+            data[0].split() if st == "OK" and data and data[0] else []))
+            if u > self.top)
+        if new:
+            self.top = new[-1]
+        ids, weak = self._header_info(new)
+        return len(new), ids, weak
 
     # -- the source (read only) ----------------------------------------
     def _open_source(self, folder: str) -> None:
         if self.sel == folder:
             return
+        self.side = "source"
         st, _ = self.s.select(mailops.quote_folder(folder), readonly=True)
         if st != "OK":
             raise RuntimeError(mailops.coded(
@@ -673,6 +881,7 @@ class _Run:
         \\Seen. The reply may carry FLAGS / INTERNALDATE before or after the
         literal, so a record's metadata is every part that follows it."""
         self._open_source(folder)
+        self.side = "source"
         st, data = self.s.uid(
             "FETCH", ",".join(str(u) for u in uids),
             "(UID FLAGS INTERNALDATE BODY.PEEK[])")
@@ -702,54 +911,98 @@ class _Run:
                                  bytes(raw))
 
     # -- one chunk -----------------------------------------------------
+    def _note(self, key: str, state: str, sync: bool = False) -> None:
+        _ledger_append([(key, state)], sync)
+        self.prior[key] = state
+
     def copy_chunk(self, folder: str, chunk: list[dict]) -> dict[str, str]:
         """Copy one chunk of one folder; returns {key: status} for what got
-        a final answer: ok (copied + verified), unchecked (copied, no
-        Message-ID to verify by), dup (already there), big, gone (no longer
-        in the source), failed (retry on resume)."""
+        a final answer: ok (copied + verified), unchecked (copied, nothing to
+        verify it by), dup (already there), big, gone (no longer in the
+        source), failed (retried on resume).
+
+        A mail WITHOUT a Message-ID is found again by its fingerprint (date,
+        size, subject). Its ledger line says `pending` before the APPEND and
+        `appended` right after it, so a crash, a dropped connection or a
+        resume never appends it a second time: it is matched by fingerprint
+        (ok) or, when the target answers differently, reported `unchecked`."""
         result: dict[str, str] = {}
         todo = []
         for it in chunk:
+            key = it["key"]
             if it["size"] > MAX_MAIL_BYTES:
-                result[it["key"]] = "big"
-            elif it["msgid"] and it["msgid"] in self.skip_ids:
-                result[it["key"]] = "dup"
+                result[key] = "big"
+            elif it["msgid"]:
+                if it["msgid"] in self.skip_ids:
+                    # ours from before a restart / reconnect: copied, not
+                    # "already there"
+                    result[key] = "ok" if key in self.attempted \
+                        or key in self.prior else "dup"
+                else:
+                    todo.append(it)
+            elif key in self.prior:            # id-less, tried before
+                weak = _weak(it["ts"], it["size"], it["subject"])
+                result[key] = "ok" if weak in self.skip_weak else "unchecked"
             else:
                 todo.append(it)
         appended: list[dict] = []
+        raws: dict[str, str] = {}
         if todo:
             fetched = self._fetch(folder, [it["uid"] for it in todo])
             for it in todo:
+                key = it["key"]
                 got = fetched.get(it["uid"])
                 if got is None:
-                    result[it["key"]] = "gone"
+                    result[key] = "gone"
                     continue
                 flags, idate, raw = got
                 if len(raw) > MAX_MAIL_BYTES:
-                    result[it["key"]] = "big"
+                    result[key] = "big"
                     continue
-                if it["msgid"] and it["msgid"] in self.skip_ids:
-                    result[it["key"]] = "dup"     # twice in this very chunk
-                    continue
+                if it["msgid"]:
+                    if it["msgid"] in self.skip_ids:
+                        result[key] = "dup"       # twice in this very chunk
+                        continue
+                else:
+                    epoch = _idate_epoch(idate) or it["ts"]
+                    fp = _weak(epoch, len(raw), _raw_subject(raw))
+                    if fp in self.skip_weak or _weak(
+                            it["ts"], it["size"], it["subject"]) \
+                            in self.skip_weak:
+                        result[key] = "dup"
+                        continue
+                    raws[key] = fp
+                    self._note(key, "pending")
+                self.attempted.add(key)       # from here on a copy of it in
                 if self._append(flags, idate or it["ts"] or None, raw):
+                    self._note(key, "appended")   # the target may be ours
                     appended.append(it)
                     if it["msgid"]:
                         self.skip_ids.add(it["msgid"])
+                    else:
+                        self.skip_weak.add(raws[key])
                 else:
-                    result[it["key"]] = "failed"
+                    result[key] = "failed"
         if appended:
-            landed = self._new_dest_ids()
+            count, ids, weak = self._landed()
             for it in appended:
-                if not it["msgid"]:
-                    result[it["key"]] = "unchecked"
-                elif it["msgid"] in landed:
-                    result[it["key"]] = "ok"
+                key = it["key"]
+                if it["msgid"]:
+                    ok = it["msgid"] in ids
+                    if not ok:
+                        self.skip_ids.discard(it["msgid"])
+                    result[key] = "ok" if ok else "failed"
+                elif raws[key] in weak:
+                    result[key] = "ok"
+                elif count >= len(appended):
+                    result[key] = "unchecked"      # it landed, by another look
                 else:
-                    result[it["key"]] = "failed"
-                    self.skip_ids.discard(it["msgid"])
+                    result[key] = "failed"
+                    self.skip_weak.discard(raws[key])
         return result
 
     def _append(self, flags: str, date, raw: bytes) -> bool:
+        self.side = "target"
         stamp = date if not isinstance(date, str) else f'"{date}"'
         st, data = self.t.append(
             mailops.quote_folder(self.dest), f"({flags})" if flags else None,
@@ -766,8 +1019,17 @@ class _Run:
         return False
 
 
+def _fingerprint(m: dict) -> str:
+    return "fp:" + hashlib.sha1(("%s\0%s\0%s\0%s" % (
+        m["addr"], m["subject"], m["ts"], m["size"])).encode(
+            "utf-8", "replace")).hexdigest()
+
+
 def _key(m: dict) -> str:
-    return m["msgid"] or f"{m['folder']}\x00{m['uid']}"
+    """What the ledger knows a mail by: its Message-ID, else a fingerprint of
+    what the scan recorded (sender, subject, date, size) - stable across a
+    rescan, a new UID or a new UIDVALIDITY."""
+    return m["msgid"] or _fingerprint(m)
 
 
 class _Dropped(Exception):
@@ -792,14 +1054,18 @@ def _stop_requested() -> str:
     return _STOP.get(tenants.current().id, "")
 
 
-def _run() -> None:
+def _run(mine: list) -> None:
     """The copy thread (a tenant context is already entered). It stays
-    registered until everything is done, the audit entry included."""
+    registered until everything is done, the audit entry included, and only
+    removes its own registration."""
     try:
         _work()
     finally:
         with _LOCK:
-            _THREADS.pop(tenants.current().id, None)
+            tid = tenants.current().id
+            me = mine[0] if mine else None
+            if me is not None and _THREADS.get(tid) is me:
+                del _THREADS[tid]
 
 
 def _work() -> None:
@@ -825,9 +1091,12 @@ def _work() -> None:
             items.append(i)
         ledger = _ledger_read(job["id"])
         run = _Run(job, src, tgt)
-        run.ledger = ledger
+        # what the ledger says: finished mails, and mails the previous run
+        # appended (or was about to) without finishing them
+        run.prior = {k: v for k, v in ledger.items() if v not in FINAL}
+        run.attempted = set(run.prior)
         sizes = {i["key"]: i["size"] for i in items}
-        counts = {s: 0 for s in ("ok", "unchecked", "dup", "big", "gone")}
+        counts = {s: 0 for s in FINAL}
         done_bytes = 0
         for key, st in ledger.items():
             if key in sizes and st in counts:
@@ -840,7 +1109,7 @@ def _work() -> None:
                    skipped=counts["dup"] + repeats,
                    too_large=counts["big"], missing=counts["gone"],
                    bytes_done=done_bytes, error="")
-        todo = [i for i in items if i["key"] not in ledger]
+        todo = [i for i in items if ledger.get(i["key"]) not in FINAL]
         todo.sort(key=lambda i: (i["folder"], i["uid"]))
         run.connect()
         _save(job)
@@ -862,7 +1131,8 @@ def _work() -> None:
                 result = run.copy_chunk(folder, chunk)
             except (imaplib.IMAP4.abort, OSError):
                 # a dropped connection: reconnect, read what the target
-                # holds now, and do this chunk once more
+                # holds now, and do this chunk once more (what the first try
+                # appended is in the ledger and counts as copied)
                 run.connect()
                 result = run.copy_chunk(folder, chunk)
             rows = []
@@ -905,11 +1175,8 @@ def _work() -> None:
         job["status"] = "dropped"
     except Exception as exc:
         log.warning("account copy stopped: %s: %s", type(exc).__name__, exc)
-        host = ""
-        try:
-            host = cfgmod.account_imap(job["source"])["host"]
-        except Exception:
-            pass
+        # the host of the side that failed (a connection error names it)
+        host = run.host if run is not None else _host(job["source"])
         job.update(status="error", finished=int(time.time()),
                    error=mailops.error_text(exc, host, mailops.INTERNAL_ERROR))
         with _LOCK:
@@ -962,19 +1229,23 @@ def tell(source: str, target: str) -> dict:
             continue
         s = per.setdefault(it["addr"], {"addr": it["addr"], "name": "",
                                         "mails": 0, "last": 0, "news": 0,
-                                        "kept": False})
+                                        "kept": False, "bulk": False})
         s["mails"] += 1
         if it["ts"] >= s["last"]:
             s["last"] = it["ts"]
             s["name"] = it["name"] or s["name"]
         if it["mask"] & BIT["newsletter"]:
             s["news"] += 1
+        if it["bulk"]:
+            s["bulk"] = True               # offers List-Unsubscribe
         if it["mask"] & (BIT["replied"] | BIT["protected"]):
             s["kept"] = True
     ticks = set(_read()["tell"].get(source, {}).get(target, ()))
     senders, news = [], []
     for s in per.values():
-        if not s["kept"] and 2 * s["news"] >= s["mails"]:
+        # a newsletter: mostly newsletter mails, or any bulk sender (it
+        # offers List-Unsubscribe) the user neither writes to nor protects
+        if not s["kept"] and (s["bulk"] or 2 * s["news"] >= s["mails"]):
             news.append(s["addr"])
         else:
             senders.append({"addr": s["addr"], "name": s["name"],

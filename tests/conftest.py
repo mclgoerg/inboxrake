@@ -209,6 +209,9 @@ class FakeIMAP:
     with one STORAGE resource (none: the server has no QUOTA). APPEND adds
     a mail to an existing folder (NO [TRYCREATE] otherwise); `append_hook(mailbox, flags, date_time, message)` may answer
     ("NO", [text]) or raise to simulate a refusing / failing server.
+    `namespace="INBOX."` makes the server announce that personal namespace
+    (NAMESPACE) and refuse to CREATE a folder anywhere else, like Courier /
+    Cyrus setups do.
     `commands` records every call that selects, searches, fetches or
     changes anything, as (name, args...) - tests assert what was NOT sent.
 
@@ -225,7 +228,8 @@ class FakeIMAP:
                  renumber: bool = False, copyuid: bool = False,
                  noselect: dict[str, str] | None = None,
                  date_header: bool = False,
-                 quota: tuple[int, int] | None = None):
+                 quota: tuple[int, int] | None = None,
+                 namespace: str | None = None):
         # `date_header`: also serve each mail's date as an RFC 2822 `Date:`
         # header (the demo's viewer shows it); off, mails carry none, as
         # the suite has always had them.
@@ -251,8 +255,10 @@ class FakeIMAP:
             + (("UIDPLUS",) if uidplus else ()) \
             + (("MOVE",) if move else ()) \
             + (("X-GM-EXT-1",) if gmail else ()) \
-            + (("QUOTA",) if quota else ())
+            + (("QUOTA",) if quota else ()) \
+            + (("NAMESPACE",) if namespace else ())
         self.quota = quota
+        self.namespace_prefix = namespace
         self.commands: list[tuple] = []
         self.append_hook = None
         self.gm_fetches: list[str] = []      # FETCH specs asking X-GM-MSGID
@@ -301,6 +307,7 @@ class FakeIMAP:
     # Instances pickled into an older demo seed lack these attributes.
     quota = None
     append_hook = None
+    namespace_prefix = None
 
     def _log(self, *entry) -> None:
         self.__dict__.setdefault("commands", []).append(entry)
@@ -438,6 +445,12 @@ class FakeIMAP:
                 hits = msgs
             elif args[-1] == "DELETED":
                 hits = [m for m in msgs if m.get("deleted")]
+            elif "UID" in args and "HEADER" not in args:
+                # `UID n:*` answers the newest mail even below n, as a real
+                # server does (a range "to *" always holds the last one)
+                top = max((m["uid"] for m in msgs), default=0)
+                want = self._span(args[-1], top) if msgs else set()
+                hits = [m for m in msgs if m["uid"] in want]
             elif "HEADER" in args:
                 # `HEADER Message-ID <id>` (id as literal or quoted string),
                 # also OR-chained: OR HEADER Message-ID a OR HEADER ... z
@@ -614,11 +627,22 @@ class FakeIMAP:
     def create(self, qname):
         name = qname.strip('"')
         self._log("CREATE", name)
+        if self.namespace_prefix and not name.startswith(
+                self.namespace_prefix):
+            return "NO", [b"[CANNOT] Invalid mailbox name: must be under "
+                          + self.namespace_prefix.encode()]
         if name in self.mailbox:
             return "NO", [b"[ALREADYEXISTS] Mailbox exists"]
         self.mailbox[name] = []
         self.uv[name] = 1
         return "OK", [b"Create completed"]
+
+    def namespace(self):
+        self._log("NAMESPACE")
+        if not self.namespace_prefix:
+            raise imaplib.IMAP4.error("NAMESPACE command error")
+        d = self.delimiter or "NIL"
+        return "OK", [f'(("{self.namespace_prefix}" "{d}")) NIL NIL'.encode()]
 
     def subscribe(self, qname):
         self._log("SUBSCRIBE", qname.strip('"'))

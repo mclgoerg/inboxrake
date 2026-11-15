@@ -2168,8 +2168,12 @@ def get_copy_plan(source: str = Query(..., max_length=100),
 
 
 @app.get("/api/account_copy/space")
-def get_copy_space(target: str = Query(..., max_length=100)):
-    return {"free": _copy(accountcopy.free_space, target)}
+def get_copy_space(target: str = Query(..., max_length=100),
+                   folder: str = Query("", max_length=200)):
+    """The target's free space and, for the new folder's name, whether the
+    folder exists (the mails are added to it) or is one the server uses for
+    something else."""
+    return _copy(accountcopy.target_info, target, folder)
 
 
 @app.get("/api/account_copy/status")

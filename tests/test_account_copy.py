@@ -312,7 +312,7 @@ def test_each_chunk_is_verified_by_message_id(env):
     assert job["failed"] == 1 and job["checked"] == 6 and job["copied"] == 6
 
 
-def test_a_mail_without_a_message_id_is_copied_but_not_checked(env):
+def test_a_mail_without_a_message_id_is_checked_by_its_fingerprint(env):
     for m in env["host-g"].mailbox["INBOX"]:
         if m["subject"] == "Verify your account":
             m["msgid"] = ""
@@ -322,7 +322,7 @@ def test_a_mail_without_a_message_id_is_copied_but_not_checked(env):
     _start()
     job = _wait()
     assert job["status"] == "done"
-    assert job["copied"] == 7 and job["unchecked"] == 1 and job["checked"] == 6
+    assert job["copied"] == 7 and job["checked"] == 7 and job["unchecked"] == 0
 
 
 def test_a_mail_over_the_size_cap_is_skipped_and_reported(env, monkeypatch):
@@ -343,7 +343,7 @@ def test_the_new_folder_name_is_editable_and_made_safe(env):
     assert ("SUBSCRIBE", "Old Mail x") in env["host-p"].commands
 
 
-@pytest.mark.parametrize("name", ["", "   ", "INBOX", "inbox", '"/\\'])
+@pytest.mark.parametrize("name", ["", "   ", '"/\\'])
 def test_an_unusable_folder_name_is_refused(env, name):
     if not name.strip():                 # blank = the default name
         assert _start(folder=name).status_code == 200
@@ -548,27 +548,31 @@ def test_a_dropped_connection_is_retried_once(env):
 
     def flaky(qname, flags, date_time, message):
         state["n"] += 1
+        answer = real(qname, flags, date_time, message)
         if state["n"] == 2:
-            raise OSError("connection reset")
-        return real(qname, flags, date_time, message)
+            raise OSError("connection reset")      # AFTER the mail landed
+        return answer
     env["host-p"].append = flaky
     _start()
     job = _wait()
     assert job["status"] == "done"
     ids = [m["msgid"] for m in _folder(env)]
     assert len(ids) == 7 and len(set(ids)) == 7
+    # the mail the first try appended is ours: copied, not "already there"
+    assert job["copied"] == 7 and job["skipped"] == 0 and job["checked"] == 7
 
 
 # ------------------------------------------------------------ free space
 
 def test_free_space_is_reported_only_when_the_server_has_quota(env):
     r = client.get("/api/account_copy/space", params={"target": "proton"})
-    assert r.json() == {"free": (12_000_000 - 100_000) * 1024}
+    assert r.json() == {"free": (12_000_000 - 100_000) * 1024,
+                        "exists": False, "reserved": False}
     env["host-p"].capabilities = tuple(c for c in env["host-p"].capabilities
                                        if c != "QUOTA")
     env["host-p"].quota = None
     r = client.get("/api/account_copy/space", params={"target": "proton"})
-    assert r.json() == {"free": None}
+    assert r.json()["free"] is None
     r = client.get("/api/account_copy/space", params={"target": "nope"})
     assert (r.status_code, r.json()["detail"]) == (400, "copy_unknown_account")
 
@@ -577,7 +581,7 @@ def test_an_unreadable_quota_leaves_the_line_out(env, monkeypatch):
     monkeypatch.setattr(env["host-p"], "getquotaroot",
                         lambda q: (_ for _ in ()).throw(OSError("x")))
     r = client.get("/api/account_copy/space", params={"target": "proton"})
-    assert r.json() == {"free": None}
+    assert r.json()["free"] is None
 
 
 # ------------------------------------------------------------- tell them
@@ -667,7 +671,7 @@ def test_the_worker_refuses_accounts_of_another_tenant(env):
         "error": "", "active_s": 0.0}, "tell": {}})
     accountsmod._REGISTRY[(tenants.current().id, "proton")] = \
         accountsmod.AccountState("proton", other)
-    accountcopy._run()
+    accountcopy._run([])
     job = accountcopy.status()["job"]
     assert job["status"] == "error" and job["error"] == "copy_unknown_account"
     assert env["host-p"].mailbox["INBOX"] == [] and "F" not in \
@@ -814,3 +818,424 @@ def test_the_demo_runs_the_copy_inline_without_threads_or_sleeping(
         assert status == 200 and body["total"] > 0
     finally:
         demo.uninstall()
+
+
+# ------------------------------- mails without a Message-ID, crashes, resumes
+
+class Crash(BaseException):
+    """The process dies right here: nothing after it runs, no clean-up."""
+
+
+def _strip_ids(env, subjects):
+    """These mails of the source have no Message-ID (in the server and in the
+    scan)."""
+    fake = env["host-g"]
+    for m in fake.mailbox["INBOX"]:
+        if m["subject"] in subjects:
+            m["msgid"] = ""
+            # a real server's RFC822.SIZE is the size of the message it serves
+            m["size"] = len(fake._header_blob(m) + fake._payload(m))
+    sizes = {m["subject"]: m["size"] for m in fake.mailbox["INBOX"]}
+    for m in accountsmod.get("gmail").index.values():
+        if m["subject"] in subjects:
+            m["msgid"] = ""
+            m["size"] = sizes[m["subject"]]
+
+
+IDLESS = ("Your order #1 has shipped", "Your order #2 has shipped",
+          "Verify your account")
+
+
+def _subjects(env):
+    return sorted(m["subject"] for m in _folder(env))
+
+
+def _crash_when_the_chunk_is_final(monkeypatch):
+    """The process dies after the APPENDs of a chunk, before its final
+    ledger lines are written."""
+    real = accountcopy._ledger_append
+
+    def append(rows, sync=True):
+        if any(st in accountcopy.FINAL for _, st in rows):
+            raise Crash()
+        return real(rows, sync)
+    monkeypatch.setattr(accountcopy, "_ledger_append", append)
+    return real
+
+
+def _wait_thread_gone():
+    end = time.time() + 10
+    while time.time() < end and "default" in accountcopy._THREADS:
+        time.sleep(0.01)
+    assert "default" not in accountcopy._THREADS
+
+
+@pytest.mark.filterwarnings(
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning")
+@pytest.mark.parametrize("idless", [(), IDLESS])
+def test_a_crash_between_append_and_the_ledger_never_duplicates_a_mail(
+        env, monkeypatch, idless):
+    """The mails are in the target, their final ledger lines are not: the
+    resume finds them again (by Message-ID, or by date + size + subject for
+    a mail without one), counts them as copied and appends nothing twice."""
+    _strip_ids(env, idless)
+    real = _crash_when_the_chunk_is_final(monkeypatch)
+    _start()
+    _wait_thread_gone()
+    assert len(_folder(env)) == 7                    # all of them landed
+    assert accountcopy.status()["job"]["status"] == "running"
+    monkeypatch.setattr(accountcopy, "_ledger_append", real)
+    appends = len([c for c in env["host-p"].commands if c[0] == "APPEND"])
+    accountcopy.resume_all()                         # the next start-up
+    job = _wait()
+    assert job["status"] == "done"
+    assert len([c for c in env["host-p"].commands
+                if c[0] == "APPEND"]) == appends      # nothing appended again
+    assert len(_folder(env)) == 7 and len(set(_subjects(env))) == 7
+    assert job["copied"] == 7 and job["skipped"] == 0 and job["failed"] == 0
+
+
+@pytest.mark.filterwarnings(
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_an_idless_mail_whose_append_never_answered_is_not_appended_again(
+        env, monkeypatch):
+    """`pending` is on disk before the APPEND. If the process dies before it
+    is known whether the target got the mail, the resume reports it
+    "unchecked" instead of risking a second copy."""
+    _strip_ids(env, IDLESS)
+    state = {"died": False}
+
+    def hook(name, flags, date_time, message):
+        if b"Verify your account" in message and not state["died"]:
+            state["died"] = True
+            raise Crash()
+        return None
+    env["host-p"].append_hook = hook
+    _start()
+    _wait_thread_gone()
+    pending = accountcopy._ledger_read(accountcopy.status()["job"]["id"])
+    assert [k for k, v in pending.items() if v == "pending"]
+    env["host-p"].append_hook = None
+    accountcopy.resume_all()
+    job = _wait()
+    assert job["status"] == "done"
+    assert job["unchecked"] == 1                     # said so, not hidden
+    assert not [m for m in _folder(env) if m["subject"] == IDLESS[2]]
+    assert len(_folder(env)) == 6
+
+
+def test_a_dropped_connection_never_duplicates_an_idless_mail(env):
+    _strip_ids(env, IDLESS)
+    state = {"n": 0}
+    real = env["host-p"].append
+
+    def flaky(qname, flags, date_time, message):
+        state["n"] += 1
+        answer = real(qname, flags, date_time, message)
+        if state["n"] == 3:
+            raise OSError("connection reset")        # AFTER the mail landed
+        return answer
+    env["host-p"].append = flaky
+    _start()
+    job = _wait()
+    assert job["status"] == "done"
+    assert len(_folder(env)) == 7 and len(set(_subjects(env))) == 7
+    assert job["copied"] == 7 and job["skipped"] == 0
+
+
+def test_a_mail_already_in_the_target_is_found_without_a_message_id(env):
+    """Same date, size and subject in the target's index: already there."""
+    _strip_ids(env, IDLESS)
+    src = accountsmod.get("gmail")
+    twin = next(m for m in src.index.values() if m["subject"] == IDLESS[2])
+    proton = accountsmod.get("proton")
+    proton.index["INBOX\x007"] = {**twin, "folder": "INBOX", "uid": 7}
+    _start()
+    job = _wait()
+    assert job["status"] == "done" and job["skipped"] == 1
+    assert IDLESS[2] not in _subjects(env)
+
+
+def test_the_ledger_knows_an_idless_mail_by_a_stable_fingerprint(env):
+    _strip_ids(env, IDLESS)
+    items = accountcopy.classify(accountsmod.get("gmail"))
+    a = next(i for i in items if i["subject"] == IDLESS[2])
+    key = accountcopy._key(a)
+    assert key.startswith("fp:")
+    # the same mail under a new UID (a rescan, a new UIDVALIDITY) is the same
+    assert accountcopy._key({**a, "uid": 999}) == key
+    assert accountcopy._key({**a, "subject": "other"}) != key
+
+
+# ------------------------------------------------- two names for one mailbox
+
+def _config(env, **proton):
+    cfg = json.loads(cfgmod.CONFIG_PATH.read_text())
+    cfg["accounts"]["proton"].update(proton)
+    cfgmod.CONFIG_PATH.write_text(json.dumps(cfg))
+
+
+@pytest.mark.parametrize("over", [
+    {"host": "host-g", "user": "old.demo@gmail.example"},
+    {"host": "HOST-G", "user": "Old.Demo@Gmail.Example"},
+    {"host": " host-g ", "user": "old.demo@gmail.example "}])
+def test_the_same_host_and_login_is_refused(env, over):
+    _config(env, **over)
+    r = client.get("/api/account_copy/plan",
+                   params={"source": "gmail", "target": "proton"})
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert accountcopy.status() == {"job": None}
+    assert not [c for c in env["host-p"].commands if c[0] == "APPEND"]
+    r = client.get("/api/account_copy/tell",
+                   params={"source": "gmail", "target": "proton"})
+    assert r.json()["detail"] == "copy_same_mailbox"
+
+
+@pytest.mark.parametrize("src, dst", [
+    ("a.b+news@gmail.com", "ab@googlemail.com"),
+    ("A.B@GMAIL.COM", "ab@gmail.com")])
+def test_gmail_logins_that_differ_only_in_dots_or_tags_are_one_mailbox(
+        env, src, dst):
+    _config(env, host="imap.gmail.com", user=dst)
+    cfg = json.loads(cfgmod.CONFIG_PATH.read_text())
+    cfg["accounts"]["gmail"].update(host="imap.gmail.com", user=src)
+    cfgmod.CONFIG_PATH.write_text(json.dumps(cfg))
+    with pytest.raises(ValueError, match="copy_same_mailbox"):
+        accountcopy._resolve("gmail", "proton")
+
+
+def test_other_logins_on_one_host_are_two_mailboxes(env):
+    _config(env, host="host-g", user="somebody.else@gmail.example")
+    assert accountcopy._resolve("gmail", "proton")
+
+
+def test_two_names_for_one_server_mailbox_stop_before_a_mail_is_written(env):
+    """Different host names and logins, but the very same mailbox (an alias):
+    the folder the copy creates in the "target" shows up in the source - the
+    copy stops, with no mail written."""
+    _config(env, host="host-alias", user="alias@other.example")
+    fakes = {"host-g": env["host-g"], "host-alias": env["host-g"]}
+    # the same server answers both names
+    import backend.mailops as mo
+    mo.connect = lambda im, name=None: fakes[im["host"]]
+    _start()
+    job = _wait()
+    assert job["status"] == "error" and job["error"] == "copy_same_mailbox"
+    assert job["copied"] == 0
+    assert not [c for c in env["host-g"].commands if c[0] == "APPEND"]
+    assert "From gmail" not in {m["folder"] for m in
+                                accountsmod.get("gmail").index.values()}
+
+
+# ------------------------------------------------------------ the new folder
+
+RESERVED = ["INBOX", "inbox", "Trash", "Bin", "Papierkorb", "Gesendet",
+            "Sent", "Drafts", "Entwürfe", "Archive", "Junk", "Spam",
+            "All Mail"]
+
+
+@pytest.fixture
+def roles(env):
+    """The target has a folder with a role flag under an odd name."""
+    p = env["host-p"]
+    p.mailbox["Bin"] = []
+    p.mailbox["Projects"] = []
+    p.uv.update({"Bin": 1, "Projects": 1})
+    p.flags["Bin"] = "\\Trash"
+    return env
+
+
+@pytest.mark.parametrize("name", RESERVED)
+def test_a_folder_the_server_uses_for_something_else_is_refused(roles, name):
+    r = _start(folder=name)
+    assert r.status_code == 400
+    assert r.json()["detail"] == f"copy_folder_reserved:folder={name}" \
+        or r.json()["detail"].startswith("copy_folder_reserved:folder=")
+    assert accountcopy.status() == {"job": None}
+    cmds = {c[0] for c in roles["host-p"].commands}
+    assert not cmds & {"APPEND", "CREATE"}
+    r = client.get("/api/account_copy/space",
+                   params={"target": "proton", "folder": name})
+    assert r.json()["reserved"] is True
+
+
+def test_an_existing_ordinary_folder_is_added_to_and_said_so(roles):
+    roles["host-p"].mailbox["Projects"].append(make_msg(
+        50, frm="x@y.example", subject="already here", msgid="<keep@y>"))
+    r = client.get("/api/account_copy/space",
+                   params={"target": "proton", "folder": "Projects"})
+    assert r.json()["exists"] is True and r.json()["reserved"] is False
+    r = client.get("/api/account_copy/space",
+                   params={"target": "proton", "folder": "From gmail"})
+    assert r.json()["exists"] is False
+    _start(folder="Projects")
+    job = _wait()
+    assert job["status"] == "done" and job["folder"] == "Projects"
+    held = roles["host-p"].mailbox["Projects"]
+    assert len(held) == 8 and "<keep@y>" in {m["msgid"] for m in held}
+    assert not [c for c in roles["host-p"].commands if c[0] == "CREATE"]
+
+
+def test_the_folder_is_created_in_the_servers_personal_namespace(env):
+    """A server that only allows folders below INBOX.: NAMESPACE says so."""
+    env["host-p"] = FakeIMAP({"INBOX": [], "INBOX.Sent": [], "INBOX.Trash": []},
+                             delimiter=".", namespace="INBOX.")
+    _start(folder="Old mail")
+    job = _wait()
+    assert job["status"] == "done", job
+    assert job["folder"] == "Old mail"
+    assert len(env["host-p"].mailbox["INBOX.Old mail"]) == 7
+    assert ("SUBSCRIBE", "INBOX.Old mail") in env["host-p"].commands
+
+
+def test_without_namespace_the_prefix_of_the_existing_folders_is_used(env):
+    env["host-p"] = FakeIMAP({"INBOX": [], "INBOX.Sent": [], "INBOX.Drafts": []},
+                             delimiter=".")
+    _start()
+    job = _wait()
+    assert job["status"] == "done"
+    assert len(env["host-p"].mailbox["INBOX.From gmail"]) == 7
+
+
+def test_the_separator_is_replaced_and_the_real_name_is_shown(env):
+    env["host-p"] = FakeIMAP({"INBOX": []}, delimiter=".")
+    r = _start(folder="Old.mail")
+    assert r.json()["job"]["folder"] == "Old-mail"
+    job = _wait()
+    assert job["folder"] == "Old-mail"
+    assert "Old-mail" in env["host-p"].mailbox
+
+
+# ---------------------------------------- the checks of a chunk stay targeted
+
+def test_each_chunk_is_verified_with_a_search_above_the_highest_uid(
+        env, monkeypatch):
+    monkeypatch.setattr(accountcopy, "CHUNK_MAILS", 2)
+    _start()
+    assert _wait()["status"] == "done"
+    cmds = [c for c in env["host-p"].commands
+            if c[0] == "UID" and c[1] == "SEARCH"]
+    ranged = [c for c in cmds if "UID" in c[2:]]
+    assert len(ranged) == 4                # one targeted search per chunk
+    # the copy lists the folder once, at its start (the scan that follows
+    # the copy lists everything again)
+    before = cmds[:cmds.index(ranged[-1])]
+    assert [c for c in before if c[2:] == (None, "ALL") or c[2:] == ("ALL",)
+            ] and len([c for c in before if "ALL" in c]) == 1
+    assert [c[-1] for c in ranged] == ["1:*", "3:*", "5:*", "7:*"]
+
+
+# --------------------------------------------------------- threads and errors
+
+def test_a_double_resume_starts_one_worker(env, monkeypatch):
+    import threading
+    monkeypatch.setattr(accountcopy, "CHUNK_MAILS", 2)
+    calls = []
+
+    def hook(name, flags, date_time, message):
+        calls.append(1)
+        if len(calls) == 3:
+            client.post("/api/account_copy/pause")
+        return None
+    env["host-p"].append_hook = hook
+    _start()
+    assert _wait()["status"] == "paused"
+    ran = []
+    real = accountcopy._work
+    monkeypatch.setattr(accountcopy, "_work",
+                        lambda: (ran.append(1), real())[1])
+    gate = threading.Barrier(2)
+    answers = []
+
+    def press():
+        gate.wait()
+        try:
+            answers.append(accountcopy.resume())
+        except Exception as exc:       # noqa: BLE001
+            answers.append(exc)
+    threads = [threading.Thread(target=press) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    job = _wait()
+    assert job["status"] == "done" and len(answers) == 2
+    assert len(ran) == 1                                   # one worker
+    ids = [m["msgid"] for m in _folder(env)]
+    assert len(ids) == 7 and len(set(ids)) == 7
+
+
+def test_a_thread_only_removes_its_own_registration(env):
+    import threading
+    other = threading.Thread()
+    accountcopy._THREADS["default"] = other
+    accountcopy._run([])                       # a thread that never registered
+    accountcopy._run([threading.Thread()])     # one that is not the current
+    assert accountcopy._THREADS["default"] is other
+    accountcopy._THREADS.clear()
+
+
+def test_a_second_spawn_while_one_runs_does_nothing(env):
+    import threading
+    sentinel = threading.Thread()
+    accountcopy._THREADS["default"] = sentinel
+    accountcopy._spawn(tenants.current())
+    assert accountcopy._THREADS["default"] is sentinel
+    accountcopy._THREADS.clear()
+
+
+def test_an_error_names_the_host_of_the_side_that_failed(env, monkeypatch):
+    real = mailops.connect
+    calls = {"host-p": 0}
+
+    def connect(im, name=None):
+        if im["host"] == "host-p":
+            calls["host-p"] += 1
+            if calls["host-p"] > 1:              # start() read it fine
+                raise ConnectionRefusedError()
+        return real(im, name)
+    monkeypatch.setattr(mailops, "connect", connect)
+    _start()
+    job = _wait()
+    assert job["status"] == "error" and job["error"] == "conn_refused:host=host-p"
+    monkeypatch.setattr(mailops, "connect", real)
+    accountcopy.cancel()
+    accountcopy.dismiss()
+    real2 = mailops.connect
+
+    def connect2(im, name=None):
+        if im["host"] == "host-g":
+            raise ConnectionRefusedError()
+        return real2(im, name)
+    monkeypatch.setattr(mailops, "connect", connect2)
+    _start()
+    job = _wait()
+    assert job["error"] == "conn_refused:host=host-g"
+
+
+def test_start_names_the_target_host_when_it_cannot_be_reached(env, monkeypatch):
+    def connect(im, name=None):
+        raise ConnectionRefusedError()
+    monkeypatch.setattr(mailops, "connect", connect)
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (409, "conn_refused:host=host-p")
+
+
+def test_a_bulk_sender_nobody_writes_to_is_a_newsletter_for_tell_them(env):
+    for m in accountsmod.get("gmail").index.values():
+        if m["addr"] == "misc@misc.example":
+            m["unsub"] = "<https://misc.example/u>"
+    body = client.get("/api/account_copy/tell",
+                      params={"source": "gmail", "target": "proton"}).json()
+    assert "misc@misc.example" not in [s["addr"] for s in body["senders"]]
+    assert "misc@misc.example" in body["newsletter_keys"]
+    # ... but never one the user writes to or protects
+    for m in accountsmod.get("gmail").index.values():
+        if m["addr"] in ("friend@friends.example", "boss@work.example"):
+            m["unsub"] = "<https://x.example/u>"
+    body = client.get("/api/account_copy/tell",
+                      params={"source": "gmail", "target": "proton"}).json()
+    kept = [s["addr"] for s in body["senders"]]
+    assert "friend@friends.example" in kept and "boss@work.example" in kept
