@@ -56,7 +56,7 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
 (Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
-(Statistics, Space map, Your year in mail, Trackers) and, at the bottom,
+(Statistics, Space map, Your year in mail, Trackers, Subscriptions) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
@@ -592,6 +592,41 @@ saves a summary image, generated in your browser with sender names hidden
 unless you tick "Show names". Based on the mail in the mailbox now; metadata
 only, nothing is uploaded.
 
+### Subscriptions
+
+<small class="where">Insights → Subscriptions</small>
+
+Finds the senders that bill you on a schedule and shows what you still pay
+for. A sender whose receipts or invoices arrive monthly (28-35 days, give or
+take 4) or yearly (365 days, give or take 10), at least three times, is a
+subscription. Each row shows how often, since when, the **next expected
+receipt** (a yearly renewal gets an "in N days" pill from 60 days out), the **amount** when
+the receipt's subject names it ("Your receipt - €7.99"; euro, dollar, pound
+and Swiss franc, both decimal styles) and **Still in use?**: green when
+there was a sign-in or security alert from the same company, or you opened
+one of its other mails, in the last 90 days; orange ("Unused since Mar",
+"Never opened") when not. The tiles above sum the monthly cost of the ones
+with an amount (a yearly price divided by twelve; other currencies are named,
+not added), count the ones that look unused and the yearly ones renewing
+within 60 days. The pane of a service shows the receipts so far, the total since the
+start, one square per month (the next one outlined), the latest receipts and
+four actions: **Remind me 3 days before** (a notification when the next
+receipt is due, through the same Web Push and in-app channels as the job
+notifications; once per expected date), **.ics** (a calendar file built in
+your browser), **Keep the receipts** (pins them, so no bulk action touches
+them) and **Not a subscription** (hides it; "Show hidden" brings it back).
+Inboxrake never cancels anything and never follows a link - "Open the latest
+receipt" opens the mail, which usually links to your account. When something
+looks unused, the Overview's Next steps gets a line for it.
+
+It is all read from mail already in the scan - no AI, no mail text. Where
+the subject names no amount the column says "not in subject"; the link
+"Find amounts in the receipt text" (or Settings · General) switches on an
+**opt-in**: Inboxrake then reads the text of the **latest receipt** of such a
+subscription, on your own server through your own mail connection, and keeps
+only the amount and its currency. Nothing is sent anywhere, and switching it
+off forgets the amounts it found. It is off by default.
+
 ### Trackers
 
 <small class="where">Insights → Trackers</small>
@@ -953,7 +988,9 @@ server text.
 Switch them on once per device. When a job **you started** ends - Scan now,
 a clean-up (move, delete, mark read), AI review or sorting, attachment
 analysis, bulk unsubscribe - the server sends a real Web Push, so the
-notification arrives with Inboxrake closed. Automatic scans and rules never
+notification arrives with Inboxrake closed. The same goes for a
+[subscription reminder](#subscriptions) you switched on (it names the service,
+the expected date and amount). Automatic scans and rules never
 notify, nor does a cancelled job, and a device that is looking at Inboxrake
 right now gets the in-app message instead. The text is short and generic
 (for example "Scan finished", with the account and counts under it) and

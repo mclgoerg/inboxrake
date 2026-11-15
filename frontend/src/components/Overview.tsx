@@ -9,7 +9,9 @@ import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
   trendOf, visitSince } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
-import type { AuditEntry, Group, OverviewResp, Rule } from "../types";
+import { fmtMoney, unusedNames } from "../subscriptions";
+import type { AuditEntry, Group, OverviewResp, Rule,
+  SubscriptionsResp } from "../types";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
 import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex,
@@ -61,6 +63,11 @@ export interface OverviewProps {
   onOpenJunk: () => void;
   /** New AI verdicts: Senders, the ones the AI called safe, in the window. */
   onOpenAiVerdicts: (window: string) => void;
+  /** The subscriptions found (null while unknown): when some look unused,
+   *  Next steps gets a line for them. */
+  subs?: SubscriptionsResp | null;
+  /** Review of that line: the Subscriptions page, only the unused ones. */
+  onReviewSubscriptions?: () => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -225,6 +232,15 @@ export function Overview(p: OverviewProps) {
     return <EmptyState>{t("status.no_mails")}</EmptyState>;
   }
   const canGo = unionTotals(cards, groups);
+  const unusedSubs = (p.subs?.items ?? []).filter(
+    (s) => !s.hidden && !s.use.in_use);
+  const subsLine = unusedSubs.length > 0 && p.onReviewSubscriptions ? {
+    n: unusedSubs.length, names: unusedNames(unusedSubs),
+    about: p.subs?.totals.unused_monthly && p.subs.totals.currency
+      ? t("sub.about_month", { amount: fmtMoney(p.subs.totals.unused_monthly,
+        p.subs.totals.currency, { whole: true }) }) : "",
+    onReview: p.onReviewSubscriptions } : null;
+  const hasNext = cards.length > 0 || !!subsLine;
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
     saveDismissed(account, next);
@@ -244,11 +260,11 @@ export function Overview(p: OverviewProps) {
             mails={totals.mails} senders={totals.senders} trend={trend}
             data={data} cleaned={cleaned} cleanedFloor={cleanedFloor}
             failed={failed} onRetry={retry} />
-          {cards.length > 0 && (
+          {hasNext && (
             <div className="max-xl:order-2">
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
-                onCleanUp={p.onCleanUp} />
+                onCleanUp={p.onCleanUp} subs={subsLine} />
             </div>
           )}
         </div>
@@ -261,7 +277,7 @@ export function Overview(p: OverviewProps) {
               onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
               onOpenAi={p.onOpenAiVerdicts} />
           </div>
-          {cards.length > 0 && (
+          {hasNext && (
             <div className="max-xl:order-3">
               <KindsCard data={data} failed={failed} onRetry={retry} />
             </div>
@@ -269,7 +285,7 @@ export function Overview(p: OverviewProps) {
         </div>
         {/* without Next steps the left column is just the balance: the kinds
             card takes the second row across both columns */}
-        {cards.length === 0 && (
+        {!hasNext && (
           <div className="max-xl:order-3 xl:col-span-2">
             <KindsCard data={data} failed={failed} onRetry={retry} />
           </div>

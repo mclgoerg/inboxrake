@@ -14,12 +14,16 @@ Who gets what: a subscription (one browser on one device) belongs to the
 tenant that created it and hears about that tenant's accounts only; one
 endpoint belongs to exactly one tenant (subscribing again from another
 identity moves it). Only jobs a person started push - never the auto-scan,
-rules or restore rescans - plus one deliberate exception, an AI assistant's
-rule proposal (`proposal`, the maintainer's decision for the MCP endpoint) -
-and never to a device that reported the app
-visible a moment ago (presence): the in-app toast covers that. Whatever IS
-sent shows a notification (browsers revoke a subscription that gets silent
-pushes), and carries short generic text - never a subject or an address.
+rules or restore rescans - plus deliberate exceptions: an AI assistant's
+rule proposal (`proposal`, the maintainer's decision for the MCP endpoint), the
+notice of a new AI connection (`connection`) and a subscription reminder (`reminder`: the person switched that very reminder on,
+so it is theirs; backend/subscriptions.py) - and never to a device that
+reported the app visible a moment ago (presence): the in-app toast covers
+that. Whatever IS sent shows a notification (browsers revoke a subscription
+that gets silent pushes), and carries short generic text - never a subject or
+an address. The one thing a reminder adds is the service's name, the point of
+a reminder the person asked for, plus the amount and date it was announced
+with.
 
 Files (per tenant, atomic write, tolerant read): push_subscriptions.json,
 `{"subscriptions": [{endpoint, p256dh, auth, lang, origin, created}]}`; the
@@ -427,6 +431,14 @@ STRINGS = {
         "proposal_body": "Review it in Inboxrake. Nothing has moved yet.",
         "connection": "New AI connection",
         "connection_body": "{label}. Not you? Disconnect it in Settings.",
+        "reminder_n": "{name} bills again in {n} days",
+        "reminder_1": "{name} bills again tomorrow",
+        "reminder_0": "{name} bills again today",
+        "reminder_amount": "{amount} around {date}",
+        "reminder_date": "Expected around {date}",
+        "reminder_signin": "last sign-in {date}",
+        "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+                   "Sep", "Oct", "Nov", "Dec"],
         "test": "Notifications work",
         "test_body": "You'll be told here when a scan or clean-up you started finishes.",
     },
@@ -449,15 +461,68 @@ STRINGS = {
         "connection": "Neue KI-Verbindung",
         "connection_body": "{label}. Nicht du? Trenne sie in den "
                            "Einstellungen.",
+        "reminder_n": "{name} wird in {n} Tagen wieder abgerechnet",
+        "reminder_1": "{name} wird morgen wieder abgerechnet",
+        "reminder_0": "{name} wird heute wieder abgerechnet",
+        "reminder_amount": "{amount} etwa am {date}",
+        "reminder_date": "Erwartet etwa am {date}",
+        "reminder_signin": "letzte Anmeldung am {date}",
+        "months": ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli",
+                   "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
         "test": "Benachrichtigungen funktionieren",
         "test_body": "Du bekommst hier Bescheid, wenn ein Scan oder Aufräumen fertig ist.",
     },
 }
 
 
-def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
-             n: int = 0, label: str = "") -> dict:
+_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+
+def _money(amount, currency: str, lang: str) -> str:
+    """"€7.99" / "7,99 €" (CHF: "CHF 39.00" / "39,00 CHF")."""
+    num = f"{float(amount):.2f}"
+    sym = _SYMBOLS.get(currency, currency)
+    if lang == "de":
+        return f"{num.replace('.', ',')} {sym}"
+    return f"{sym}{num}" if currency in _SYMBOLS else f"{sym} {num}"
+
+
+def _day(ts, lang: str) -> str:
+    """"5 Dec" / "5. Dez." from an epoch second (UTC, like the expected dates)."""
+    d = time.gmtime(int(ts))
+    month = (STRINGS.get(lang) or STRINGS["en"])["months"][d.tm_mon - 1]
+    return f"{d.tm_mday}. {month}" if lang == "de" else f"{d.tm_mday} {month}"
+
+
+def _reminder_payload(lang: str, account: str, prefix: bool,
+                      params: dict) -> dict:
+    """The reminder the person asked for: who bills again, when, and what
+    they last did there - the board's wording, no subject, no address."""
     t = STRINGS.get(lang) or STRINGS["en"]
+    days = max(0, int(params.get("days") or 0))
+    name = str(params.get("name") or "")[:80]
+    title = (t["reminder_n"] if days > 1 else t[f"reminder_{days}"]).format(
+        name=name, n=days)
+    when = _day(params.get("expected") or 0, lang)
+    amount = params.get("amount")
+    detail = [(t["reminder_amount"].format(
+        amount=_money(amount, str(params.get("currency") or ""), lang),
+        date=when) if amount is not None
+        else t["reminder_date"].format(date=when))]
+    if params.get("signin"):
+        detail.append(t["reminder_signin"].format(
+            date=_day(params["signin"], lang)))
+    body = " · ".join(p for p in ([account] if prefix else []) + detail if p)
+    digest = hashlib.sha1(name.encode()).hexdigest()[:8]
+    return {"title": title, "body": body,
+            "tag": f"{account}:reminder:{digest}", "url": "/#/subscriptions"}
+
+
+def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
+             n: int = 0, label: str = "", params: dict | None = None) -> dict:
+    t = STRINGS.get(lang) or STRINGS["en"]
+    if kind == "reminder":
+        return _reminder_payload(lang, account, prefix, params or {})
     if kind == "connection":
         # a hosted AI app was connected over OAuth: its host and level
         return {"title": t["connection"],
@@ -515,6 +580,15 @@ def job_finished(acc, kind: str, ok: bool, **params) -> None:
         log.exception("could not hand over the push for a finished job")
 
 
+def reminder(acc, **params) -> None:
+    """A subscription reminder is due (backend/subscriptions.py): `name`,
+    `days` left, `amount` / `currency`, `expected` (epoch s) and `signin` (the
+    last sign-in alert, 0 = none). Delivered like `job_finished`: at once,
+    never raises, devices that are looking at the app are left alone (the
+    page shows it itself)."""
+    job_finished(acc, "reminder", True, **params)
+
+
 def _deliver(acc, kind: str, ok: bool, params: dict) -> None:
     try:
         with tenants.use(acc.tenant):
@@ -525,7 +599,7 @@ def _deliver(acc, kind: str, ok: bool, params: dict) -> None:
                     continue
                 payload = _payload(sub["lang"], kind, ok, acc.name, prefix,
                                    int(params.get("n") or 0),
-                                   str(params.get("label") or ""))
+                                   str(params.get("label") or ""), params)
                 try:
                     send(sub, payload, tenant)
                 except Exception as exc:

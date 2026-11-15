@@ -109,6 +109,7 @@ State files default to names inside `/data` and normally need no change:
 | `SENDER_KNOWLEDGE_PATH` | `sender_knowledge.json` | Where you (or the AI) filed a sender or a company. |
 | `LABELS_PATH` | `sender_labels.json` | The verdicts and categories you set with "Edit labels". |
 | `DUPS_PATH` | `duplicates_kept.json` | The duplicate sets you chose to keep. |
+| `SUBS_PATH` | `subscriptions.json` | What you decided about [subscriptions](features.md#subscriptions): the ones marked "not a subscription", the reminders you asked for, and - only with the opt-in - the amounts read from a receipt (amount and currency, no text). |
 | `KNOWN_SENDERS_PATH` | `known_senders.json` | Which senders were first seen when (for "new sender"). |
 | `UNSUB_STATE_PATH` | `unsub_state.json` | Which senders you already unsubscribed from. |
 | `AUDIT_LOG_PATH` | `audit_log.jsonl` | The append-only log of every action on a mailbox. |
@@ -127,4 +128,5 @@ Some options exist only in the UI and are stored with the account in `/data`
 | Digest **Language of the mail** | Settings -> Activity digest, per account (`digest.lang`) | `en` or `de`. Not chosen yet means English until the section is saved. |
 | **Assistant access** | Settings -> AI assistants, admin only (`assistants.access` in `server.json`) | Whether AI assistants may connect to the [MCP endpoint](assistants.md) at all: Off (default; `/mcp` answers 404) or On (read, and propose rules for the user to approve). Users create their own access tokens there. |
 | **Notify me about proposals** | Settings -> AI assistants, per user (`assistants_notify.email` in the user's config) | Whether a mail is sent when an assistant proposes a rule. On by default; at most one mail every 10 minutes, sent with the proposal's account to the digest recipient (or the account's own address), with a link built from the digest's **Link to Inboxrake**. |
+| **Find amounts in the receipt text** | Settings -> General, per account (`subscriptions.json`) | Off by default. On: Insights -> Subscriptions reads the text of the latest receipt of a subscription whose subject names no amount, on this server only, and keeps only the amount and its currency. Off forgets the amounts found. |
 | **Number format** | Settings -> General, this browser only | Automatic (follows the language) or a pinned style. Not part of the backup. |

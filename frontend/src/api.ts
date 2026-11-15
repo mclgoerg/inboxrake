@@ -4,7 +4,7 @@ import type {
   AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
-  Mail, MessageDetail,
+  Mail, MessageDetail, SubReminder, SubscriptionsResp,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
@@ -586,6 +586,27 @@ export const api = {
     req<{ ok: boolean }>(
       `/api/oauth/imap/disconnect?account=${encodeURIComponent(account)}`, {}),
   trackers: () => req<TrackerReport>("/api/trackers"),
+  subscriptions: () => req<SubscriptionsResp>("/api/subscriptions"),
+  subscriptionReminders: () =>
+    req<{ reminders: SubReminder[] }>("/api/subscriptions/reminders"),
+  subscriptionHide: (key: string, hidden: boolean) =>
+    req<{ ok: boolean }>("/api/subscriptions/hide", { key, hidden }),
+  subscriptionRemind: (key: string, on: boolean) =>
+    req<{ ok: boolean }>("/api/subscriptions/remind", { key, on }),
+  subscriptionKeep: (key: string, pinned: boolean) =>
+    req<{ ok: boolean; pinned: boolean; changed: number }>(
+      "/api/subscriptions/keep", { key, pinned }),
+  subscriptionSettingsGet: (account?: string) =>
+    req<{ body_amounts: boolean }>(
+      forAccount("/api/subscriptions/settings", account)),
+  /** The opt-in to read the latest receipt's text for its amount; `account`
+   *  = the one being edited (Settings), else the active one. */
+  subscriptionSettings: (bodyAmounts: boolean, account?: string) =>
+    req<{ ok: boolean; body_amounts: boolean }>(
+      forAccount("/api/subscriptions/settings", account),
+      { body_amounts: bodyAmounts }),
+  subscriptionAmounts: () =>
+    req<{ read: number; found: number }>("/api/subscriptions/amounts", {}),
   indexInfo: (account: string) =>
     req<IndexInfo>(`/api/index?account=${encodeURIComponent(account)}`),
   indexBuild: (account: string, rebuild = false) =>

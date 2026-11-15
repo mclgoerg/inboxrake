@@ -155,6 +155,8 @@ export const DE: Record<string, string> = {
   "overview.verdicts_none_safe": "keins sicher löschbar",
   "overview.next": "Nächste Schritte",
   "overview.next_hint": "jeder Schritt zeigt dir zuerst, was passiert",
+  "overview.subs_title": "{n} Abos, die du vielleicht nicht nutzt",
+  "overview.subs_title_one": "1 Abo, das du vielleicht nicht nutzt",
   "overview.review_n": "{n} ansehen",
   "overview.check_step": "Bei „Ansehen“ einschließen: {title}",
   "overview.kinds": "Was dein Postfach füllt",
@@ -287,6 +289,10 @@ export const DE: Record<string, string> = {
   "tab.trackers_senders": "{n}\u00a0Absender tracken dich",
   "tab.trackers_senders_one": "1\u00a0Absender trackt dich",
   "tab.trackers_sub": "Sieh, wer dein Öffnen verfolgt",
+  "tab.subs_month": "{amount} / Monat",
+  "tab.subs_services": "{n}\u00a0Dienste",
+  "tab.subs_services_one": "1\u00a0Dienst",
+  "tab.subs_empty": "Sieh, wofür du noch zahlst",
   "tab.space_scan": "Scanne dein Postfach, um die größten Absender zu sehen.",
   "tab.space_empty": "Noch nichts zu zeigen.",
   "tab.year_stories": "{year} in {n}\u00a0Geschichten",
@@ -356,6 +362,141 @@ export const DE: Record<string, string> = {
   "tracker.pop_hosts": "Hosts: {hosts}",
   "tracker.pop_hint":
     "Lokal beim Aufbau des Textindex gefunden. Es wurde nichts nachgeladen.",
+  "sub.menu": "Abos",
+  "sub.title": "Abos",
+  "sub.sub":
+    "Absender, die dich regelmäßig abrechnen · aus Betreffzeilen und Belegdaten",
+  "sub.sub_phone": "{n}\u00a0Dienste",
+  "sub.sub_phone_one": "1\u00a0Dienst",
+  "sub.about_month": "etwa {amount} im Monat",
+  "sub.pane_title": "Abo",
+  "sub.kpi_about": "Etwa",
+  "sub.a_month": "im Monat",
+  "sub.kpi_with_amount": "{n} von {total} mit Betrag",
+  "sub.kpi_with_amount_short": "{n} von {total} mit Betrag",
+  "sub.kpi_other": "{list} nicht mitgerechnet",
+  "sub.kpi_month_short": "{amount} / Monat",
+  "sub.kpi_no_amount": "Noch keine Beträge",
+  "sub.kpi_unused": "{n} scheinen ungenutzt",
+  "sub.kpi_unused_one": "{n} scheint ungenutzt",
+  "sub.kpi_unused_label": "scheinen ungenutzt",
+  "sub.kpi_unused_label_one": "scheint ungenutzt",
+  "sub.kpi_unused_none": "alle in Benutzung",
+  "sub.kpi_renewing": "in den nächsten 60 Tagen fällig",
+  "sub.only_unused": "Es werden nur die gezeigt, die ungenutzt scheinen.",
+  "sub.show_all": "Alle zeigen",
+  "sub.none_shown": "Hier ist nichts",
+  "sub.col_service": "Dienst",
+  "sub.col_every": "Alle",
+  "sub.col_next": "Nächster Beleg",
+  "sub.col_amount": "Betrag",
+  "sub.col_use": "Noch in Benutzung?",
+  "sub.since": "seit {date}",
+  "sub.monthly": "Monatlich",
+  "sub.yearly": "Jährlich",
+  "sub.monthly_l": "monatlich",
+  "sub.yearly_l": "jährlich",
+  "sub.amount_unknown": "Betrag unbekannt",
+  "sub.in_days": "in {n}\u00a0Tagen",
+  "sub.in_days_one": "in 1\u00a0Tag",
+  "sub.today": "heute",
+  "sub.due": "jetzt fällig",
+  "sub.not_in_subject": "nicht im Betreff",
+  "sub.hidden_tag": "Ausgeblendet",
+  "sub.use_signin": "Angemeldet am {date}",
+  "sub.use_read": "Mail gelesen",
+  "sub.use_unused": "Ungenutzt seit {month}",
+  "sub.use_never": "Nie geöffnet",
+  "sub.note":
+    "„Noch in Benutzung?“ schaut auf Anmeldehinweise und darauf, "
+    + "ob du ihre anderen Mails öffnest. Es wird kein Mailtext gelesen; "
+    + "Beträge nur, wenn der Betreff sie nennt.",
+  "sub.note_body":
+    "„Noch in Benutzung?“ schaut auf Anmeldehinweise und darauf, "
+    + "ob du ihre anderen Mails öffnest. Beträge stammen aus dem "
+    + "Betreff; wo er keinen nennt, wird nur der letzte Beleg gelesen - auf "
+    + "deinem Server und nur für den Betrag (in den Einstellungen "
+    + "abschaltbar).",
+  "sub.reading": "Die letzten Belege werden gelesen …",
+  "sub.find_amounts": "Beträge im Belegtext finden",
+  "sub.find_amounts_short": "Im Belegtext suchen",
+  "sub.find_amounts_confirm": "Beträge finden",
+  "sub.find_confirm_read":
+    "Inboxrake liest den letzten Beleg jedes Abos, dessen Betreff keinen "
+    + "Betrag nennt - nur auf diesem Server, über deine eigene "
+    + "Mailverbindung.",
+  "sub.find_confirm_keep":
+    "Nur der Betrag und seine Währung werden behalten. Der Text wird "
+    + "nicht gespeichert, und nichts wird irgendwohin gesendet.",
+  "sub.find_confirm_off":
+    "Du kannst das in den Einstellungen abschalten; die gefundenen Beträge "
+    + "werden dann vergessen.",
+  "sub.show_hidden": "{n} ausgeblendete zeigen",
+  "sub.hide_hidden": "{n} ausgeblendete verbergen",
+  "sub.load_failed": "Die Abos konnten nicht geladen werden.",
+  "sub.scan_first": "Scanne zuerst dein Postfach",
+  "sub.empty_title": "Keine Abos gefunden",
+  "sub.empty_hint":
+    "Inboxrake sucht Absender, deren Belege oder Rechnungen regelmäßig "
+    + "kommen - monatlich oder jährlich, mindestens dreimal.",
+  "sub.cadence_monthly_day": "monatlich, um den {day}",
+  "sub.cadence_yearly_date": "jährlich, etwa am {date}",
+  "sub.per_month": "im Monat · {from}",
+  "sub.per_year": "im Jahr · {from}",
+  "sub.from_subject": "aus dem Betreff",
+  "sub.from_receipt": "aus dem Belegtext",
+  "sub.receipts_so_far": "Belege bisher",
+  "sub.receipts_so_far_one": "Beleg bisher",
+  "sub.about": "etwa",
+  "sub.rhythm_label":
+    "{n} Belege bisher; der nächste wird etwa am {next} erwartet",
+  "sub.next_label": "nächster ~{date}",
+  "sub.unused_title": "Scheint ungenutzt.",
+  "sub.unused_signin": "Der letzte Anmeldehinweis von {name} kam am {date}.",
+  "sub.unused_read":
+    "Die letzte Mail von {name}, die du geöffnet hast, war vom {date}.",
+  "sub.unused_never": "In deinen Mails gibt es keinen Anmeldehinweis von {name}.",
+  "sub.unused_since":
+    "Seitdem hast du {read} von {n} weiteren Mails des Dienstes geöffnet.",
+  "sub.unused_since_one":
+    "Seitdem hast du {read} von 1 weiteren Mail des Dienstes geöffnet.",
+  "sub.unused_of":
+    "Du hast {read} von {n} weiteren Mails des Dienstes geöffnet.",
+  "sub.unused_of_one":
+    "Du hast {read} von 1 weiteren Mail des Dienstes geöffnet.",
+  "sub.latest": "Letzte Belege",
+  "sub.remind": "3 Tage vorher erinnern",
+  "sub.remind_on": "Erinnerung an - 3 Tage vorher",
+  "sub.remind_off_device": "Benachrichtigungen sind auf diesem Gerät aus.",
+  "sub.remind_turn_on": "Einschalten",
+  "sub.ics": ".ics",
+  "sub.ics_label": "In deinen Kalender übernehmen (.ics-Datei)",
+  "sub.keep": "Belege behalten",
+  "sub.kept": "Belege geschützt",
+  "sub.not_sub": "Kein Abo",
+  "sub.bring_back": "Wieder anzeigen",
+  "sub.cant_cancel": "Inboxrake kann es nicht für dich kündigen.",
+  "sub.open_latest": "Letzten Beleg öffnen",
+  "sub.cant_cancel_post": " - er verlinkt meist auf dein Konto.",
+  "sub.toast_remind":
+    "Erinnerung gesetzt. Du erfährst es 3 Tage, bevor {name} wieder abrechnet.",
+  "sub.toast_remind_off": "Die Erinnerung für {name} ist aus.",
+  "sub.toast_kept":
+    "{n} Belege von {name} behalten (vor Sammelaktionen geschützt).",
+  "sub.toast_kept_one":
+    "1 Beleg von {name} behalten (vor Sammelaktionen geschützt).",
+  "sub.toast_unkept": "{n} Belege von {name} sind nicht mehr geschützt.",
+  "sub.toast_unkept_one": "1 Beleg von {name} ist nicht mehr geschützt.",
+  "sub.toast_hidden": "{name} wird nicht mehr als Abo aufgeführt.",
+  "sub.reminder_n": "{name} rechnet in {n} Tagen wieder ab",
+  "sub.reminder_n_one": "{name} rechnet morgen wieder ab",
+  "sub.reminder_0": "{name} rechnet heute wieder ab",
+  "sub.reminder_open": "Öffnen",
+  "sub.ics_summary": "{name} rechnet wieder ab (erwartet)",
+  "sub.ics_amount": "Etwa {amount}.",
+  "sub.ics_note":
+    "Aus den Belegen in deinem Postfach erwartet. Inboxrake kann es nicht "
+    + "für dich kündigen.",
   "confirm.block_trash_existing":
     "Auch die {n} vorhandenen Mails jetzt in den Papierkorb verschieben?",
   "confirm.block_trash_existing_one":
@@ -2295,6 +2436,12 @@ export const DE: Record<string, string> = {
     + "Inboxrake speichert nichts. Bei entfernten Anbietern kann sie "
     + "langsam sein; Proton Bridge antwortet lokal. Ausschalten, um nur "
     + "nach Betreff und Absender zu suchen.",
+  "sub.settings_title": "Abos",
+  "sub.settings_row": "Beträge im Belegtext finden",
+  "sub.settings_sub":
+    "Liest den letzten Beleg jedes Abos, dessen Betreff keinen Betrag nennt - "
+    + "nur auf diesem Server. Nur der Betrag und seine Währung werden "
+    + "behalten; nichts wird irgendwohin gesendet.",
   "auto_scan.align": "Startminute (0-59)",
   "auto_scan.help":
     "Scannt dieses Konto in festen Abständen neu, unabhängig von "

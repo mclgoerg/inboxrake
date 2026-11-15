@@ -31,6 +31,7 @@ from backend import pinstore                  # noqa: E402
 from backend import presets as presetsmod     # noqa: E402
 from backend import rules as rulesmod         # noqa: E402
 from backend import stats as statsmod         # noqa: E402
+from backend import substore                 # noqa: E402
 from backend import tenants as tenantsmod     # noqa: E402
 from backend import unsubstore                # noqa: E402
 from backend import verdictstore              # noqa: E402
@@ -81,6 +82,7 @@ def isolate(tmp_path, monkeypatch):
                         tmp_path / "sender_labels.json")
     monkeypatch.setattr(dupstore, "DUPS_PATH",
                         tmp_path / "duplicates_kept.json")
+    monkeypatch.setattr(substore, "SUBS_PATH", tmp_path / "subscriptions.json")
     monkeypatch.setattr(webpush, "PUSH_KEY_PATH", tmp_path / "push_key.pem")
     monkeypatch.setattr(webpush, "PUSH_SUBS_PATH",
                         tmp_path / "push_subscriptions.json")
@@ -91,6 +93,7 @@ def isolate(tmp_path, monkeypatch):
     pinstore._cache.clear()
     labelstore._cache.clear()
     dupstore._cache.clear()
+    substore._cache.clear()
     mailops._SENT_CACHE.clear()
     accountsmod.reset()
     yield
@@ -112,6 +115,7 @@ def isolate(tmp_path, monkeypatch):
     pinstore._cache.clear()
     labelstore._cache.clear()
     dupstore._cache.clear()
+    substore._cache.clear()
     accountsmod.reset()
 
 

@@ -1,5 +1,6 @@
-import { BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye, History,
-  Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Sparkles, Trash2, Wand2 }
+import { BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye, Ghost,
+  History, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
+  Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
@@ -11,9 +12,10 @@ import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
 import { openProposals } from "../proposals";
 import { senderItem, toneOf } from "../spacemap";
+import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
-import type { AppState, AuditEntry, DupSummary, Group, StatsResp, TrackerReport,
-  WrappedResp }
+import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
+  SubscriptionsResp, TrackerReport, WrappedResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
 import { ProposalBadge } from "./Sidebar";
@@ -33,7 +35,8 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
  * a tool whose number needs a run shows "Check" instead. */
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
-  | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers" | "activity";
+  | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
+  | "subscriptions" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -302,11 +305,13 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, onOpen, onRetryUnsub,
+export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
   onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
+  /** The subscriptions found (null while unknown / not scanned). */
+  subs?: SubscriptionsResp | null;
   onOpen: (tool: TabTool) => void;
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
@@ -543,6 +548,40 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub,
           </span>
         </button>
       </div>
+
+      <button type="button" onClick={() => onOpen("subscriptions")}
+        className={CARD_BTN}>
+        <WidgetTitle icon={<Repeat size={16} />} chevron>
+          {t("sub.menu")}
+        </WidgetTitle>
+        <span className="mt-1 block min-h-12">
+          {subs && subs.totals.count > 0 ? (<>
+            <span className="flex flex-wrap items-baseline gap-x-2">
+              <span className="type-title tabular-nums">
+                {monthlyText(subs.totals)
+                  ? t("tab.subs_month", { amount: monthlyText(subs.totals)! })
+                  : t("tab.subs_services", { n: subs.totals.count })}
+              </span>
+              {monthlyText(subs.totals) && (
+                <span className="type-meta text-muted">
+                  {t("tab.subs_services", { n: subs.totals.count })}
+                </span>
+              )}
+            </span>
+            {subs.totals.unused > 0 && (
+              <span className="mt-1 flex items-center gap-1.5 type-meta
+                text-review-fg">
+                <Ghost size={14} aria-hidden />
+                {t("sub.kpi_unused", { n: subs.totals.unused })}
+              </span>
+            )}
+          </>) : subs ? (
+            <span className="block type-meta text-muted">
+              {t("tab.subs_empty")}
+            </span>
+          ) : <Skeleton className="h-12" />}
+        </span>
+      </button>
 
       <button type="button" onClick={() => onOpen("wrapped")}
         className="flex w-full items-center gap-3 rounded-card
