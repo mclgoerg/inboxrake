@@ -1397,7 +1397,8 @@ def test_off_audience_and_expiry_are_401_with_the_challenge(world, clock,
     monkeypatch.setenv("INBOXRAKE_PUBLIC_URL", "https://moved.example.com")
     r = mcp(fresh_tok["access_token"])
     assert r.status_code == 401
-    assert "moved.example.com" in r.headers["www-authenticate"]
+    assert 'resource_metadata="https://moved.example.com/' in \
+        r.headers["www-authenticate"]
 
 
 def test_a_grant_of_another_audience_is_refused_even_if_oauth_is_on(world):

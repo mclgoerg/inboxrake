@@ -99,6 +99,7 @@ def _write(tokens: list[dict]) -> None:
     # Only the SHA-256 of a 256-bit random secret (a password hash would add
     # nothing: there is no guessable input) and a display prefix are stored,
     # never the secret itself.
+    # codeql[py/clear-text-storage-sensitive-data]  (hashes only, see above)
     tmp.write_text(json.dumps({"tokens": tokens}, indent=1))
     tmp.chmod(0o600)
     tmp.replace(TOKENS_PATH)

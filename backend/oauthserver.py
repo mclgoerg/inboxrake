@@ -121,7 +121,15 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
+def _s256(verifier: str) -> str:
+    """The PKCE S256 challenge of a verifier (SHA-256 by definition, RFC 7636)."""
+    # codeql[py/weak-sensitive-data-hashing]
+    return _b64(hashlib.sha256(verifier.encode()).digest())
+
+
 def _hash(secret: str) -> str:
+    # a 256-bit random code: nothing to brute force, so no slow hash is needed
+    # codeql[py/weak-sensitive-data-hashing]
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
@@ -462,9 +470,7 @@ def _redeem_code(form: dict, resolve_tenant) -> Reply:
             or form.get("redirect_uri") != entry["redirect_uri"] \
             or ("resource" in form and form["resource"] != entry["resource"]) \
             or not _VERIFIER.fullmatch(verifier) \
-            or not hmac.compare_digest(
-                _b64(hashlib.sha256(verifier.encode()).digest()),
-                entry["challenge"]) \
+            or not hmac.compare_digest(_s256(verifier), entry["challenge"]) \
             or entry["resource"] != cfgmod.mcp_url():
         return _oauth_error("invalid_grant")
     tenant = tenants.by_id(entry["tenant"])
