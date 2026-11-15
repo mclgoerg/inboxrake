@@ -454,7 +454,12 @@ def _redeem_code(form: dict, resolve_tenant) -> Reply:
         if entry is not None:
             # consumed on first sight: a wrong guess cannot be retried, and
             # the tombstone makes a second redemption recognisable
-            _used[digest] = {"exp": now + USED_TTL, "grant": None}
+            _used[digest] = {"exp": now + USED_TTL, "grant": None,
+                             "revoke": False}
+        elif tomb and not tomb["grant"]:
+            # the first redemption is still creating its grant: revoke it the
+            # moment its id is known
+            tomb["revoke"] = True
     if entry is None:
         if tomb and tomb["grant"]:
             _end_grant(tomb["grant"], "system", "code_reuse")
@@ -487,7 +492,13 @@ def _redeem_code(form: dict, resolve_tenant) -> Reply:
     except assistanttokens.TokenError as exc:
         return _oauth_error("invalid_request", description=str(exc))
     with _LOCK:
-        _used[digest]["grant"] = rec["id"]
+        tomb = _used.setdefault(digest, {"exp": now + USED_TTL,
+                                         "revoke": False})
+        tomb["grant"] = rec["id"]
+        reused = tomb["revoke"]
+    if reused:                    # the code came back while we were creating
+        _end_grant(rec["id"], "system", "code_reuse")
+        return _oauth_error("invalid_grant")
     with tenants.use(tenant, entry["owner"]):
         for account in rec["accounts"]:
             auditlog.record("assistant_connected", account=account,

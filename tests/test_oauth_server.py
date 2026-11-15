@@ -1055,6 +1055,35 @@ def test_a_reused_code_revokes_the_grant_made_from_it(world):
         in audit_actions()
 
 
+def test_a_code_reused_while_its_grant_is_being_created_still_revokes(
+        world, monkeypatch):
+    code, verifier = connect_code(world)
+    real = assistanttokens.create_grant
+    seen = []
+
+    def create(*a, **k):
+        # the same code arrives again before the first redemption is done
+        seen.append(anon().post("/oauth/token",
+                                data=token_form(code, verifier)).json())
+        return real(*a, **k)
+    monkeypatch.setattr(assistanttokens, "create_grant", create)
+    first = anon().post("/oauth/token", data=token_form(code, verifier))
+    assert seen == [{"error": "invalid_grant"}]
+    assert first.json() == {"error": "invalid_grant"}
+    assert grants() == []
+    assert ("assistant_disconnected", "system", "error", "code_reuse") \
+        in audit_actions()
+
+
+def test_a_code_is_refused_when_the_public_url_changed_since_consent(
+        world, monkeypatch):
+    code, verifier = connect_code(world)
+    monkeypatch.setenv("INBOXRAKE_PUBLIC_URL", "https://other.example")
+    r = anon().post("/oauth/token", data=token_form(code, verifier))
+    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+    assert grants() == []
+
+
 def test_the_tombstone_of_a_used_code_is_forgotten_after_ten_minutes(
         world, clock):
     code, verifier = connect_code(world)
