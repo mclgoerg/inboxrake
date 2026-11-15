@@ -11,7 +11,7 @@ import { useDemo } from "../demoMode";
 import type { AssistantAccess, AssistantLevel, AssistantToken,
   Config } from "../types";
 import { Button, confirmDialog, DemoFieldset, EmptyState, IconTile, Input,
-  LINK_ACCENT, Loading, Modal, Notice, ProgressBar, Segmented, SettingsGroup,
+  LINK_ACCENT, Loading, Modal, Notice, ProgressBar, RadioRow, Segmented, SettingsGroup,
   SettingsRow, Stepper, Switch, Tag, tabPanelProps, type TagTone,
   useToast } from "./ui";
 import { type Choices, choiceErrors, DAILY_DEFAULT, expiryDays, TokenChoices,
@@ -31,17 +31,22 @@ const ALL_LEVELS: readonly AssistantLevel[] = ["read", "propose", "act"];
 const ACCESS_RANK: Record<AssistantAccess, number> =
   { off: 0, read_propose: 1, act: 2 };
 
-/** The cap's values the admin can pick, with their labels: only what the
- *  server offers. With Read alone the control is Off / On. */
+/** The cap's values the admin can pick, with their labels and one-line
+ *  descriptions: only what the server offers. With Read alone the choice is
+ *  Off / On. */
 export function accessChoices(levels: AssistantLevel[]):
-    { value: AssistantAccess; label: string }[] {
+    { value: AssistantAccess; label: string; sub: string }[] {
   const more = levels.some((l) => l !== "read");
   return [
-    { value: "off", label: t("assistants.access.off") },
+    { value: "off", label: t("assistants.access.off"),
+      sub: t("assistants.access_sub.off") },
     { value: "read_propose", label: t(more ? "assistants.access.propose"
-      : "assistants.access.on") },
+      : "assistants.access.on"),
+    sub: t(more ? "assistants.access_sub.propose"
+      : "assistants.access_sub.on") },
     ...(levels.includes("act")
-      ? [{ value: "act" as const, label: t("assistants.access.act") }] : []),
+      ? [{ value: "act" as const, label: t("assistants.access.act"),
+        sub: t("assistants.access_sub.act") }] : []),
   ];
 }
 
@@ -792,14 +797,16 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
 
   const control = admin && (
     <DemoFieldset>
-      <SettingsGroup header={t("assistants.group.server")}>
-        <SettingsRow label={t("assistants.access")} stackOnPhone
-          sub={t("assistants.access_sub")}>
-          <Segmented<AssistantAccess> role="radio"
-            label={t("assistants.access")} value={shown}
-            onChange={(v) => void change(v)} options={accessChoices(levels)} />
-        </SettingsRow>
-        {oauthCfg && (
+      <SettingsGroup radioGroup header={t("assistants.access")}
+        footnote={t("assistants.access_sub")}>
+        {accessChoices(levels).map((c) => (
+          <RadioRow key={c.value} label={c.label} sub={c.sub}
+            checked={shown === c.value}
+            onSelect={() => void change(c.value)} />
+        ))}
+      </SettingsGroup>
+      {oauthCfg && (
+        <SettingsGroup>
           <SettingsRow label={t("assistants.oauth")}
             sub={<>
               {t("assistants.oauth_sub")}
@@ -815,8 +822,8 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
             <Switch checked={oauth} onChange={onOauth}
               disabled={oauthBlocked} />
           </SettingsRow>
-        )}
-      </SettingsGroup>
+        </SettingsGroup>
+      )}
     </DemoFieldset>
   );
 
