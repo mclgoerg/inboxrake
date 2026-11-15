@@ -238,6 +238,7 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   // A filter handed to the rules form ("Save as rule" of the AI filter panel).
   const [rulesSeed, setRulesSeed] = useState("");
+  const [rulesRecipe, setRulesRecipe] = useState("");
   const [aiFilterOpen, setAiFilterOpen] = useState(false);
   const [attsOpen, setAttsOpen] = useState(false);
   const [dupsOpen, setDupsOpen] = useState(false);
@@ -2477,6 +2478,9 @@ export default function App() {
         onOpenSlot={(slot) => { setStatsOpen(false); openAllMailNewest("", slot); }}
         onUnsubscribe={(key) => {
           if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
+        }}
+        onOpenRecipe={(id) => {
+          setStatsOpen(false); setRulesRecipe(id); openTool("rules");
         }} />
     )}
     {toolShown("space") && state && (
@@ -2554,11 +2558,11 @@ export default function App() {
     )}
     {toolShown("rules") && state && (
       <RulesModal key={account}
-        state={state} initialQuery={rulesSeed}
+        state={state} initialQuery={rulesSeed} initialRecipe={rulesRecipe || undefined}
         ai={aiEnabled || demo ? { disabled: demo,
           hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {
-          setRulesOpen(false); setRulesSeed("");
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
         })}
         onChanged={refresh}
       />
@@ -3037,7 +3041,10 @@ export default function App() {
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
         <InsightsPage groups={senderGroups} state={state} onOpen={openTool}
-          onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)} />
+          onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
+          onUnsubscribe={(key) => {
+            if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
+          }} />
       ))}
 
       {bare ? null : overview ? (

@@ -300,3 +300,22 @@ def test_accounts_never_mix(monkeypatch):
     assert rhythm.build(other, "all", now=NOW)["kinds"]["all"]["total"] == 0
     assert client.get("/api/rhythm", params={"period": "all"}
                       ).json()["kinds"]["all"]["total"] == 3
+
+
+def test_a_big_mailbox_is_counted_in_reasonable_time():
+    import random
+    import time
+    rnd = random.Random(1)
+    senders = [f"s{i}@x.example" for i in range(300)]
+    mails = [_mail(NOW - rnd.uniform(0, 700 * DAY), rnd.choice(senders),
+                   rnd.choice(["Hello", "Your order shipped", "Weekly digest"]),
+                   bulk=rnd.random() < 0.4) for _ in range(200000)]
+    acc = _acc(mails)
+    t0 = time.perf_counter()
+    out = rhythm.build(acc, "all", "Europe/Berlin", now=NOW)
+    took = time.perf_counter() - t0
+    assert out["kinds"]["all"]["total"] == 200000
+    assert sum(out["kinds"][k]["total"] for k in ("newsletters", "orders")) > 0
+    # about 2 s on a quiet machine (was 3.6-4 s with a Counter per mail and
+    # the lock held throughout); the bound only catches a regression
+    assert took < 20, took

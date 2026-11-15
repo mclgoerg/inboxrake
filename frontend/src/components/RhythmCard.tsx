@@ -1,6 +1,7 @@
 import { Briefcase, CalendarDays, Moon, Repeat, ShoppingBag, Sunrise, Users }
   from "lucide-react";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState,
+  type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { fmtNum, fmtPct } from "../numfmt";
 import { t } from "../i18n";
@@ -34,28 +35,60 @@ const cellSlot = (kind: RhythmKind, period: RhythmPeriod, day: number,
     hour: number): ArrivalSlot =>
   ({ kind, period, days: [day], from: hour, to: hour + 1 });
 
-/** The grid: one square per weekday and hour. Only the squares speak (hover,
- *  tap); the whole picture is one image for screen readers, whose numbers
- *  are in the table. `mini` is the phone widget's small version. */
+/** The grid: one square per weekday and hour. `mini` (the phone widget) is a
+ *  picture only. Otherwise it is one control with a roving tab stop: arrow
+ *  keys move between the squares, Enter / Space opens one, and each square's
+ *  name is its tooltip text (hour, count, top senders); the numbers are also
+ *  in the table. Hover and focus show the tooltip. */
 export function HeatGrid({ grid, label, mini = false, active, tip, onCell,
-  onHover }: {
+  onHover, nameOf, keys = true }: {
   grid: number[][];
   label: string;
   mini?: boolean;
-  /** the square that is hovered / tapped (outlined) */
+  /** the square that is hovered / focused / tapped (outlined) */
   active?: [number, number] | null;
-  /** the tooltip of the hovered square (fine pointers) */
+  /** the tooltip of the active square (fine pointers) */
   tip?: ReactNode;
   onCell?: (day: number, hour: number) => void;
   onHover?: (cell: [number, number] | null) => void;
+  /** the accessible name of a square */
+  nameOf?: (day: number, hour: number) => string;
+  /** squares are keyboard controls (off on touch screens: there a tap selects
+   *  and the table's 44 px buttons are the way in) */
+  keys?: boolean;
 }) {
   const max = gridMax(grid);
   const step = mini ? 6 : 3;
+  const live = !mini && !!onCell && keys;
+  const root = useRef<HTMLDivElement>(null);
+  const start = busiest(grid);
+  const [stop, setStop] = useState<[number, number]>(
+    start ? [start.day, start.hour] : [0, 0]);
+  // (spans inside the widget: it sits in a button, where a div is not allowed)
+  const move = (e: ReactKeyboardEvent, d: number, h: number) => {
+    const to: [number, number] | null =
+      e.key === "ArrowRight" ? [d, (h + 1) % 24]
+      : e.key === "ArrowLeft" ? [d, (h + 23) % 24]
+      : e.key === "ArrowDown" ? [Math.min(6, d + 1), h]
+      : e.key === "ArrowUp" ? [Math.max(0, d - 1), h]
+      : e.key === "Home" ? [d, 0] : e.key === "End" ? [d, 23] : null;
+    if (to) {
+      e.preventDefault();
+      setStop(to);
+      root.current?.querySelector<HTMLElement>(
+        `[data-cell="${to[0]}-${to[1]}"]`)?.focus();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onCell?.(d, h);
+    }
+  };
+  const Box = mini ? "span" : "div";
   return (
-    <div role="img" aria-label={label}>
+    <Box ref={root as never} role={live ? "group" : "img"} aria-label={label}
+      className="block">
       {/* a 2 px gap (gap-0.5), the weekday column, then 24 hours; the
           column width is arbitrary: one label ("Mon") plus the gap */}
-      <div className={`grid gap-0.5 ${mini
+      <Box className={`grid gap-0.5 ${mini
         ? "grid-cols-[1rem_repeat(24,minmax(0,1fr))]"
         : "grid-cols-[2.25rem_repeat(24,minmax(0,1fr))]"}`}
         onMouseLeave={() => onHover?.(null)}>
@@ -67,11 +100,20 @@ export function HeatGrid({ grid, label, mini = false, active, tip, onCell,
             {HOURS.map((h) => {
               const n = grid[d][h];
               const on = active?.[0] === d && active?.[1] === h;
+              const cls = `relative block rounded-xs sm:rounded-badge ${
+                mini ? "aspect-square" : "aspect-square sm:aspect-auto sm:h-5"
+              } ${HEAT[heatLevel(n, max)]} ${onCell && n > 0 ? "cursor-pointer" : ""
+              } ${on ? "outline-2 outline-body" : ""}`;
               return (
-                <div key={h} data-cell={`${d}-${h}`} data-level={heatLevel(n, max)}
-                  className={`relative rounded-badge ${mini ? "h-2" : "h-3.5 sm:h-5"
-                  } ${HEAT[heatLevel(n, max)]} ${onCell && n > 0 ? "cursor-pointer" : ""
-                  } ${on ? "outline-2 outline-body" : ""}`}
+                <Box key={h} data-cell={`${d}-${h}`} data-level={heatLevel(n, max)}
+                  className={cls}
+                  {...(live ? {
+                    role: "button", "aria-label": nameOf?.(d, h),
+                    tabIndex: stop[0] === d && stop[1] === h ? 0 : -1,
+                    onFocus: () => { setStop([d, h]); onHover?.([d, h]); },
+                    onBlur: () => onHover?.(null),
+                    onKeyDown: (e: ReactKeyboardEvent) => move(e, d, h),
+                  } : {})}
                   onMouseEnter={() => onHover?.([d, h])}
                   onClick={onCell ? () => onCell(d, h) : undefined}>
                   {on && tip && (
@@ -81,7 +123,7 @@ export function HeatGrid({ grid, label, mini = false, active, tip, onCell,
                       ${h < 6 ? "left-0" : h > 17 ? "right-0"
                       : "left-1/2 -translate-x-1/2"}`}>{tip}</div>
                   )}
-                </div>
+                </Box>
               );
             })}
           </Fragment>
@@ -96,8 +138,8 @@ export function HeatGrid({ grid, label, mini = false, active, tip, onCell,
           <span key={`p${i}`} aria-hidden className="col-span-6 type-caption
             text-muted sm:hidden">{String(i * 6).padStart(2, "0")}</span>
         ))}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
 
@@ -109,7 +151,7 @@ export function HeatLegend() {
       <span aria-hidden>{t("rhythm.fewer")}</span>
       <span aria-hidden className="flex gap-0.5">
         {/* the lowest step is the empty cell: a hairline keeps it visible */}
-        {HEAT.map((c) => <span key={c} className={`size-3 rounded-badge border
+        {HEAT.map((c) => <span key={c} className={`size-3 rounded-xs border
           border-line ${c}`} />)}
       </span>
       <span aria-hidden>{t("rhythm.more")}</span>
@@ -183,10 +225,11 @@ const SENTENCE_ICON: Record<string, [ReactNode, TagTone]> = {
 };
 
 /** What stands out: the sentences, each with its action. */
-export function StandsOut({ items, onOpenSlot, onUnsubscribe }: {
+export function StandsOut({ items, onOpenSlot, onUnsubscribe, onOpenRecipe }: {
   items: Sentence[];
   onOpenSlot: (s: ArrivalSlot) => void;
   onUnsubscribe?: (key: string) => void;
+  onOpenRecipe?: (id: string) => void;
 }) {
   if (!items.length) {
     return <p className="type-meta text-muted">{t("rhythm.so_none")}</p>;
@@ -198,7 +241,8 @@ export function StandsOut({ items, onOpenSlot, onUnsubscribe }: {
         const act = s.action;
         const go = !act ? null : act.slot ? () => onOpenSlot(act.slot!)
           : onUnsubscribe && act.unsubscribe
-            ? () => onUnsubscribe(act.unsubscribe!) : null;
+            ? () => onUnsubscribe(act.unsubscribe!)
+          : onOpenRecipe && act.recipe ? () => onOpenRecipe(act.recipe!) : null;
         return (
           <li key={s.id} className="flex gap-3 py-3 first:pt-0 last:pb-0">
             <IconTile tone={tone}>{icon}</IconTile>
@@ -206,9 +250,12 @@ export function StandsOut({ items, onOpenSlot, onUnsubscribe }: {
               <div className="type-body font-semibold">{s.title}</div>
               {s.detail && <div className="type-meta text-muted">{s.detail}</div>}
               {act && go && (
-                <button type="button" onClick={go}
-                  className={`${LINK_ACCENT} type-meta coarse:min-h-11`}>
-                  {act.label}</button>
+                <div className="type-meta">
+                  {act.prefix && <span className="text-muted">{act.prefix} </span>}
+                  <button type="button" onClick={go}
+                    className={`${LINK_ACCENT} coarse:min-h-11`}>
+                    {act.label}</button>
+                </div>
               )}
             </div>
           </li>
@@ -237,10 +284,12 @@ function Share({ value, label, icon }: {
  *  stands out beside it and the four shares below. `onOpenSlot` opens the
  *  mails of a slot (the list view), `onUnsubscribe` the unsubscribe sheet of
  *  a sender. */
-export function RhythmCard({ period, onOpenSlot, onUnsubscribe, className = "" }: {
+export function RhythmCard({ period, onOpenSlot, onUnsubscribe, onOpenRecipe,
+  className = "" }: {
   period: RhythmPeriod;
   onOpenSlot: (s: ArrivalSlot) => void;
   onUnsubscribe?: (key: string) => void;
+  onOpenRecipe?: (id: string) => void;
   /** the grid classes of the two columns (Statistics' 1.7 : 1) */
   className?: string;
 }) {
@@ -295,7 +344,11 @@ export function RhythmCard({ period, onOpenSlot, onUnsubscribe, className = "" }
           {data && cur && (
             <>
               <HeatGrid grid={cur.grid} label={gridLabel(cur, period)}
-                active={shown}
+                active={shown} keys={!coarse}
+                nameOf={(d, h) => {
+                  const tp = cellTip(cur, d, h, period);
+                  return [tp.head, tp.who].filter(Boolean).join(". ");
+                }}
                 tip={!coarse && shown && cur.grid[shown[0]][shown[1]] > 0 && (() => {
                   const tp = cellTip(cur, shown[0], shown[1], period);
                   return <>
@@ -353,7 +406,7 @@ export function RhythmCard({ period, onOpenSlot, onUnsubscribe, className = "" }
           <h3 className="mb-3 type-heading">{t("rhythm.stands_out")}</h3>
           {data ? (
             <StandsOut items={sentences} onOpenSlot={onOpenSlot}
-              onUnsubscribe={onUnsubscribe} />
+              onUnsubscribe={onUnsubscribe} onOpenRecipe={onOpenRecipe} />
           ) : !failed && (
             <span aria-hidden className="block h-24 rounded-control bg-chip" />
           )}
@@ -385,7 +438,7 @@ export function SlotChip({ slot, onClear }: {
     <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 type-meta
       text-muted">
       <span className="rounded-full bg-chip px-2 py-0.5 text-body">
-        {t("rhythm.slot_chip", { slot: slotLabel(slot) })}</span>
+        {slotLabel(slot)}</span>
       <button type="button" className={`${LINK} coarse:min-h-11`} onClick={onClear}>
         {t("rhythm.slot_clear")}</button>
     </div>
@@ -414,7 +467,8 @@ export function ArrivalStrip({ stamps }: { stamps: number[] }) {
         <div className="mt-2 grid grid-cols-24 gap-0.5">
           {HOURS.map((h) => (
             <span key={h} data-level={heatLevel(r.hours[h], max)}
-              className={`h-3 rounded-badge ${HEAT[heatLevel(r.hours[h], max)]}`} />
+              className={`aspect-square rounded-xs sm:rounded-badge sm:aspect-auto sm:h-3 ${
+                HEAT[heatLevel(r.hours[h], max)]}`} />
           ))}
         </div>
         <div aria-hidden className="mt-1 flex justify-between type-caption

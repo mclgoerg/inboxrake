@@ -383,6 +383,7 @@ test("Insights: When mail arrives widget - the small grid, the legend, the busie
   expect(widget.textContent).toContain("When mail arrives");
   expect(widget.textContent).toContain("30\u00a0days");
   expect(widget.querySelectorAll("[data-cell]")).toHaveLength(168);
+  expect(widget.querySelector("div")).toBeNull();      // no div inside a button
   expect(widget.textContent).toContain("fewer");
   fireEvent.click(widget);
   expect(onOpen).toHaveBeenLastCalledWith("stats");
@@ -393,13 +394,22 @@ test("Insights: What stands out shows the first sentence and the sender line", a
   stats.mockRejectedValue(new Error("x")); trackers.mockRejectedValue(new Error("x"));
   audit.mockResolvedValue({ entries: [] });
   const onOpen = vi.fn();
-  render(<InsightsPage groups={[]} state={state()} onOpen={onOpen} />);
-  const card = (await screen.findByText("What stands out")).closest("button")!;
+  const onUnsubscribe = vi.fn();
+  render(<InsightsPage groups={[]} state={state()} onOpen={onOpen}
+    onUnsubscribe={onUnsubscribe} />);
+  const open = (await screen.findByText("What stands out")).closest("button")!;
   // (no newsletter sample: the daily sender is the first sentence)
-  expect(card.textContent).toContain("Deals Daily mails you every day at 06:0x");
-  expect(card.textContent).toContain("Deals Daily: every day at 06:0x · Unsubscribe…");
-  fireEvent.click(card);
+  expect(open.textContent).toContain("Deals Daily mails you every day at 06:0x");
+  expect(screen.getByText(/Deals Daily: every day at 06:0x/)).toBeTruthy();
+  fireEvent.click(open);
   expect(onOpen).toHaveBeenLastCalledWith("stats");
+  // Unsubscribe is a button of its own, not nested in another button
+  const un = screen.getByRole("button", { name: "Unsubscribe…" });
+  expect(un.closest("button:not([name])")).toBe(un);
+  expect(un.parentElement!.closest("button")).toBeNull();
+  fireEvent.click(un);
+  expect(onUnsubscribe).toHaveBeenCalledWith("d@x.example");
+  expect(onOpen).toHaveBeenCalledTimes(1);
 });
 
 test("Insights: no rhythm widgets without mail or when the call fails", async () => {

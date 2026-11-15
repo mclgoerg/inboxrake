@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "vitest";
 import { setLang } from "./i18n";
 import {
   busiest, daysText, gridMax, heatLevel, kpiShares, quietest, rateText,
-  senderRhythm, standsOut, usuallyText, weekdayName,
+  senderRhythm, slotLabel, standsOut, usuallyText, weekdayName,
   type RhythmKind, type RhythmKindData, type RhythmResp,
 } from "./rhythm";
 
@@ -79,7 +79,9 @@ test("the morning wave speaks only when most of the kind arrives before 8:00", (
   const out = standsOut(resp({ newsletters: wave() }));
   expect(out.map((s) => s.id)).toEqual(["wave"]);
   expect(out[0].title).toBe("62% of newsletters arrive before 8:00");
-  expect(out[0].action?.slot).toMatchObject({ kind: "newsletters", from: 0, to: 8 });
+  // the board: "Batch them: Keep the latest 5" opens that recipe
+  expect(out[0].action).toMatchObject({ prefix: "Batch them:",
+    label: "Keep the latest 5", recipe: "keep5" });
   // 49%: no sentence; a thin sample (19 mails): none either
   expect(standsOut(resp({ newsletters: wave(49, 51) }))).toEqual([]);
   expect(standsOut(resp({ newsletters: wave(12, 7) }))).toEqual([]);
@@ -193,4 +195,14 @@ test("a thin history shows no rhythm; sparse senders switch the unit", () => {
   expect(rateText(0.5)).toBe("0.5 a day");
   setLang("de");
   expect(rateText(4.1)).toBe("4,1 am Tag");
+});
+
+test("the slot chip is one template per language, the period reads right", () => {
+  const slot = { kind: "newsletters" as const, period: "12m" as const,
+    days: [1], from: 7, to: 8 };
+  expect(slotLabel(slot)).toBe(
+    "Mails arriving Tue, 07:00 - 08:00 · Newsletters (in 12\u00a0months)");
+  setLang("de");
+  expect(slotLabel(slot)).toBe(
+    "Mails, die Di, 07:00 - 08:00 · Newsletter ankommen (in 12\u00a0Monaten)");
 });

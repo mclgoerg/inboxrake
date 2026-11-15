@@ -127,11 +127,14 @@ export const periodName = (p: RhythmPeriod): string =>
 export const slotRangeText = (days: number[], from: number, to: number): string =>
   `${daysText(days)}, ${hh(from)} - ${hh(to)}`;
 
-/** What the chip above a list opened from the card says. */
+/** What the chip above a list opened from the card says (one template per
+ *  language, so the period reads right: "... (in 12 months)"). */
 export function slotLabel(s: ArrivalSlot): string {
-  return [slotRangeText(s.days, s.from, s.to),
-    s.kind === "all" ? "" : t(`rhythm.kind_${s.kind}`),
-    periodName(s.period)].filter(Boolean).join(" · ");
+  return t("rhythm.slot_chip", {
+    slot: [slotRangeText(s.days, s.from, s.to),
+      s.kind === "all" ? "" : t(`rhythm.kind_${s.kind}`)]
+      .filter(Boolean).join(" · "),
+    period: periodName(s.period) });
 }
 
 /** The tooltip / selected-slot text of one cell: the hour, the count, the
@@ -190,7 +193,11 @@ export interface Sentence {
   detail: string;
   /** senders / the people line, optional */
   extra?: string;
-  action?: { label: string; slot?: ArrivalSlot; unsubscribe?: string };
+  action?: { label: string; slot?: ArrivalSlot; unsubscribe?: string;
+    /** a rule recipe (recipes.json id) to open in New rule */
+    recipe?: string;
+    /** words before the action link ("Batch them:") */
+    prefix?: string };
 }
 
 const round1 = (x: number): number => Math.round(x * 10) / 10;
@@ -225,8 +232,8 @@ function morningWave(r: RhythmResp): Sentence | null {
   return { id: "wave",
     title: t("rhythm.so_wave", { pct: fmtPct(share) }),
     detail: t("rhythm.so_wave_sub"),
-    action: { label: t("rhythm.show_them"),
-      slot: { kind: "newsletters", period: r.period, days: DAYS, from: 0, to: 8 } } };
+    action: { prefix: t("rhythm.batch_them"), label: t("recipe.keep5.short"),
+      recipe: "keep5" } };
 }
 
 /** A sender that mails at the same hour nearly every day. */

@@ -43,8 +43,9 @@ const cell = (d: number, h: number) =>
 
 const open = vi.fn();
 const unsub = vi.fn();
+const recipe = vi.fn();
 const renderCard = (period: "30d" | "12m" | "all" = "30d") => render(
-  <RhythmCard period={period} onOpenSlot={open} onUnsubscribe={unsub} />);
+  <RhythmCard period={period} onOpenSlot={open} onUnsubscribe={unsub} onOpenRecipe={recipe} />);
 
 test("asks for the period and draws 7 x 24 squares in five steps", async () => {
   renderCard("12m");
@@ -64,7 +65,7 @@ test("asks for the period and draws 7 x 24 squares in five steps", async () => {
 
 test("the grid is one image with a text summary", async () => {
   renderCard();
-  const img = await screen.findByRole("img", { name: /Mails per hour of the week/ });
+  const img = await screen.findByRole("group", { name: /Mails per hour of the week/ });
   expect(img.getAttribute("aria-label")).toBe(
     "Mails per hour of the week, 123 in 30\u00a0days. Busiest: Tue 06:00.");
 });
@@ -153,9 +154,9 @@ test("What stands out lists the sentences; Unsubscribe and Show them act", async
   expect(screen.getByText("4.1 mails a day · you open 2%")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Unsubscribe…" }));
   expect(unsub).toHaveBeenCalledWith("d@x.example");
-  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
-  expect(open).toHaveBeenCalledWith({ kind: "newsletters", period: "30d",
-    days: [0, 1, 2, 3, 4, 5, 6], from: 0, to: 8 });
+  fireEvent.click(screen.getByRole("button", { name: "Keep the latest 5" }));
+  expect(recipe).toHaveBeenCalledWith("keep5");
+  expect(screen.getByText("Batch them:")).toBeTruthy();
 });
 
 test("the four shares of the period", async () => {
@@ -219,4 +220,42 @@ test("the sender strip: usual hours, weekday chips, a 24-hour image", () => {
 test("no strip for a handful of mails", () => {
   const { container } = render(<ArrivalStrip stamps={[1, 2, 3]} />);
   expect(container.textContent).toBe("");
+});
+
+test("keyboard: one tab stop, arrows move, Enter opens, the name is the tooltip", async () => {
+  renderCard();
+  await waitFor(() => expect(cell(1, 6)).toBeTruthy());
+  const stops = [...document.querySelectorAll('[data-cell][tabindex="0"]')];
+  expect(stops).toHaveLength(1);
+  expect(stops[0]).toBe(cell(1, 6));                      // starts on the busiest
+  expect(cell(1, 6).getAttribute("role")).toBe("button");
+  expect(cell(1, 6).getAttribute("aria-label")).toBe(
+    "Tue, 06:00 - 07:00 · 46 mails in 30\u00a0days. Deals Daily 18 · Gadget Weekly 9 · 19 more");
+  cell(1, 6).focus();
+  fireEvent.keyDown(cell(1, 6), { key: "ArrowRight" });
+  expect(document.activeElement).toBe(cell(1, 7));
+  expect(cell(1, 7).getAttribute("tabindex")).toBe("0");
+  expect(cell(1, 6).getAttribute("tabindex")).toBe("-1");
+  fireEvent.keyDown(cell(1, 7), { key: "ArrowUp" });
+  expect(document.activeElement).toBe(cell(0, 7));
+  fireEvent.keyDown(cell(0, 7), { key: "ArrowLeft" });
+  fireEvent.keyDown(cell(0, 6), { key: "Enter" });
+  expect(open).toHaveBeenCalledWith({ kind: "all", period: "30d", days: [0],
+    from: 6, to: 7 });
+  expect(screen.getByRole("tooltip")).toBeTruthy();          // focus shows it
+});
+
+test("on a touch screen the squares are not tiny buttons (a tap selects)", async () => {
+  coarse(true);
+  renderCard();
+  await waitFor(() => expect(cell(1, 6)).toBeTruthy());
+  expect(cell(1, 6).getAttribute("role")).toBeNull();
+  expect(document.querySelector('[data-cell][tabindex]')).toBeNull();
+});
+
+test("phones: the squares are squares", async () => {
+  renderCard();
+  await waitFor(() => expect(cell(1, 6)).toBeTruthy());
+  expect(cell(1, 6).className).toContain("aspect-square");
+  expect(cell(1, 6).className).not.toMatch(/(^| )h-\d/);
 });

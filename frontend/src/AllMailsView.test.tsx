@@ -430,7 +430,7 @@ test("a slot of 'When mail arrives' filters the list, shows a chip and can be dr
     </ReaderHostProvider>
   </DialogProvider></ToastProvider>);
   await screen.findByText(
-    "Showing mails that arrive Tue, 06:00 - 07:00 · Newsletters · 30 days");
+    "Mails arriving Tue, 06:00 - 07:00 · Newsletters (in 30 days)");
   expect(mails).toHaveBeenLastCalledWith(expect.objectContaining({ slot }));
   fireEvent.click(screen.getByRole("button", { name: "Show all mails" }));
   await waitFor(() => expect(mails.mock.calls.at(-1)![0].slot).toBeUndefined());

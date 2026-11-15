@@ -23,7 +23,7 @@ import { retryableGroup } from "../unsub";
 import { busiest, hh, periodName, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
-import { Avatar, Button, MiniBars, Ring }
+import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
   from "./ui";
 
 /* The Clean up / Insights tab pages (below 1024 px): a "what is waiting"
@@ -302,7 +302,8 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
+export function InsightsPage({ groups, state, onOpen, onRetryUnsub,
+  onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
@@ -310,6 +311,8 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
   onRetryUnsub?: (g: Group) => Promise<void>;
+  /** Opens the unsubscribe sheet of a sender (What stands out). */
+  onUnsubscribe?: (key: string) => void;
 }) {
   type Load<T> = { data: T | null; failed: boolean };
   const [stats, setStats] = useState<Load<StatsResp>>(
@@ -449,19 +452,29 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
           const daily = rhythm.daily[0];
           if (!first) return null;
           return (
-            <button type="button" onClick={() => onOpen("stats")} className={CARD_BTN}>
-              <span className="flex items-center gap-2 type-meta font-semibold text-muted">
-                <span aria-hidden className="text-accent"><Sparkles size={16} /></span>
-                <span className="min-w-0 flex-1 truncate">{t("rhythm.stands_out")}</span>
-              </span>
-              <span className="mt-2 block type-body font-semibold">{first.title}</span>
-              <span className="mt-0.5 block type-meta text-muted">
+            <div className={`${CARD} flex w-full min-w-0 flex-col`}>
+              {/* the card opens Statistics; Unsubscribe is a target of its
+                  own (a button inside a button is not allowed) */}
+              <button type="button" onClick={() => onOpen("stats")}
+                className="-m-1 flex min-w-0 cursor-pointer flex-col rounded-control
+                  p-1 text-left">
+                <span className="flex items-center gap-2 type-meta font-semibold text-muted">
+                  <span aria-hidden className="text-accent"><Sparkles size={16} /></span>
+                  <span className="min-w-0 flex-1 truncate">{t("rhythm.stands_out")}</span>
+                  <ChevronRight size={16} aria-hidden className="text-faint" />
+                </span>
+                <span className="mt-2 block type-body font-semibold">{first.title}</span>
+              </button>
+              <div className="mt-0.5 type-meta text-muted">
                 {daily ? <>{t("rhythm.w_daily", { name: daily.label,
                   hour: hh(daily.hour).slice(0, 2) })}
-                  {" · "}<span className="text-accent">{t("rhythm.unsub")}</span></>
+                  {onUnsubscribe && <>{" · "}<button type="button"
+                    onClick={() => onUnsubscribe(daily.key)}
+                    className={`${LINK_ACCENT} coarse:min-h-11`}>
+                    {t("rhythm.unsub")}</button></>}</>
                   : first.detail}
-              </span>
-            </button>
+              </div>
+            </div>
           );
         })()}
       </>)}

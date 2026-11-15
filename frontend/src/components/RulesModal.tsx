@@ -460,7 +460,7 @@ function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
 }
 
 export function RulesModal({ state, onClose, onChanged, initialQuery = "",
-  ai }: {
+  initialRecipe, ai }: {
   state: AppState;
   /** Describe it… (AI is on: enabled; the demo: disabled with its hint);
    *  absent when there is no AI provider. */
@@ -469,6 +469,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   onChanged: () => void;
   /** Starts the new-rule form with this filter (e.g. one the AI wrote). */
   initialQuery?: string;
+  /** Opens New rule > From a recipe with this recipe marked. */
+  initialRecipe?: string;
 }) {
   const [form, setForm] = useState({ ...EMPTY, query: initialQuery });
   const [editId, setEditId] = useState<string | null>(null);
@@ -478,7 +480,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   const [editing, setEditing] = useState(!!initialQuery);
   // New rule starts in the recipe view; Blank is today's editor, Describe it…
   // the plain-words filter writer.
-  const [creating, setCreating] = useState<"recipe" | "describe" | null>(null);
+  const [creating, setCreating] = useState<"recipe" | "describe" | null>(
+    initialRecipe ? "recipe" : null);
   // rules added from a recipe in this session (their card says so)
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [starterBusy, setStarterBusy] = useState("");
@@ -1068,7 +1071,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
           onClose={() => setReportId(null)} />
       )}
       {creating === "recipe" && (
-        <RecipeDialog state={state} ai={ai} onClose={() => setCreating(null)}
+        <RecipeDialog state={state} ai={ai} highlight={initialRecipe} onClose={() => setCreating(null)}
           onMode={newMode} onAdd={addRecipe} />
       )}
       {creating === "describe" && (

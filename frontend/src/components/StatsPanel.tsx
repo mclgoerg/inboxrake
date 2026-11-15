@@ -202,13 +202,15 @@ function Columns({ rows }: {
  *  and domains, engagement, AI coverage, cleanup progress and scan history.
  *  `onOpenSender` (top senders are buttons when given) opens a sender. */
 export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
-  onUnsubscribe }: {
+  onUnsubscribe, onOpenRecipe }: {
   onClose: () => void; onWrapped?: () => void;
   onOpenSender?: (key: string) => void;
   /** Opens All mail filtered to a slot of "When mail arrives". */
   onOpenSlot?: (slot: ArrivalSlot) => void;
   /** Opens the unsubscribe sheet of a sender (What stands out). */
   onUnsubscribe?: (key: string) => void;
+  /** Opens New rule > From a recipe with this recipe marked. */
+  onOpenRecipe?: (id: string) => void;
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
@@ -441,7 +443,8 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
 
             {stats.mails > 0 && (
               <RhythmCard period={per} className={TWO_COLS}
-                onOpenSlot={(s) => onOpenSlot?.(s)} onUnsubscribe={onUnsubscribe} />
+                onOpenSlot={(s) => onOpenSlot?.(s)} onUnsubscribe={onUnsubscribe}
+                onOpenRecipe={onOpenRecipe} />
             )}
 
             <div className={`grid items-start gap-3 ${TWO_COLS}`}>

@@ -20,7 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 
 from . import config as cfgmod
 from . import smartkinds
@@ -28,7 +28,7 @@ from . import smartkinds
 PERIODS = ("30d", "12m", "all")
 KINDS = ("all", "newsletters", "people", "orders")
 TOP_SENDERS = 2           # named per slot; the rest is "N more"
-# A "daily sender": at least one mail in the same hour (or an hour next to it)
+# A "daily sender": at least one mail in the same hour (or the better of the two hours next to it)
 # on this share of the days it has been mailing (and at least DAILY_MIN_DAYS of them, so a new
 # sender with three mails is not "every day").
 DAILY_SHARE = 0.8
@@ -85,23 +85,27 @@ def period_start(period: str, now: float, tz: dt.tzinfo) -> float:
 
 
 class Kinds:
-    """Which Smart kind a mail of `acc` is. Build it with the account lock
-    held (it reads the sender records) and use it anywhere."""
+    """Which Smart kind a mail is. Build it with the account lock held (it
+    reads the sender records), use it anywhere. A sender's hint (biller,
+    ticket seller, promotional) is worked out once, not per mail."""
 
     def __init__(self, sender_recs: dict):
         self.replied = {a for a, r in sender_recs.items() if r.get("replied")}
+        self._promo = {a for a, r in sender_recs.items() if r.get("unsub")}
+        self._hints: dict[str, str] = {}
 
-    def of(self, m: dict) -> str:
+    def of(self, addr: str, subject: str, bulk: bool) -> str:
         """`people`, `orders`, `newsletters` or `other`."""
-        addr = m["addr"]
         if addr in self.replied:
             return "people"
-        kind = smartkinds.message_kind(
-            m.get("subject") or "", smartkinds.sender_hint(
-                addr, bool(m.get("unsub"))))
+        hint = self._hints.get(addr)
+        if hint is None:
+            hint = self._hints[addr] = smartkinds.sender_hint(
+                addr, addr in self._promo)
+        kind = smartkinds.message_kind(subject or "", hint)
         if kind == "orders":
             return "orders"
-        if m.get("bulk") or kind == "newsletter":
+        if bulk or kind == "newsletter":
             return "newsletters"
         return "other"
 
@@ -139,7 +143,8 @@ def slot_matcher(slot: dict, sender_recs: dict, now: float):
         s = slotter(ts)
         if s is None or s[0] not in days or not lo <= s[1] < hi:
             return False
-        return slot["kind"] == "all" or kinds.of(m) == slot["kind"]
+        return slot["kind"] == "all" or kinds.of(
+            m["addr"], m.get("subject"), bool(m.get("bulk"))) == slot["kind"]
     return match
 
 
@@ -155,34 +160,39 @@ def build(acc, period: str = "30d", tz_name: str = "", offset: int = 0,
     protected = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
 
     grids = {k: [[0] * 24 for _ in range(7)] for k in KINDS}
-    tops: dict[str, dict[tuple[int, int], Counter]] = {k: {} for k in KINDS}
-    # per sender: mails, read mails, first local day, distinct (day, hour)
+    tops: dict[str, defaultdict] = {k: defaultdict(Counter) for k in KINDS}
+    # per sender: mails, read mails, first local day, hour -> distinct days
     per: dict[str, dict] = {}
+    # Only what the count needs is copied under the lock; the counting (the
+    # slow part on a big mailbox) happens after it is released.
     with acc.lock:
         sender_recs = acc.state["groups"].get("sender") or {}
         kinds = Kinds(sender_recs)
         meta = {a: (r.get("label") or a, bool(r.get("unsub")))
                 for a, r in sender_recs.items()}
-        for m in acc.index.values():
-            ts = m["ts"]
-            if not ts or ts < start or ts > now + 86400:
+        top_ts = now + 86400
+        rows = [(m["ts"], m["addr"], m["subject"], m["bulk"], m["seen"])
+                for m in acc.index.values()
+                if m["ts"] and start <= m["ts"] <= top_ts]
+    for ts, addr, subject, bulk, seen in rows:
+        s = slotter(ts)
+        if s is None:
+            continue
+        wd, hour, day = s
+        kind = kinds.of(addr, subject, bulk)
+        for k in ("all", kind):
+            if k == "other":
                 continue
-            s = slotter(ts)
-            if s is None:
-                continue
-            wd, hour, day = s
-            kind = kinds.of(m)
-            for k in ("all", kind):
-                if k == "other":
-                    continue
-                grids[k][wd][hour] += 1
-                tops[k].setdefault((wd, hour), Counter())[m["addr"]] += 1
-            p = per.setdefault(m["addr"], {"n": 0, "read": 0, "first": day,
-                                           "hours": {}})
-            p["n"] += 1
-            p["read"] += 1 if m["seen"] else 0
-            p["first"] = min(p["first"], day)
-            p["hours"].setdefault(hour, set()).add(day)
+            grids[k][wd][hour] += 1
+            tops[k][(wd, hour)][addr] += 1
+        p = per.get(addr)
+        if p is None:
+            p = per[addr] = {"n": 0, "read": 0, "first": day, "hours": {}}
+        p["n"] += 1
+        p["read"] += 1 if seen else 0
+        if day < p["first"]:
+            p["first"] = day
+        p["hours"].setdefault(hour, set()).add(day)
 
     def label(addr: str) -> str:
         return meta.get(addr, (addr, False))[0]
@@ -208,10 +218,12 @@ def build(acc, period: str = "30d", tz_name: str = "", offset: int = 0,
                 or addr in kinds.replied or cfgmod.is_protected(addr, protected):
             continue
         hour, days = max(p["hours"].items(), key=lambda kv: (len(kv[1]), -kv[0]))
-        # the neighbouring hours count as "the same": clock changes shift a
-        # sender's local hour by one, and a minute past the hour is no change
-        near = days | p["hours"].get((hour - 1) % 24, set()) \
-            | p["hours"].get((hour + 1) % 24, set())
+        # the main hour plus the better of its two neighbours: clock changes
+        # shift a sender's local hour by one, a minute past the hour is none
+        none: set = set()
+        before = p["hours"].get((hour - 1) % 24, none)
+        after = p["hours"].get((hour + 1) % 24, none)
+        near = days | (before if len(before) >= len(after) else after)
         if len(near) < DAILY_SHARE * span:
             continue
         daily.append({"key": addr, "label": label(addr), "hour": hour,
