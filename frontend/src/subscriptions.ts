@@ -98,16 +98,19 @@ export const monthlyText = (tot: SubTotals): string | null =>
  *  box keeps its own height. */
 export const LINK_TAP = "coarse:py-3 coarse:-my-3";
 
-/** A reminder that fired this long ago is still news (the poll runs more
- *  often than this). */
-export const REMINDER_FRESH_S = 20 * 60;
+/** The server leaves a device out of a push when it was looking at the app
+ *  within this long before (webpush.PRESENCE_TTL, plus slack). */
+export const PRESENCE_SLACK_S = 90;
 
-/** Whether the open page shows a fired reminder as a toast. With Web Push on
- *  for this device the server pushed it to every device that was NOT looking
- *  at the app, so a toast for an old one would double the push; a fresh one
- *  is what this (visible) device was left out of. */
-export const showReminderToast = (pushOn: boolean, ageSeconds: number): boolean =>
-  !pushOn || ageSeconds <= REMINDER_FRESH_S;
+/** Whether the page shows a fired reminder as a toast. Without Web Push on
+ *  this device: always. With it, the server pushed the reminder to every
+ *  device that was NOT looking at the app, so a toast would double it - but
+ *  a device that WAS looking (it last saw the page visible at
+ *  `lastVisibleAt`, epoch s, when the reminder fired at `firedAt`) got no
+ *  push and relies on the toast, however late it comes back to the app. */
+export const showReminderToast = (pushOn: boolean, firedAt: number,
+    lastVisibleAt: number): boolean =>
+  !pushOn || firedAt - lastVisibleAt <= PRESENCE_SLACK_S;
 
 /* ----------------------------- the .ics file ----------------------------- */
 

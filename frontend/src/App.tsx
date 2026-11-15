@@ -27,6 +27,8 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { showReminderToast } from "./subscriptions";
+
+const VISIBLE_KEY = "pmc_visible_at";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
@@ -523,11 +525,11 @@ export default function App() {
      app; this page shows it once as a toast (and as a browser notification
      when those are on and the page is hidden). */
   const openSubsRef = useRef<() => void>(() => {});
-  const REMINDER_POLL_MS = 5 * 60 * 1000;
+  const REMINDER_POLL_MS = 60 * 1000;
   useEffect(() => {
     if (!authOk) return;
     let live = true;
-    const check = () => {
+    const check = (lastVisible: number) => {
       Promise.resolve().then(() => api.subscriptionReminders())
         .then(({ reminders }) => {
           if (!live || !reminders.length) return;
@@ -542,9 +544,9 @@ export default function App() {
             const text = days === 0 ? t("sub.reminder_0", { name: r.name })
               : t("sub.reminder_n", { name: r.name, n: days });
             // With Web Push on, a device that was not looking got the push
-            // itself: the page only shows what is fresh (it was looking, so
-            // the server left it out), never a stale one on top of a push.
-            if (!showReminderToast(pushMode(), nowMs() / 1000 - r.ts)) continue;
+            // itself; one that WAS looking was left out and shows the toast
+            // (however late it is back), never a second one on top of a push.
+            if (!showReminderToast(pushMode(), r.ts, lastVisible)) continue;
             toast.show(text, { action: { label: t("sub.reminder_open"),
               onClick: () => openSubsRef.current() } });
             fire(text);
@@ -553,9 +555,22 @@ export default function App() {
           catch { /* private mode: it may show again */ }
         }).catch(() => {});
     };
-    check();
-    const h = setInterval(check, REMINDER_POLL_MS);
-    const vis = () => { if (!document.hidden) check(); };
+    // While the page is visible: noted every minute (what a push left out
+    // depends on it) and checked every minute; on load and when it becomes
+    // visible again at once. Hidden pages are the push's job.
+    const stamp = () => {
+      try { localStorage.setItem(VISIBLE_KEY, String(Math.floor(nowMs() / 1000))); }
+      catch { /* private mode: a late reminder may be missed */ }
+    };
+    const tick = () => {
+      if (document.hidden) return;
+      // read BEFORE noting now: "when was this page last seen" is the question
+      check(Number(localStorage.getItem(VISIBLE_KEY)) || 0);
+      stamp();
+    };
+    tick();
+    const h = setInterval(tick, REMINDER_POLL_MS);
+    const vis = () => { if (document.hidden) stamp(); else tick(); };
     document.addEventListener("visibilitychange", vis);
     return () => {
       live = false;

@@ -190,7 +190,7 @@ def test_amounts_in_a_subject(text, want):
     "Quittung 5 CHF", "Receipt €0", "", None,
     # order / invoice numbers next to a currency are not the price
     "Invoice 2025-11 €", "Invoice no. 2025-0042 EUR", "Receipt 12/2025 EUR",
-    "Receipt #4711 EUR"])
+    "Receipt #4711 EUR", "Receipt 4711 $", "Receipt 4711 €", "Invoice 4711 EUR"])
 def test_no_false_hit_on_order_numbers(text):
     assert subs.amount_from_subject(text or "") is None
 
@@ -867,3 +867,57 @@ def test_the_lock_is_not_held_while_the_mails_are_read():
     finally:
         subs._fields = real
     assert inside and all(inside)
+
+
+@pytest.mark.parametrize("text,want", [
+    ("Receipt 4711 € - total 9,99 €", 9.99),
+    ("Receipt 4711 € total €9.99", 9.99),
+    ("Invoice 12 € / 9.99 EUR", 9.99),
+    ("Receipt €3", 3.0),                       # a lone price without cents
+])
+def test_a_hit_with_decimals_wins_over_a_bare_number(text, want):
+    assert subs.amount_from_subject(text)[0] == want
+
+
+def test_a_subject_that_states_an_amount_is_never_a_newsletter():
+    mails = []
+    for ago in (5, 35, 65, 95):
+        m = _mail(ago, "Your receipt - €9.99 incl. 19% VAT")
+        m["bulk"] = True
+        mails.append(m)
+    got = subs.detect(_acc(mails), NOW)
+    assert len(got) == 1 and got[0]["amount"] == 9.99
+    for m in mails:                         # without an amount it still is one
+        m["subject"] = "Your invoice - 19% off, free upgrade"
+    assert subs.detect(_acc(mails), NOW) == []
+
+
+@pytest.mark.parametrize("subject,receipt", [
+    ("Your invoice/statement is ready", True),
+    ("Your monthly bill statement: invoice", True),
+    ("Your bank statement invoice", False),
+    ("Account statement 11/2026", False),
+    ("Your credit card statement is ready", False),
+    ("Ihr Kontoauszug", False)])
+def test_only_account_statements_are_excluded(subject, receipt):
+    assert subs.is_receipt(subject) is receipt
+
+
+def test_kept_shows_only_when_keep_pinned_them_itself():
+    mails = _receipts([30, 30, 30])
+    acc = _acc(mails)
+    pinstore.set_many({m["msgid"] for m in mails}, True, "acct")   # by hand
+    assert subs.listing(acc, NOW)["items"][0]["kept"] is False
+    out = subs.keep_receipts(acc, "fittrack.example", True)
+    assert out["changed"] == 0                      # nothing left to pin
+    assert subs.listing(acc, NOW)["items"][0]["kept"] is False
+    # a partly hand-pinned one: Keep pins the rest and shows kept; off unpins
+    # only those
+    pinstore.set_many({m["msgid"] for m in mails}, False, "acct")
+    first = mails[0]["msgid"]
+    pinstore.set_pinned(first, True, "acct")
+    subs.keep_receipts(acc, "fittrack.example", True)
+    assert subs.listing(acc, NOW)["items"][0]["kept"] is True
+    subs.keep_receipts(acc, "fittrack.example", False)
+    assert pinstore.load_account("acct") == {first}
+    assert subs.listing(acc, NOW)["items"][0]["kept"] is False

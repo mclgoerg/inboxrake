@@ -71,8 +71,10 @@ TICK_SECONDS = 600
 # ----------------------------------------------------------------- receipts
 
 # An account statement is a bank's monthly mail, not a subscription's receipt.
-_STATEMENT_RE = re.compile(r"kontoauszug|depotauszug|\bauszug\b|\bstatement\b",
-                           re.IGNORECASE)
+_STATEMENT_RE = re.compile(
+    r"kontoauszug|depotauszug|\bauszug\b|"
+    r"\b(account|bank|card|credit|savings|konto)\s+statements?\b|"
+    r"\bstatement of account\b", re.IGNORECASE)
 
 _INVOICE_RULE = next(rx for _, rid, rx in smartkinds.PURPOSE_RULES
                      if rid == "invoice")
@@ -142,8 +144,9 @@ def _to_number(num: str) -> float | None:
     return v if 0 < v < MAX_AMOUNT else None
 
 
-def parse_amounts(text: str) -> list[tuple[int, float, str]]:
-    """Every price in `text`: (position, amount, currency), in order. A price
+def parse_amounts(text: str) -> list[tuple[int, float, str, bool]]:
+    """Every price in `text`: (position, amount, currency, has decimals), in
+    order. A price
     is a currency sign or code next to a number; a bare code needs decimals,
     so "Order 12345 EUR" and plain order numbers never count."""
     found = []
@@ -151,23 +154,31 @@ def parse_amounts(text: str) -> list[tuple[int, float, str]]:
         for m in rx.finditer(text or ""):
             cur = m.group("cur")
             num = m.group("num")
-            if cur[0].isalpha() and not re.search(r"[.,]\d{1,2}$", num):
+            dec = bool(re.search(r"[.,]\d{1,2}$", num))
+            # a bare code needs decimals; so does a number BEFORE its sign
+            # ("4711 $" is an order number, "$3" is a price)
+            if (cur[0].isalpha() or rx is _SUFFIX_RE) and not dec:
                 continue
             v = _to_number(num)
             if v is not None:
-                found.append((m.start(), v, CURRENCIES[cur]))
+                found.append((m.start(), v, CURRENCIES[cur], dec))
     found.sort()
     out, last_end = [], -1
-    for pos, v, cur in found:                   # one hit per spot
+    for pos, v, cur, dec in found:              # one hit per spot
         if pos >= last_end:
-            out.append((pos, v, cur))
+            out.append((pos, v, cur, dec))
             last_end = pos + 1
     return out
 
 
+def _best(hits: list[tuple]) -> tuple | None:
+    """The first hit with decimals (a price), else the first."""
+    return next((h for h in hits if h[3]), hits[0] if hits else None)
+
+
 def amount_from_subject(subject: str) -> tuple[float, str] | None:
-    hits = parse_amounts(subject or "")
-    return (hits[0][1], hits[0][2]) if hits else None
+    hit = _best(parse_amounts(subject or ""))
+    return (hit[1], hit[2]) if hit else None
 
 
 _TOTAL_RE = re.compile(
@@ -216,9 +227,8 @@ def amount_from_text(text: str) -> tuple[float, str] | None:
         # non-empty lines ("Total" / "€9.99")
         hit = None
         for cand in _label_lines(lines, i):
-            hits = parse_amounts(cand)
-            if hits:
-                hit = hits[0]
+            hit = _best(parse_amounts(cand))
+            if hit:
                 break
         if hit:
             totals.append(hit)
@@ -305,8 +315,11 @@ def _fields(m: dict) -> tuple:
     is a receipt (a newsletter that offers List-Unsubscribe and sounds
     promotional is not one, whatever its subject says about invoices)."""
     subject = m.get("subject") or ""
+    # (a subject that states an amount is never taken for a newsletter:
+    # PROMO_RE also matches "19% VAT")
     receipt = is_receipt(subject) and not (
-        m.get("bulk") and smartkinds.PROMO_RE.search(subject))
+        m.get("bulk") and smartkinds.PROMO_RE.search(subject)
+        and amount_from_subject(subject) is None)
     return (m["ts"], subject, bool(m.get("seen")),
             (m.get("name") or "").strip(), m["addr"], m.get("msgid") or "",
             m["folder"], m["uid"], receipt)
@@ -524,7 +537,10 @@ def listing(acc, now: float | None = None) -> dict:
                 pending += 1
         s["hidden"] = s["key"] in block["hidden"]
         s["reminder"] = s["key"] in block["reminders"]
-        s["kept"] = bool(s["_ids"]) and all(i in pinned for i in s["_ids"])
+        # only what "Keep the receipts" pinned itself: a user's own pins must
+        # not leave the button stuck on "kept"
+        s["kept"] = bool(block["kept"].get(s["key"])) and bool(s["_ids"]) \
+            and all(i in pinned for i in s["_ids"])
     visible = [s for s in items if not s["hidden"]]
     return {
         "now": int(now), "body_amounts": block["body_amounts"],

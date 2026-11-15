@@ -123,12 +123,17 @@ test("the shown next date is the server's date as it is", () => {
   expect(nextDay({ ...fittrack, next_date: "2026-12-05" })).toBe("5. Dez.");
 });
 
-test("a toast for a fired reminder: always without push, only a fresh one with it", () => {
-  expect(showReminderToast(false, 3 * 3600)).toBe(true);
-  expect(showReminderToast(true, 60)).toBe(true);
-  expect(showReminderToast(true, 3 * 3600)).toBe(false);
-});
-
 test("the monthly day follows the next expected date", () => {
   expect(cadenceSentence({ ...fittrack, day: 26 })).toBe("monthly, around the 26th");
+});
+
+test("a reminder toast: always without push; with push only for a device that was looking", () => {
+  const fired = 1_000_000;
+  expect(showReminderToast(false, fired, 0)).toBe(true);
+  // looked at the page when it fired (or just before): the server left it out
+  expect(showReminderToast(true, fired, fired + 5)).toBe(true);
+  expect(showReminderToast(true, fired, fired - 60)).toBe(true);
+  // last seen hours earlier: it got the push, a toast would double it
+  expect(showReminderToast(true, fired, fired - 3 * 3600)).toBe(false);
+  expect(showReminderToast(true, fired, 0)).toBe(false);
 });
