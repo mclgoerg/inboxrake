@@ -442,6 +442,8 @@ test("a slot of 'When mail arrives' filters the list, shows a chip and can be dr
   fireEvent.click(screen.getByRole("button", { name: "Show all mails" }));
   await waitFor(() => expect(mails.mock.calls.at(-1)![0].slot).toBeUndefined());
   expect(screen.queryByText(/Showing mails that arrive/)).toBeNull();
+});
+
 test("keep-safe: Trash selected of 25 mails shows the box; the protected mails "
   + "stay, shown as protected, and are not sent", async () => {
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);

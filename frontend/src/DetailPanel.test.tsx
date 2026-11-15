@@ -1196,6 +1196,9 @@ describe("DetailPanel: when this sender's mail arrives", () => {
     setLang("de");
     renderPanel(daily());
     await screen.findByText("Meist 06:00 - 07:00 Uhr, jeden Tag");
+  });
+});
+
 describe("DetailPanel keep-safe", () => {
   beforeEach(() => {
     setLang("en");
