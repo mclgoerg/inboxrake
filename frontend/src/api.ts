@@ -236,13 +236,18 @@ const ERROR_CODES: Record<string, string> = {
   assistant_token_level: "ferr.assistant_token_level",
   assistant_token_limit: "ferr.assistant_token_limit",
   assistant_token_unknown: "ferr.assistant_token_unknown",
+};
+
+/** Codes of the hosted-app (OAuth) features (backend/oauthserver.py,
+ *  oauthclients.py, assistanttokens.py, config.py). A separate map: they are
+ *  answered by those modules, not the folder-feature set `ERROR_CODES` mirrors
+ *  (tests/test_error_codes.py). */
+const OAUTH_ERROR_CODES: Record<string, string> = {
   name_taken: "ferr.name_taken",
   assistant_grant_limit: "ferr.assistant_grant_limit",
-  // hosted apps over OAuth: the switch's preconditions (backend/config.py)
   oauth_needs_login: "ferr.oauth_needs_login",
   oauth_needs_public_url: "ferr.oauth_needs_public_url",
   oauth_needs_access: "ferr.oauth_needs_access",
-  // the consent page's refusals (backend/oauthserver.py, oauthclients.py)
   connect_request_gone: "ferr.connect_request_gone",
   connect_request_mismatch: "ferr.connect_request_mismatch",
   connect_request_invalid: "ferr.connect_request_invalid",
@@ -271,7 +276,8 @@ export function parseErrorDetail(detail: string):
   if (typeof detail !== "string") return null;   // e.g. a 422's error list
   const i = detail.indexOf(":");
   const code = i < 0 ? detail : detail.slice(0, i);
-  if (!Object.hasOwn(ERROR_CODES, code)) return null;
+  if (!Object.hasOwn(ERROR_CODES, code)
+      && !Object.hasOwn(OAUTH_ERROR_CODES, code)) return null;
   const params: Record<string, string | number> = {};
   if (i >= 0) {
     try {
@@ -301,7 +307,7 @@ export function errorText(detail: string): string {
   if (typeof params.cause === "string") text.cause = errorText(params.cause);
   if (typeof params.role === "string")
     text.folder = t(ROLE_NAMES[params.role] ?? params.role);
-  return t(ERROR_CODES[code], text);
+  return t(ERROR_CODES[code] ?? OAUTH_ERROR_CODES[code], text);
 }
 
 /** The label of an Undo entry in the user's language: the structured label
