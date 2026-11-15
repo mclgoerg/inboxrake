@@ -20,8 +20,8 @@ import zlib
 from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
-from backend import (accounts, bodyindex, demo, knowledgestore, mailops,
-                     pinstore, rules, unsubstore, verdictstore)
+from backend import (accounts, aliasservice, bodyindex, demo, knowledgestore,
+                     mailops, pinstore, rules, unsubstore, verdictstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -800,8 +800,71 @@ def _server(mailbox: dict, **kw) -> FakeIMAP:
     return FakeIMAP(mailbox, date_header=True, **kw)
 
 
+
+# --- Your addresses ----------------------------------------------------------
+# Mail that arrived on addresses other than the main one, with the receiving
+# headers the scan reads (Delivered-To / X-Original-To / To). Deterministic (no
+# random draws, UIDs from a range of their own (700,000 up; Subscriptions uses 500,000 up)), so the rest of the demo stays
+# exactly as it was. The aliases live on the invented alias.example, the
+# demo's alias service (scripts/demo.py DemoAliasService) knows them.
+MAIN_ADDR = "demo@example.com"
+_AUID = iter(range(700_000, 800_000))
+ADDRESS_MAILS: list[dict] = []
+
+
+def _on(rcpt: str, frm: str, subjects: list[str], n: int, first: float,
+        last: float, original: str | None = None) -> None:
+    """`n` mails from `frm` to `rcpt`, evenly from `first` to `last` days ago."""
+    for i in range(n):
+        days = first + (last - first) * (i / max(1, n - 1))
+        uid = next(_AUID)
+        ADDRESS_MAILS.append(make_msg(
+            uid, frm=frm, subject=subjects[i % len(subjects)],
+            msgid=f"<demo-addr-{uid}@demo.example>", size=9000 + 311 * i,
+            seen=i % 4 != 0, date=_date(days), to=rcpt,
+            delivered_to=MAIN_ADDR, original_to=original))
+
+
+ACME_ALIAS = "acme.x7k2@alias.example"
+# ACME wrote alone for a year and a half; four others found the address
+# 2 months ago (the leak the page shows)
+_on(ACME_ALIAS, '"ACME Store" <shop@acme-shop.example>',
+    ["Welcome to ACME - confirm your address", "Your order has shipped",
+     "New arrivals this week", "Your ACME receipt"], 50, 540, 70)
+_on(ACME_ALIAS, '"Prize Center" <prizes@win-big.example>',
+    ["You may have won", "Claim your prize today"], 17, 62, 1)
+_on(ACME_ALIAS, '"Loan Quick" <offer@loanquick.example>',
+    ["Fast cash, no questions", "Your loan offer"], 9, 55, 2)
+_on(ACME_ALIAS, '"Crypto Daily" <hi@cryptodaily.example>',
+    ["Double your coins", "Market alert"], 7, 40, 1)
+_on(ACME_ALIAS, '"Pharma Shop" <sale@pills.example>',
+    ["Limited offer"], 4, 30, 3)
+# aliases that stayed clean
+_on("travelly.q9@alias.example", '"Travelly" <hello@travelly.example>',
+    ["Your trip is coming up", "Check in online", "Travel deals"], 21, 400, 2)
+_on("chirper.k1@alias.example", '"Chirper" <notify@chirper-social.example>',
+    ["You have new followers", "Weekly digest"], 58, 600, 1)
+# a +tag for newsletters: nine senders
+for _i, _dom in enumerate(["pixelpost", "greenfork", "bookbarn", "cityrun",
+                           "tinytools", "gardenbox", "soundwave", "dailybake",
+                           "nightowl"]):
+    _on("demo+news@example.com", f'"{_dom.title()}" <news@{_dom}.example>',
+        ["This week's issue", "Don't miss this"], 3 + _i % 3, 200 + _i * 17,
+        4 + _i)
+# a catch-all on the user's own domain, used by one sender
+_on("library@example.com", '"City Library" <desk@city-library.example>',
+    ["Your books are due", "New in the library"], 33, 800, 3)
+# what a forwarding address of an old mailbox still delivers
+for _i, _dom in enumerate(["ticketline", "oldclub", "parcelhub", "bankalert",
+                           "newsroom", "travelnest", "photostore",
+                           "homeshop", "quizzer", "recipebox"]):
+    _on("old.demo@oldmail.example", f'"{_dom.title()}" <mail@{_dom}.example>',
+        ["An update for you", "Still interested?"], 3, 900 - _i * 40,
+        3 + _i * 30, original="old.demo@oldmail.example")
+
+
 PROTON = _server({
-    "INBOX": PROTON_INBOX + PROTON_COPIES + PROTON_TAIL,
+    "INBOX": PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS,
     "Sent": PROTON_TAIL_SENT + PROTON_SENT + [make_msg(
         next(_UID), frm="Demo <demo@example.com>",
         subject="Re: Wanderung am Samstag?", msgid=WANDER_R1,
@@ -861,6 +924,12 @@ ICLOUD = _server({
 }, flags={"Deleted Messages": "\\Trash", "Junk": "\\Junk"},
     quota=(1_900_000, 15_000_000))
 
+# Every other mail was delivered to its account's main address.
+for _box, _main in ((PROTON, MAIN_ADDR), (ICLOUD, "demo@icloud.example")):
+    for _m in _box.mailbox["INBOX"]:
+        if not _m.get("to") and not _m.get("delivered_to"):
+            _m["delivered_to"] = _main
+
 FAKES = {"demo-proton": PROTON, "demo-icloud": ICLOUD}
 
 # Keep-safe (F103): a bank's terms notices, a booking, a job application and a
@@ -912,6 +981,14 @@ def generate() -> dict:
         "ai": {"provider": "anthropic", "api_key": "demo-key",
                "model": "claude-sonnet-5"},
     }))
+
+    # The alias service the demo is connected to (the in-memory
+    # DemoAliasService of demo.py): its alias list is read before the scan, so
+    # the scan recognises the aliases. The key is stored as plain text on
+    # purpose - the browser demo has no real encryption to open a sealed one.
+    Path(os.environ["ALIAS_SERVICE_PATH"]).write_text(json.dumps(
+        {"service": "simplelogin", "key": "demo-api-key"}))
+    aliasservice.refresh()
 
     # Cached AI verdicts -> colored tags on the group rows.
     for key, verdict, reason in [

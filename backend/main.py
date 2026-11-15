@@ -28,8 +28,11 @@ from pydantic import BaseModel, Field, StrictInt
 from . import FORMER_ENV
 from . import accountcopy
 from . import accounts as accountsmod
+from . import addresses as addressesmod
+from . import addressstore
 from . import aifilter
 from . import aihelper
+from . import aliasservice
 from . import assistantplans, assistanttokens
 from . import auditlog
 from . import auth as authmod
@@ -1206,6 +1209,50 @@ def _subscription_action(account, fn):
         raise _internal_error(exc, acc)
 
 
+# ------------------------------------------------------- your addresses
+
+def _address_refusal(exc: Exception) -> HTTPException:
+    """A coded refusal of the addresses / alias-service actions: the key,
+    the missing service, an unknown address are the caller's to fix (400),
+    a service that cannot be reached or answers badly is not (502)."""
+    code = str(exc).partition(":")[0]
+    unreachable = code in (mailops.ALIAS_UNREACHABLE, mailops.ALIAS_HTTP)
+    return HTTPException(502 if unreachable else 400, str(exc))
+
+
+@app.get("/api/addresses")
+def get_addresses(account: str | None = Query(None)):
+    """The Your addresses page: every address mail arrived on, its kind,
+    who it was given to and whether it leaked (backend/addresses.py)."""
+    return addressesmod.report(_acc(account))
+
+
+@app.get("/api/addresses/summary")
+def get_addresses_summary(account: str | None = Query(None)):
+    """How many addresses look leaked (the sidebar badge)."""
+    return addressesmod.summary(_acc(account))
+
+
+class AddressBody(BaseModel):
+    address: str
+    new_alias: bool = False
+    to_junk: bool = False
+    undo: list[str] | None = None
+
+
+def _address_action(fn, acc, *args):
+    try:
+        return fn(acc, *args)
+    except aliasservice.AliasError as exc:
+        raise _address_refusal(exc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
 @app.post("/api/subscriptions/hide")
 def post_subscription_hide(body: SubscriptionHideBody,
                            account: str | None = Query(None)):
@@ -1259,6 +1306,76 @@ def post_subscription_amounts(account: str | None = Query(None)):
     """Read the latest receipt of each subscription without a subject amount
     (only with the opt-in on): amount + currency are kept, nothing else."""
     return _subscription_action(account, subscriptions.read_amounts)
+
+@app.post("/api/addresses/retire")
+def post_address_retire(body: AddressBody, account: str | None = Query(None)):
+    """Retire an alias at the connected alias service (reversible), and
+    optionally make a new one for its sender / move the strangers to Junk."""
+    return _address_action(addressesmod.retire, _acc(account), body.address,
+                           body.new_alias, body.to_junk)
+
+
+@app.post("/api/addresses/restore")
+def post_address_restore(body: AddressBody, account: str | None = Query(None)):
+    return _address_action(addressesmod.restore, _acc(account), body.address)
+
+
+@app.post("/api/addresses/strangers_to_junk")
+def post_address_strangers_to_junk(body: AddressBody,
+                                   account: str | None = Query(None)):
+    return _address_action(addressesmod.strangers_to_junk, _acc(account),
+                           body.address)
+
+
+@app.post("/api/addresses/related")
+def post_address_related(body: AddressBody, account: str | None = Query(None)):
+    """"Not a leak": the strangers belong to the sender it was given to."""
+    return _address_action(addressesmod.mark_related, _acc(account),
+                           body.address, body.undo)
+
+
+class AliasServiceBody(BaseModel):
+    service: str
+    api_key: str | None = None
+
+
+@app.get("/api/alias-service")
+def get_alias_service():
+    """The Settings -> Alias service row: which service, whether a key is
+    stored (never the key), the last sync."""
+    return aliasservice.status()
+
+
+@app.put("/api/alias-service")
+def put_alias_service(body: AliasServiceBody):
+    """Choose the service and / or set the API key, then read the alias list
+    (a changed key is tried at once)."""
+    before = aliasservice.cached_aliases()
+    try:
+        aliasservice.configure(body.service, body.api_key)
+    except aliasservice.AliasError as exc:
+        raise _address_refusal(exc)
+    out = aliasservice.refresh() if aliasservice.connected() \
+        else aliasservice.status()
+    addressesmod.alias_list_changed(before)
+    return out
+
+
+@app.post("/api/alias-service/refresh")
+def post_alias_service_refresh():
+    """"Check connection": read the alias list again."""
+    before = aliasservice.cached_aliases()
+    out = aliasservice.refresh()
+    addressesmod.alias_list_changed(before)
+    return out
+
+
+@app.delete("/api/alias-service")
+def delete_alias_service():
+    before = aliasservice.cached_aliases()
+    out = aliasservice.disconnect()
+    addressesmod.alias_list_changed(before)
+    return out
 
 
 @app.post("/api/index/build")
@@ -2772,6 +2889,7 @@ def post_config(body: dict, request: Request, response: Response):
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
+        addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
         assistanttokens.drop_account(tenants.current().id,
@@ -2800,6 +2918,7 @@ def post_config(body: dict, request: Request, response: Response):
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
             substore.rename_account(old, new)
+            addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)

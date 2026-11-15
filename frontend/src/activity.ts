@@ -355,6 +355,11 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       detail = "";
       break;
     }
+    case "alias_retired": case "alias_restored": case "alias_created":
+      title = label ? t(`audit.h.${e.action}`, { label })
+        : tOr("audit.act", e.action);
+      detail = "";   // the headline names the alias
+      break;
     case "assistant_token_created": case "assistant_token_revoked":
       title = label ? t(`audit.h.${e.action}`, { name: label })
         : tOr("audit.act", e.action);

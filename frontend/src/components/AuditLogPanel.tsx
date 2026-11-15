@@ -1,7 +1,7 @@
 import { Archive, ArrowLeftRight, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
   CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, KeyRound, ListChecks,
   Circle, Mail, MailCheck, Pin, RefreshCw, ScrollText, Send, ShieldCheck,
-  Trash2, Undo2, type LucideIcon }
+  Trash2, Undo2, VenetianMask, type LucideIcon }
   from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { assistantActorName, entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
@@ -47,6 +47,9 @@ const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   unsubscribe: { icon: BellOff, tone: "bg-info-bg text-info-fg" },
   undo: { icon: Undo2, tone: "bg-chip text-chiptext" },
   digest_sent: { icon: Send, tone: "bg-chip text-chiptext" },
+  alias_retired: { icon: VenetianMask, tone: "bg-keep-bg text-keep-fg" },
+  alias_restored: { icon: VenetianMask, tone: "bg-safe-bg text-safe-fg" },
+  alias_created: { icon: VenetianMask, tone: "bg-info-bg text-info-fg" },
   assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
   assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
   assistant_token_cap: { icon: KeyRound, tone: "bg-chip text-chiptext" },

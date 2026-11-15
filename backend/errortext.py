@@ -210,6 +210,18 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The push service answered with error {status}.',
     'push_unreachable':
         'The push service could not be reached from the server.',
+    'alias_no_service':
+        'No alias service is connected - add your API key in Settings first.',
+    'alias_key':
+        'The alias service did not accept the API key.',
+    'alias_unreachable':
+        'The alias service could not be reached from the server.',
+    'alias_http':
+        'The alias service answered with error {status}.',
+    'alias_not_found':
+        'This alias is not in your alias service.',
+    'alias_bad_address':
+        'This is not one of your addresses.',
     'assistants_off':
         'AI assistant access is switched off on this server - an administrator can turn it on in Settings.',
     'level_not_available':

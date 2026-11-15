@@ -153,7 +153,7 @@ async function copyText(text: string): Promise<boolean> {
 
 /** Copy button: a labelled one or an icon-only one; shows a check for a
  *  moment. `onCopied` lets a dialog know the user copied something. */
-function CopyButton({ text, name, labelled = false, onCopied }: {
+export function CopyButton({ text, name, labelled = false, onCopied }: {
   text: string; name: string; labelled?: boolean; onCopied?: () => void;
 }) {
   const toast = useToast();

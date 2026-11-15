@@ -657,6 +657,33 @@ subscription, on your own server through your own mail connection, and keeps
 only the amount and its currency. Nothing is sent anywhere, and switching it
 off forgets the amounts it found. It is off by default.
 
+### Your addresses
+
+<small class="where">Insights → Your addresses</small>
+
+Lists every address mail arrived on - your main address, `+tag` addresses, a
+catch-all on your own domain, aliases from an alias service (or Firefox Relay's alias domain), an old address
+that forwards to you - read from the To / Delivered-To / X-Original-To lines
+of the scanned mails (headers only). Per address: who it was given to (its
+first sender), how many mails and senders, and a status. **Leak** means an
+address that one sender (and the senders you marked "same company") used for at
+least 60 days, after which at least two unrelated senders started to write to
+it; the row turns orange and the pane tells the story as a timeline with the
+strangers and their mail counts. Main addresses and `+tags` never count as
+leaked. **Strangers to Junk** and **Block the N** use the normal paths (confirm
+with the count, Undo, protected senders and pinned mails are skipped); "Not a
+leak?" marks them as related. The first scan after the update also reads the
+address of the mails already scanned, with a light header-only request.
+
+With an optional [alias service](configuration.md) (SimpleLogin or addy.io, API
+key in Settings → Alias service, off until you add one) you can also **Retire
+this alias** (switched off at the service - mails already here stay - and
+**Turn back on** any time), make a fresh alias for the sender and move the
+strangers' mails to Junk in the same step. Without a service everything else
+works; Retire then explains how to switch the alias off by hand. The API key is
+stored like the other secrets; the only outbound hosts are the services' API
+hosts.
+
 ### Trackers
 
 <small class="where">Insights → Trackers</small>

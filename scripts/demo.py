@@ -61,6 +61,8 @@ os.environ.update(
     TENANTS_DIR=str(DATA / "tenants"),
     SESSION_SECRET_PATH=str(DATA / "session_secret"),
     PINS_PATH=str(DATA / "pinned_mails.json"),
+    ADDRESSES_PATH=str(DATA / "addresses.json"),
+    ALIAS_SERVICE_PATH=str(DATA / "alias_service.json"),
     LABELS_PATH=str(DATA / "sender_labels.json"),
     DUPS_PATH=str(DATA / "duplicates_kept.json"),
     SUBS_PATH=str(DATA / "subscriptions.json"),
@@ -92,7 +94,7 @@ def _fixture(*a, **k):
 sys.modules.setdefault("pytest", types.SimpleNamespace(fixture=_fixture))
 
 from conftest import FakeIMAP, make_msg          # noqa: E402
-from backend import accounts, aihelper, demo, mailops, rules      # noqa: E402
+from backend import accounts, aihelper, aliasservice, demo, mailops, rules  # noqa: E402
 
 
 
@@ -175,8 +177,60 @@ def _demo_ai_client(cfg):
 
 
 
+class DemoAliasService:
+    """The alias service the demo is connected to (SimpleLogin's API, in
+    memory): 142 invented aliases on `alias.example`, three of them the ones
+    the Your addresses page tells a story about. Retiring one switches it off
+    here; the visitor's changes go with a Reset."""
+
+    PAGE = 20
+    STORY = {"acme.x7k2@alias.example": 11, "travelly.q9@alias.example": 12,
+             "chirper.k1@alias.example": 13}
+
+    def __init__(self):
+        import random
+        rng = random.Random(11)
+        words = ["cafe", "news", "shop", "bank", "club", "mail", "game",
+                 "play", "work", "gift", "trip", "book"]
+        self.aliases = [{"id": i, "email": e, "enabled": True}
+                        for e, i in self.STORY.items()]
+        n = 14
+        while len(self.aliases) < 142:
+            email = f"{rng.choice(words)}.{rng.randrange(36**4):04x}@alias.example"
+            if all(a["email"] != email for a in self.aliases):
+                self.aliases.append({"id": n, "email": email,
+                                     "enabled": rng.random() > 0.08})
+                n += 1
+
+    def __call__(self, method, url, headers, body=None):
+        base = aliasservice.SERVICES["simplelogin"]
+        if not url.startswith(base) \
+                or headers.get("Authentication") != "demo-api-key":
+            return 401, None
+        path = url[len(base):]
+        if method == "GET" and path.startswith("/v2/aliases"):
+            page = int(path.rpartition("page_id=")[2] or 0)
+            rows = self.aliases[page * self.PAGE:(page + 1) * self.PAGE]
+            return 200, {"aliases": [dict(r) for r in rows]}
+        if method == "POST" and path.endswith("/toggle"):
+            ident = int(path.split("/")[2])
+            for a in self.aliases:
+                if a["id"] == ident:
+                    a["enabled"] = not a["enabled"]
+                    return 200, {"enabled": a["enabled"]}
+            return 404, None
+        if method == "POST" and path.startswith("/alias/random/new"):
+            ident = max(a["id"] for a in self.aliases) + 1
+            email = f"fresh.{ident:04x}@alias.example"
+            self.aliases.append({"id": ident, "email": email, "enabled": True})
+            return 201, {"id": ident, "email": email}
+        return 404, None
+
+
 def _install_ai() -> None:
     aihelper.ai_client = _demo_ai_client
+    # the alias service seam: an in-memory service instead of the network
+    aliasservice.request = DemoAliasService()
 
 
 # The SDK interop run (scripts/mcp-interop.py) connects over OAuth against this
@@ -255,8 +309,8 @@ def _forget_the_last_visitor() -> None:
     """What a "Reset demo" must not keep: files the seed does not have
     (pins, known senders, ...) and the stores' in-memory copies of them."""
     import shutil
-    from backend import (dupstore, labelstore, pinstore, substore, unsubstore,
-                         verdictstore)
+    from backend import (addresses, addressstore, dupstore, labelstore,
+                         pinstore, substore, unsubstore, verdictstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
             continue
@@ -265,6 +319,8 @@ def _forget_the_last_visitor() -> None:
     pinstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
+    addressstore._cache.clear()
+    addresses._cache.clear()
     unsubstore._cache.clear()
     verdictstore._mails_cache.clear()
     mailops._SENT_CACHE.clear()

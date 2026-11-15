@@ -34,3 +34,20 @@ notify.windows.com        # Web Push service (public infrastructure)
 jsdelivr.net             # Pyodide release CDN: the demo bundle build downloads the pinned wheels from it (scripts/demo-bundle/build.mjs)
 schema.org               # JSON-LD vocabulary on the landing page (website/landing/src/pages/index.astro)
 sitemaps.org             # XML namespace of website/public/sitemap.xml
+
+# E-mail alias services Inboxrake can talk to (backend/aliasservice.py; maintainer decision 2026-11-15).
+# The API hosts are the only outbound hosts of the feature, the shared alias domains
+# (backend/addresspick.py ALIAS_DOMAINS) let the scan recognise an alias without asking the service.
+simplelogin.io            # SimpleLogin API host (app.simplelogin.io)
+simplelogin.com           # SimpleLogin shared alias domain
+simplelogin.co            # SimpleLogin shared alias domain
+simplelogin.fr            # SimpleLogin shared alias domain
+aleeas.com                # SimpleLogin shared alias domain
+slmail.me                 # SimpleLogin shared alias domain
+8alias.com                # SimpleLogin shared alias domain
+dralias.com               # SimpleLogin shared alias domain
+addy.io                   # addy.io API host (app.addy.io) and shared alias domain
+anonaddy.com              # addy.io shared alias domain (former name)
+anonaddy.me               # addy.io shared alias domain (former name)
+mailer.me                 # addy.io shared alias domain
+mozmail.com               # Firefox Relay alias domain (detection only, backend/addresspick.py; no API is called)

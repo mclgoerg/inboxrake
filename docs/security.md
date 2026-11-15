@@ -85,7 +85,7 @@ secrets and tokens - is encrypted on disk (Fernet/AES). That protects
 **volume backups**: without the key, a copied `/data` contains no usable
 credentials. Keep the key in the environment only, never in the backups; if
 it is lost, re-enter the secrets. Unset = plaintext (a startup log line
-reminds you).
+reminds you). The alias-service API key (below) is encrypted the same way.
 
 ## Microsoft tenant
 
@@ -152,6 +152,17 @@ same chat (web fetch, mail sending) could be: do not combine them. With Act, a
 fooled assistant can still move mail to Trash up to its daily limit (you can
 undo it): use Act only with an assistant you watch. Details,
 limits and proxy advice are on the [assistants page](assistants.md#privacy).
+
+## Alias service (optional)
+
+Off until you add an API key in Settings -> Alias service (SimpleLogin or
+addy.io). Then Inboxrake talks to that service's public API host (and only
+that) to read your alias list, switch one off or on, and make a new one on
+request; it never sends mail, mail addresses of other people or message
+content. The key is stored like the other secrets, never shown again and never
+logged; an admin who does not want the connection simply leaves it unset. The
+page "Your addresses" itself reads only the scan's metadata and needs no
+connection.
 
 ## Reporting a vulnerability
 
