@@ -94,6 +94,23 @@ example Raspberry Pi 4/5.
 </details>
 
 <details class="faq-q">
+<summary><h3 id="chatgpt-claude-ai">Can I use Inboxrake from ChatGPT or claude.ai?</h3><span class="faq-short">Yes, over OAuth, if your Inboxrake is public with a login. A private one stays with tokens and local assistants.</span></summary>
+
+Yes, as an opt-in. claude.ai and Claude Desktop (custom connector) and ChatGPT
+(developer mode, custom MCP app) connect over OAuth: you paste your address
+(`https://mail.home.example/mcp`), your browser opens an approval page in your
+Inboxrake, and you choose the accounts and the level. It needs a login, an
+https `INBOXRAKE_PUBLIC_URL`, assistant access on and the admin switch **Let
+hosted apps connect**, and a reverse proxy that lets the apps' servers reach
+`/mcp`, `/oauth/*` and `/.well-known/oauth-*` without a login in front.
+Because those apps call from the internet, only do this on an instance that is
+already public; a private one is better served by an assistant on your own
+machine with a token. Steps and troubleshooting: [Connect claude.ai or
+ChatGPT](assistants.md#connect-claudeai-or-chatgpt-oauth).
+
+</details>
+
+<details class="faq-q">
 <summary><h3 id="is-it-safe-to-expose">Is it safe to expose?</h3><span class="faq-short">There is no login by default - keep the port on localhost or behind an authenticating proxy.</span></summary>
 
 There is no login by default - keep the port on localhost or behind an
