@@ -1203,6 +1203,45 @@ def test_the_old_refresh_token_rotates_again_while_the_successor_is_unused(
     assert mcp(lost["access_token"]).status_code == 401
 
 
+def test_parallel_refreshes_with_one_token_never_revoke_the_grant(world, clock):
+    import threading
+    first = connect(world)
+    codes = []
+
+    def go():
+        codes.append(refresh(first["refresh_token"]).status_code)
+    threads = [threading.Thread(target=go) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert codes == [200] * 4
+    assert len(grants()) == 1
+    assert ("assistant_disconnected", "system", "error", "refresh_reuse") \
+        not in audit_actions()
+
+
+def test_sequential_retries_within_the_grace_keep_rotating(world, clock):
+    first = connect(world)
+    for _ in range(4):
+        clock.tick(5)
+        assert refresh(first["refresh_token"]).status_code == 200
+    assert len(grants()) == 1
+    # the last successor is still the live one
+    assert mcp(refresh(first["refresh_token"]).json()["access_token"]) \
+        .status_code == 200
+
+
+def test_a_retry_whose_successor_was_used_still_revokes_after_retries(
+        world, clock):
+    first = connect(world)
+    refresh(first["refresh_token"])
+    latest = refresh(first["refresh_token"]).json()   # a retry: still fine
+    assert mcp(latest["access_token"]).status_code == 200    # used
+    assert refresh(first["refresh_token"]).json()["error"] == "invalid_grant"
+    assert grants() == []
+
+
 def test_the_grace_ends_after_60_seconds(world, clock):
     first = connect(world)
     refresh(first["refresh_token"])

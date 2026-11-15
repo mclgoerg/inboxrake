@@ -366,7 +366,9 @@ def rotate(token_id: str, secret: str,
         elif retired and hmac.compare_digest(retired[-1], digest) \
                 and not rec.get("successor_used") \
                 and now - int(rec.get("rotated_at") or 0) <= REFRESH_GRACE:
-            retired.append(str(rec["refresh_hash"]))   # the unused successor
+            # the unused successor goes BEFORE the presented one, which stays
+            # the newest retired secret: a retry of it keeps rotating
+            retired.insert(len(retired) - 1, str(rec["refresh_hash"]))
         elif any(hmac.compare_digest(h, digest) for h in retired):
             _write([t for t in tokens if t is not rec])
             return "reuse", public(rec), "", ""
