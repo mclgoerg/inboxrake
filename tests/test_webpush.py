@@ -25,6 +25,7 @@ from backend import autoscan as autoscanmod
 from backend import config as cfgmod
 from backend import demo
 from backend import mailops
+from backend import netguard
 from backend import tenants
 from backend import unsub
 from backend import webpush
@@ -378,9 +379,9 @@ def test_a_failure_logs_host_and_status_but_never_the_path(network, caplog):
 
 def test_the_real_post_goes_through_the_ssrf_guard(monkeypatch):
     """No sockets: the address check refuses before anything connects."""
-    monkeypatch.setattr(unsub, "_resolve_public", lambda h, p: (_ for _ in ()
+    monkeypatch.setattr(netguard, "resolve_public", lambda h, p: (_ for _ in ()
                         ).throw(RuntimeError("unsub_blocked")))
-    monkeypatch.setattr(unsub, "_PinnedHTTPSConnection",
+    monkeypatch.setattr(netguard, "PinnedHTTPSConnection",
                         lambda *a, **k: pytest.fail("connected"))
     with pytest.raises(webpush.PushError, match="push_unreachable"):
         webpush._post(ENDPOINT, {}, b"x")
@@ -405,8 +406,8 @@ def test_the_real_post_pins_the_address_and_never_follows(monkeypatch):
         def close(self):
             seen["closed"] = True
 
-    monkeypatch.setattr(unsub, "_resolve_public", lambda h, p: ["17.0.0.1"])
-    monkeypatch.setattr(unsub, "_PinnedHTTPSConnection", Conn)
+    monkeypatch.setattr(netguard, "resolve_public", lambda h, p: ["17.0.0.1"])
+    monkeypatch.setattr(netguard, "PinnedHTTPSConnection", Conn)
     assert webpush._post(ENDPOINT + "?a=b", {}, b"x") == 302
     assert seen == {"host": "web.push.apple.com", "port": 443,
                     "ip": "17.0.0.1", "timeout": 10, "method": "POST",

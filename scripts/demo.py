@@ -176,9 +176,27 @@ def _install_ai() -> None:
     aihelper.ai_client = _demo_ai_client
 
 
+# The SDK interop run (scripts/mcp-interop.py) connects over OAuth against this
+# server: its "client" is a fixture whose metadata document is put straight into
+# the CIMD cache (there is no public client.example to fetch it from), and an
+# http://127.0.0.1 address may count as the public URL. Dev only: the flag is
+# set here, in code - there is no environment switch for it in production.
+INTEROP_CLIENT_ID = "https://client.example/interop.json"
+
+
+def _oauth_dev() -> None:
+    from backend import config as cfgmod, oauthclients
+    cfgmod.ALLOW_HTTP_LOOPBACK_ISSUER = True
+    oauthclients.seed(INTEROP_CLIENT_ID, {
+        "client_id": INTEROP_CLIENT_ID, "client_name": "Interop client",
+        "redirect_uris": ["https://client.example/cb"],
+        "token_endpoint_auth_method": "none"})
+
+
 def _serve() -> None:
     import uvicorn
     from backend.main import app
+    _oauth_dev()
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("DEMO_PORT", "8765")), log_level="warning")
 
 

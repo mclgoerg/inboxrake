@@ -1,14 +1,17 @@
-"""Alerts for a rule an AI assistant has proposed (`propose_rule`).
+"""Alerts for what an AI assistant does that the user should notice: a rule it
+has proposed (`propose_rule`), and a hosted AI app that was just connected over
+OAuth (backend/oauthserver.py; the main defence against consent phishing).
 
 Three channels besides the in-app toast and badges (which the UI makes from
 the rules it is sent): a Web Push (backend/webpush.py, short generic text),
 and an email through the proposal's account (smtpout, like the activity
 digest) to the digest recipient or else the account's own address. The email
 is on by default (`assistants_notify.email` in the tenant's settings) and
-BATCHED: at most one mail per tenant every EMAIL_WINDOW seconds; proposals
+BATCHED: at most one mail per tenant every EMAIL_WINDOW seconds; alerts
 that arrive inside the window wait and go out together ("2 new proposals")
-when it ends. An account that cannot send (no recipient, no credentials) is
-skipped without an error; Settings shows a hint.
+when it ends (a proposal mail and a connection mail are separate mails). An
+account that cannot send (no recipient, no credentials) is skipped without an
+error; Settings shows a hint.
 
 The proposal's name and filter are written by the assistant: they appear as
 plain text (control characters removed, cut), never as links - the only link
@@ -27,6 +30,7 @@ import threading
 import time
 import unicodedata
 
+from . import accounts as accountsmod
 from . import auditlog
 from . import config as cfgmod
 from . import demo
@@ -115,6 +119,24 @@ def notify(acc, rule: dict, token_name: str, report: dict) -> None:
         log.exception("could not alert about a proposal")
 
 
+def notify_connection(tenant, account: str, host: str, level: str) -> None:
+    """A hosted AI app was connected (its grant exists): push and (batched)
+    email, like a proposal. Returns at once and never raises."""
+    try:
+        if demo.enabled():
+            return
+        host, shown = plain(host, SOURCE_MAX), level.capitalize()
+        with tenants.use(tenant):
+            webpush.job_finished(accountsmod.get(account), "connection",
+                                 True, label=f"{host} ({shown})")
+            if not cfgmod.load_config()["assistants_notify"]["email"]:
+                return
+        _queue_email(tenant, {"kind": "connection", "account": account,
+                              "host": host, "level": level})
+    except Exception:
+        log.exception("could not alert about a connection")
+
+
 def _queue_email(tenant, entry: dict) -> None:
     """Send now when the window is free, else hold the entry for the mail
     that ends the window."""
@@ -163,13 +185,22 @@ def _send(tenant, batch: list[dict]) -> None:
         to = cfgmod.mail_recipient(block)
         d = block.get("digest") or {}
         lang = d.get("lang") if d.get("lang") in STRINGS else "en"
-        subject, text, html = compose(lang, batch, d.get("url") or "")
-        smtpout.send(block, to, subject, text, html,
-                     account_name=entry["account"])
-        auditlog.record("proposal_mail_sent",
-                        account=entry["account"], count=len(batch), label=to,
-                        outcome="ok")
-        log.info("proposal alert mailed (%d proposal(s))", len(batch))
+        proposals = [e for e in batch if e.get("kind") != "connection"]
+        connections = [e for e in batch if e.get("kind") == "connection"]
+        if connections:
+            subject, text, html = compose_connections(
+                lang, connections, d.get("url") or "")
+            smtpout.send(block, to, subject, text, html,
+                         account_name=connections[0]["account"])
+            log.info("connection alert mailed (%d)", len(connections))
+        if proposals:
+            subject, text, html = compose(lang, proposals, d.get("url") or "")
+            smtpout.send(block, to, subject, text, html,
+                         account_name=entry["account"])
+            auditlog.record("proposal_mail_sent",
+                            account=entry["account"], count=len(proposals),
+                            label=to, outcome="ok")
+            log.info("proposal alert mailed (%d proposal(s))", len(proposals))
 
 
 # ------------------------------------------------------------------ texts
@@ -196,6 +227,17 @@ STRINGS = {
                "AI assistants.",
         "defang": "Addresses are shown with [.] so mail apps don't turn "
                   "them into links.",
+        "conn_subject_one": "Inboxrake: new AI connection: {host} ({level})",
+        "conn_subject_other": "Inboxrake: {n} new AI connections",
+        "conn_intro_one": "An AI app was just connected to your Inboxrake.",
+        "conn_intro_other": "{n} AI apps were just connected to your "
+                            "Inboxrake.",
+        "conn_line": "{host} · {level} access · {account}",
+        "conn_notyou": "You approved this in your browser. If that wasn't "
+                       "you, disconnect the app now in Settings › AI "
+                       "assistants.",
+        "conn_button": "Open the connections",
+        "level_read": "Read", "level_propose": "Propose", "level_act": "Act",
     },
     "de": {
         "subject_one": "Inboxrake: {source} schlägt eine Regel vor",
@@ -219,6 +261,19 @@ STRINGS = {
                "KI-Assistenten an sind.",
         "defang": "Adressen stehen mit [.], damit Mail-Apps keine Links "
                   "daraus machen.",
+        "conn_subject_one": "Inboxrake: neue KI-Verbindung: {host} ({level})",
+        "conn_subject_other": "Inboxrake: {n} neue KI-Verbindungen",
+        "conn_intro_one": "Eine KI-App wurde gerade mit deinem Inboxrake "
+                          "verbunden.",
+        "conn_intro_other": "{n} KI-Apps wurden gerade mit deinem Inboxrake "
+                            "verbunden.",
+        "conn_line": "{host} · Zugriff {level} · {account}",
+        "conn_notyou": "Du hast das in deinem Browser erlaubt. Warst du das "
+                       "nicht, trenne die App jetzt in Einstellungen › "
+                       "KI-Assistenten.",
+        "conn_button": "Verbindungen öffnen",
+        "level_read": "Lesen", "level_propose": "Vorschlagen",
+        "level_act": "Handeln",
     },
 }
 
@@ -266,4 +321,42 @@ def compose(lang: str, batch: list[dict], url: str) -> tuple[str, str, str]:
             '<p>%s</p>%s%s<p style="color:#6b6760;font-size:12px">%s<br>%s</p>'
             '</div>' % (esc(intro), box, button, esc(S["defang"]),
                         esc(S["why"])))
+    return subject, text, html
+
+
+CONN_ROUTE = "/#/settings/assistants"
+
+
+def compose_connections(lang: str, batch: list[dict],
+                        url: str) -> tuple[str, str, str]:
+    """-> (subject, plain text, HTML) for a batch of new connections."""
+    S = STRINGS[lang]
+    n = len(batch)
+    lines = [S["conn_line"].format(
+        host=defang(e["host"]), account=e["account"],
+        level=S.get("level_" + e["level"], e["level"])) for e in batch]
+    first = batch[0]
+    subject = S["conn_subject_one" if n == 1 else "conn_subject_other"].format(
+        host=defang(first["host"]), n=n,
+        level=S.get("level_" + first["level"], first["level"]))
+    intro = S["conn_intro_one" if n == 1 else "conn_intro_other"].format(n=n)
+    link = url.rstrip("/") + CONN_ROUTE if url else ""
+    text = "\n\n".join([intro, "\n".join(lines)]
+                        + ([f"{S['conn_button']}: {link}"] if link else [])
+                        + [S["conn_notyou"], S["defang"], S["why"]])
+    esc = htmlmod.escape
+    box = "".join(
+        '<div style="background:#f4f1ec;border-radius:8px;padding:12px;'
+        'margin:0 0 10px;font-weight:600">%s</div>' % esc(line)
+        for line in lines)
+    button = ('<p><a href="%s" style="background:#9a5b0a;color:#ffffff;'
+              'padding:9px 16px;border-radius:8px;text-decoration:none;'
+              'font-weight:600">%s</a></p>'
+              % (esc(link, quote=True), esc(S["conn_button"]))) if link else ""
+    html = ('<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,'
+            'sans-serif;font-size:15px;color:#1c1b19;max-width:520px">'
+            '<p>%s</p>%s%s<p>%s</p><p style="color:#6b6760;font-size:12px">'
+            '%s<br>%s</p></div>' % (esc(intro), box, button,
+                                    esc(S["conn_notyou"]), esc(S["defang"]),
+                                    esc(S["why"])))
     return subject, text, html

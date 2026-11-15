@@ -133,7 +133,8 @@ def ok(secret, name, arguments=None, **kw) -> dict:
 # ------------------------------------------------------------- the admin cap
 
 def test_cap_is_off_by_default_and_the_endpoint_does_not_exist(mbox):
-    assert cfgmod.load_server()["assistants"] == {"access": "off"}
+    assert cfgmod.load_server()["assistants"] == {"access": "off",
+                                                    "oauth": False}
     assert client.post("/mcp", json={}).status_code == 404
     assert client.get("/mcp").status_code == 404
     # tokens cannot be created ...
@@ -169,6 +170,9 @@ def test_only_the_admin_sets_the_cap_and_only_known_values(monkeypatch):
     cfg = client.get("/api/config").json()
     notify = cfg["assistants"].pop("notify")
     assert notify["email"] is True
+    assert cfg["assistants"].pop("oauth") == {
+        "enabled": False, "available": False, "public_url": "",
+        "reason": "oauth_needs_login", "mcp_url": ""}
     assert cfg["assistants"] == {"access": "act",
                                  "levels": ["read", "propose", "act"],
                                  "options": ["off", "read_propose", "act"],
@@ -198,8 +202,13 @@ def test_non_admins_see_the_cap_but_cannot_change_it():
     alice.cookies.set("pmc_session", authmod.make_session("alice@x.example"))
     seen = alice.get("/api/config").json()["assistants"]
     assert seen.pop("notify")["email"] is True
+    assert seen.pop("oauth") == {      # no public_url: that is the admin's
+        "enabled": False, "available": False, "mcp_url": "",
+        "reason": "oauth_needs_public_url"}
     assert seen == {"access": "off", "levels": ["read", "propose", "act"]}
     r = alice.post("/api/config", json={"assistants": {"access": "act"}})
+    assert r.status_code == 403
+    r = alice.post("/api/config", json={"assistants": {"oauth": True}})
     assert r.status_code == 403
     assert cfgmod.assistant_access() == "off"
 
@@ -245,10 +254,40 @@ def test_token_creation_refusals(mbox):
     refused("assistant_token_cap", daily_cap=10_001)
     assert client.get("/api/assistants/tokens").json()["tokens"] == []
     for days in (30, 90, None):
-        _token(expires_days=days)
+        _token(expires_days=days, name=f"Laptop {days}")
     toks = client.get("/api/assistants/tokens").json()["tokens"]
     assert [bool(t["expires"]) for t in toks] == [True, True, False]
     assert toks[0]["expires"] - toks[0]["created"] == 30 * 86400
+
+
+def test_token_names_are_unique_per_workspace_whatever_the_case(mbox):
+    """The Activity filter finds a token's steps by its name (the audit actor
+    `mcp:<name>`), so two tokens of one workspace never share one."""
+    _cap()
+    _token(name="Desk laptop")
+    for same in ("Desk laptop", "desk LAPTOP", "  Desk\tlaptop ", "DESK  laptop"):
+        r = client.post("/api/assistants/tokens", json={
+            "name": same, "accounts": ["default"]})
+        assert (r.status_code, r.json()["detail"]) == (400, "name_taken"), same
+    assert len(client.get("/api/assistants/tokens").json()["tokens"]) == 1
+    _token(name="Desk laptop 2")                  # another name is fine
+    # a revoked token's name is free again
+    tid = client.get("/api/assistants/tokens").json()["tokens"][0]["id"]
+    client.delete(f"/api/assistants/tokens/{tid}")
+    _token(name="desk laptop")
+
+
+def test_other_workspaces_may_reuse_a_name():
+    c = _oidc_clients()
+    c["alice"].post("/api/config", json={
+        "rename_account": {"from": "default", "to": "alice-box"}})
+    c["bob"].post("/api/config", json={
+        "rename_account": {"from": "default", "to": "bob-box"}})
+    _token(c["alice"], accounts=["alice-box"], name="Laptop")
+    _token(c["bob"], accounts=["bob-box"], name="Laptop")
+    r = c["bob"].post("/api/assistants/tokens", json={
+        "name": "LAPTOP", "accounts": ["bob-box"]})
+    assert r.status_code == 400 and r.json()["detail"] == "name_taken"
 
 
 def test_at_most_twenty_tokens_per_workspace(mbox):

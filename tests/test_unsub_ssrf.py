@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from backend import unsub
+from backend import netguard, unsub
 
 PUBLIC = "93.184.216.34"
 
@@ -154,8 +154,8 @@ def server(tmp_path, monkeypatch):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         servers.append(srv)
         cctx = ssl.create_default_context(cafile=str(cf))
-        monkeypatch.setattr(unsub, "_ssl_context", lambda: cctx)
-        monkeypatch.setattr(unsub, "_public_ip",
+        monkeypatch.setattr(netguard, "ssl_context", lambda: cctx)
+        monkeypatch.setattr(netguard, "public_ip",
                             lambda raw: ipaddress.ip_address(raw))
         monkeypatch.setattr(unsub.socket, "getaddrinfo",
                             _answer("127.0.0.1"))
@@ -201,5 +201,5 @@ def test_plain_http_url_refused_for_post():
 
 
 def test_production_tls_context_verifies_chain_and_name():
-    ctx = unsub._ssl_context()
+    ctx = netguard.ssl_context()
     assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
