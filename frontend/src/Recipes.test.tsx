@@ -433,3 +433,15 @@ test("a recipe handed in (What stands out) opens the recipe dialog with it first
   await waitFor(() => expect(cards().length).toBeGreaterThan(1));
   expect(cards()[0].dataset.recipe).toBe("keep5");
 });
+
+test("the marked recipe is gone once the recipe dialog is closed", async () => {
+  render(<DialogProvider>
+    <RulesModal state={withGroups()} initialRecipe="keep5" onClose={() => {}}
+      onChanged={() => {}} />
+  </DialogProvider>);
+  await waitFor(() => expect(cards()[0].dataset.recipe).toBe("keep5"));
+  fireEvent.click(within(scope() as HTMLElement).getByRole("button", { name: "Close" }));
+  fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+  await waitFor(() => expect(cards().length).toBeGreaterThan(3));
+  expect(cards()[0].dataset.recipe).not.toBe("keep5");
+});

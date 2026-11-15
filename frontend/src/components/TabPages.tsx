@@ -20,7 +20,7 @@ import { ProposalBadge } from "./Sidebar";
 import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
-import { busiest, hh, periodName, slotText, standsOut, type RhythmResp }
+import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
 import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
@@ -431,11 +431,11 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub,
           <span className="flex items-center gap-2 type-meta font-semibold text-muted">
             <span aria-hidden className="text-accent"><Clock size={16} /></span>
             <span className="min-w-0 flex-1 truncate">{t("stats.rhythm")}</span>
-            <span>{periodName("30d")}</span>
+            <span>{periodTitle("30d")}</span>
           </span>
           <span className="mt-3 block">
             <HeatGrid mini grid={rhythm.kinds.all.grid}
-              label={`${t("stats.rhythm")}. ${periodName("30d")}`} />
+              label={`${t("stats.rhythm")}. ${periodTitle("30d")}`} />
           </span>
           <span className="mt-2 flex items-center justify-between gap-2 type-caption
             text-muted">

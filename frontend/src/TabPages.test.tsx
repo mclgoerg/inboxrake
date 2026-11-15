@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from
   "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { setLang } from "./i18n";
 import type { AppState, Group } from "./types";
 
 const stats = vi.fn();
@@ -387,6 +388,12 @@ test("Insights: When mail arrives widget - the small grid, the legend, the busie
   expect(widget.textContent).toContain("fewer");
   fireEvent.click(widget);
   expect(onOpen).toHaveBeenLastCalledWith("stats");
+  cleanup(); setLang("de");
+  render(<InsightsPage groups={[]} state={state()} onOpen={vi.fn()} />);
+  const de = (await screen.findByText("am meisten Di 06:00", { exact: false })).closest("button")!;
+  expect(de.textContent).toContain("30 Tage");
+  expect(de.textContent).not.toContain("Tagen");
+  setLang("en");
 });
 
 test("Insights: What stands out shows the first sentence and the sender line", async () => {

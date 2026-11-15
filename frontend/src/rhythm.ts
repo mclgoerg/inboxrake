@@ -123,6 +123,9 @@ export function daysText(days: number[], long = false): string {
 export const periodName = (p: RhythmPeriod): string =>
   t(p === "30d" ? "rhythm.in30" : p === "12m" ? "rhythm.in12" : "rhythm.inall");
 
+/** The period on its own ("30 days"; periodName is the form after "in"). */
+export const periodTitle = (p: RhythmPeriod): string => t(`rhythm.per_${p}`);
+
 /** "Tue, 06:00 - 07:00" / "Mon - Thu, 9:00 - 17:00" */
 export const slotRangeText = (days: number[], from: number, to: number): string =>
   `${daysText(days)}, ${hh(from)} - ${hh(to)}`;

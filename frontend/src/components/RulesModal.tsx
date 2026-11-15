@@ -482,6 +482,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   // the plain-words filter writer.
   const [creating, setCreating] = useState<"recipe" | "describe" | null>(
     initialRecipe ? "recipe" : null);
+  // the recipe marked in the dialog it opened with; gone once that is closed
+  const [mark, setMark] = useState(initialRecipe);
   // rules added from a recipe in this session (their card says so)
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [starterBusy, setStarterBusy] = useState("");
@@ -1071,7 +1073,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
           onClose={() => setReportId(null)} />
       )}
       {creating === "recipe" && (
-        <RecipeDialog state={state} ai={ai} highlight={initialRecipe} onClose={() => setCreating(null)}
+        <RecipeDialog state={state} ai={ai} highlight={mark}
+          onClose={() => { setMark(undefined); setCreating(null); }}
           onMode={newMode} onAdd={addRecipe} />
       )}
       {creating === "describe" && (

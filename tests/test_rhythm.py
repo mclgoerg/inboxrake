@@ -190,6 +190,17 @@ def test_a_clock_change_does_not_hide_a_daily_sender_but_a_wide_spread_does():
     assert [d["key"] for d in daily] == ["dst@x.example"]
 
 
+def test_daily_window_is_the_main_hour_and_one_neighbour_not_both():
+    rec = {"unsub": "<https://u.example/x>"}
+    midnight = NOW - NOW % DAY
+    hours = [6] * 8 + [5] * 6 + [7] * 6         # 20 days: 06 leads, 05 / 07 trail
+    mails = [_mail(midnight - (d + 1) * DAY + h * 3600 + 600, "w@x.example",
+                   unsub="<https://u.example/x>") for d, h in enumerate(hours)]
+    acc = _acc(mails, {"w@x.example": rec})
+    # 06 + the better neighbour covers 14 of 21 days; 05 + 06 + 07 would be 20
+    assert rhythm.build(acc, "30d", now=NOW)["daily"] == []
+
+
 def test_daily_skips_protected_people_and_senders_without_unsubscribe():
     unsub = {"unsub": "<https://u.example/x>"}
     mails = (_daily_mails("prot@x.example") + _daily_mails("pal@x.example")
