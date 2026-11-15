@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.4.0](https://github.com/mclgoerg/inboxrake/compare/v2.3.0...v2.4.0) (2026-11-15)
+
+
+### Features
+
+* AI assistants can clean up mail (opt-in) ([#364](https://github.com/mclgoerg/inboxrake/issues/364)) ([1eb880c](https://github.com/mclgoerg/inboxrake/commit/1eb880ce0a991166345b352d394272b32ac6ca6a))
+* AI assistants can propose rules for you to approve ([#365](https://github.com/mclgoerg/inboxrake/issues/365)) ([46475dc](https://github.com/mclgoerg/inboxrake/commit/46475dc74c1a917b02480482acf50f0a6e95b96e))
+* AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+* approve and manage AI app connections ([#368](https://github.com/mclgoerg/inboxrake/issues/368)) ([8d5a942](https://github.com/mclgoerg/inboxrake/commit/8d5a9429133b38edaa0841c6040f2e264b0a317d))
+* copy what matters to another account ([#370](https://github.com/mclgoerg/inboxrake/issues/370)) ([463e4d7](https://github.com/mclgoerg/inboxrake/commit/463e4d78f56bbb9822c4d94b73f6c25ff42e1134))
+* find the subscriptions you still pay for ([#373](https://github.com/mclgoerg/inboxrake/issues/373)) ([30f77dd](https://github.com/mclgoerg/inboxrake/commit/30f77dd4c6a6bab057e1e406b793b32a12d87b00))
+* hosted AI apps can connect over OAuth ([#366](https://github.com/mclgoerg/inboxrake/issues/366)) ([458867b](https://github.com/mclgoerg/inboxrake/commit/458867b51a51d30102dfecb09e7516cb8b0fa014))
+* keep invoices, bookings and contracts out of big cleanups ([#371](https://github.com/mclgoerg/inboxrake/issues/371)) ([2ec6fdb](https://github.com/mclgoerg/inboxrake/commit/2ec6fdb2d7b9cde40cdc9908db390996b04aec60))
+* notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+* read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+* restore your mailbox to an earlier point in time ([#374](https://github.com/mclgoerg/inboxrake/issues/374)) ([d996b3e](https://github.com/mclgoerg/inboxrake/commit/d996b3e1708f928e463de226638b15311f7ee2be))
+* see when your mail arrives ([#369](https://github.com/mclgoerg/inboxrake/issues/369)) ([4029560](https://github.com/mclgoerg/inboxrake/commit/40295608e6c6cb621776497f2eced8c1421d4711))
+* see which of your addresses leaked and retire an alias ([#372](https://github.com/mclgoerg/inboxrake/issues/372)) ([c89e28d](https://github.com/mclgoerg/inboxrake/commit/c89e28d13341e33c93f0925b098a37a0695c5dd4))
+* start a rule from a recipe ([#367](https://github.com/mclgoerg/inboxrake/issues/367)) ([df1ed8c](https://github.com/mclgoerg/inboxrake/commit/df1ed8c0d97795f4b15554cbd92ecc553489cb55))
+
+
+### Bug Fixes
+
+* clearer assistant access choice in Settings ([#377](https://github.com/mclgoerg/inboxrake/issues/377)) ([df4bfec](https://github.com/mclgoerg/inboxrake/commit/df4bfec673651f90130839051271f8a0eb404463))
+* notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
 
