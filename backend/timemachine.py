@@ -44,8 +44,8 @@ SENDERS_LISTED = 12        # senders named on a step's second line: the UI cuts
 UNSUB_GROUP_S = 5 * 60
 
 _MOVES = ("trash", "archive", "move", "move_contents", "restore")
-_STAYS = ("mark_read", "unsubscribe", "undo", "assistant_protect",
-          "assistant_pin")
+_STAYS = ("mark_read", "unsubscribe", "undo", "protect",
+          "assistant_protect", "assistant_pin")
 _GONE = ("empty_trash", "purge")
 # what counts as "mails touched" in a session
 _TOUCHED = (*_MOVES, "mark_read")
@@ -108,6 +108,7 @@ def steps(acc) -> tuple[list[dict], dict[str, tuple[dict, bool]]]:
     is there), `cant` (it moved mail that can't be found any more, `reason`
     says why), `undone` (an undo put it back) or `stays` (nothing to undo).
     No server access: what the account remembers."""
+    mailops.expire_undo(acc)         # an idle account keeps nothing too old
     now = time.time()
     audit = auditlog.since(acc.name, now - mailops.UNDO_KEEP_DAYS * 86400)
     with acc.lock:
@@ -243,46 +244,32 @@ def _newer(listed: list[dict], point: str,
     return after, ts
 
 
-def _skipper(acc, picked: set[str] | None):
-    """`skip(addr, msgid)` of the mails a restore leaves alone: protected
-    senders, pinned mails and (Pick senders) every sender not picked."""
-    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
-    pinned = pinstore.load_account(acc.name)
-    chosen = None if picked is None else {a.lower() for a in picked}
-    with acc.lock:                 # a step recorded without its senders: the
-        known = {m["msgid"]: m["addr"] for ix in acc.role_index.values()
-                 for m in ix.values() if m.get("msgid")}   # Trash knows them
-
-    def reason(addr: str, msgid: str) -> str:
-        addr = addr or known.get(msgid, "")
-        if addr and cfgmod.is_protected(addr, plist):
-            return "protected"
-        if msgid and msgid in pinned:
-            return "pinned"
-        if chosen is not None and (addr or "").lower() not in chosen:
-            return "unpicked"
-        return ""
-
-    def skip(addr: str, msgid: str) -> bool:
-        return bool(reason(addr, msgid))
-    skip.reason = reason          # type: ignore[attr-defined]
-    return skip
+def _targets(entry: dict) -> set[str]:
+    """The folders a restore of this step puts mail into."""
+    if entry.get("parts") is not None:
+        return {p["head"]["in"] for p in entry["parts"]}
+    return {m["folder"] for m in mailops.undo_mails(entry)}
 
 
 def _live(acc, entries: list[dict]) -> dict:
-    """What the server holds right now of the folders these steps moved mail
-    into: `{folder: (uidvalidity, {uids})}` (None = cannot be opened) for
-    steps with exact copies, plus `trash_ids` (Message-IDs in Trash) for
-    older steps without them. Read-only."""
+    """What the server holds right now: `folders` = `{folder: (uidvalidity,
+    {uids})}` (None = cannot be opened) of the folders steps with exact copies
+    moved mail into, `trash_ids` (Message-IDs in Trash) for older steps
+    without them, and `missing` = the folders a restore would put mail into
+    that do not exist any more. Read-only."""
     folders = {e.get("in") for e in entries
                if e.get("copies") is not None and e.get("in")}
     legacy = any(e.get("copies") is None and e.get("parts") is None
                  for e in entries)
-    out: dict = {"folders": {}, "trash_ids": None}
-    if not folders and not legacy:
+    targets = set().union(*(_targets(e) for e in entries)) if entries \
+        else set()
+    out: dict = {"folders": {}, "trash_ids": None, "missing": set()}
+    if not targets:
         return out
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
+        existing = set(mailops.selectable_folders(conn))
+        out["missing"] = {f for f in targets if f and f not in existing}
         for f in folders:
             status, _ = conn.select(mailops.quote_folder(f), readonly=True)
             out["folders"][f] = ((mailops.uidvalidity(conn),
@@ -305,10 +292,11 @@ def _live(acc, entries: list[dict]) -> dict:
 
 
 def _lost_reason(entry: dict, trash: str | None) -> str:
-    """Why a mail of a step is no longer where the step left it (what Inboxrake
-    itself emptied is counted in the step's `lost` already): Trash is emptied
-    by the provider (or another program), any other folder by a move."""
-    return "provider" if entry.get("in") == trash else "moved"
+    """Why a mail of a step is no longer where the step left it, when nothing
+    known explains it (what Inboxrake itself emptied is counted in the step's
+    `lost` already): said neutrally, the cause may be the provider, another
+    program or you."""
+    return "left_trash" if entry.get("in") == trash else "left_folder"
 
 
 def _assess(acc, entry: dict, live: dict, skip,
@@ -323,16 +311,27 @@ def _assess(acc, entry: dict, live: dict, skip,
     come: list[tuple] = []
     lost: Counter = Counter()
     skipped: Counter = Counter()
-    untracked = False
+    skip.gone.update(live.get("missing", ()))
     if entry.get("lost"):
         lost["emptied"] += entry["lost"]
     trash = acc.folder_roles.get("trash")
+
+    def left(why: str) -> None:
+        """A mail this restore leaves alone: a gone folder is a "can't",
+        the rest is on purpose."""
+        if why == "gone":
+            lost["folder_gone"] += 1
+        else:
+            skipped[why] += 1
+
     if entry.get("parts") is not None:
         for p in entry["parts"]:
+            if mailops._netted(skip, p):
+                continue
             for m in p["mails"]:
-                why = skip.reason(m[2], m[1])
+                why = skip.reason(m[2], m[1], p["head"]["in"])
                 if why:
-                    skipped[why] += 1
+                    left(why)
                 else:
                     come.append((m[2], m[3], p["head"]["in"], m[1]))
         return {"come": come, "lost": lost, "skipped": skipped,
@@ -344,26 +343,25 @@ def _assess(acc, entry: dict, live: dict, skip,
         if state is None or any(
                 not m["copy"].get("uid") or m["copy"]["uv"] != state[0]
                 for m in mails):
-            untracked = True
             lost["untracked"] += len(mails)
             return {"come": [], "lost": lost, "skipped": skipped,
                     "untracked": True}
         for m in mails:
-            why = skip.reason(m["addr"], m["msgid"])
+            why = skip.reason(m["addr"], m["msgid"], m["folder"])
             if why:
-                skipped[why] += 1
+                left(why)
             elif m["copy"]["uid"] not in state[1] \
                     and (entry.get("in"), m["msgid"]) not in virtual:
                 lost[_lost_reason(entry, trash)] += 1
             else:
                 come.append((m["addr"], m["size"], m["folder"], m["msgid"]))
         return {"come": come, "lost": lost, "skipped": skipped,
-                "untracked": untracked}
+                "untracked": False}
     ids = live.get("trash_ids")
     for m in mails:
-        why = skip.reason(m["addr"], m["msgid"])
+        why = skip.reason(m["addr"], m["msgid"], m["folder"])
         if why:
-            skipped[why] += 1
+            left(why)
         elif ids and (entry.get("in") or ids[0]) == ids[0] \
                 and m["msgid"] not in ids[1] \
                 and (entry.get("in") or ids[0], m["msgid"]) not in virtual:
@@ -429,7 +427,11 @@ def _range(acc, point: str, top: str | None, picked: set[str] | None):
     listed, entries = steps(acc)
     after, point_ts = _newer(listed, point, top)
     after = after[::-1]
-    return listed, entries, after, point_ts, _skipper(acc, picked)
+    skip = mailops.undo_skipper(acc, picked)
+    # a restore step inside the range re-arms steps that are in it too: those
+    # cancel out (the state at the point has neither)
+    skip.net.update(s["id"] for s in after)
+    return listed, entries, after, point_ts, skip
 
 
 def preview(acc, point: str, picked: list[str] | None = None,
@@ -447,7 +449,7 @@ def preview(acc, point: str, picked: list[str] | None = None,
     senders: dict[str, list[int]] = {}
     cant: dict[str, dict] = {}
     skipped: Counter = Counter()
-    untracked_steps = 0
+    active = 0
     keyed: list[tuple] = []
 
     def add_cant(reason: str, n: int, at: int | None = None) -> None:
@@ -462,7 +464,7 @@ def preview(acc, point: str, picked: list[str] | None = None,
     for s, entry in todo:
         res = _assess(acc, entry, live, skip, virtual)
         virtual |= {(folder, msgid) for _, _, folder, msgid in res["come"]}
-        untracked_steps += 1 if res["untracked"] else 0
+        active += 1 if res["come"] else 0
         for k, n in res["lost"].items():
             at = min((t for t in gone_at if t >= s["ts"]), default=None) \
                 if k == "emptied" else None
@@ -486,7 +488,7 @@ def preview(acc, point: str, picked: list[str] | None = None,
     return {
         "top": top if top is not None else (listed[-1]["id"] if listed else ""),
         "point": point, "point_ts": point_ts,
-        "steps": len(todo),
+        "steps": active,
         "newer_sessions": _newer_sessions(listed, after, point),
         "mails": len(come_total),
         "bytes": sum(c[1] for c in come_total),
@@ -551,6 +553,7 @@ def start(acc, point: str, top: str | None, picked: list[str] | None,
     job = {"plan": [(s["id"], entries[s["id"]][0]["id"],
                      entries[s["id"]][1]) for s in todo],
            "listed": listed, "point_ts": point_ts, "picked": pick,
+           "net": {s["id"] for s in after},
            "pause": list(pause), "actor": actor, "seq": seq}
     threading.Thread(target=tenants.call_in,
                      args=(acc.tenant, _worker, acc, job),
@@ -564,9 +567,10 @@ def _set(acc, **fields) -> None:
 
 
 def _worker(acc, job: dict) -> None:
-    skip = _skipper(acc, job["picked"])
-    listed = {s["id"]: s for s in job["listed"]}
+    skip = mailops.undo_skipper(acc, job["picked"])
+    skip.net.update(job["net"])
     parts: list[dict] = []
+    keyed: list[tuple] = []
     undone: list[dict] = []
     restored = size = steps_done = 0
     skipped: Counter = Counter()
@@ -591,14 +595,20 @@ def _worker(acc, job: dict) -> None:
             skipped.update(res["skipped"])
             for k, n in res["lost"].items():
                 cant[k] += n
-            if res["untracked"] or not res["come"]:
+            cancelling = any(mailops._netted(skip, p)
+                             for p in entry.get("parts") or ())
+            if res["untracked"] or not (res["come"] or cancelling):
                 steps_done += 1
                 _set(acc, steps_done=steps_done)
                 continue
+            keyed.extend((sid, addr, (sid, i)) for i, (addr, *_)
+                         in enumerate(res["come"]))
             taken, pos = mailops.pop_undo(
                 acc, ident={"id": eid}, assistant=assistant,
-                busy_check=False, persist=False)
-            run = mailops.run_undo(acc, taken, pos, only=skip, persist=False)
+                busy_check=False)
+            run = mailops.run_undo(acc, taken, pos, only=skip,
+                                   expected=len(res["come"]))
+            cant["left_folder"] += run["short"]
             mailops.apply_undo_counts(acc, run)
             virtual |= {(to, msgid) for to, msgid, *_ in run["items"]}
             steps_done += 1
@@ -622,12 +632,12 @@ def _worker(acc, job: dict) -> None:
         log.exception("[%s] time machine restore failed", acc.name)
         error = mailops.error_text(exc, generic=mailops.INTERNAL_ERROR)
     _finish(acc, job, parts, undone, restored, size, steps_done, error,
-            skipped, cant)
+            skipped, cant, keyed)
 
 
 def _finish(acc, job: dict, parts: list[dict], undone: list[dict],
             restored: int, size: int, steps_done: int, error: str,
-            skipped: Counter, cant: Counter) -> None:
+            skipped: Counter, cant: Counter, keyed: list[tuple]) -> None:
     """Book a finished (or failed) restore: the one restore step in the undo
     log and in Activity, the rules the user asked to pause, the state. The
     state always ends, whatever goes wrong while booking."""
@@ -645,7 +655,8 @@ def _finish(acc, job: dict, parts: list[dict], undone: list[dict],
             with acc.lock:
                 acc.undo_log.append(entry)
         with acc.lock:
-            mailops._sync_undo(acc)      # the one write of the whole job
+            mailops._sync_undo(acc)
+        mailops.flush_undo(acc)          # the one write of the whole job
         auditlog.record(
             "restore", actor=job["actor"], account=acc.name, count=restored,
             size=size, label=str(job["point_ts"]),
@@ -653,7 +664,12 @@ def _finish(acc, job: dict, parts: list[dict], undone: list[dict],
                      else "partial" if error else "ok"),
             error=error, entry_id=audit_id,
             undoes_many=undone or None)
-        paused = _pause(acc, job["pause"], job["actor"])
+        # only what the preview offered: this account's rules that would
+        # catch the restored mails again
+        offered = {r["id"] for r in _rules_that_would_catch(
+            acc, job["listed"], keyed)} if job["pause"] else set()
+        paused = _pause(acc, [r for r in job["pause"] if r in offered],
+                        job["actor"])
     except Exception as exc:
         log.exception("[%s] could not book the restore", acc.name)
         error = error or mailops.error_text(exc,
