@@ -1275,6 +1275,7 @@ export interface CopyTell {
   senders: CopyTellSender[];
   newsletters: number;
   newsletter_keys: string[];
+}
 
 /** One step of the Time machine (`/api/timemachine`): an audit entry's
  *  fields plus what a restore would do with it. `status`: `back` = it has an
