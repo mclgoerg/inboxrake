@@ -346,7 +346,7 @@ test("keep-safe: the bulk bar's Trash of a big selection shows the box and " +
     .toBeLessThan(deleteGroups.mock.invocationCallOrder[0]);
 });
 
-test("keep-safe: 20 mails or fewer are not checked; Archive never is",
+test("keep-safe: 20 mails or fewer are not checked",
   async () => {
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);
   state = { ...baseState };                              // 12 mails
