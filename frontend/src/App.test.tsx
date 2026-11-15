@@ -365,11 +365,18 @@ test("declining the trash-existing question still blocks, without trashing",
 const renderWithBigSenderGroup = () => {
   cfg = singleCfg;
   localStorage.setItem("pmc_account", "proton");
-  const big = { ...groupFixture, count: 30 };
+  const big = { ...groupFixture, key: "bulk@mailer.example",
+    label: "Bulk Mailer", sub: "bulk@mailer.example", count: 30 };
   state = { ...baseState, status: "done",
     groups: { sender: { [big.key]: big },
               smart: {}, domain: {}, subject: {}, thread: {} } };
   return render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+};
+
+const openBigDetail = async () => {
+  await waitFor(() => expect(screen.getAllByText("Bulk Mailer").length)
+    .toBeGreaterThan(0));
+  fireEvent.click(screen.getAllByText("Bulk Mailer")[0]);
 };
 
 test("keep-safe: Block's 'also move the existing mails' (30 mails) shows the "
@@ -378,16 +385,16 @@ test("keep-safe: Block's 'also move the existing mails' (30 mails) shows the "
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);
   keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
   renderWithBigSenderGroup();
-  await openDetail();
+  await openBigDetail();
   fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
   await pressDialog("Block");
   const dlg = await findDialog();
   expectKeepBox(dlg);
   expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
-    keys: ["noreply@dhl.example"] });
+    keys: ["bulk@mailer.example"] });
   await pressDialog("Move to Trash (26)");               // 30 - 4 kept safe
   await waitFor(() => expect(block).toHaveBeenCalledWith(
-    "sender", "noreply@dhl.example", "DHL Paket", true));
+    "sender", "bulk@mailer.example", "Bulk Mailer", true));
   expect(keepSafePin).toHaveBeenCalledOnce();
   expect(keepSafePin.mock.invocationCallOrder[0])
     .toBeLessThan(block.mock.invocationCallOrder[0]);
@@ -397,13 +404,13 @@ test("keep-safe: 'Only block' on the box still blocks, protects and trashes "
   + "nothing", async () => {
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);
   renderWithBigSenderGroup();
-  await openDetail();
+  await openBigDetail();
   fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
   await pressDialog("Block");
   await findDialog();
   await pressDialog("Only block");
   await waitFor(() => expect(block).toHaveBeenCalledWith(
-    "sender", "noreply@dhl.example", "DHL Paket", false));
+    "sender", "bulk@mailer.example", "Bulk Mailer", false));
   expect(keepSafePin).not.toHaveBeenCalled();
 });
 
@@ -412,13 +419,13 @@ test("keep-safe: a protection that fails blocks without trashing and says so",
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);
   keepSafePin.mockRejectedValue(new Error("could not protect"));
   renderWithBigSenderGroup();
-  await openDetail();
+  await openBigDetail();
   fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
   await pressDialog("Block");
   await findDialog();
   await pressDialog("Move to Trash (26)");
   await waitFor(() => expect(block).toHaveBeenCalledWith(
-    "sender", "noreply@dhl.example", "DHL Paket", false));
+    "sender", "bulk@mailer.example", "Bulk Mailer", false));
   expect(await screen.findByText(/could not protect/)).toBeTruthy();
 });
 
