@@ -11,6 +11,7 @@ import { getLang, t } from "../i18n";
 import type { AuditBy, AuditEntry, Group, RestoreState, Rule } from "../types";
 import { retryableGroup } from "../unsub";
 import { ACTION_LOOK, FALLBACK_LOOK } from "./actionLook";
+import { KEEP_DAYS } from "../timemachine";
 import { TimeMachine } from "./TimeMachine";
 import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
   Segmented, ShortDate, Tag, useMediaQuery } from "./ui";
@@ -376,7 +377,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           {machine ? <History size={18} /> : <ScrollText size={18} />}
           {machine && !wide ? t("tm.title") : t("nav.activity")}
         </span>}
-        sub={machine ? t("tm.sub", { days: 30 })
+        sub={machine ? t("tm.sub", { days: KEEP_DAYS })
           : total == null ? t("loading…") : total === 0 ? ""
           : t(by === "all" ? "audit.entries"
             : by.startsWith("token:") ? "audit.entries_token"
@@ -426,7 +427,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
                 <span className="block type-body-mobile font-medium">
                   {t("tm.title")}</span>
                 <span className="block type-meta text-muted">
-                  {t("tm.entry_hint", { days: 30 })}</span>
+                  {t("tm.entry_hint", { days: KEEP_DAYS })}</span>
               </span>
               <ChevronRight size={16} aria-hidden className="text-faint" />
             </button>

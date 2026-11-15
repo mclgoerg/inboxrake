@@ -203,6 +203,33 @@ test("job endpoints: attachment scan, rule run, bulk unsubscribe come back", asy
   expect(unsub.status).toBe(200);
 });
 
+// The Time machine's restore is the fourth job on a thread: the demo runs it
+// after the handler returned, and it must end (a wait on a thread would hang).
+// Its own undo puts the mails back, so later tests see the same mailbox.
+test("job endpoint: a Time machine restore comes back, and can be undone", async () => {
+  const listing = await api("GET", "/api/timemachine?account=proton");
+  expect(listing.status).toBe(200);
+  const steps = listing.json.steps;
+  const top = steps.findIndex((s) => s.status === "back");
+  expect(top, "the demo seed has undoable steps").toBeGreaterThanOrEqual(0);
+  const point = steps[top + 1]?.id ?? "";
+  const preview = await api("POST", "/api/timemachine/preview?account=proton", { point });
+  expect(preview.status).toBe(200);
+  expect(preview.json.mails).toBeGreaterThan(0);
+  const start = await api("POST", "/api/timemachine/restore?account=proton",
+    { point, top: preview.json.top, senders: null, pause: [] });
+  expect(start.status).toBe(200);
+  await expect.poll(async () =>
+    (await api("GET", "/api/state?account=proton")).json.restore.status,
+  { timeout: 60_000 }).toBe("done");
+  const done = (await api("GET", "/api/state?account=proton")).json.restore;
+  expect(done.moved).toBe(preview.json.mails);
+  expect((await api("POST", "/api/undo?account=proton", {})).status).toBe(200);
+  await expect.poll(async () =>
+    (await api("GET", "/api/state?account=proton")).json.status,
+  { timeout: 60_000 }).not.toBe("scanning");
+});
+
 test("no console errors, page errors or failed requests", async () => {
   expect(problems).toEqual([]);
 });

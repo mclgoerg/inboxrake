@@ -7,8 +7,9 @@ import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
 import { t } from "../i18n";
 import { fmtNum } from "../numfmt";
-import { atText, dayLabel, defaultBoundary, pointId, pointMoment,
-  senderLine, sessionSlice, sessionTitle, timeOf, whenText, whereText }
+import { SESSION_GAP_MIN, atText, dayLabel, defaultBoundary, pointId,
+  pointMoment, senderLine, sessionSlice, sessionTitle, timeOf, whenText,
+  whereText }
   from "../timemachine";
 import type { AuditEntry, Group, RestoreState, Rule, TmListing, TmPreview,
   TmSession, TmStep } from "../types";
@@ -561,7 +562,7 @@ export function TimeMachine({ rules, groups, restore, reloadKey, phone,
               {error}</div>}
             {stepList}
             <p className="px-1 type-meta text-muted">
-              {phone ? t("tm.phone_hint") : t("tm.session_note", { min: 30 })}
+              {phone ? t("tm.phone_hint") : t("tm.session_note", { min: SESSION_GAP_MIN })}
               {phone && phoneFacts ? ` ${phoneFacts}.` : ""}
             </p>
           </div>

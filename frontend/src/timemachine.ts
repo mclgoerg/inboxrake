@@ -6,6 +6,8 @@ import type { Group, TmPreview, TmSession, TmStep } from "./types";
 
 /** Steps less than this apart form a session (backend/timemachine.py). */
 export const SESSION_GAP_MIN = 30;
+/** How far back the steps go (backend mailops.UNDO_KEEP_DAYS). */
+export const KEEP_DAYS = 30;
 
 const locale = (): string => getLang() === "de" ? "de-DE" : "en-GB";
 
@@ -105,11 +107,6 @@ export function senderLine(s: TmStep, groups?: Record<string, Group>): string {
   const total = s.senders_total ?? list.length;
   const shown = list.slice(0, 2).map((x) => name(x.addr)).join(", ");
   return total > 2 ? `${shown} +${total - 2}` : shown;
-}
-
-/** The pill a step wears when it is above the line. */
-export function pillOf(s: TmStep): "back" | "cant" | "stays" | "undone" {
-  return s.status;
 }
 
 /** "790 mails back to Inbox, 40 to Newsletters": where a restore puts the
