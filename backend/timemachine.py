@@ -30,7 +30,6 @@ from . import accounts
 from . import auditlog
 from . import config as cfgmod
 from . import mailops
-from . import pinstore
 from . import rules as rulesmod
 from . import tenants
 
@@ -569,6 +568,8 @@ def _set(acc, **fields) -> None:
 def _worker(acc, job: dict) -> None:
     skip = mailops.undo_skipper(acc, job["picked"])
     skip.net.update(job["net"])
+    with acc.lock:
+        acc.undo_busy += 1     # no write of the lists until _finish
     parts: list[dict] = []
     keyed: list[tuple] = []
     undone: list[dict] = []
@@ -620,9 +621,11 @@ def _worker(acc, job: dict) -> None:
             for frm, mails in moved.items():
                 parts.append({"head": {**_head(taken), "in": frm},
                               "mails": mails})
-            if taken.get("audit_id") and run["restored"]:
+            if taken.get("audit_id") and run["failed"] is None and (
+                    run["restored"] or cancelling):
+                # (a restore this one cancelled out counts as undone too)
                 undone.append({"id": taken["audit_id"],
-                               "count": run["restored"]})
+                               "count": run["restored"] or taken["count"]})
             _set(acc, steps_done=steps_done, moved=restored,
                  progress=f"{steps_done}/{len(job['plan'])}")
             if run["failed"] is not None:
@@ -641,6 +644,8 @@ def _finish(acc, job: dict, parts: list[dict], undone: list[dict],
     """Book a finished (or failed) restore: the one restore step in the undo
     log and in Activity, the rules the user asked to pause, the state. The
     state always ends, whatever goes wrong while booking."""
+    with acc.lock:
+        acc.undo_busy -= 1            # the lists may be written again
     paused: list[str] = []
     try:
         audit_id = auditlog.new_id()

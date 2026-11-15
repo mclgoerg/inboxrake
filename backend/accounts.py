@@ -46,6 +46,8 @@ def _initial_state() -> dict:
                                # when this moves
         "undo": [],            # summaries of undoable move jobs (newest last)
         "assistant_undo": [],  # the same for AI assistants' steps (own list)
+        "undo_total": 0,       # how many steps the lists hold (the summaries
+        "assistant_undo_total": 0,    # above are the newest 100 of them)
         # the Time machine's restore job (see timemachine.py): one job at a
         # time per account, progress in steps and mails
         "restore": {"status": "idle", "progress": "", "error": "",
@@ -95,6 +97,7 @@ class AccountState:
         # the undo lists changed and are not on disk yet (see
         # mailops.flush_undo: written after the lock is released)
         self.undo_dirty = False
+        self.undo_busy = 0          # steps off their list while an undo runs
         self.undo_seq = 0
         self.undo_written = 0
         self.undo_write = threading.Lock()

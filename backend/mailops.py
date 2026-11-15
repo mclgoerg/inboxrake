@@ -21,6 +21,7 @@ import os
 import re
 import ssl
 import threading
+from collections import Counter
 import time
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
@@ -818,6 +819,9 @@ def _sync_undo(acc) -> None:
     _trim_undo_list(acc.assistant_undo, now)
     acc.state["undo"] = _undo_summaries(acc)
     acc.state["assistant_undo"] = _undo_summaries(acc, acc.assistant_undo)
+    # the summaries are the newest UNDO_SUMMARY_MAX: the UI says how many more
+    acc.state["undo_total"] = len(acc.undo_log)
+    acc.state["assistant_undo_total"] = len(acc.assistant_undo)
     acc.undo_dirty = True
 
 
@@ -831,7 +835,7 @@ def flush_undo(acc) -> None:
     if not acc.undo_dirty:
         return
     with acc.lock:
-        if not acc.undo_dirty:
+        if not acc.undo_dirty or acc.undo_busy:
             return
         acc.undo_dirty = False
         acc.undo_seq += 1
@@ -845,6 +849,7 @@ def flush_undo(acc) -> None:
             undostore.save(acc.name, acc.tenant, SNAPSHOT_DIR, user, bots)
         except Exception:       # a full disk, an entry JSON cannot hold, ...
             log.exception("[%s] could not persist the undo log", acc.name)
+            acc.undo_dirty = True        # try again with the next flush
 
 
 def expire_undo(acc) -> None:
@@ -4685,6 +4690,9 @@ def pop_undo(acc, index: int = -1, ident: dict | None = None,
             raise RuntimeError(BUSY_ACTION)
         pos = index if index >= 0 else len(lst) + index
         entry = lst.pop(index)
+        # a step is off its list until run_undo puts the rest back: the file
+        # is not written in between (flush_undo)
+        acc.undo_busy += 1
         _sync_undo(acc)
     return entry, pos
 
@@ -4897,24 +4905,66 @@ def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
                 "label": entry["label"]}, run)
 
 
+def _unmoved(entry: dict, run: dict) -> dict | None:
+    """The step without the mails that went back (what a short restore leaves
+    in it), or None when nothing is left."""
+    if entry.get("copies") is not None:
+        rest = [c for c in entry["copies"] if not c.get("restored")]
+        if not rest:
+            return None
+        return {**entry, "copies": rest, "count": len(rest),
+                "items": [(c["folder"], c.get("msgid", "")) for c in rest]}
+    moved = Counter((f, mid) for f, mid, *_ in run["items"])
+    mails = []
+    for m in undo_mails(entry):
+        key = (m["folder"], m["msgid"])
+        if moved[key] > 0:
+            moved[key] -= 1
+        else:
+            mails.append(m)
+    if not mails:
+        return None
+    return {**entry, "count": len(mails),
+            "items": [(m["folder"], m["msgid"]) for m in mails],
+            "who": [[m["addr"], m["size"]] for m in mails]}
+
+
 def _reinstate_steps(acc, entry: dict) -> None:
     """After a restore was undone: the steps it had undone are undoable again
-    (found by Message-ID, as their exact copies are gone)."""
+    (found by Message-ID, as their exact copies are gone). A step that is
+    still listed (a short restore left a rest of it there) gets the mails as
+    a step of its own, so none of them is lost."""
+    by_head: dict[str, tuple[dict, list]] = {}
     for part in entry["parts"]:
         head = part["head"]
+        by_head.setdefault(head["id"], (head, []))[1].extend(part["mails"])
+    for head, mails in by_head.values():
         with acc.lock:
             lst = acc.assistant_undo if head.get("token") else acc.undo_log
-            if any(e.get("id") == head.get("id") for e in lst):
-                continue
+            fresh = {**head}
+            if any(e.get("id") == head["id"] for e in lst):
+                fresh["id"] = f"{head['id']}-{time.time_ns():x}"
+                fresh.pop("audit_id", None)
             _reinsert_undo(acc, {
-                **head, "count": len(part["mails"]),
-                "items": [(m[0], m[1]) for m in part["mails"]],
-                "who": [[m[2], m[3]] for m in part["mails"]],
-                "bytes": sum(m[3] for m in part["mails"])}, len(lst))
+                **fresh, "count": len(mails),
+                "items": [(m[0], m[1]) for m in mails],
+                "who": [[m[2], m[3]] for m in mails],
+                "bytes": sum(m[3] for m in mails)}, len(lst))
 
 
 def run_undo(acc, entry: dict, pos: int, only=None,
              expected: int | None = None) -> dict:
+    """`_run_undo`, then the step counts as back on its list again (see
+    pop_undo), whatever happened."""
+    try:
+        return _run_undo(acc, entry, pos, only, expected)
+    finally:
+        with acc.lock:
+            acc.undo_busy -= 1
+
+
+def _run_undo(acc, entry: dict, pos: int, only=None,
+              expected: int | None = None) -> dict:
     """Do the IMAP side of one taken-off step. `only` (a `skip(addr, msgid)`
     predicate) leaves the mails it matches where they are: they stay in the
     list as the rest of the step. Never raises for an IMAP failure: the step
@@ -4956,8 +5006,10 @@ def run_undo(acc, entry: dict, pos: int, only=None,
             # fewer found than the caller counted: what was not found is
             # still in the step (restored copies are marked), never lost
             run["short"] = expected - run["restored"]
-            with acc.lock:
-                _reinsert_undo(acc, entry, pos)
+            rest = _unmoved(entry, run)
+            if rest is not None:
+                with acc.lock:
+                    _reinsert_undo(acc, rest, pos)
         elif keep is not None:
             with acc.lock:
                 _reinsert_undo(acc, keep, pos)
