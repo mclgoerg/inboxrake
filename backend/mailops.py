@@ -4567,17 +4567,65 @@ def undo_mails(entry: dict) -> list[dict]:
             for i, (f, m) in enumerate(entry["items"])]
 
 
+def undo_skipper(acc, picked: set[str] | None = None):
+    """`skip(addr, msgid, folder="")` of the mails a restore leaves alone:
+    protected senders, pinned mails, (Pick senders) every sender not picked
+    and mails whose folder is gone (`skip.gone`, filled in once the server
+    was asked). `skip.net` holds the ids of steps a restore covers anyway:
+    the parts of an earlier restore that undid them are dropped, not redone.
+    `skip.reason(...)` names why ("protected", "pinned", "unpicked", "gone")."""
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    pinned = pinstore.load_account(acc.name)
+    chosen = None if picked is None else {a.lower() for a in picked}
+    with acc.lock:                 # a step recorded without its senders: the
+        known = {m["msgid"]: m["addr"] for ix in acc.role_index.values()
+                 for m in ix.values() if m.get("msgid")}   # Trash knows them
+    gone: set[str] = set()
+
+    def reason(addr: str, msgid: str, folder: str = "") -> str:
+        if folder and folder in gone:
+            return "gone"
+        addr = addr or known.get(msgid, "")
+        if addr and cfgmod.is_protected(addr, plist):
+            return "protected"
+        if msgid and msgid in pinned:
+            return "pinned"
+        if chosen is not None and (addr or "").lower() not in chosen:
+            return "unpicked"
+        return ""
+
+    def skip(addr: str, msgid: str, folder: str = "") -> bool:
+        return bool(reason(addr, msgid, folder))
+    skip.reason = reason          # type: ignore[attr-defined]
+    skip.gone = gone              # type: ignore[attr-defined]
+    skip.net = set()              # type: ignore[attr-defined]
+    return skip
+
+
+def _netted(skip, part: dict) -> bool:
+    """A part of a restore step that re-arms a step the current restore
+    undoes anyway (see `undo_skipper`)."""
+    net = getattr(skip, "net", ())
+    head = part["head"]
+    return bool(net) and (head.get("audit_id") in net or head.get("id") in net)
+
+
 def _split_entry(entry: dict, skip) -> tuple[dict, dict | None]:
     """`(take, keep)`: the part of a step that goes back and the part that
-    stays where it is (`skip(addr, msgid)` is true for the mails to leave).
-    `take` shares the step's copy records, so their `restored` marks live on
-    in the step if the restore fails half-way. `keep` is None when nothing is
-    left behind. A restore step (`parts`) is split part by part."""
+    stays where it is (`skip(addr, msgid, folder)` is true for the mails to
+    leave). `take` shares the step's copy records, so their `restored` marks
+    live on in the step if the restore fails half-way. `keep` is None when
+    nothing is left behind. A restore step (`parts`) is split part by part;
+    parts `_netted` are in neither."""
     if entry.get("parts") is not None:
         take_p, keep_p = [], []
         for p in entry["parts"]:
-            go = [m for m in p["mails"] if not skip(m[2], m[1])]
-            stay = [m for m in p["mails"] if skip(m[2], m[1])]
+            if _netted(skip, p):
+                continue
+            go = [m for m in p["mails"]
+                  if not skip(m[2], m[1], p["head"]["in"])]
+            stay = [m for m in p["mails"]
+                    if skip(m[2], m[1], p["head"]["in"])]
             if go:
                 take_p.append({**p, "mails": go})
             if stay:
@@ -4588,17 +4636,17 @@ def _split_entry(entry: dict, skip) -> tuple[dict, dict | None]:
         return take, ({**entry, "parts": keep_p, "count": stay_n}
                       if keep_p else None)
     if entry.get("copies") is not None:
-        go = [c for c in entry["copies"]
-              if not skip(c.get("addr", ""), c.get("msgid", ""))]
-        stay = [c for c in entry["copies"]
-                if skip(c.get("addr", ""), c.get("msgid", ""))]
+        go = [c for c in entry["copies"] if not skip(
+            c.get("addr", ""), c.get("msgid", ""), c["folder"])]
+        stay = [c for c in entry["copies"] if skip(
+            c.get("addr", ""), c.get("msgid", ""), c["folder"])]
 
         def build(cs: list[dict]) -> dict:
             return {**entry, "copies": cs, "count": len(cs),
                     "items": [(c["folder"], c.get("msgid", "")) for c in cs]}
         return build(go), (build(stay) if stay else None)
     mails = undo_mails(entry)
-    flags = [skip(m["addr"], m["msgid"]) for m in mails]
+    flags = [skip(m["addr"], m["msgid"], m["folder"]) for m in mails]
 
     def build_items(want: bool) -> dict:
         picked = [m for m, f in zip(mails, flags) if f == want]
@@ -4723,6 +4771,19 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                         if copy["folder"] == folder and copy.get("uid") in {int(u) for u in chunk}:
                             copy["attempt"] = attempt
                     conn.select(quote_folder(trash), readonly=False)
+                refs: list[dict] = []
+                before = None
+                if exact_copies is None:
+                    # older steps that tracked these mails inside `folder`
+                    # need their new UIDs (see _rebase_chain)
+                    refs = _chain_refs(acc, folder, {
+                        found_by[int(u)][1] for u in chunk
+                        if int(u) in found_by})
+                    if refs:
+                        try:
+                            before = _folder_before(conn, folder, trash)
+                        except (imaplib.IMAP4.error, RuntimeError):
+                            before = None
                 if _uid_move(conn, b",".join(chunk).decode(), folder,
                              trash):
                     restored += len(chunk)
@@ -4738,7 +4799,9 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                                          copy.get("size", 0)))
                         try:
                             _rebase_chain(conn, acc, folder, trash, attempt,
-                                          landed)
+                                          _chain_refs(acc, folder, {
+                                              c["msgid"] for c in landed
+                                              if c.get("msgid")}))
                         except (imaplib.IMAP4.error, RuntimeError):
                             # a best-effort help for going back further: the
                             # mails ARE back, never fail the restore for it
@@ -4747,6 +4810,14 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                     else:
                         back.extend(found_by[int(u)] for u in chunk
                                     if int(u) in found_by)
+                        if refs and before:
+                            try:
+                                _rebase_chain(conn, acc, folder, trash,
+                                              before, refs)
+                            except (imaplib.IMAP4.error, RuntimeError):
+                                log.warning("[%s] could not follow the "
+                                            "restored mails' new UIDs",
+                                            acc.name)
         if unresolved:
             raise RuntimeError("undo_copy_unknown")
     finally:
@@ -4760,36 +4831,55 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                              "targets": {f for f, *_ in back}})
 
 
-def _rebase_chain(conn, acc, folder: str, trash: str, attempt: dict,
-                  landed: list[dict]) -> None:
-    """The mails just moved back into `folder` got new UIDs there. An older
-    step that had put those same mails INTO `folder` tracks them by their old
-    ones: point its copies at the new UIDs, or going back further (the Time
-    machine undoes steps newest first) would find nothing to move. A mail
-    that cannot be told apart by Message-ID is left as it was."""
-    wanted = {c["msgid"] for c in landed if c.get("msgid")}
+def _chain_refs(acc, folder: str, wanted: set[str]) -> list[dict]:
+    """The exact copies of OTHER steps that sit in `folder` under one of these
+    Message-IDs: the steps that had put those mails into `folder`."""
+    if not wanted:
+        return []
     with acc.lock:
-        refs = [c for e in (*acc.undo_log, *acc.assistant_undo)
+        return [c for e in (*acc.undo_log, *acc.assistant_undo)
                 for c in e.get("copies") or ()
                 if c.get("in") == folder and c.get("msgid") in wanted
                 and not c.get("restored")]
+
+
+def _folder_before(conn, folder: str, back: str) -> dict | None:
+    """`{"uv", "before"}`: UIDVALIDITY and UIDs of `folder` right now (to
+    find the UIDs mails get in it next), with `back` selected again."""
+    status, _ = conn.select(quote_folder(folder), readonly=True)
+    try:
+        if status != "OK":
+            return None
+        return {"uv": uidvalidity(conn), "before": _list_uids(conn)}
+    finally:
+        conn.select(quote_folder(back), readonly=False)
+
+
+def _rebase_chain(conn, acc, folder: str, back: str, state: dict,
+                  refs: list[dict]) -> None:
+    """Mails just moved into `folder` got new UIDs there. An older step that
+    had put those same mails INTO `folder` tracks them by their old ones:
+    point its copies at the new UIDs (`state` = `_folder_before` from before
+    the move), or going back further - the Time machine undoes steps newest
+    first - would find nothing to move. A mail that cannot be told apart by
+    Message-ID is left as it was."""
     if not refs:
         return
     status, _ = conn.select(quote_folder(folder), readonly=True)
     try:
-        if status != "OK" or uidvalidity(conn) != attempt["uv"]:
+        if status != "OK" or uidvalidity(conn) != state["uv"]:
             return
-        new = sorted(set(_list_uids(conn)) - set(attempt["before"]))
+        new = sorted(set(_list_uids(conn)) - set(state["before"]))
         by_id: dict[str, list[int]] = {}
         for uid, mid in _fetch_msgid_map(conn, new).items():
             by_id.setdefault(mid, []).append(uid)
     finally:
-        conn.select(quote_folder(trash), readonly=False)
+        conn.select(quote_folder(back), readonly=False)
     with acc.lock:
         for c in refs:
             hits = by_id.get(c["msgid"], [])
             if len(hits) == 1:
-                c["uid"], c["uv"] = hits[0], attempt["uv"]
+                c["uid"], c["uv"] = hits[0], state["uv"]
 
 
 def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
@@ -4823,7 +4913,8 @@ def _reinstate_steps(acc, entry: dict) -> None:
                 "bytes": sum(m[3] for m in part["mails"])}, len(lst))
 
 
-def run_undo(acc, entry: dict, pos: int, only=None) -> dict:
+def run_undo(acc, entry: dict, pos: int, only=None,
+             expected: int | None = None) -> dict:
     """Do the IMAP side of one taken-off step. `only` (a `skip(addr, msgid)`
     predicate) leaves the mails it matches where they are: they stay in the
     list as the rest of the step. Never raises for an IMAP failure: the step
@@ -4858,8 +4949,16 @@ def run_undo(acc, entry: dict, pos: int, only=None) -> dict:
                 conn.logout()
         except Exception:
             pass
+    run["short"] = 0
     if run["failed"] is None:
-        if keep is not None:
+        if expected is not None and entry.get("parts") is None \
+                and run["restored"] < expected:
+            # fewer found than the caller counted: what was not found is
+            # still in the step (restored copies are marked), never lost
+            run["short"] = expected - run["restored"]
+            with acc.lock:
+                _reinsert_undo(acc, entry, pos)
+        elif keep is not None:
             with acc.lock:
                 _reinsert_undo(acc, keep, pos)
         if entry.get("parts") is not None:
