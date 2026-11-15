@@ -8,6 +8,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 let probe: { mode: string; authed: boolean } = { mode: "password", authed: false };
 const connect = vi.fn();
+const tokenList = vi.fn();
 let state: any;
 
 vi.mock("./api", () => ({
@@ -17,6 +18,7 @@ vi.mock("./api", () => ({
     getConfig: () => Promise.resolve(cfg),
     state: () => Promise.resolve(state),
     assistantConnect: () => connect(),
+    assistantTokens: () => { tokenList(); return Promise.resolve({ tokens: [] }); },
     audit: () => Promise.resolve({ entries: [], total: 0 }),
     stats: () => Promise.reject(new Error("no stats")),
     wrapped: () => Promise.reject(new Error("no wrapped")),
@@ -97,7 +99,7 @@ const mount = () => {
 };
 afterEach(() => {
   cleanup(); localStorage.clear(); window.location.hash = "";
-  connect.mockReset();
+  connect.mockReset(); tokenList.mockReset(); delete (cfg as any).assistants;
   probe = { mode: "password", authed: false };
 });
 
@@ -132,4 +134,25 @@ test("signed in: the consent page replaces the app shell; leaving returns to the
   expect(await screen.findByRole("navigation", { name: "Main navigation" }))
     .toBeTruthy();
   await waitFor(() => expect(window.location.hash).toBe("#/"));
+});
+
+const oauth = (over: object) => {
+  (cfg as any).assistants = { access: "act", levels: ["read", "propose", "act"],
+    oauth: { enabled: true, available: true, reason: "", mcp_url: "https://m.example/mcp", ...over } };
+};
+
+test("OAuth inactive (access Off, switch still on): the app asks for no connections", async () => {
+  probe = { mode: "password", authed: true };
+  oauth({ available: false, reason: "oauth_needs_access" });
+  mount();
+  expect(await screen.findByRole("navigation", { name: "Main navigation" })).toBeTruthy();
+  await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+  expect(tokenList).not.toHaveBeenCalled();
+});
+
+test("OAuth active: the app looks at the connections", async () => {
+  probe = { mode: "password", authed: true };
+  oauth({});
+  mount();
+  await waitFor(() => expect(tokenList).toHaveBeenCalled());
 });

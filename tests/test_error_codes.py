@@ -18,6 +18,9 @@ from backend import errortext
 from backend import knowledgestore
 from backend import labelstore
 from backend import mailops
+from backend import oauthclients
+from backend import oauthserver
+from backend import assistanttokens
 from backend.main import app
 from conftest import FakeIMAP, make_msg, wait_delete_done, wait_scan_done
 from test_folders_panel import _junk, _list, _move, junked  # noqa: F401
@@ -84,6 +87,27 @@ def _ui_codes() -> dict[str, str]:
     return dict(re.findall(r'^\s+(\w+): "([\w.]+)",', block, re.M))
 
 
+def _ui_oauth_codes() -> dict[str, str]:
+    """`OAUTH_ERROR_CODES` of api.ts: the hosted-app (OAuth) codes, kept apart
+    from the folder-feature `ERROR_CODES`."""
+    src = (SRC / "api.ts").read_text()
+    block = src[src.index("const OAUTH_ERROR_CODES"):]
+    block = block[:block.index("};")]
+    return dict(re.findall(r'^\s+(\w+): "([\w.]+)",', block, re.M))
+
+
+def _oauth_backend_codes() -> set[str]:
+    """Every code the OAuth features answer with (HTTP `detail`)."""
+    return {
+        v for mod in (oauthserver, oauthclients)
+        for k, v in vars(mod).items()
+        if k.isupper() and isinstance(v, str)
+        and re.fullmatch(r"(connect|client)_[a-z_]+", v)
+    } | {assistanttokens.NAME_TAKEN, assistanttokens.TOO_MANY_GRANTS,
+         cfgmod.OAUTH_NEEDS_LOGIN, cfgmod.OAUTH_NEEDS_PUBLIC_URL,
+         cfgmod.OAUTH_NEEDS_ACCESS}
+
+
 def _locale_keys(name: str) -> set[str]:
     return set(re.findall(r'^\s+"([^"]+)":', (SRC / "locales" / name)
                           .read_text(), re.M))
@@ -111,6 +135,16 @@ def test_the_ui_maps_no_code_the_backend_does_not_define():
     code that was removed), so `ERROR_CODES` equals the union of the codes
     the backend modules define (folder features, pins, knowledge, labels)."""
     assert set(_ui_codes()) == _backend_codes()
+
+
+def test_the_ui_words_exactly_the_oauth_codes_the_backend_defines():
+    ui = _ui_oauth_codes()
+    assert set(ui) == _oauth_backend_codes()
+    assert "name_taken" in ui
+    assert not set(ui) & set(_ui_codes())      # one map per code, no overlap
+    for locale in ("en.ts", "de.ts"):
+        keys = _locale_keys(locale)
+        assert {k for k in ui.values() if k not in keys} == set(), locale
 
 
 def test_every_sso_refusal_of_the_callback_has_a_login_page_text():

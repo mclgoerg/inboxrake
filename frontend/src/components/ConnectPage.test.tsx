@@ -201,6 +201,22 @@ test("another refusal of the decision (level above the ceiling) is shown above t
   expect((await screen.findByRole("alert")).textContent)
     .toMatch(/more than this app asked for/);
   expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
+  // a refused decision never leaves the page
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+test("the app's host and name are text, never markup", async () => {
+  getResult = () => Promise.resolve({ ...REQ, client: { ...REQ.client,
+    host: "<b>x</b>.example", name: "<img src=x onerror=alert(1)>",
+    redirect_host: "<i>y</i>.example" },
+  defaults: { ...REQ.defaults, name: "<b>x</b>" } });
+  await show();
+  const page = document.body;
+  expect(screen.getByRole("heading", { level: 1 }).textContent)
+    .toContain("<b>x</b>.example");
+  expect(page.textContent).toContain("<img src=x onerror=alert(1)>");
+  expect(page.textContent).toContain("<i>y</i>.example");
+  expect(page.querySelector("img, b, i, script")).toBeNull();
 });
 
 test("a request that is gone ends the page with the reason and a way out", async () => {
@@ -210,6 +226,7 @@ test("a request that is gone ends the page with the reason and a way out", async
   fireEvent.click(screen.getByRole("button", { name: "Allow" }));
   expect(await screen.findByText("This connection can't be set up")).toBeTruthy();
   expect(screen.getByRole("alert").textContent).toBe("This request has expired.");
+  expect(navigate).not.toHaveBeenCalled();
 });
 
 test("German: du, the host still leads", async () => {

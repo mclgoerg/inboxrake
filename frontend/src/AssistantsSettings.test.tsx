@@ -781,7 +781,9 @@ test("connections: host first, tokens and grants in their own lists, none yet is
   expect(within(row).getByText("Used 4m ago · 38 calls today")).toBeTruthy();
   // the token list holds the token only
   const tokenRows = screen.getByText("Claude Code · laptop").closest("ul")!;
-  expect(within(tokenRows).queryByText("claude.example")).toBeNull();
+  expect(within(tokenRows).queryByText(/claude\.example/)).toBeNull();
+  expect(within(tokenRows).queryByRole("button", { name: /Disconnect/ })).toBeNull();
+  expect(within(tokenRows).getAllByRole("listitem")).toHaveLength(1);
 });
 
 test("Disconnect asks (naming the host), then removes the grant", async () => {
