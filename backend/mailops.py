@@ -4571,7 +4571,7 @@ def undo_skipper(acc, picked: set[str] | None = None):
     """`skip(addr, msgid, folder="")` of the mails a restore leaves alone:
     protected senders, pinned mails, (Pick senders) every sender not picked
     and mails whose folder is gone (`skip.gone`, filled in once the server
-    was asked). `skip.net` holds the ids of steps a restore covers anyway:
+    was asked). its `net` set holds the ids of steps a restore covers anyway:
     the parts of an earlier restore that undid them are dropped, not redone.
     `skip.reason(...)` names why ("protected", "pinned", "unpicked", "gone")."""
     plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
