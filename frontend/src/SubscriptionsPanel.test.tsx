@@ -434,6 +434,18 @@ test("phone: two tiles, a row per service with a use marker, tap opens the pane"
 
 /* --------------------------------- German -------------------------------- */
 
+test("the inline links take their touch area from a pseudo-element, not min-height",
+  async () => {
+    show();
+    await screen.findByText("€32");
+    for (const name of ["Open the latest receipt",
+      "Find amounts in the receipt text"]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls).not.toContain("min-h-11");
+      expect(cls).toContain("coarse:after:-inset-y-3");
+    }
+  });
+
 test("German: the page speaks German (du)", async () => {
   setLang("de");
   show();
@@ -441,6 +453,9 @@ test("German: the page speaks German (du)", async () => {
   expect(screen.getByText("im Monat")).toBeTruthy();
   expect(screen.getByText("5 von 6 mit Betrag")).toBeTruthy();
   expect(screen.getByRole("columnheader", { name: "Noch in Benutzung?" }))
+    .toBeTruthy();
+  expect(screen.getByRole("columnheader", { name: "Rhythmus" })).toBeTruthy();
+  expect(screen.getByText(/Absender, die dir regelmäßig etwas berechnen/))
     .toBeTruthy();
   expect(screen.getByText("Mail gelesen")).toBeTruthy();
   expect(screen.getByText("Nie geöffnet")).toBeTruthy();

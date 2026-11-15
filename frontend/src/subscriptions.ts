@@ -4,7 +4,8 @@
  * built in the browser and handed over as a download - no request. */
 
 import { getLang, t } from "./i18n";
-import { fmtTs } from "./lib";
+import { nowDate } from "./clock";
+import { fmtDate, fmtTs } from "./lib";
 import { fmtNum, NBSP } from "./numfmt";
 import type { Subscription, SubTotals } from "./types";
 
@@ -48,11 +49,15 @@ export function monthShort(ts: number, nowDate: Date): string {
 /** "5 Dec" (with the year when it is not this one). */
 export const dayMonth = (ts: number): string => fmtTs(ts, getLang(), false);
 
+/** The next expected date ("5 Dec"): the server's date, shown as it is. */
+export const nextDay = (s: Subscription): string =>
+  fmtDate(s.next_date, nowDate(), { lang: getLang() });
+
 /** "monthly, around the 5th" / "yearly, around 14 Jan". */
 export const cadenceSentence = (s: Subscription): string =>
   s.cadence === "monthly"
     ? t("sub.cadence_monthly_day", { day: ordinal(s.day) })
-    : t("sub.cadence_yearly_date", { date: dayMonth(s.last) });
+    : t("sub.cadence_yearly_date", { date: nextDay(s) });
 
 /** What the "next receipt" cell adds: a pill while a YEARLY renewal is near
  *  (a monthly one is always near, so it gets none). */
@@ -88,11 +93,31 @@ export const monthlyText = (tot: SubTotals): string | null =>
   tot.monthly === null || !tot.currency ? null
     : fmtMoney(tot.monthly, tot.currency, { whole: true });
 
+/** An inline link's touch area (44 px on touch) without stretching its line:
+ *  the box is drawn by a pseudo-element, not by min-height. */
+export const LINK_TAP = "relative coarse:after:absolute coarse:after:-inset-y-3 "
+  + "coarse:after:inset-x-0 coarse:after:content-['']";
+
+/** A reminder that fired this long ago is still news (the poll runs more
+ *  often than this). */
+export const REMINDER_FRESH_S = 20 * 60;
+
+/** Whether the open page shows a fired reminder as a toast. With Web Push on
+ *  for this device the server pushed it to every device that was NOT looking
+ *  at the app, so a toast for an old one would double the push; a fresh one
+ *  is what this (visible) device was left out of. */
+export const showReminderToast = (pushOn: boolean, ageSeconds: number): boolean =>
+  !pushOn || ageSeconds <= REMINDER_FRESH_S;
+
 /* ----------------------------- the .ics file ----------------------------- */
 
-const p2 = (n: number): string => String(n).padStart(2, "0");
-const ymd = (d: Date): string =>
-  `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`;
+/** "2026-12-05" -> "20261205". */
+const compact = (iso: string): string => iso.replace(/-/g, "");
+/** The day after an ISO date (UTC arithmetic: no time zone involved). */
+const dayAfter = (iso: string): string => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+};
 
 /** An iCalendar text value: backslash, semicolon, comma and line breaks. */
 const esc = (s: string): string => s.replace(/\\/g, "\\\\")
@@ -118,8 +143,6 @@ function fold(line: string): string[] {
 /** A VEVENT for the next expected receipt: an all-day event on that date,
  *  with an alarm three days before. Built locally; `now` stamps it. */
 export function subscriptionIcs(s: Subscription, now: Date): string {
-  const day = new Date(s.next * 1000);
-  const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const price = amountText(s);
   const summary = t("sub.ics_summary", { name: s.name });
@@ -128,9 +151,11 @@ export function subscriptionIcs(s: Subscription, now: Date): string {
   const lines = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Inboxrake//Subscriptions//EN",
     "CALSCALE:GREGORIAN", "BEGIN:VEVENT",
-    `UID:inboxrake-sub-${s.key.replace(/[^A-Za-z0-9]+/g, "-")}-${ymd(day)}`,
+    `UID:inboxrake-sub-${s.key.replace(/[^A-Za-z0-9]+/g, "-")}-${
+      compact(s.next_date)}`,
     `DTSTAMP:${stamp}`,
-    `DTSTART;VALUE=DATE:${ymd(day)}`, `DTEND;VALUE=DATE:${ymd(end)}`,
+    `DTSTART;VALUE=DATE:${compact(s.next_date)}`,
+    `DTEND;VALUE=DATE:${compact(dayAfter(s.next_date))}`,
     `SUMMARY:${esc(summary)}`, `DESCRIPTION:${esc(note)}`,
     "TRANSP:TRANSPARENT",
     "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(summary)}`,

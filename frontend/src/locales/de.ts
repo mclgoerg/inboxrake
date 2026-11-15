@@ -365,7 +365,7 @@ export const DE: Record<string, string> = {
   "sub.menu": "Abos",
   "sub.title": "Abos",
   "sub.sub":
-    "Absender, die dich regelmäßig abrechnen · aus Betreffzeilen und Belegdaten",
+    "Absender, die dir regelmäßig etwas berechnen · aus Betreffzeilen und Belegdaten",
   "sub.sub_phone": "{n}\u00a0Dienste",
   "sub.sub_phone_one": "1\u00a0Dienst",
   "sub.about_month": "etwa {amount} im Monat",
@@ -387,7 +387,7 @@ export const DE: Record<string, string> = {
   "sub.show_all": "Alle zeigen",
   "sub.none_shown": "Hier ist nichts",
   "sub.col_service": "Dienst",
-  "sub.col_every": "Alle",
+  "sub.col_every": "Rhythmus",
   "sub.col_next": "Nächster Beleg",
   "sub.col_amount": "Betrag",
   "sub.col_use": "Noch in Benutzung?",

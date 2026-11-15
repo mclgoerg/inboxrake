@@ -31,8 +31,8 @@ def test_decisions_survive_a_restart_and_the_file_is_private(tmp_path):
     assert b["amounts"] == {KEY: {"amount": 7.99, "currency": "EUR",
                                   "ts": 1700000000}}
     assert substore.load_account("nobody") == {
-        "hidden": [], "reminders": {}, "fired": [], "amounts": {},
-        "body_amounts": False}
+        "hidden": [], "kept": {}, "reminders": {}, "fired": [],
+        "amounts": {}, "body_amounts": False}
 
 
 @pytest.mark.parametrize("key", ["", 5, "x" * 201, "a\x00b", None])

@@ -14,7 +14,7 @@ What is stored from a receipt's text is ONLY the amount and its currency,
 plus the timestamp of the receipt it came from (so the same receipt is not
 read twice) - no text, no subject, no address.
 
-File shape: {"accounts": {name: {"hidden": [key], "reminders": {key:
+File shape: {"accounts": {name: {"hidden": [key], "kept": {key: [message-id]}, "reminders": {key:
 {"sent": "YYYY-MM-DD"}}, "fired": [{...}], "amounts": {key: {"amount":
 float|null, "currency": str, "ts": int}}, "body_amounts": bool}}}. A damaged
 file only forgets what it cannot understand.
@@ -35,6 +35,7 @@ SUBS_PATH = Path(os.environ.get("SUBS_PATH", "/data/subscriptions.json"))
 
 MAX_KEYS = 500          # per list and account
 MAX_FIRED = 20          # fired reminders kept for the page to show
+MAX_KEPT_IDS = 2000     # pins remembered per subscription
 KEY_MAX = 200
 CURRENCY_RE = re.compile(r"[A-Z]{3}")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -90,7 +91,15 @@ def _clean(raw) -> dict:
                 amounts[k] = {"amount": amount,
                               "currency": cur if amount is not None else "",
                               "ts": ts}
-    return {"hidden": hidden[:MAX_KEYS], "reminders": reminders,
+    kept = {}
+    if isinstance(raw.get("kept"), dict):
+        for k, v in raw["kept"].items():
+            if valid_key(k) and isinstance(v, list):
+                ids = [i for i in v if isinstance(i, str) and i]
+                if ids:
+                    kept[k] = ids[:MAX_KEPT_IDS]
+    return {"hidden": hidden[:MAX_KEYS], "kept": kept,
+            "reminders": reminders,
             "fired": fired[-MAX_FIRED:], "amounts": amounts,
             "body_amounts": raw.get("body_amounts") is True}
 
@@ -156,6 +165,29 @@ def set_hidden(key: str, hidden: bool, account: str | None = None) -> None:
         if hidden:                  # no subscription, no reminder
             b["reminders"].pop(key, None)
     _update(account, change)
+
+
+def add_kept(key: str, msgids: list[str], account: str | None = None) -> None:
+    """Remember the Message-IDs "Keep the receipts" pinned for `key`."""
+    if not valid_key(key):
+        raise ValueError("bad key")
+
+    def change(b):
+        have = b["kept"].get(key, [])
+        merged = have + [i for i in msgids if i not in set(have)]
+        if merged and (key in b["kept"] or len(b["kept"]) < MAX_KEYS):
+            b["kept"][key] = merged[:MAX_KEPT_IDS]
+    _update(account, change)
+
+
+def pop_kept(key: str, account: str | None = None) -> list[str]:
+    """Forget (and return) what "Keep the receipts" pinned for `key`."""
+    out: list[str] = []
+
+    def change(b):
+        out.extend(b["kept"].pop(key, []))
+    _update(account, change)
+    return out
 
 
 def set_reminder(key: str, on: bool, account: str | None = None) -> None:

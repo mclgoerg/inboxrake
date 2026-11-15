@@ -70,6 +70,10 @@ TICK_SECONDS = 600
 
 # ----------------------------------------------------------------- receipts
 
+# An account statement is a bank's monthly mail, not a subscription's receipt.
+_STATEMENT_RE = re.compile(r"kontoauszug|depotauszug|\bauszug\b|\bstatement\b",
+                           re.IGNORECASE)
+
 _INVOICE_RULE = next(rx for _, rid, rx in smartkinds.PURPOSE_RULES
                      if rid == "invoice")
 
@@ -78,13 +82,15 @@ _INVOICE_RULE = next(rx for _, rid, rx in smartkinds.PURPOSE_RULES
 def is_receipt(subject: str) -> bool:
     """Whether a subject reads like a receipt, invoice or bill: the Smart
     kind `orders` invoice rule plus the bill pattern; a request to review or
-    rate something is never one."""
+    rate something is never one, nor is a bank statement."""
     s = subject or ""
-    if smartkinds.SURVEY_RE.search(s):
+    # the two that rarely match first: most mails stop here
+    if not (_INVOICE_RULE.search(s) or smartkinds.BILL_SUBJECT_RE.search(s)):
         return False
-    return bool(_INVOICE_RULE.search(s) or smartkinds.BILL_SUBJECT_RE.search(s))
+    return not (smartkinds.SURVEY_RE.search(s) or _STATEMENT_RE.search(s))
 
 
+@functools.lru_cache(maxsize=65536)
 def company_key(addr: str) -> str | None:
     """The sender's company, or None for people (freemail) and unparseable
     senders. A mail platform that serves many companies has no company of
@@ -106,7 +112,12 @@ _CUR = r"(?:€|\$|£|(?<![A-Za-z])(?:EUR|USD|GBP|CHF)(?![A-Za-z]))"
 _NUM = (r"(?:\d{1,3}(?:[.,\u202f\u00a0 ]\d{3})+(?:[.,]\d{1,2})?"
         r"|\d+(?:[.,]\d{1,2})?)")
 _PREFIX_RE = re.compile(rf"(?P<cur>{_CUR})[\u00a0 ]?(?P<num>{_NUM})(?!\d)")
-_SUFFIX_RE = re.compile(rf"(?<![\d.,])(?P<num>{_NUM})[\u00a0 ]?(?P<cur>{_CUR})")
+# "9.99 EUR": the number must stand on its own - not after "#", "/" or "-"
+# (an order or invoice number: "#4711 EUR", "12/2025 EUR", "2025-11 EUR") and
+# the currency must not run into another number ("10023 $9.99": the $ is
+# the price's).
+_SUFFIX_RE = re.compile(
+    rf"(?<![\d.,#/\-])(?P<num>{_NUM})[\u00a0 ]?(?P<cur>{_CUR})(?![\u00a0 ]?\d)")
 MAX_AMOUNT = 1_000_000
 
 
@@ -161,27 +172,60 @@ def amount_from_subject(subject: str) -> tuple[float, str] | None:
 
 _TOTAL_RE = re.compile(
     r"(?<!sub)(?<!sub-)total|amount (due|paid|charged)|gesamt|summe|betrag|"
-    r"zu zahlen|charged|bezahlt|\bpaid\b|zahlbetrag|rechnungsbetrag|brutto",
+    r"zu zahlen|charged|bezahlt|\bpaid\b|zahlbetrag|rechnungsbetrag|brutto|"
+    r"\bprice\b|\bpreis\b",
     re.IGNORECASE)
 _PART_RE = re.compile(r"sub-?total|zwischensumme|\btax\b|\bvat\b|mwst|\bust\b",
                       re.IGNORECASE)
+# lines about money that is not the price: savings, refunds, discounts
+_SAVED_RE = re.compile(
+    r"\bsav(e|ed|ing|ings)\b|discount|coupon|refund|rabatt|ersparnis|gespart|"
+    r"erstattung|gutschrift|statt\b|instead of",
+    re.IGNORECASE)
 MAX_TEXT = 20000
+LABEL_LOOKAHEAD = 2     # lines after a "Total" label that may hold its amount
+
+
+def _label_lines(lines: list[str], i: int):
+    """The label's own line, then up to LABEL_LOOKAHEAD non-empty lines under
+    it - stopping at the next label or a line about savings."""
+    yield lines[i]
+    seen = 0
+    for cand in lines[i + 1:]:
+        if not cand.strip():
+            continue
+        seen += 1
+        if seen > LABEL_LOOKAHEAD or _SAVED_RE.search(cand) \
+                or _PART_RE.search(cand) or _TOTAL_RE.search(cand):
+            return
+        yield cand
 
 
 def amount_from_text(text: str) -> tuple[float, str] | None:
-    """The price a receipt's text states: the one on the last "total" line
-    (parts such as sub-total and tax do not count), else the largest. The
-    text is looked at and dropped - the caller keeps only what is returned."""
-    text = (text or "")[:MAX_TEXT]
+    """The price a receipt's text states: the one on (or just under) the last
+    "total" / "price" label (parts such as sub-total and tax do not count),
+    else the largest outside savings and discounts. The text is looked at and
+    dropped - the caller keeps only what is returned."""
+    lines = (text or "")[:MAX_TEXT].splitlines()
     totals = []
-    for line in text.splitlines():
-        if _TOTAL_RE.search(line) and not _PART_RE.search(line):
-            hits = parse_amounts(line)
+    for i, line in enumerate(lines):
+        if not _TOTAL_RE.search(line) or _PART_RE.search(line) \
+                or _SAVED_RE.search(line):
+            continue
+        # the amount sits on the label's line, else on one of the next
+        # non-empty lines ("Total" / "€9.99")
+        hit = None
+        for cand in _label_lines(lines, i):
+            hits = parse_amounts(cand)
             if hits:
-                totals.append(hits[0])
+                hit = hits[0]
+                break
+        if hit:
+            totals.append(hit)
     if totals:
         return totals[-1][1], totals[-1][2]
-    hits = parse_amounts(text)
+    hits = [h for line in lines if not _SAVED_RE.search(line)
+            for h in parse_amounts(line)]
     if not hits:
         return None
     best = max(hits, key=lambda h: h[1])
@@ -257,10 +301,15 @@ def _slots(kind: str, stamps: list[int]) -> tuple[list[int], int]:
 # --------------------------------------------------------------- detection
 
 def _fields(m: dict) -> tuple:
-    """What detection needs of one index record."""
-    return (m["ts"], m.get("subject") or "", bool(m.get("seen")),
+    """What detection needs of one index record; the last item says whether it
+    is a receipt (a newsletter that offers List-Unsubscribe and sounds
+    promotional is not one, whatever its subject says about invoices)."""
+    subject = m.get("subject") or ""
+    receipt = is_receipt(subject) and not (
+        m.get("bulk") and smartkinds.PROMO_RE.search(subject))
+    return (m["ts"], subject, bool(m.get("seen")),
             (m.get("name") or "").strip(), m["addr"], m.get("msgid") or "",
-            m["folder"], m["uid"])
+            m["folder"], m["uid"], receipt)
 
 
 def _cluster(receipts: list[dict]) -> list[dict]:
@@ -291,27 +340,46 @@ def _monthly(amount: float | None, kind: str) -> float | None:
     return amount if kind == "monthly" else amount / 12
 
 
+# Kept on the account (`acc._subs_cache` = (index revision, the mails of every
+# company with receipts)), so it goes with it. The pass
+# over a big index is the cost (a second or more at 200k mails), so it runs
+# once per revision and outside the account lock; everything that depends on
+# the time or on one company is cheap and recomputed.
+
+
+def _companies(acc) -> dict[str, list[tuple]]:
+    """The mails of each company that has at least MIN_RECEIPTS receipts."""
+    with acc.lock:
+        rev = (acc.state.get("groups_rev"), len(acc.index))
+        hit = getattr(acc, "_subs_cache", None)
+        if hit and hit[0] == rev:
+            return hit[1]
+        records = list(acc.index.values())      # a copy: the lock is let go
+    per: dict[str, list[tuple]] = {}
+    receipts: Counter = Counter()
+    for m in records:
+        if not m.get("ts"):
+            continue
+        key = company_key(m["addr"])
+        if key:
+            row = _fields(m)
+            per.setdefault(key, []).append(row)
+            receipts[key] += row[8]
+    out = {k: v for k, v in per.items() if receipts[k] >= MIN_RECEIPTS}
+    acc._subs_cache = (rev, out)
+    return out
+
+
 def detect(acc, now: float | None = None) -> list[dict]:
     """Every subscription found in the scan index of `acc` (the caller marks
     the hidden ones), next expected receipt first. Pure over the index:
     nothing is fetched."""
     now = time.time() if now is None else now
-    per: dict[str, list[tuple]] = {}
-    with acc.lock:
-        for m in acc.index.values():
-            if not m.get("ts"):
-                continue
-            key = company_key(m["addr"])
-            if key:
-                per.setdefault(key, []).append(_fields(m))
     out = []
-    for key, mails in per.items():
+    for key, mails in _companies(acc).items():
         receipts = [dict(ts=ts, subject=s, msgid=mid, folder=f, uid=u,
                          amount=amount_from_subject(s))
-                    for ts, s, _seen, _n, _a, mid, f, u in mails
-                    if is_receipt(s)]
-        if len(receipts) < MIN_RECEIPTS:
-            continue
+                    for ts, s, _seen, _n, _a, mid, f, u, rcpt in mails if rcpt]
         clusters = _cluster(receipts)
         run = find_run([c["ts"] for c in clusters])
         if run is None:
@@ -330,10 +398,10 @@ def _use(mails: list[tuple], now: float) -> dict:
     """Still in use? From mail that is already here: a sign-in / security
     alert of the company, or one of its other mails the user opened, within
     USE_DAYS. Receipts are no evidence."""
-    others = [(t, seen) for t, s, seen, *_ in mails
-              if not is_receipt(s) and not _signin_mail(s)]
-    last_signin = max((t for t, s, *_ in mails
-                       if not is_receipt(s) and _signin_mail(s)), default=0)
+    others = [(t, seen) for t, s, seen, *_, rcpt in mails
+              if not rcpt and not _signin_mail(s)]
+    last_signin = max((t for t, s, *_, rcpt in mails
+                       if not rcpt and _signin_mail(s)), default=0)
     last_read = max((t for t, seen in others if seen), default=0)
     cut = now - USE_DAYS * DAY
     if last_signin >= cut:
@@ -352,10 +420,10 @@ def _use(mails: list[tuple], now: float) -> dict:
 
 def _build(key: str, kind: str, gap: float, tail: list[dict], next_ts: int,
            mails: list[tuple], now: float) -> dict:
-    addrs = Counter(a for _t, s, _r, _n, a, *_ in mails if is_receipt(s))
+    addrs = Counter(m[4] for m in mails if m[8])
     # the name the receipts come under (a company has other senders too)
-    names = Counter(n for _t, s, _r, n, *_ in mails if n and is_receipt(s)) \
-        or Counter(n for _t, _s, _r, n, *_ in mails if n)
+    names = Counter(m[3] for m in mails if m[3] and m[8]) \
+        or Counter(m[3] for m in mails if m[3])
     name = (names.most_common(1)[0][0] if names
             else key.rsplit("@", 1)[-1].split(".")[0].capitalize())[:80]
     # The price: the latest of the last receipts whose subject names one.
@@ -366,7 +434,8 @@ def _build(key: str, kind: str, gap: float, tail: list[dict], next_ts: int,
         "key": key, "name": name,
         "addr": addrs.most_common(1)[0][0] if addrs else "",
         "cadence": kind, "every_days": round(gap),
-        "day": int(statistics.median(_utc(c["ts"]).day for c in tail)),
+        # the day the NEXT receipt is expected, the same date as `next_date`
+        "day": _utc(next_ts).day, "next_date": _utc(next_ts).date().isoformat(),
         "since": int(tail[0]["ts"]), "last": int(tail[-1]["ts"]),
         "next": next_ts, "next_days": math.ceil((next_ts - now) / DAY),
         "receipts": len(tail),
@@ -377,7 +446,9 @@ def _build(key: str, kind: str, gap: float, tail: list[dict], next_ts: int,
                     "folder": c["folder"], "uid": c["uid"]}
                    for c in reversed(tail[-LATEST:])],
         # kept out of the API answer (see listing)
-        "_ids": sorted({i for c in tail for i in c["ids"]}),
+        # every receipt of the company (older irregular ones too): what "Keep
+        # the receipts" pins
+        "_ids": sorted({m[5] for m in mails if m[8] and m[5]}),
         "_prices": [c["amount"] for c in tail],
         "_latest": (tail[-1]["folder"], tail[-1]["uid"], tail[-1]["ts"]),
     }
@@ -475,10 +546,18 @@ def item(acc, key: str, now: float | None = None) -> dict:
 # ----------------------------------------------------------- user actions
 
 def keep_receipts(acc, key: str, pinned: bool = True) -> dict:
-    """Pin (or unpin) every receipt of one subscription - pinned mails are
-    skipped by every bulk action."""
+    """Pin (or unpin) every receipt of one company - the older ones too -
+    pinned mails are skipped by every bulk action. The Message-IDs this
+    action pinned are remembered: turning it off unpins only those, never a
+    mail the user pinned themselves."""
     s = item(acc, key)
-    changed = pinstore.set_many(set(s["_ids"]), pinned, acc.name)
+    if pinned:
+        new = set(s["_ids"]) - pinstore.load_account(acc.name)
+        changed = pinstore.set_many(new, True, acc.name)
+        substore.add_kept(key, sorted(new), acc.name)
+    else:
+        mine = substore.pop_kept(key, acc.name)
+        changed = pinstore.set_many(set(mine), False, acc.name)
     if changed:
         with acc.lock:
             acc.state["groups_rev"] += 1       # the groups' pinned counts

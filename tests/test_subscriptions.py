@@ -187,9 +187,27 @@ def test_amounts_in_a_subject(text, want):
     "Your receipt", "Invoice 12345", "Order #123456 receipt",
     "Invoice 2024-11-05", "Receipt 12345 EUR",     # a bare code needs decimals
     "Invoice AB12 EURO", "Receipt 7,99", "Receipt for room 4.5",
-    "Quittung 5 CHF", "Receipt €0", "", None])
+    "Quittung 5 CHF", "Receipt €0", "", None,
+    # order / invoice numbers next to a currency are not the price
+    "Invoice 2025-11 €", "Invoice no. 2025-0042 EUR", "Receipt 12/2025 EUR",
+    "Receipt #4711 EUR"])
 def test_no_false_hit_on_order_numbers(text):
     assert subs.amount_from_subject(text or "") is None
+
+
+@pytest.mark.parametrize("text,want", [
+    ("Your receipt #4711 €9.99", 9.99),
+    ("Invoice 12/2025 €9.99", 9.99),
+    ("Invoice 10023 $9.99", 9.99),
+    ("Invoice 2025-11 €9.99", 9.99),
+    ("Receipt CB-4711 9,99 €", 9.99),
+    ("Invoice no. 2025-0042 EUR 9.99", 9.99),
+    ("Order #12 / 2025: 9.99 EUR", 9.99),
+    ("Receipt 10023 USD 12.50", 12.5),
+    ("Invoice 2025-11 - 9,99 €", 9.99),
+])
+def test_an_order_number_next_to_the_price_is_not_the_price(text, want):
+    assert subs.amount_from_subject(text)[0] == want
 
 
 def test_the_amount_comes_with_the_total_and_a_monthly_equivalent():
@@ -222,6 +240,13 @@ def test_a_price_older_than_the_last_receipts_is_not_current():
     ("Summe 9,99 €\nMwSt 1,60 €", (9.99, "EUR")),
     ("Items: €2.00 and €3.50 and €1.25", (3.5, "EUR")),   # no total: largest
     ("Plan renewed. Order 1234567", None),
+    # the amount on the line under its label; savings are not the price
+    ("Total\n€9.99\nThanks", (9.99, "EUR")),
+    ("Price\n\n€9.99\nYou saved €120", (9.99, "EUR")),
+    ("Price / €9.99 / You saved €120".replace(" / ", "\n"), (9.99, "EUR")),
+    ("You saved €120\nItems: €9.99", (9.99, "EUR")),
+    ("Total\nSubtotal €5.00\nTax €1.00\nTotal €6.00", (6.0, "EUR")),
+    ("Preis:\n9,99 €\nSie sparen 20 €", (9.99, "EUR")),
     ("", None)])
 def test_amounts_in_a_receipt_text(text, want):
     assert subs.amount_from_text(text) == want
@@ -678,7 +703,8 @@ def test_each_tenant_has_its_own_decisions(tmp_path):
         substore.set_body_amounts(True, "acct")
     with tenants.use(bob):
         assert substore.load_account("acct") == {
-            "hidden": [], "reminders": {}, "fired": [], "amounts": {},
+            "hidden": [], "kept": {}, "reminders": {}, "fired": [],
+            "amounts": {},
             "body_amounts": False}
     assert substore.load_account("acct")["hidden"] == []     # the default one
     assert (alice.root / "subscriptions.json").is_file()
@@ -722,3 +748,122 @@ def test_a_receipt_that_never_came_does_not_break_the_cadence():
     assert s["cadence"] == "monthly" and s["receipts"] == 7
     # ... but a third of a period off is no cadence
     assert subs.detect(_acc(_receipts([30, 31, 45, 30, 31, 45])), NOW) == []
+
+
+# ------------------------------------------------ review round: fixes
+
+def test_keep_pins_the_older_receipts_too_and_unpins_only_its_own():
+    older = [_mail(300 + i * 13, "Your receipt") for i in range(3)]  # irregular
+    mails = _receipts([30, 30, 30]) + older
+    acc = _acc(mails)
+    mine = next(m for m in mails if m["subject"] == "Your receipt")
+    pinstore.set_pinned(mine["msgid"], True, "acct")         # the user's own
+    out = subs.keep_receipts(acc, "fittrack.example", True)
+    assert out["changed"] == 6                               # 7 receipts, 1 pinned
+    assert pinstore.load_account("acct") == {m["msgid"] for m in mails}
+    assert subs.listing(acc, NOW)["items"][0]["kept"] is True
+    out = subs.keep_receipts(acc, "fittrack.example", False)
+    assert out["changed"] == 6
+    assert pinstore.load_account("acct") == {mine["msgid"]}  # still theirs
+    assert substore.load_account("acct")["kept"] == {}
+
+
+def test_what_keep_pinned_follows_the_account_and_is_per_account():
+    acc = _acc(_receipts([30, 30, 30]))
+    subs.keep_receipts(acc, "fittrack.example", True)
+    assert substore.load_account("other")["kept"] == {}
+    substore.rename_account("acct", "new")
+    assert list(substore.load_account("new")["kept"]) == ["fittrack.example"]
+
+
+def test_a_newsletter_with_invoice_in_it_is_no_receipt():
+    news = []
+    for ago in (5, 35, 65, 95):
+        m = _mail(ago, "Your invoice tips: save 20% on the next one")
+        m["bulk"] = True
+        news.append(m)
+    assert subs.detect(_acc(news), NOW) == []
+    # the same subject without List-Unsubscribe is a receipt-like mail
+    for m in news:
+        m["bulk"] = False
+    assert len(subs.detect(_acc(news), NOW)) == 1
+    # a plain receipt that merely carries List-Unsubscribe still counts
+    real = _receipts([30, 30, 30])
+    for m in real:
+        m["bulk"] = True
+    assert len(subs.detect(_acc(real), NOW)) == 1
+
+
+@pytest.mark.parametrize("subject", [
+    "Ihr Kontoauszug 11/2026", "Your monthly statement is ready",
+    "Depotauszug Oktober", "Account statement"])
+def test_bank_statements_are_no_receipts(subject):
+    assert subs.is_receipt(subject) is False
+    assert subs.detect(_acc(_receipts([30, 30, 30], subject=subject)), NOW) == []
+
+
+def test_the_monthly_day_is_the_day_of_the_next_receipt():
+    s = _one(_receipts([30, 31, 29, 30], last_ago=10))
+    nxt = datetime.datetime.fromtimestamp(s["next"], datetime.timezone.utc)
+    assert s["day"] == nxt.day
+    assert s["next_date"] == nxt.date().isoformat()
+
+
+def test_detection_is_cached_per_index_revision_and_does_not_hold_the_lock():
+    mails = _receipts([30, 30, 30])
+    acc = _acc(mails)
+    calls = []
+    real = subs._fields
+
+    held = []
+    inner = acc.lock
+
+    class Lock:
+        def __enter__(self):
+            held.append(1)
+            return inner.__enter__()
+
+        def __exit__(self, *a):
+            return inner.__exit__(*a)
+    acc.lock = Lock()
+    try:
+        subs._fields = lambda m: (calls.append(1), real(m))[1]
+        subs.detect(acc, NOW)
+        n = len(calls)
+        assert n == len(mails)                       # one pass over the index
+        subs.detect(acc, NOW)
+        subs.listing(acc, NOW)
+        subs.item(acc, "fittrack.example", NOW)
+        assert len(calls) == n                       # a click is not a rescan
+        acc.state["groups_rev"] += 1                 # the index changed
+        subs.detect(acc, NOW)
+        assert len(calls) == 2 * n
+    finally:
+        subs._fields = real
+    # per mail work happens outside the lock: it is taken once per pass
+    assert held.count(1) >= 2
+
+
+def test_the_lock_is_not_held_while_the_mails_are_read():
+    acc = _acc(_receipts([30, 30, 30]))
+    real = subs._fields
+    inside = []
+
+    def other_thread_takes_it():
+        got = acc.lock.acquire(timeout=0.5)
+        if got:
+            acc.lock.release()
+        inside.append(got)
+
+    def probe(m):
+        # the lock is re-entrant for this thread, so ask from another one
+        t = threading.Thread(target=other_thread_takes_it)
+        t.start()
+        t.join()
+        return real(m)
+    subs._fields = probe
+    try:
+        subs.detect(acc, NOW)
+    finally:
+        subs._fields = real
+    assert inside and all(inside)

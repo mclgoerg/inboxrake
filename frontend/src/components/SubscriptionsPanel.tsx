@@ -5,8 +5,9 @@ import { nowDate } from "../clock";
 import { t } from "../i18n";
 import { NOTIFY_KEY, pushMode } from "../push";
 import { useSplitPane } from "../splitPane";
-import { amountText, cadenceSentence, dayMonth, fmtMoney, icsName, monthlyText,
-  monthShort, monthYear, nextPill, pillText, subscriptionIcs } from "../subscriptions";
+import { amountText, cadenceSentence, dayMonth, fmtMoney, icsName, LINK_TAP,
+  monthlyText, monthShort, monthYear, nextDay, nextPill, pillText,
+  subscriptionIcs } from "../subscriptions";
 import type { Mail, Subscription, SubscriptionsResp, SubTotals } from "../types";
 import { Avatar, Button, confirmDialog, EmptyState, IconTile, LINK_ACCENT,
   Loading, Modal, PanelHeader, Spinner, Tag, useIsPage, useMediaQuery,
@@ -341,7 +342,7 @@ export function SubscriptionsPanel({ account, scannedTs, onlyUnused = false,
                 <td className="py-2.5 pr-3 whitespace-nowrap">
                   {t(s.cadence === "monthly" ? "sub.monthly" : "sub.yearly")}</td>
                 <td className="py-2.5 pr-3 whitespace-nowrap">
-                  <span className="tabular-nums">~{dayMonth(s.next)}</span>
+                  <span className="tabular-nums">~{nextDay(s)}</span>
                   {pill && (
                     <Tag tone="review" className="ml-2 whitespace-nowrap">
                       {pillText(pill)}</Tag>
@@ -399,7 +400,7 @@ export function SubscriptionsPanel({ account, scannedTs, onlyUnused = false,
           {t("sub.reading")}</p>
       )}
       {!data.body_amounts && noAmount && (
-        <p><button type="button" className={`${LINK_ACCENT} coarse:min-h-11`}
+        <p><button type="button" className={`${LINK_ACCENT} ${LINK_TAP}`}
           onClick={() => void findAmounts()}>{t("sub.find_amounts")}</button></p>
       )}
       {hiddenCount > 0 && (

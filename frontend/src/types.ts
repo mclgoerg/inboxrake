@@ -996,6 +996,9 @@ export interface Subscription {
   day: number;
   /** epoch s: first receipt of the current run, the latest, the next expected */
   since: number; last: number; next: number;
+  /** The next expected date as the SERVER counts it (UTC, "YYYY-MM-DD") - the
+   *  date the reminder and the .ics use, never re-read from `next`. */
+  next_date: string;
   /** whole days until `next` (negative = overdue) */
   next_days: number;
   receipts: number;

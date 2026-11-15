@@ -5,8 +5,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { setClockShift } from "./clock";
 import { setLang } from "./i18n";
-import { cadenceSentence, fmtMoney, icsName, monthlyText, nextPill,
-  ordinal, pillText, subscriptionIcs, unusedNames } from "./subscriptions";
+import { cadenceSentence, fmtMoney, icsName, monthlyText, nextDay, nextPill,
+  ordinal, pillText, showReminderToast, subscriptionIcs, unusedNames }
+  from "./subscriptions";
 import { clouddrive, fittrack, ITEMS, newsdaily, NOW, resp, streambox }
   from "./subscriptionsFixtures";
 
@@ -36,10 +37,10 @@ test("ordinals: 1st 2nd 3rd 4th 11th 12th 13th 21st, German 5.", () => {
 
 test("the cadence sentence: the day of the month, or the date of a yearly one",
   () => {
-    expect(cadenceSentence(streambox)).toBe("monthly, around the 5th");
+    expect(cadenceSentence(fittrack)).toBe("monthly, around the 5th");
     expect(cadenceSentence(clouddrive)).toMatch(/^yearly, around \d+ \w+/);
     setLang("de");
-    expect(cadenceSentence(streambox)).toBe("monatlich, um den 5.");
+    expect(cadenceSentence(fittrack)).toBe("monatlich, um den 5.");
   });
 
 test("the next-receipt pill is for a yearly renewal within 60 days: in N days, "
@@ -106,4 +107,28 @@ test("the file name is the service's name", () => {
   expect(icsName(fittrack)).toBe("FitTrack-Premium.ics");
   expect(icsName({ ...fittrack, name: "NewsDaily+" })).toBe("NewsDaily.ics");
   expect(icsName({ ...fittrack, name: "***" })).toBe("subscription.ics");
+});
+
+test("the .ics date is the server's date, whatever the time zone", () => {
+  const ics = subscriptionIcs({ ...fittrack, next: 0, next_date: "2026-12-31" },
+    new Date(0));
+  expect(ics).toContain("DTSTART;VALUE=DATE:20261231");
+  expect(ics).toContain("DTEND;VALUE=DATE:20270101");
+  expect(ics).toContain("UID:inboxrake-sub-fittrack-example-20261231");
+});
+
+test("the shown next date is the server's date as it is", () => {
+  expect(nextDay({ ...fittrack, next_date: "2026-12-05" })).toBe("5 Dec");
+  setLang("de");
+  expect(nextDay({ ...fittrack, next_date: "2026-12-05" })).toBe("5. Dez.");
+});
+
+test("a toast for a fired reminder: always without push, only a fresh one with it", () => {
+  expect(showReminderToast(false, 3 * 3600)).toBe(true);
+  expect(showReminderToast(true, 60)).toBe(true);
+  expect(showReminderToast(true, 3 * 3600)).toBe(false);
+});
+
+test("the monthly day follows the next expected date", () => {
+  expect(cadenceSentence({ ...fittrack, day: 26 })).toBe("monthly, around the 26th");
 });

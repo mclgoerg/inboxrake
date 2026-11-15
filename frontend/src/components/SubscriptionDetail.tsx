@@ -5,12 +5,12 @@ import { nowDate } from "../clock";
 import { t } from "../i18n";
 import { fmtNum } from "../numfmt";
 import { amountText, cadenceSentence, dayMonth, fmtMoney, monthShort,
-  monthYear } from "../subscriptions";
+  monthYear, nextDay, LINK_TAP } from "../subscriptions";
 import type { Subscription } from "../types";
 import { Avatar, Button, LINK_ACCENT, Notice } from "./ui";
 
 /** A pane button: icon and label on one line (a `Button` is a plain block). */
-const ROW_BTN = "inline-flex min-w-0 items-center justify-center text-center";
+const ROW_BTN = "inline-flex min-w-0 items-center justify-center whitespace-nowrap";
 
 /** The pane of one subscription (beside the list from 1280 px, a dialog
  *  below): amount, receipts and total, the receipt rhythm, the "looks
@@ -52,7 +52,7 @@ export function SubscriptionDetail({ s, notificationsOn, busy, onRemind,
               {t("sub.not_in_subject")}
               {onFindAmounts && (<>
                 {" · "}
-                <button type="button" className={`${LINK_ACCENT} coarse:min-h-11`}
+                <button type="button" className={`${LINK_ACCENT} ${LINK_TAP}`}
                   onClick={onFindAmounts}>{t("sub.find_amounts_short")}</button>
               </>)}
             </>
@@ -117,7 +117,7 @@ export function SubscriptionDetail({ s, notificationsOn, busy, onRemind,
         {s.reminder && !notificationsOn && (
           <div className="type-meta text-muted">
             {t("sub.remind_off_device")}{" "}
-            <button type="button" className={`${LINK_ACCENT} coarse:min-h-11`}
+            <button type="button" className={`${LINK_ACCENT} ${LINK_TAP}`}
               onClick={onNotifications}>{t("sub.remind_turn_on")}</button>
           </div>
         )}
@@ -136,7 +136,7 @@ export function SubscriptionDetail({ s, notificationsOn, busy, onRemind,
         </div>
         <p className="type-meta text-muted">
           {t("sub.cant_cancel")}{" "}
-          <button type="button" className={`${LINK_ACCENT} coarse:min-h-11`}
+          <button type="button" className={`${LINK_ACCENT} ${LINK_TAP}`}
             onClick={() => onOpenReceipt(0)}>{t("sub.open_latest")}</button>
           {t("sub.cant_cancel_post")}
         </p>
@@ -163,7 +163,7 @@ function Rhythm({ s }: { s: Subscription }) {
     : monthYear(s.slots_from);
   const mid = s.slots.length >= 6 && !yearly
     ? monthShort(s.last, nowDate()) : "";
-  const next = dayMonth(s.next);
+  const next = nextDay(s);
   return (
     <div>
       <div role="img" className="flex items-center gap-1"

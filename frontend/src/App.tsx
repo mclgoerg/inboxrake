@@ -26,6 +26,7 @@ import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
+import { showReminderToast } from "./subscriptions";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
@@ -522,6 +523,7 @@ export default function App() {
      app; this page shows it once as a toast (and as a browser notification
      when those are on and the page is hidden). */
   const openSubsRef = useRef<() => void>(() => {});
+  const REMINDER_POLL_MS = 5 * 60 * 1000;
   useEffect(() => {
     if (!authOk) return;
     let live = true;
@@ -539,6 +541,10 @@ export default function App() {
             const days = Math.max(0, Math.ceil((r.next - nowMs() / 1000) / 86400));
             const text = days === 0 ? t("sub.reminder_0", { name: r.name })
               : t("sub.reminder_n", { name: r.name, n: days });
+            // With Web Push on, a device that was not looking got the push
+            // itself: the page only shows what is fresh (it was looking, so
+            // the server left it out), never a stale one on top of a push.
+            if (!showReminderToast(pushMode(), nowMs() / 1000 - r.ts)) continue;
             toast.show(text, { action: { label: t("sub.reminder_open"),
               onClick: () => openSubsRef.current() } });
             fire(text);
@@ -548,7 +554,7 @@ export default function App() {
         }).catch(() => {});
     };
     check();
-    const h = setInterval(check, 15 * 60 * 1000);
+    const h = setInterval(check, REMINDER_POLL_MS);
     const vis = () => { if (!document.hidden) check(); };
     document.addEventListener("visibilitychange", vis);
     return () => {
