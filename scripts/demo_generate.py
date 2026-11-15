@@ -1101,10 +1101,12 @@ def generate() -> dict:
         st = mailops.public_state(acc)
         print(f"[demo] {name}: {len(st['groups']['sender'])} senders, "
               f"{sum(g['count'] for g in st['groups']['sender'].values())} mails")
-    # A few pinned mails (by Message-ID): the "Pinned mails" row of Move to
-    # another account has something to count.
+    # A few pinned mails (by Message-ID) of a protected sender, so the
+    # "Pinned mails" row of Move to another account has something to count
+    # (and a mail that is both counts once). A protected sender: the demo
+    # e2e's delete / rule steps only pick unprotected ones.
     for m in sorted((m for m in accounts.get("proton").index.values()
-                     if m["addr"] == "billing@cloudbox.example"),
+                     if m["addr"] == "anna.weber@mailfox.example"),
                     key=lambda m: m["uid"])[:3]:
         pinstore.set_pinned(m["msgid"], True, "proton")
     # Bodies come last: the Proton body index above must not hold them (see

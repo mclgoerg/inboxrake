@@ -793,7 +793,16 @@ def _stop_requested() -> str:
 
 
 def _run() -> None:
-    """The copy thread (a tenant context is already entered)."""
+    """The copy thread (a tenant context is already entered). It stays
+    registered until everything is done, the audit entry included."""
+    try:
+        _work()
+    finally:
+        with _LOCK:
+            _THREADS.pop(tenants.current().id, None)
+
+
+def _work() -> None:
     tid = tenants.current().id
     with _LOCK:
         job = _read()["job"]
@@ -912,8 +921,6 @@ def _run() -> None:
     finally:
         if run is not None:
             run.close()
-        with _LOCK:
-            _THREADS.pop(tid, None)
     if job["status"] in ("done", "cancelled", "error"):
         _audit(job)
     if job["status"] == "done":
