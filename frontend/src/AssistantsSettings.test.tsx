@@ -846,3 +846,16 @@ test("German: the hosted-app control, steps and Disconnect", async () => {
   expect(await screen.findByRole("button", {
     name: "Claude · claude.example trennen" })).toBeTruthy();
 });
+
+test("access turned off while hosted apps are on: the switch stays on with the reason, nothing shows as active", async () => {
+  listed = [grant()];
+  await show(baseCfg({ ...READ_ONLY, access: "off", oauth: oauthOf({
+    enabled: true, available: false, reason: "oauth_needs_access" }) }));
+  const sw = screen.getByRole("switch", { name: /Let hosted apps connect/ });
+  expect(sw.getAttribute("aria-checked")).toBe("true");
+  expect(sw.hasAttribute("disabled")).toBe(false);
+  expect(screen.getByText(/Not active right now: .*assistant access is Off/)).toBeTruthy();
+  expect(screen.queryByText(/Hosted apps reach this server/)).toBeNull();
+  expect(screen.queryByText("Connect a hosted app")).toBeNull();
+  expect(screen.queryByText("Connections")).toBeNull();
+});
