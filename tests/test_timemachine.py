@@ -1164,7 +1164,7 @@ def test_a_lookalike_in_the_target_does_not_count_as_already_there(monkeypatch):
     fake.mailbox["Trash"].append(make_msg(92, frm="z@x.example",
                                           msgid=a1["msgid"]))   # not a1
     r = mailops.undo_last()
-    assert r["ambiguous"] == 0 and r["restored"] >= 2
+    assert "ambiguous" not in r and r["restored"] >= 2
     assert not any(m["from"].startswith("a@") for m in fake.mailbox["Keep"])
     assert _where(fake, "z") == {"Trash": 1}
 

@@ -5137,6 +5137,12 @@ def apply_undo_counts(acc, run: dict) -> None:
                     acc.state[ROLE_COUNTED[role]] += n
 
 
+def _said(run: dict) -> dict:
+    """`{"ambiguous": n}` when mails stayed because their Message-ID belongs
+    to another mail too (absent otherwise: the answer keeps its old shape)."""
+    return {"ambiguous": run["ambiguous"]} if run.get("ambiguous") else {}
+
+
 def undo_last(index: int = -1, acc=None, ident: dict | None = None,
               assistant: bool = False, token: str | None = None,
               actor: str = "user") -> dict:
@@ -5176,7 +5182,7 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
         # the mails went back to a folder that is never scanned: nothing
         # in the index changes, so no rescan and no "rescan" notice
         return {"restored": restored, "of": entry["count"], "rescan": False,
-                "ambiguous": run.get("ambiguous", 0)}
+                **_said(run)}
     params = {"restored": restored, "of": entry["count"],
               "label": entry["label"]}
     if entry.get("label_key"):     # the notice words the label itself, too
@@ -5185,7 +5191,7 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
                        for k, v in entry["label_params"].items()})
     rescan = _rescan_after_restore(acc, restored, "restored", params)
     return {"restored": restored, "of": entry["count"], "rescan": rescan,
-            "ambiguous": run.get("ambiguous", 0)}
+            **_said(run)}
 
 
 # -- role indexes ----------------------------------------------------------
