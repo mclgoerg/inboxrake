@@ -1049,3 +1049,61 @@ def test_the_state_says_how_many_steps_there_really_are(monkeypatch):
         mailops._sync_undo(acc)
     assert len(acc.state["undo"]) == 100 and acc.state["undo_total"] == 150
     assert acc.state["assistant_undo_total"] == 0
+
+
+# ------------------------------------------------------ round 3
+
+def test_a_step_that_came_back_from_two_folders_is_re_armed_per_folder(monkeypatch):
+    fake = _fake(monkeypatch)
+    fake.mailbox["Keep"].append(make_msg(50, frm="a@x.example", msgid="<k1@x.example>"))
+    fake.uv["Keep"] = 1
+    mailops.run_scan()
+    _trash("a")                                    # a from INBOX and Keep
+    s = _steps()[0]["id"]
+    assert _where(fake, "a") == {"Trash": 3}
+    _go("")                                        # R1: back in both folders
+    assert _where(fake, "a") == {"INBOX": 2, "Keep": 1}
+    _go(s)                                         # R2: undoes R1 (a -> Trash)
+    assert _where(fake, "a") == {"Trash": 3}
+    mailops.undo_last()                            # undo R2: R1's mails back
+    assert _where(fake, "a") == {"INBOX": 2, "Keep": 1}
+    for _ in range(2):                             # undo R1: one step per
+        mailops.undo_last()                        # folder it came back to
+    assert _where(fake, "a") == {"Trash": 3}
+    p, done = _go("")                              # the step is whole again
+    assert p["mails"] == done["moved"] == 3
+    assert _where(fake, "a") == {"INBOX": 2, "Keep": 1}
+
+
+def test_undoing_a_restore_never_moves_an_unrelated_mail_with_the_same_message_id(
+        three):
+    acc = _acc()
+    _go("")                                        # everything back in INBOX
+    a1 = next(m for m in three.mailbox["INBOX"] if m["from"].startswith("a@"))
+    three.mailbox["INBOX"].append(make_msg(
+        90, frm="z@x.example", msgid=a1["msgid"]))   # same Message-ID, not ours
+    r = mailops.undo_last()                        # undo the restore
+    assert _where(three, "z") == {"INBOX": 1}      # never moved
+    assert r["restored"] == 5                      # the ambiguous a1 stayed
+    assert any(m["msgid"] == a1["msgid"] and m["from"].startswith("a@")
+               for m in three.mailbox["INBOX"])
+
+
+def test_a_restore_is_refused_while_a_step_is_off_its_list(three):
+    acc = _acc()
+    entry, pos = mailops.pop_undo(acc)
+    with pytest.raises(RuntimeError, match=mailops.BUSY_ACTION):
+        timemachine.start(acc, "", None, None, [])
+    mailops.run_undo(acc, entry, pos)
+
+
+def test_a_failing_split_puts_the_step_back(three, monkeypatch):
+    acc = _acc()
+    entry, pos = mailops.pop_undo(acc)
+
+    def boom(*a):
+        raise ValueError("odd step")
+    monkeypatch.setattr(mailops, "_split_entry", boom)
+    run = mailops.run_undo(acc, entry, pos, only=lambda *a: False)
+    assert isinstance(run["failed"], ValueError)
+    assert entry in acc.undo_log and acc.undo_busy == 0

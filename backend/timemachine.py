@@ -539,7 +539,7 @@ def start(acc, point: str, top: str | None, picked: list[str] | None,
     if not todo:
         raise RuntimeError(mailops.NOTHING_TO_UNDO)
     with acc.lock:
-        if mailops._job_running(acc):
+        if mailops._job_running(acc) or acc.undo_busy:
             raise RuntimeError(mailops.BUSY_ACTION)
         if acc.state["status"] == "scanning":
             raise RuntimeError(mailops.BUSY_SCAN)

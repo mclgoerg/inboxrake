@@ -4758,11 +4758,17 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                         continue
                 by_target.setdefault(copy["folder"], []).append(str(copy["uid"]).encode())
         found_by: dict[int, tuple[str, str, str, int]] = {}
+        want = Counter(m["msgid"] for m in undo_mails(entry))
         for mail in undo_mails(entry) if exact_copies is None else []:
             folder, msgid = mail["folder"], mail["msgid"]
             if not msgid or (folder, msgid) in present:
                 continue
             found = _search_message_id(conn, msgid)
+            if entry.get("strict") and len(found) > want[msgid]:
+                # more mails carry this Message-ID than the step recorded:
+                # one of them is not ours - move none of them
+                run["ambiguous"] = run.get("ambiguous", 0) + 1
+                continue
             for u in found:
                 found_by[int(u)] = (folder, msgid, mail["addr"], mail["size"])
             if found:
@@ -4902,7 +4908,9 @@ def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
             _restore_entry(conn, acc, {
                 "items": [(target, m[1]) for m in mails], "in": src,
                 "who": [[m[2], m[3]] for m in mails], "count": len(mails),
-                "label": entry["label"]}, run)
+                "label": entry["label"],
+                # a Message-ID found more often than recorded is not moved
+                "strict": True}, run)
 
 
 def _unmoved(entry: dict, run: dict) -> dict | None:
@@ -4934,10 +4942,13 @@ def _reinstate_steps(acc, entry: dict) -> None:
     (found by Message-ID, as their exact copies are gone). A step that is
     still listed (a short restore left a rest of it there) gets the mails as
     a step of its own, so none of them is lost."""
-    by_head: dict[str, tuple[dict, list]] = {}
+    by_head: dict[tuple, tuple[dict, list]] = {}
     for part in entry["parts"]:
         head = part["head"]
-        by_head.setdefault(head["id"], (head, []))[1].extend(part["mails"])
+        # (a step that came back from two folders is two parts: each is
+        # undone from its own folder)
+        by_head.setdefault((head["id"], head["in"]), (head, []))[1].extend(
+            part["mails"])
     for head, mails in by_head.values():
         with acc.lock:
             lst = acc.assistant_undo if head.get("token") else acc.undo_log
@@ -4974,10 +4985,12 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
     and `failed`."""
     run: dict = {"entry": entry, "restored": 0, "of": entry["count"],
                  "items": [], "steps": [], "failed": None}
-    take, keep = (entry, None) if only is None else _split_entry(entry, only)
-    run["of"] = take["count"]
+    take, keep = entry, None
     conn = None
     try:
+        if only is not None:
+            take, keep = _split_entry(entry, only)
+        run["of"] = take["count"]
         conn = connect(cfgmod.account_imap(acc.name), acc.name)
         if entry.get("parts") is not None:
             _undo_parts(conn, acc, take, run)
