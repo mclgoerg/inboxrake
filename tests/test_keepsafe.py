@@ -49,7 +49,7 @@ NEWS = '"Newsletter" <news@promo.example>'
     ("Privacy policy update", "contracts"),
     # job applications (jobs / application)
     ("Your application was received", "jobs"),
-    ("Bewerbung: Eingangsbestätigung", "jobs"),
+    ("Bewerbung: Unterlagen erhalten", "jobs"),
     ("Interview invitation", "jobs"),
     # account & security (accounts / account) - a class of its own
     ("Your sign-in code is 123456", "accounts"),
