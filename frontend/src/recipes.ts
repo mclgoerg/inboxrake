@@ -7,6 +7,7 @@
 
 import { t } from "./i18n";
 import { matchGroup, parseFilter } from "./lib";
+import { isProposal } from "./proposals";
 import type { Group, Rule } from "./types";
 import RECIPE_DATA from "./recipes.json";
 
@@ -91,6 +92,7 @@ export const recipeFolderName = (r: Recipe): string =>
  *  (same grouping, filter, action, folder and retention). */
 export function recipeAdded(r: Recipe, rules: Rule[], dest: string): boolean {
   return rules.some((x) => (x.scope ?? "mail") === "mail"
+    && !isProposal(x)    // an unapproved assistant proposal is not "added"
     && x.grouping === "sender" && x.query.trim() === r.query
     && x.action === r.action && (r.action === "move" ? x.dest === dest : true)
     && (x.keep_latest ?? null) === (r.keep_latest ?? null)
@@ -109,8 +111,10 @@ export function recipeBody(r: Recipe, dest: string): Partial<Rule> {
 }
 
 /** "move to Trash if older than 30 days" - the action in the app's words. */
-export function recipeAction(r: Recipe): string {
-  const act = t(`rule.act_${r.action}`, { folder: recipeFolderName(r) });
+export function recipeAction(r: Recipe, folderLabel = ""): string {
+  // the real folder's own name when one exists, else the localized default
+  const act = t(`rule.act_${r.action}`,
+    { folder: folderLabel || recipeFolderName(r) });
   const ret = r.keep_latest != null
     ? t("rule.ret_keep", { n: r.keep_latest })
     : r.older_than_days != null

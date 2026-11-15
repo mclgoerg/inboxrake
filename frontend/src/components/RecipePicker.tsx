@@ -79,8 +79,8 @@ interface Row { recipe: Recipe; count: RecipeCount | null; empty: boolean }
 
 /** One recipe as a card: what it is for, the filter and action in the app's
  *  words, what it would catch now, Add. */
-function RecipeCard({ row, added, busy, error, onAdd, lead }: {
-  row: Row; added: boolean; busy: boolean; error?: string;
+function RecipeCard({ row, added, folderLabel, busy, error, onAdd, lead }: {
+  row: Row; added: boolean; folderLabel: string; busy: boolean; error?: string;
   onAdd: () => void; lead?: boolean;
 }) {
   const r = row.recipe;
@@ -99,7 +99,7 @@ function RecipeCard({ row, added, busy, error, onAdd, lead }: {
       <p className="type-meta text-muted">
         <code className="rounded-control bg-chip px-1.5 py-0.5 text-chiptext
           break-words">{r.query}</code>
-        {" → "}{recipeAction(r)}{" · "}{t(`sched.${r.schedule}`)}
+        {" → "}{recipeAction(r, folderLabel)}{" · "}{t(`sched.${r.schedule}`)}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-1">
         {now && <span className="inline-flex min-w-0 flex-1 items-center gap-1.5
@@ -155,9 +155,16 @@ export function RecipeDialog({ state, ai, onClose, onMode, onAdd }: {
   };
   const addedAlready = (r: Recipe) => recipeAdded(r, state.rules ?? [],
     recipeFolder(r, state.folders, state.folders_raw));
+  // the display name of the folder the recipe would file into, if there is one
+  const folderLabel = (r: Recipe) => {
+    const raw = recipeFolder(r, state.folders, state.folders_raw);
+    const i = raw ? state.folders_raw.indexOf(raw) : -1;
+    return i >= 0 ? state.folders[i] ?? "" : "";
+  };
   const card = (row: Row, i = -1) => (
     <RecipeCard key={row.recipe.id} row={row}
       added={addedAlready(row.recipe)}
+      folderLabel={folderLabel(row.recipe)}
       lead={i === 0 && !row.empty && filter === "all"}
       busy={busy === row.recipe.id}
       error={err?.id === row.recipe.id ? err.text : undefined}

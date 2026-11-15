@@ -9,7 +9,7 @@ import { DialogProvider } from "./components/ui";
 import { setLang, t } from "./i18n";
 import { DE } from "./locales/de";
 import { EN } from "./locales/en";
-import { countRecipe, RECIPES, rankRecipes, recipeAction, recipeBody,
+import { countRecipe, RECIPES, rankRecipes, recipeAction, recipeAdded, recipeBody,
   recipeFolder } from "./recipes";
 import { parseFilter } from "./lib";
 import type { AppState, Group } from "./types";
@@ -336,6 +336,31 @@ test("the size recipe is ranked by its mails, not by its bytes", () => {
   // bytes must never outrank a bigger mail count
   expect(rankRecipes(groups)[0].recipe.id).toBe("newsletters");
   expect(big.count).not.toBeNull();
+});
+
+test("the action line names the real folder, the localized name only without one", () => {
+  const r = RECIPES.find((x) => x.id === "receipts")!;
+  setLang("de");
+  const state = { ...withGroups({
+    "f@bank.example": grp("f@bank.example", { count: 12, tags: ["finance"] }) }),
+    folders: ["INBOX", "Receipts"], folders_raw: ["INBOX", "Receipts"] };
+  renderRules(state);
+  fireEvent.click(screen.getByRole("button", { name: t("rule.new_btn") }));
+  expect(cards().find((c) => c.dataset.recipe === "receipts")!.textContent)
+    .toContain("in Receipts verschieben");
+  expect(recipeAction(r)).toBe("in Belege verschieben");
+});
+
+test("an unapproved assistant proposal does not count as an added recipe", () => {
+  const r = RECIPES.find((x) => x.id === "newsletters")!;
+  const rule = { id: "p", name: "p", scope: "mail" as const,
+    grouping: "sender" as const, query: "is:unsub", action: "trash", dest: "",
+    schedule: "weekly" as const, mode: "report" as const, keep_latest: null,
+    older_than_days: 30, origin: "mcp" as const, report_runs: 1, created: 0,
+    proposed_by: { token_id: "t", name: "Assistant", at: 1 }, last_run: null };
+  expect(recipeAdded(r, [rule], "")).toBe(false);
+  expect(recipeAdded(r, [{ ...rule, origin: "manual" as const,
+    proposed_by: undefined }], "")).toBe(true);
 });
 
 test("Describe it… is hidden without AI and disabled with its hint in the demo", () => {
