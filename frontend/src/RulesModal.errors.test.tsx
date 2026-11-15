@@ -39,6 +39,7 @@ const submitPurgeRule = () => {
     <RulesModal state={state} onClose={() => {}} onChanged={() => {}} />
   </DialogProvider>);
   fireEvent.click(screen.getByRole("button", { name: t("rule.new_btn") }));
+  fireEvent.click(screen.getByRole("radio", { name: t("rule.mode_blank") }));
   fireEvent.click(screen.getByRole("button",
     { name: new RegExp(`^${t("rule.f_scope")}`) }));
   fireEvent.click(screen.getByRole("menuitemradio", { name: t("Trash") }));
@@ -68,6 +69,7 @@ const submitMailRule = () => {
     <RulesModal state={state} onClose={() => {}} onChanged={() => {}} />
   </DialogProvider>);
   fireEvent.click(screen.getByRole("button", { name: t("rule.new_btn") }));
+  fireEvent.click(screen.getByRole("radio", { name: t("rule.mode_blank") }));
   fireEvent.change(screen.getByLabelText(t("rule.f_name")), { target: { value: "x" } });
   fireEvent.change(screen.getByLabelText(t("rule.f_filter")),
     { target: { value: "age:>1yr" } });

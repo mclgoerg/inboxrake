@@ -49,8 +49,10 @@ const rule: Rule = {
 
 
 // New / Edit rule is a side panel (a sheet here): its fields are pop-ups.
-const openNew = () =>
+const openNew = () => {
   fireEvent.click(screen.getByRole("button", { name: /New rule|Neue Regel/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /^(Blank|Leer)$/ }));
+};
 const renderNew = () => {
   const r = render(<RulesModal state={baseState} onClose={() => {}}
     onChanged={() => {}} />);
@@ -993,6 +995,8 @@ test("the side panel takes focus on open and gives it back on every close",
   const cycle = (opener: HTMLElement, close: () => void) => {
     opener.focus();
     fireEvent.click(opener);
+    if (opener === newBtn)
+      fireEvent.click(screen.getByRole("radio", { name: "Blank" }));
     expect(document.activeElement).toBe(screen.getByLabelText("Name"));
     close();
     expect(screen.queryByRole("complementary")).toBeNull();
@@ -1005,6 +1009,7 @@ test("the side panel takes focus on open and gives it back on every close",
     { key: "Escape" }));
   // Save
   newBtn.focus(); fireEvent.click(newBtn);
+  fireEvent.click(screen.getByRole("radio", { name: "Blank" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "n" } });
   fireEvent.click(screen.getByText("Create rule (report only)"));
   await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());

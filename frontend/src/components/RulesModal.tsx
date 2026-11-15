@@ -8,7 +8,12 @@ import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
+import { type Recipe, recipeBody, recipeFolder,
+  recipeFolderName } from "../recipes";
+import { AiFilterPanel } from "./AiFilterPanel";
 import { QueryBuilder } from "./QueryBuilder";
+import { NewRuleModes, type NewRuleMode, RecipeDialog, type RuleAi,
+  RecipeStarters } from "./RecipePicker";
 import { Avatar, Button, checkDialog, confirmDialog, EmptyState, Input,
   LINK_ACCENT, Menu, MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented,
   SettingsGroup, SettingsRow, Spinner, Tag, useIsPage, useMediaQuery,
@@ -357,8 +362,11 @@ function ProposalCard({ rule, busy, error, onApprove, onAgain, onEdit,
 
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
-function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete }: {
+function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
+  onDelete }: {
   rule: Rule; busy: boolean; error?: string;
+  /** Just added from a recipe: line 2 says so and the report shows inline. */
+  fresh?: boolean;
   onRun: () => void; onEdit: () => void; onReport: () => void;
   onMode: (mode: "report" | "execute") => void; onDelete: () => void;
 }) {
@@ -381,7 +389,11 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
               <span className="min-w-0 break-words">{proposedLine(rule)}</span>
             </div>
           )}
-          <div className="type-meta text-muted"><RunSummary rule={rule} /></div>
+          <div className="type-meta text-muted">
+            {fresh ? t(rule.last_run && !rule.last_run.pending
+              && !rule.last_run.error ? "recipe.added_ready"
+              : "recipe.added") : <RunSummary rule={rule} />}
+          </div>
         </div>
         {/* On phones the switch gets its own full-width line. */}
         <Segmented value={rule.mode} label={t("rule.f_mode")} equal role="radio"
@@ -400,6 +412,7 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
         </div>
       )}
       <RuleSentence rule={rule} />
+      {fresh && <ProposalReport rule={rule} />}
       {!!rule.filter_invalid?.length && (
         <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
@@ -446,8 +459,12 @@ function RuleCard({ rule, busy, error, onRun, onEdit, onReport, onMode, onDelete
   );
 }
 
-export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
+export function RulesModal({ state, onClose, onChanged, initialQuery = "",
+  ai }: {
   state: AppState;
+  /** Describe it… (AI is on: enabled; the demo: disabled with its hint);
+   *  absent when there is no AI provider. */
+  ai?: RuleAi;
   onClose: () => void;
   onChanged: () => void;
   /** Starts the new-rule form with this filter (e.g. one the AI wrote). */
@@ -459,6 +476,14 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   // (e.g. one the AI wrote) opens it straight away.
   const [reportId, setReportId] = useState<string | null>(null);
   const [editing, setEditing] = useState(!!initialQuery);
+  // New rule starts in the recipe view; Blank is today's editor, Describe it…
+  // the plain-words filter writer.
+  const [creating, setCreating] = useState<"recipe" | "describe" | null>(null);
+  // rules added from a recipe in this session (their card says so)
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [starterBusy, setStarterBusy] = useState("");
+  // the blank editor was reached from a recipe (the folder fallback)
+  const [fromRecipe, setFromRecipe] = useState(false);
   const onPage = useIsPage();
   const [busyId, setBusyId] = useState("");
   const [msg, setMsg] = useState("");      // a refused save, in the editor
@@ -516,13 +541,62 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 
   const closeEditor = () => {
     setEditing(false); setEditId(null); setForm({ ...EMPTY });
+    setFromRecipe(false);
     // the side panel unmounts with its focus: give it back to the opener
     const back = opener.current as HTMLElement | null;
     if (onPage && back?.isConnected) back.focus();
   };
   const openNew = () => {
     opener.current = document.activeElement;
-    setEditId(null); setForm({ ...EMPTY }); setEditing(true);
+    setEditId(null); setForm({ ...EMPTY }); setMsg(""); setFromRecipe(false);
+    setEditing(false); setCreating("recipe");
+  };
+  const newMode = (m: NewRuleMode) => {
+    setMsg(""); setFromRecipe(false);
+    if (m === "blank") {
+      setCreating(null);
+      if (!editing) { setEditId(null); setForm({ ...EMPTY }); setEditing(true); }
+    } else {
+      setEditing(false); setEditId(null); setCreating(m);
+    }
+  };
+
+  /** Add a recipe: an ordinary rule, exactly what the editor's Create would
+   *  send (the server starts it in report mode), then its report run once.
+   *  Returns the refusal text, or nothing. */
+  const addRecipe = async (r: Recipe): Promise<string | void> => {
+    const dest = recipeFolder(r, state.folders, state.folders_raw);
+    if (r.action === "move" && !dest) {
+      // no such folder, and no folder creation path: pick it in the editor
+      setCreating(null); setEditId(null);
+      setForm({ ...EMPTY, name: t(`recipe.${r.id}.title`), query: r.query,
+        action: r.action, schedule: r.schedule });
+      setMsg(t("recipe.pick_folder", { folder: recipeFolderName(r) }));
+      setFromRecipe(true);
+      setEditing(true);
+      return;
+    }
+    let rule: Rule;
+    try {
+      rule = await api.createRule(recipeBody(r, dest));
+    } catch (e: any) {
+      return t("err.generic", { msg: e.message ?? e });
+    }
+    setFresh((s) => new Set(s).add(rule.id));
+    setCreating(null);
+    try {
+      await api.runRule(rule.id);
+    } catch (e: any) {
+      setCardErr({ id: rule.id,
+        text: t("err.generic", { msg: e.message ?? e }) });
+    }
+    onChanged();
+  };
+  const addStarter = async (r: Recipe) => {
+    setStarterBusy(r.id);
+    const text = await addRecipe(r);
+    setStarterBusy("");
+    if (text) toast?.show(text);
   };
 
   const setScope = (scope: RuleScope) => {
@@ -736,7 +810,14 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   // builder opens as a popover there, which a grouped list would clip).
   const phone = useMediaQuery("(max-width: 639px)");
   const grouped = !onPage && phone;
-  const nameInput = <Input className="w-full" placeholder={t("rule.name")}
+  // The recipe dialog that led here hands focus back to its opener as it
+  // closes (after the autoFocus below): the editor takes it again.
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing && onPage && creating === null) nameRef.current?.focus();
+  }, [editing, onPage, creating]);
+  const nameInput = <Input ref={nameRef} className="w-full"
+    placeholder={t("rule.name")}
     aria-label={t("rule.f_name")} autoFocus={onPage}
     value={form.name} onChange={set("name")} />;
   const groupingCtl = purge
@@ -823,6 +904,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
         <h2 className="min-w-0 flex-1 truncate type-heading">
           {editId ? t("rule.edit_title") : t("rule.new_title")}
         </h2>
+        {!editId && <NewRuleModes value={fromRecipe ? "recipe" : "blank"}
+          onChange={newMode} short ai={ai} />}
         <Button variant="secondary" size="icon" label={t("Close")}
           onClick={closeEditor}><X size={18} /></Button>
       </div>
@@ -964,11 +1047,14 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           ) : (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
+              fresh={fresh.has(rule.id)}
               onRun={() => run(rule)} onEdit={() => edit(rule)}
               onReport={() => setReportId(rule.id)}
               onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
           ))}
-          {!rules.length && <EmptyState>{t("rules.empty")}</EmptyState>}
+          {!rules.length && (
+            <RecipeStarters state={state} busy={starterBusy}
+              onAdd={addStarter} onAll={() => setCreating("recipe")} />)}
         </div>
         {/* >= 1024 (the page): the builder is a side panel next to the
             list; otherwise a full-screen sheet over it. */}
@@ -980,6 +1066,20 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       {rules.some((r) => r.id === reportId && r.last_run) && (
         <ReportSheet rule={rules.find((r) => r.id === reportId)!}
           onClose={() => setReportId(null)} />
+      )}
+      {creating === "recipe" && (
+        <RecipeDialog state={state} ai={ai} onClose={() => setCreating(null)}
+          onMode={newMode} onAdd={addRecipe} />
+      )}
+      {creating === "describe" && (
+        <AiFilterPanel ruleOnly
+          groups={Object.values(state.groups?.sender ?? {})}
+          onClose={() => setCreating(null)}
+          onApply={() => {}} onSavePreset={() => {}}
+          onSaveRule={(q) => {
+            setCreating(null); setEditId(null);
+            setForm({ ...EMPTY, query: q }); setEditing(true);
+          }} />
       )}
       {editing && !onPage && (
         <Modal full onClose={closeEditor}

@@ -197,7 +197,8 @@ An Overview start page with cleanup suggestions, five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content, a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,
-Attachments, rules and a scheduler, one-click and bulk unsubscribe with a
+Attachments, rules and a scheduler (start one from a ready-made recipe),
+one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a Trash/Junk browser, trackers, space
 map, statistics, "Your year in mail", audit log, multiple strictly separate
 accounts, system/light/dark appearance, phone layout, English and

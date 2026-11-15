@@ -2544,6 +2544,8 @@ export default function App() {
     {toolShown("rules") && state && (
       <RulesModal key={account}
         state={state} initialQuery={rulesSeed}
+        ai={aiEnabled || demo ? { disabled: demo,
+          hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {
           setRulesOpen(false); setRulesSeed("");
         })}
