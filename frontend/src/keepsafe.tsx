@@ -28,6 +28,12 @@ export interface TrashAsk {
   scope: KeepSafeScope | null;
   /** The account the move belongs to, so the check and the pin go to it. */
   account?: string;
+  /** Cancel's text where declining is not a cancel ("Only block"). */
+  cancelLabel?: string;
+  /** The move has its own confirm elsewhere (the unsubscribe sheet): ask
+   *  only when something looks worth keeping, otherwise say ok without a
+   *  dialog. */
+  onlyIfFound?: boolean;
 }
 
 export type TrashAnswer =
@@ -41,17 +47,21 @@ export type TrashAnswer =
  *  plain confirm. A failed pin THROWS: the mails the user ticked must never
  *  be moved on the strength of a protection that did not happen. */
 export async function confirmTrash(ask: TrashAsk): Promise<TrashAnswer> {
-  const { title, bullets, tone = "danger", label, n, scope, account } = ask;
-  const plain = async (): Promise<TrashAnswer> => await confirmDialog({
-    title, bullets, tone, confirmLabel: label(n) })
-    ? { ok: true, pinned: [] } : { ok: false };
+  const { title, bullets, tone = "danger", label, n, scope, account,
+    cancelLabel, onlyIfFound } = ask;
+  const plain = async (): Promise<TrashAnswer> => onlyIfFound
+    ? { ok: true, pinned: [] }
+    : await confirmDialog({ title, bullets, tone, confirmLabel: label(n),
+      ...(cancelLabel ? { cancelLabel } : {}) })
+      ? { ok: true, pinned: [] } : { ok: false };
   if (!scope || n <= KEEP_SAFE_MIN) return plain();
   let found: KeepSafeCheck | null = null;
   try { found = await api.keepSafeCheck(scope, account); } catch { found = null; }
   if (!found?.classes?.length) return plain();
   const answer = await customDialog<KeepSafeAnswer>((done) => (
     <KeepSafeConfirm title={title} bullets={bullets} tone={tone}
-      label={label} n={n} found={found!} onResult={done} />));
+      label={label} n={n} found={found!} cancelLabel={cancelLabel}
+      onResult={done} />));
   if (!answer) return { ok: false };
   if (!answer.ticked.length) return { ok: true, pinned: [] };
   const r = await api.keepSafePin(scope, answer.ticked, account);

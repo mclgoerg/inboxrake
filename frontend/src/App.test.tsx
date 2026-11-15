@@ -17,6 +17,8 @@ let versions = ["v1"];        // api.version() walks through this in order
 let versionCalls = 0;
 
 const block = vi.fn().mockResolvedValue({ rule: { id: "r1" } });
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 const deleteRule = vi.fn().mockResolvedValue(undefined);
 const deleteGroups = vi.fn()
   .mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
@@ -37,6 +39,8 @@ vi.mock("./api", () => ({
     version: () => Promise.resolve(
       { build: versions[Math.min(versionCalls++, versions.length - 1)] }),
     block: (...args: unknown[]) => block(...args),
+    keepSafeCheck: (...args: unknown[]) => keepSafeCheck(...args),
+    keepSafePin: (...args: unknown[]) => keepSafePin(...args),
     deleteRule: (...args: unknown[]) => deleteRule(...args),
     // three unpinned mails, matching groupFixture.count (the detail panel's
     // "Trash all N" counts the loaded, unpinned mails)
@@ -59,6 +63,7 @@ vi.mock("./api", () => ({
 import App from "./App";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState, Config } from "./types";
 
 const acct = {
@@ -123,6 +128,8 @@ afterEach(() => {
   versions = ["v1"];
   versionCalls = 0;
   block.mockClear();
+  keepSafeCheck.mockReset();
+  keepSafePin.mockReset();
   deleteRule.mockClear();
   deleteGroups.mockClear();
   aiReview.mockClear();
@@ -352,6 +359,67 @@ test("declining the trash-existing question still blocks, without trashing",
   await pressDialog("Only block");
   await waitFor(() => expect(block).toHaveBeenCalledWith(
     "sender", "noreply@dhl.example", "DHL Paket", false));
+});
+
+// A group big enough (> 20 mails) for the keep-safe box.
+const renderWithBigSenderGroup = () => {
+  cfg = singleCfg;
+  localStorage.setItem("pmc_account", "proton");
+  const big = { ...groupFixture, count: 30 };
+  state = { ...baseState, status: "done",
+    groups: { sender: { [big.key]: big },
+              smart: {}, domain: {}, subject: {}, thread: {} } };
+  return render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
+};
+
+test("keep-safe: Block's 'also move the existing mails' (30 mails) shows the "
+  + "box; the ticked groups are protected before the block trashes",
+  async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
+  renderWithBigSenderGroup();
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
+  await pressDialog("Block");
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
+    keys: ["noreply@dhl.example"] });
+  await pressDialog("Move to Trash (26)");               // 30 - 4 kept safe
+  await waitFor(() => expect(block).toHaveBeenCalledWith(
+    "sender", "noreply@dhl.example", "DHL Paket", true));
+  expect(keepSafePin).toHaveBeenCalledOnce();
+  expect(keepSafePin.mock.invocationCallOrder[0])
+    .toBeLessThan(block.mock.invocationCallOrder[0]);
+});
+
+test("keep-safe: 'Only block' on the box still blocks, protects and trashes "
+  + "nothing", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  renderWithBigSenderGroup();
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
+  await pressDialog("Block");
+  await findDialog();
+  await pressDialog("Only block");
+  await waitFor(() => expect(block).toHaveBeenCalledWith(
+    "sender", "noreply@dhl.example", "DHL Paket", false));
+  expect(keepSafePin).not.toHaveBeenCalled();
+});
+
+test("keep-safe: a protection that fails blocks without trashing and says so",
+  async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockRejectedValue(new Error("could not protect"));
+  renderWithBigSenderGroup();
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Block sender" }));
+  await pressDialog("Block");
+  await findDialog();
+  await pressDialog("Move to Trash (26)");
+  await waitFor(() => expect(block).toHaveBeenCalledWith(
+    "sender", "noreply@dhl.example", "DHL Paket", false));
+  expect(await screen.findByText(/could not protect/)).toBeTruthy();
 });
 
 test("declining the block confirmation never calls api.block", async () => {

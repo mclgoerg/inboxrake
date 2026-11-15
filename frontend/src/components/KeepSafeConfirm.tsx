@@ -29,13 +29,15 @@ export interface KeepSafeAnswer { ticked: KeepSafeClass[] }
  *  what really moves, so unticking a group puts its mails back into the
  *  count. */
 export function KeepSafeConfirm({ title, bullets, tone = "danger", label, n,
-  found, onResult }: {
+  found, cancelLabel, onResult }: {
   title: string; bullets: string[]; tone?: "danger" | "primary";
   /** The confirm button's text for this many mails moving. */
   label: (moving: number) => string;
   /** Mails the move would act on (the count the dialog is about). */
   n: number;
   found: KeepSafeCheck;
+  /** Cancel's text where declining is not a cancel ("Only block"). */
+  cancelLabel?: string;
   onResult: (answer: KeepSafeAnswer | null) => void;
 }) {
   const [ticked, setTicked] = useState<Set<KeepSafeClass>>(
@@ -153,7 +155,7 @@ export function KeepSafeConfirm({ title, bullets, tone = "danger", label, n,
         <div className="flex items-center justify-end gap-2
           max-sm:flex-col-reverse max-sm:items-stretch">
           <Button ref={safe} variant="secondary" className="max-sm:min-h-11"
-            onClick={() => onResult(null)}>{t("Cancel")}</Button>
+            onClick={() => onResult(null)}>{cancelLabel ?? t("Cancel")}</Button>
           <Button variant={tone === "danger" ? "danger" : "primary"}
             className="max-sm:min-h-11" disabled={moving === 0}
             onClick={(e) => {

@@ -1661,16 +1661,27 @@ export default function App() {
       body: t("confirm.block_body"), tone: "danger",
       confirmLabel: t("Block") })) return;
     // Declining this second question still blocks - it only skips trashing.
-    const trashExisting = g.count > 0
-      && await confirmDialog({
-        title: t("confirm.block_trash_existing", { n: g.count }),
-        tone: "danger", cancelLabel: t("confirm.block_only"),
-        confirmLabel: t("confirm.btn_n",
-          { verb: actionVerb("trash"), n: g.count }) });
     // A Smart company row holds only the domain's SMALL senders: trash
     // exactly that row (the count the user confirmed), not the whole
     // domain group the block endpoint would empty.
     const poolOnly = grouping === "smart" && tg.kind === "domain";
+    let trashExisting = false;
+    if (g.count > 0) {
+      try {
+        // A big move carries the keep-safe box too ("Only block" declines).
+        const verb = actionVerb("trash");
+        trashExisting = (await confirmTrash({
+          title: t("confirm.block_trash_existing", { n: g.count }),
+          bullets: [], tone: "danger", cancelLabel: t("confirm.block_only"),
+          label: (k) => t("confirm.btn_n", { verb, n: k }), n: g.count,
+          scope: { grouping: poolOnly ? grouping : tg.kind,
+            keys: [poolOnly ? g.key : tg.value] },
+          account: stateRef.current?.account })).ok;
+      } catch (e: any) {
+        // nothing is moved on a failed protection; the block itself goes on
+        fail(e);
+      }
+    }
     try {
       await api.block(tg.kind, tg.value, g.label,
         trashExisting && !poolOnly);

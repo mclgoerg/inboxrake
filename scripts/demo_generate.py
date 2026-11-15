@@ -798,9 +798,10 @@ ICLOUD = _server({
 
 FAKES = {"demo-proton": PROTON, "demo-icloud": ICLOUD}
 
-# Keep-safe (F103): a bank's terms notices, a booking and a job application,
-# so a big cleanup of the demo mailbox shows all four groups in the keep-safe
-# box (invoices are in the data above). Added last and from its own random
+# Keep-safe (F103): a bank's terms notices, a booking, a job application and a
+# mailer that mixes receipts with promotions (Unsubscribe + "Also move to
+# Trash"), so a big cleanup of the demo mailbox shows the keep-safe box
+# (invoices are in the data above). Added last and from its own random
 # stream, so every other mail keeps its exact data and uid.
 _state = random.getstate()
 random.seed(103)
@@ -816,6 +817,10 @@ PROTON.mailbox["INBOX"] += (
     + mails('"Careers Example" <jobs@careers-example.example>',
             ["Your application was received", "Interview invitation"], 2,
             newest_days=30, span_days=120, unread=0.2))
+PROTON.mailbox["INBOX"] += mails(
+    '"Mixed Mailer" <hello@mixedmailer.example>',
+    ["Your receipt {n}", "New deals this week", "Your invoice {n}"], 26,
+    newest_days=3, span_days=300, unread=0.5, unsub=True)
 random.setstate(_state)
 
 
