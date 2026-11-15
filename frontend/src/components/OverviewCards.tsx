@@ -1,6 +1,6 @@
-import { ChevronRight, Hourglass, Info, Mail, MoreHorizontal, Newspaper, Paperclip,
-  ShieldAlert, Sparkles, BellOff, TrendingDown, TrendingUp, TriangleAlert,
-  UserPlus, X } from "lucide-react";
+import { Check, ChevronRight, Ghost, Hourglass, Info, Mail, MoreHorizontal,
+  Newspaper, Paperclip, ShieldAlert, Sparkles, BellOff, TrendingDown,
+  TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLang, t } from "../i18n";
@@ -430,8 +430,13 @@ const CARD_TILE: Record<string, { icon: ReactNode; tone: TagTone }> = {
  *  confirm, the cross hides a row until it grows - nothing here touches the
  *  mailbox itself. */
 export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
-  onCleanUp }: {
+  onCleanUp, subs }: {
   cards: QuickWinCard[];
+  /** The "N subscriptions you may not use" line (backend/subscriptions.py);
+   *  absent while there is nothing that looks unused. Its Review opens the
+   *  Subscriptions page - it is not one of the checked clean-up steps. */
+  subs?: { n: number; names: string; about: string; onReview: () => void }
+    | null;
   /** Mails + size the union of all cards could free. */
   canGo: { mails: number; size: number };
   onDismiss: (c: QuickWinCard) => void;
@@ -455,9 +460,10 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
   return (
     <section aria-label={title} className={CARD}>
       <CardHead title={title}
-        sub={`${t("overview.can_go", { size: fmtSize(canGo.size) })} · ${
-          t("overview.next_hint")}`}
-        right={(
+        sub={cards.length ? `${t("overview.can_go", {
+          size: fmtSize(canGo.size) })} · ${t("overview.next_hint")}`
+          : t("overview.next_hint")}
+        right={cards.length > 0 && (
           <Button variant="tinted" disabled={!checked.length}
             onClick={() => onReviewMany(checked)}>
             {t("overview.review_n", { n: checked.length })}</Button>
@@ -534,6 +540,29 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
             </li>
           );
         })}
+        {subs && (
+          <li data-testid="subs-step"
+            className={`${ROW_LINE} flex items-center gap-3 py-2`}>
+            {/* decorative, like the checked disc of the other steps: this
+                step is not part of "Review N" */}
+            <span aria-hidden className="inline-flex size-8 shrink-0
+              items-center justify-center">
+              <span className="inline-flex size-5 items-center justify-center
+                rounded-full bg-accent text-on-accent">
+                <Check size={14} /></span>
+            </span>
+            <span className="shrink-0"><IconTile tone="review">
+              <Ghost size={16} /></IconTile></span>
+            <div className="min-w-0 flex-1">
+              <div className="type-body font-medium">
+                {t("overview.subs_title", { n: subs.n })}</div>
+              <div className="truncate type-meta text-muted">
+                {[subs.names, subs.about].filter(Boolean).join(" · ")}</div>
+            </div>
+            <Button variant="tinted" size="sm" className="shrink-0"
+              onClick={subs.onReview}>{t("qw.review")}</Button>
+          </li>
+        )}
       </ul>
       {cards.length > TOP_CARDS && (
         <div className="mt-2 flex justify-center">

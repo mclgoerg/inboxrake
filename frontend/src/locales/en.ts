@@ -707,6 +707,12 @@ export const EN: Record<string, string> = {
     "Mail-text search runs on your mail server for each query - Inboxrake "
     + "stores nothing. It can be slow on remote providers; Proton Bridge "
     + "answers locally. Turn it off to keep search to subject and sender.",
+  "sub.settings_title": "Subscriptions",
+  "sub.settings_row": "Find amounts in the receipt text",
+  "sub.settings_sub":
+    "Reads the latest receipt of each subscription whose subject has no "
+    + "amount, on this server only. Only the amount and its currency are "
+    + "kept; nothing is sent anywhere.",
   "auto_scan.align": "Start at minute (0-59)",
   "auto_scan.help":
     "Rescans this account on a timer, independent of any rule schedule - "
@@ -844,6 +850,10 @@ export const EN: Record<string, string> = {
   "tab.trackers_senders": "{n}\u00a0senders track you",
   "tab.trackers_senders_one": "1\u00a0sender tracks you",
   "tab.trackers_sub": "See who tracks your opens",
+  "tab.subs_month": "{amount} / month",
+  "tab.subs_services": "{n}\u00a0services",
+  "tab.subs_services_one": "1\u00a0service",
+  "tab.subs_empty": "See what you still pay for",
   "tab.space_scan": "Scan your mailbox to see the biggest senders.",
   "tab.space_empty": "Nothing to map yet.",
   "tab.year_stories": "{year} in {n}\u00a0stories",
@@ -932,6 +942,137 @@ export const EN: Record<string, string> = {
   "tracker.pop_hosts": "Hosts: {hosts}",
   "tracker.pop_hint":
     "Found locally while building the body index. Nothing was loaded.",
+  "sub.menu": "Subscriptions",
+  "sub.title": "Subscriptions",
+  "sub.sub":
+    "Senders that bill you on a schedule · from receipt subjects and dates",
+  "sub.sub_phone": "{n}\u00a0services",
+  "sub.sub_phone_one": "1\u00a0service",
+  "sub.about_month": "about {amount} a month",
+  "sub.pane_title": "Subscription",
+  "sub.kpi_about": "About",
+  "sub.a_month": "a month",
+  "sub.kpi_with_amount": "{n} of {total} with an amount",
+  "sub.kpi_with_amount_short": "{n} of {total} with amount",
+  "sub.kpi_other": "{list} not added up",
+  "sub.kpi_month_short": "{amount} / month",
+  "sub.kpi_no_amount": "No amounts yet",
+  "sub.kpi_unused": "{n} look unused",
+  "sub.kpi_unused_one": "{n} looks unused",
+  "sub.kpi_unused_label": "look unused",
+  "sub.kpi_unused_label_one": "looks unused",
+  "sub.kpi_unused_none": "all in use",
+  "sub.kpi_renewing": "renews within 60 days",
+  "sub.only_unused": "Showing only the ones that look unused.",
+  "sub.show_all": "Show all",
+  "sub.none_shown": "Nothing here",
+  "sub.col_service": "Service",
+  "sub.col_every": "Every",
+  "sub.col_next": "Next receipt",
+  "sub.col_amount": "Amount",
+  "sub.col_use": "Still in use?",
+  "sub.since": "since {date}",
+  "sub.monthly": "Monthly",
+  "sub.yearly": "Yearly",
+  "sub.monthly_l": "monthly",
+  "sub.yearly_l": "yearly",
+  "sub.amount_unknown": "amount unknown",
+  "sub.in_days": "in {n}\u00a0days",
+  "sub.in_days_one": "in 1\u00a0day",
+  "sub.today": "today",
+  "sub.due": "due now",
+  "sub.not_in_subject": "not in subject",
+  "sub.hidden_tag": "Hidden",
+  "sub.use_signin": "Signed in {date}",
+  "sub.use_read": "Mail read",
+  "sub.use_unused": "Unused since {month}",
+  "sub.use_never": "Never opened",
+  "sub.note":
+    "“Still in use?” looks at sign-in alerts and whether you open "
+    + "their other mails. No mail body is read; amounts only when the "
+    + "subject says them.",
+  "sub.note_body":
+    "“Still in use?” looks at sign-in alerts and whether you open "
+    + "their other mails. Amounts come from the subject; where it has none, "
+    + "only the latest receipt is read - on your server, only for the "
+    + "amount (switch it off in Settings).",
+  "sub.reading": "Reading the latest receipts…",
+  "sub.find_amounts": "Find amounts in the receipt text",
+  "sub.find_amounts_short": "Find in the receipt text",
+  "sub.find_amounts_confirm": "Find amounts",
+  "sub.find_confirm_read":
+    "Inboxrake reads the latest receipt of each subscription whose subject "
+    + "has no amount - on this server only, through your own mail connection.",
+  "sub.find_confirm_keep":
+    "Only the amount and its currency are kept. The text is not stored, "
+    + "and nothing is sent anywhere.",
+  "sub.find_confirm_off":
+    "You can switch this off in Settings; the amounts it found are "
+    + "forgotten then.",
+  "sub.show_hidden": "Show {n} hidden",
+  "sub.hide_hidden": "Hide the {n} hidden",
+  "sub.load_failed": "Could not load the subscriptions.",
+  "sub.scan_first": "Scan your mailbox first",
+  "sub.empty_title": "No subscriptions found",
+  "sub.empty_hint":
+    "Inboxrake looks for senders whose receipts or invoices arrive on a "
+    + "schedule - monthly or yearly, at least three times.",
+  "sub.cadence_monthly_day": "monthly, around the {day}",
+  "sub.cadence_yearly_date": "yearly, around {date}",
+  "sub.per_month": "a month · {from}",
+  "sub.per_year": "a year · {from}",
+  "sub.from_subject": "from the subject",
+  "sub.from_receipt": "from the receipt text",
+  "sub.receipts_so_far": "receipts so far",
+  "sub.receipts_so_far_one": "receipt so far",
+  "sub.about": "about",
+  "sub.rhythm_label":
+    "{n} receipts so far; the next one is expected around {next}",
+  "sub.next_label": "next ~{date}",
+  "sub.unused_title": "Looks unused.",
+  "sub.unused_signin": "Your last sign-in alert from {name} came on {date}.",
+  "sub.unused_read":
+    "The last mail from {name} that you opened was from {date}.",
+  "sub.unused_never": "There is no sign-in alert from {name} in your mail.",
+  "sub.unused_since":
+    "Since then you opened {read} of their {n} other mails.",
+  "sub.unused_since_one":
+    "Since then you opened {read} of their 1 other mail.",
+  "sub.unused_of": "You opened {read} of their {n} other mails.",
+  "sub.unused_of_one": "You opened {read} of their 1 other mail.",
+  "sub.latest": "Latest receipts",
+  "sub.remind": "Remind me 3 days before",
+  "sub.remind_on": "Reminder on - 3 days before",
+  "sub.remind_off_device": "Notifications are off on this device.",
+  "sub.remind_turn_on": "Turn them on",
+  "sub.ics": ".ics",
+  "sub.ics_label": "Add to your calendar (.ics file)",
+  "sub.keep": "Keep the receipts",
+  "sub.kept": "Receipts kept",
+  "sub.not_sub": "Not a subscription",
+  "sub.bring_back": "Bring it back",
+  "sub.cant_cancel": "Inboxrake can't cancel it for you.",
+  "sub.open_latest": "Open the latest receipt",
+  "sub.cant_cancel_post": " - it usually links to your account.",
+  "sub.toast_remind":
+    "Reminder set. You'll be told 3 days before {name} bills again.",
+  "sub.toast_remind_off": "The reminder for {name} is off.",
+  "sub.toast_kept":
+    "{n} receipts of {name} kept (protected from bulk actions).",
+  "sub.toast_kept_one":
+    "1 receipt of {name} kept (protected from bulk actions).",
+  "sub.toast_unkept": "{n} receipts of {name} are no longer protected.",
+  "sub.toast_unkept_one": "1 receipt of {name} is no longer protected.",
+  "sub.toast_hidden": "{name} is no longer listed as a subscription.",
+  "sub.reminder_n": "{name} bills again in {n} days",
+  "sub.reminder_n_one": "{name} bills again tomorrow",
+  "sub.reminder_0": "{name} bills again today",
+  "sub.reminder_open": "Open",
+  "sub.ics_summary": "{name} bills again (expected)",
+  "sub.ics_amount": "About {amount}.",
+  "sub.ics_note":
+    "Expected from the receipts in your mailbox. Inboxrake can't cancel it "
+    + "for you.",
   "confirm.block_trash_existing":
     "Also move its {n} existing mails to Trash now?",
   "confirm.block_trash_existing_one":
@@ -1010,6 +1151,8 @@ export const EN: Record<string, string> = {
   "overview.verdicts_none_safe": "none safe to delete",
   "overview.next": "Next steps",
   "overview.next_hint": "each step shows what it does first",
+  "overview.subs_title": "{n} subscriptions you may not use",
+  "overview.subs_title_one": "1 subscription you may not use",
   "overview.review_n": "Review {n}",
   "overview.check_step": "Include in Review: {title}",
   "overview.kinds": "What fills your inbox",

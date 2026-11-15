@@ -565,6 +565,69 @@ PROTON_INBOX += (
 random.setstate(_state)
 
 
+# Subscriptions (Insights > Subscriptions): receipts on a schedule, a sign-in
+# alert or an opened mail for the ones in use, plenty of unopened mail for the
+# ones that look unused. Fixed dates and no random draws (own UID range), so
+# nothing else in the demo shifts. One receipt names no price in its subject
+# (the text has it), to show the opt-in that reads it.
+_SUB_UID = iter(range(500000, 600000))
+_SUB_JITTER = (0, 1, 0, -1, 1, 0, -1, 0)       # days; keeps the cadence regular
+
+
+def _sub_mail(frm, subject, days_ago, *, seen=True, body=None, unsub=False):
+    uid = next(_SUB_UID)
+    return make_msg(uid, frm=frm, subject=subject,
+                    msgid=f"<demo-sub-{uid}@demo.example>", size=9000,
+                    seen=seen, date=_date(days_ago), body=body,
+                    unsub="<https://unsub.example/u>" if unsub else None)
+
+
+def _sub_series(frm, subject, n, every, newest, body):
+    """`n` receipts `every` days apart, the newest `newest` days ago."""
+    return [_sub_mail(frm, subject, newest + i * every
+                      + _SUB_JITTER[i % len(_SUB_JITTER)], body=body)
+            for i in range(n)]
+
+
+_SIGN_IN = "New sign-in to your account"
+PROTON_INBOX += (
+    _sub_series('"StreamBox" <billing@streambox.example>',
+                "Your StreamBox receipt - €12.99", 22, 30, 21,
+                "Thank you for your payment. Total: €12.99")
+    + [_sub_mail('"StreamBox" <security@streambox.example>', _SIGN_IN, 12,
+                 body="A new sign-in to your account was detected.")]
+    + _sub_series('"CloudDrive Pro" <billing@clouddrive-pro.example>',
+                  "Your CloudDrive Pro invoice - €59.88", 4, 365, 305,
+                  "Annual plan renewed. Total: €59.88")
+    + [_sub_mail('"CloudDrive Pro" <news@clouddrive-pro.example>',
+                 "Storage tips for your drive", 40, unsub=True)]
+    + _sub_series('"FitTrack Premium" <billing@fittrack.example>',
+                  "Your FitTrack receipt - €7.99", 21, 30, 24,
+                  "Thank you for your payment. Total: €7.99")
+    + [_sub_mail('"FitTrack Premium" <security@fittrack.example>', _SIGN_IN,
+                 250, body="A new sign-in to your account was detected.")]
+    + [_sub_mail('"FitTrack Premium" <coach@fittrack.example>',
+                 "Your weekly training summary", 235 - 18 * k, seen=False,
+                 unsub=True) for k in range(12)]
+    + _sub_series('"NewsDaily+" <billing@newsdaily.example>',
+                  "Your NewsDaily+ receipt", 9, 30, 26,
+                  "Thank you for subscribing.\n\nTotal: €4.99")
+    + [_sub_mail('"NewsDaily+" <headlines@newsdaily.example>',
+                 "Today's headlines", 2 + 5 * k, seen=False, unsub=True)
+       for k in range(15)]
+    + _sub_series('"PhotoVault" <billing@photovault.example>',
+                  "Your PhotoVault receipt - €2.99", 30, 30, 3,
+                  "Thank you for your payment. Total: €2.99")
+    + [_sub_mail('"PhotoVault" <security@photovault.example>', _SIGN_IN, 18,
+                 body="A new sign-in to your account was detected.")]
+    + _sub_series('"VPNly" <billing@vpnly.example>',
+                  "Your VPNly invoice - €39.00", 3, 365, 200,
+                  "Annual plan renewed. Total: €39.00")
+    + [_sub_mail('"VPNly" <security@vpnly.example>', _SIGN_IN, 25,
+                 body="A new sign-in to your account was detected.")]
+)
+
+
 # --- long tail ------------------------------------------------------------
 # Real mailboxes are 80% senders with < 10 mails. Generated from a separate
 # seeded stream, so the hand-written senders above keep their exact data.

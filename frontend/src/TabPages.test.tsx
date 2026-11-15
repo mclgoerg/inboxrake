@@ -429,3 +429,50 @@ test("Insights: no rhythm widgets without mail or when the call fails", async ()
   expect(screen.queryByText("What stands out")).toBeNull();
   expect(screen.queryByText(/busiest/)).toBeNull();
 });
+
+/* ---- Insights: the Subscriptions widget ---- */
+
+const subsTotals = (over = {}) => ({ count: 6, currency: "EUR",
+  other_currencies: [], with_amount: 5, monthly: 32.21, unused: 2,
+  unused_monthly: 7.99, renewing: 1, ...over });
+const insights = (subs: unknown) => {
+  stats.mockResolvedValue({ mails: 1, months: [] });
+  trackers.mockResolvedValue({ usable: false, checked: 0, pixel: 0, senders: 0 });
+  audit.mockResolvedValue({ total: 0, entries: [] });
+  const onOpen = vi.fn();
+  render(<InsightsPage groups={[]} state={state()} onOpen={onOpen}
+    subs={subs as never} />);
+  return onOpen;
+};
+
+test("Insights: the Subscriptions widget shows the monthly cost and what looks unused",
+  () => {
+  const onOpen = insights({ totals: subsTotals(), items: [] });
+  const w = screen.getByRole("button", { name: /^Subscriptions/ });
+  expect(w.textContent).toContain("€32 / month");
+  expect(w.textContent).toContain("6\u00a0services");
+  expect(w.textContent).toContain("2 look unused");
+  fireEvent.click(w);
+  expect(onOpen).toHaveBeenCalledWith("subscriptions");
+});
+
+test("Insights: the Subscriptions widget keeps its place while loading and "
+  + "when there is none", () => {
+  insights(null);
+  expect(screen.getByRole("button", { name: /^Subscriptions/ })).toBeTruthy();
+  cleanup();
+  insights({ totals: subsTotals({ count: 0, monthly: null, unused: 0 }),
+    items: [] });
+  expect(screen.getByRole("button", { name: /^Subscriptions/ }).textContent)
+    .toContain("See what you still pay for");
+});
+
+test("Insights: without amounts the widget counts the services; nothing "
+  + "unused, no orange line", () => {
+  insights({ totals: subsTotals({ monthly: null, unused: 0, with_amount: 0 }),
+    items: [] });
+  const w = screen.getByRole("button", { name: /^Subscriptions/ }).textContent!;
+  expect(w).toContain("6\u00a0services");
+  expect(w).not.toContain("/ month");
+  expect(w).not.toContain("unused");
+});

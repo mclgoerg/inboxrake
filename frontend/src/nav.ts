@@ -5,12 +5,12 @@ import { afterBackSettles } from "./backStack";
 /** Tools that open as a page beside the sidebar (from 1024 px; below it they
  *  stay modals). */
 export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
-  | "rules" | "junk" | "trash" | "stats" | "space" | "trackers" | "activity"
-  | "move";
+  | "rules" | "junk" | "trash" | "stats" | "space" | "trackers"
+  | "subscriptions" | "activity" | "move";
 
 export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
   "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
-  "trackers", "activity", "move"];
+  "trackers", "subscriptions", "activity", "move"];
 
 /** Pages of the app shell. `settings` is a page of its own (not a tool): from
  *  1024 px a section column beside the form, below it an iOS-style root list
@@ -31,7 +31,7 @@ export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
   triage: "cleanup", duplicates: "cleanup", attachments: "cleanup",
   rules: "cleanup", junk: "cleanup", trash: "cleanup",
   stats: "insights", space: "insights", trackers: "insights",
-  activity: "insights",
+  subscriptions: "insights", activity: "insights",
 };
 /** The start page for everyone: a fresh load without a route lands here. */
 export const DEFAULT_PAGE: Page = "overview";

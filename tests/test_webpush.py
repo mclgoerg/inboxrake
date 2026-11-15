@@ -857,3 +857,73 @@ def test_the_service_worker_is_never_cached(tmp_path, monkeypatch):
     r = client.get("/sw.js")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
     assert "cache-control" not in client.get("/other.txt").headers
+
+
+# --------------------------------------------- subscription reminders (F102)
+
+def _reminder_params(**over):
+    return {"name": "FitTrack Premium", "days": 3, "amount": 7.99,
+            "currency": "EUR", "expected": 1_796_428_800,   # 2026-12-05 UTC
+            "signin": 1_773_273_600, **over}                # 2026-03-12 UTC
+
+
+def test_the_reminder_reads_like_the_board_in_both_languages():
+    en = webpush._payload("en", "reminder", True, "default", False,
+                          params=_reminder_params())
+    assert en["title"] == "FitTrack Premium bills again in 3 days"
+    assert en["body"] == "€7.99 around 5 Dec · last sign-in 12 Mar"
+    assert en["url"] == "/#/subscriptions"
+    de = webpush._payload("de", "reminder", True, "default", False,
+                          params=_reminder_params())
+    assert de["title"] == "FitTrack Premium wird in 3 Tagen wieder abgerechnet"
+    assert de["body"] == "7,99 € etwa am 5. Dez. · letzte Anmeldung am 12. März"
+
+
+def test_the_reminder_words_one_day_none_and_no_amount():
+    p = webpush._payload("en", "reminder", True, "a", True, params=_reminder_params(
+        days=1, amount=None, signin=0))
+    assert p["title"] == "FitTrack Premium bills again tomorrow"
+    assert p["body"] == "a · Expected around 5 Dec"
+    p = webpush._payload("de", "reminder", True, "a", False,
+                         params=_reminder_params(days=0, currency="CHF"))
+    assert p["title"] == "FitTrack Premium wird heute wieder abgerechnet"
+    assert "7,99 CHF" in p["body"]
+    assert webpush._money(39, "CHF", "en") == "CHF 39.00"
+    assert webpush._money(12.5, "USD", "en") == "$12.50"
+
+
+def test_the_reminder_carries_no_address_or_subject_and_a_stable_tag():
+    p = webpush._payload("en", "reminder", True, "default", False,
+                         params=_reminder_params(
+                             addr="billing@fittrack.example",
+                             subject="Your receipt"))
+    assert "@" not in json.dumps(p) and "receipt" not in json.dumps(p)
+    again = webpush._payload("de", "reminder", True, "default", False,
+                             params=_reminder_params())
+    assert p["tag"] == again["tag"] and "FitTrack" not in p["tag"]
+
+
+def test_a_reminder_is_delivered_encrypted_and_skips_a_visible_device(
+        bridge, network):
+    keys, key = device()
+    webpush.subscribe(ENDPOINT, keys["p256dh"], keys["auth"], "de")
+    webpush.set_presence(ENDPOINT, True)
+    webpush.reminder(accountsmod.get("default"), **_reminder_params())
+    time.sleep(0.2)
+    assert network.sent == []                      # the page shows it itself
+    webpush.set_presence(ENDPOINT, False)
+    webpush.reminder(accountsmod.get("default"), **_reminder_params())
+    assert _wait(lambda: network.sent)
+    got = _decrypt(network.sent[0][2], (keys, key))
+    assert got["title"].startswith("FitTrack Premium wird in 3 Tagen")
+
+
+def test_only_the_own_tenant_hears_the_reminder(bridge, network):
+    _enable_oidc()
+    alice = tenants.for_subject("alice@x.example")
+    keys = device()[0]
+    with tenants.use(alice):
+        webpush.subscribe(ENDPOINT, keys["p256dh"], keys["auth"])
+    webpush.reminder(accountsmod.get("default"), **_reminder_params())
+    time.sleep(0.2)
+    assert network.sent == []

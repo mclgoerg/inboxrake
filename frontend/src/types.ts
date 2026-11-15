@@ -969,6 +969,84 @@ export interface OverviewWindow {
   verdicts: number;        // senders rated by the AI in it
   verdicts_safe: number;   // ... of which "safe to delete"
 }
+/** GET /api/subscriptions (backend/subscriptions.py): the senders that bill
+ *  on a schedule, found from receipt subjects in the scan index. */
+export interface SubUse {
+  /** signin / read = in use (an alert, an opened mail within 90 days);
+   *  unused = older evidence only; never = no evidence at all. */
+  state: "signin" | "read" | "unused" | "never";
+  in_use: boolean;
+  /** epoch s of the latest evidence (0 = none) */
+  ts: number;
+  /** unused only: what the latest evidence was, and how many of their other
+   *  mails came since (none of them opened) */
+  since?: "signin" | "read";
+  others?: number;
+}
+export interface SubReceipt { subject: string; ts: number; folder: string;
+  uid: number }
+export interface Subscription {
+  /** the company (registrable domain; the full address on a shared platform) */
+  key: string;
+  name: string;
+  addr: string;
+  cadence: "monthly" | "yearly";
+  every_days: number;
+  /** monthly: the usual day of the month */
+  day: number;
+  /** epoch s: first receipt of the current run, the latest, the next expected */
+  since: number; last: number; next: number;
+  /** The next expected date as the SERVER counts it (UTC, "YYYY-MM-DD") - the
+   *  date the reminder and the .ics use, never re-read from `next`. */
+  next_date: string;
+  /** whole days until `next` (negative = overdue) */
+  next_days: number;
+  receipts: number;
+  /** per receipt; null = the subject names no price */
+  amount: number | null;
+  currency: string;
+  amount_source: "subject" | "receipt" | null;
+  /** yearly / 12 */
+  monthly: number | null;
+  total: number | null;
+  total_estimated: boolean;
+  /** one square per month (year): 1 = a receipt came; from `slots_from` */
+  slots: number[];
+  slots_from: number;
+  use: SubUse;
+  /** newest first */
+  latest: SubReceipt[];
+  hidden: boolean;
+  reminder: boolean;
+  /** every receipt is pinned */
+  kept: boolean;
+}
+export interface SubTotals {
+  count: number;
+  /** the currency the sums are in ("" = no amount anywhere) */
+  currency: string;
+  other_currencies: string[];
+  with_amount: number;
+  monthly: number | null;
+  unused: number;
+  unused_monthly: number | null;
+  renewing: number;
+}
+export interface SubscriptionsResp {
+  scanned: boolean;
+  now: number;
+  /** the opt-in: read the latest receipt's text for its amount */
+  body_amounts: boolean;
+  /** subscriptions whose latest receipt has not been read yet */
+  unread_amounts: number;
+  totals: SubTotals;
+  items: Subscription[];
+}
+export interface SubReminder {
+  key: string; ts: number; name: string; next: number;
+  amount: number | null; currency: string;
+}
+
 /** GET /api/overview: counts behind the Overview, one account. */
 export interface OverviewResp {
   now: number;

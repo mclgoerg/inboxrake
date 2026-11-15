@@ -63,6 +63,7 @@ os.environ.update(
     PINS_PATH=str(DATA / "pinned_mails.json"),
     LABELS_PATH=str(DATA / "sender_labels.json"),
     DUPS_PATH=str(DATA / "duplicates_kept.json"),
+    SUBS_PATH=str(DATA / "subscriptions.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),
@@ -254,7 +255,7 @@ def _forget_the_last_visitor() -> None:
     """What a "Reset demo" must not keep: files the seed does not have
     (pins, known senders, ...) and the stores' in-memory copies of them."""
     import shutil
-    from backend import (dupstore, labelstore, pinstore, unsubstore,
+    from backend import (dupstore, labelstore, pinstore, substore, unsubstore,
                          verdictstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
@@ -263,6 +264,7 @@ def _forget_the_last_visitor() -> None:
     labelstore._cache.clear()
     pinstore._cache.clear()
     dupstore._cache.clear()
+    substore._cache.clear()
     unsubstore._cache.clear()
     verdictstore._mails_cache.clear()
     mailops._SENT_CACHE.clear()

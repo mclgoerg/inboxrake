@@ -19,6 +19,7 @@ import { FolderSettings } from "./FolderSettings";
 import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
+import { SubscriptionsSettings } from "./SubscriptionsSettings";
 import { BUILTIN_CATEGORIES, CategoryList,
   parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
@@ -787,7 +788,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         t("account.rename"), t("account.add")]),
     general: sec("general", <SettingsIcon size={16} />, "neutral", undefined,
       [t("Appearance"), t("Language"), t("settings.new_badge"),
-        t("smart.min_label"), t("body_search.label")]),
+        t("smart.min_label"), t("body_search.label"), t("sub.settings_row")]),
     notifications: sec("notifications", <Bell size={16} />, "keep", undefined,
       [t("notify.title")]),
     protected: sec("protected", <Shield size={16} />, "safe",
@@ -1325,6 +1326,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           secretKeySet={!!cfg.secret_key_set} />
       </SettingsGroup>
     )}
+    <SubscriptionsSettings account={editAcct} />
   </>);
 
   // Why the switch cannot be turned on here (nothing when it can).

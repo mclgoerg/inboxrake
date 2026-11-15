@@ -59,6 +59,8 @@ from . import rhythm as rhythmmod
 from . import rules as rulesmod
 from . import secretbox
 from . import stats as statsmod
+from . import substore
+from . import subscriptions
 from . import tenants
 from . import trackers
 from . import webguard
@@ -209,6 +211,7 @@ async def _lifespan(app: FastAPI):
     presetsmod.publish()
     digestmod.start_scheduler()
     autoscanmod.start_scheduler()
+    subscriptions.start_scheduler()
     yield
 
 def _app_version() -> str:
@@ -1153,6 +1156,109 @@ def get_trackers(account: str | None = Query(None)):
             "scanned": acc.state["status"] == "done",
             "estimate_full": bodyindex.estimate(acc, rebuild=True),
             "job": job}
+
+
+class SubscriptionKeyBody(BaseModel):
+    key: str
+
+
+class SubscriptionHideBody(SubscriptionKeyBody):
+    hidden: bool = True
+
+
+class SubscriptionRemindBody(SubscriptionKeyBody):
+    on: bool = True
+
+
+class SubscriptionKeepBody(SubscriptionKeyBody):
+    pinned: bool = True
+
+
+class SubscriptionSettingsBody(BaseModel):
+    body_amounts: bool
+
+
+@app.get("/api/subscriptions")
+def get_subscriptions(account: str | None = Query(None)):
+    """The senders that bill you on a schedule (backend/subscriptions.py):
+    detected from receipt subjects in the scan index, with the amount from the
+    subject (or, opt-in, from the latest receipt's text), the next expected
+    receipt and whether the service looks in use. Local, no AI."""
+    acc = _acc(account)
+    with acc.lock:
+        scanned = acc.state["status"] == "done"
+    return {"scanned": scanned, **subscriptions.listing(acc)}
+
+
+@app.get("/api/subscriptions/reminders")
+def get_subscription_reminders(account: str | None = Query(None)):
+    """Reminders that fired in the last days, for an open page to show once."""
+    return {"reminders": subscriptions.recent_reminders(_acc(account))}
+
+
+def _subscription_action(account, fn):
+    acc = _acc(account)
+    try:
+        return fn(acc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.post("/api/subscriptions/hide")
+def post_subscription_hide(body: SubscriptionHideBody,
+                           account: str | None = Query(None)):
+    """"Not a subscription" (hidden: true) / bring it back."""
+    def run(acc):
+        subscriptions.item(acc, body.key)
+        substore.set_hidden(body.key, body.hidden, acc.name)
+        return {"ok": True, "hidden": body.hidden}
+    return _subscription_action(account, run)
+
+
+@app.post("/api/subscriptions/remind")
+def post_subscription_remind(body: SubscriptionRemindBody,
+                             account: str | None = Query(None)):
+    """Remind me 3 days before the next expected receipt (on / off)."""
+    def run(acc):
+        subscriptions.item(acc, body.key)
+        substore.set_reminder(body.key, body.on, acc.name)
+        return {"ok": True, "on": body.on}
+    return _subscription_action(account, run)
+
+
+@app.post("/api/subscriptions/keep")
+def post_subscription_keep(body: SubscriptionKeepBody,
+                           account: str | None = Query(None)):
+    """Keep the receipts: pin them (pinned mails are skipped by bulk actions)."""
+    return _subscription_action(account, lambda acc: subscriptions.keep_receipts(
+        acc, body.key, body.pinned))
+
+
+@app.get("/api/subscriptions/settings")
+def get_subscription_settings(account: str | None = Query(None)):
+    """The opt-in switch alone (Settings), without a detection pass."""
+    acc = _acc(account)
+    return {"body_amounts": substore.load_account(acc.name)["body_amounts"]}
+
+
+@app.post("/api/subscriptions/settings")
+def post_subscription_settings(body: SubscriptionSettingsBody,
+                               account: str | None = Query(None)):
+    """The opt-in to read the latest receipt's text for its amount (off by
+    default; switching it off forgets the amounts read)."""
+    def run(acc):
+        substore.set_body_amounts(body.body_amounts, acc.name)
+        return {"ok": True, "body_amounts": body.body_amounts}
+    return _subscription_action(account, run)
+
+
+@app.post("/api/subscriptions/amounts")
+def post_subscription_amounts(account: str | None = Query(None)):
+    """Read the latest receipt of each subscription without a subject amount
+    (only with the opt-in on): amount + currency are kept, nothing else."""
+    return _subscription_action(account, subscriptions.read_amounts)
 
 
 @app.post("/api/index/build")
@@ -2665,6 +2771,7 @@ def post_config(body: dict, request: Request, response: Response):
         digestmod.drop_account(str(body["delete_account"]))
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
+        substore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
         assistanttokens.drop_account(tenants.current().id,
@@ -2692,6 +2799,7 @@ def post_config(body: dict, request: Request, response: Response):
             digestmod.rename_account(old, new)
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
+            substore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)

@@ -25,6 +25,10 @@ import { Login } from "./components/Login";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
+import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
+import { showReminderToast } from "./subscriptions";
+
+const VISIBLE_KEY = "pmc_visible_at";
 import { AccountCopyPanel } from "./components/AccountCopy";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
@@ -76,7 +80,8 @@ import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
   KnowledgeStored,
-  StatusMsg, TrashResp, FolderRole, UndoIdent, UndoEntry, AuditBy } from "./types";
+  StatusMsg, SubscriptionsResp, TrashResp, FolderRole, UndoIdent, UndoEntry,
+  AuditBy } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -245,6 +250,9 @@ export default function App() {
   const [attsOpen, setAttsOpen] = useState(false);
   const [dupsOpen, setDupsOpen] = useState(false);
   const [trackersOpen, setTrackersOpen] = useState(false);
+  const [subsOpen, setSubsOpen] = useState(false);
+  // The Subscriptions page opened from the Overview's Review: only the unused.
+  const [subsOnlyUnused, setSubsOnlyUnused] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
@@ -270,8 +278,13 @@ export default function App() {
     : triageOpen ? "triage" : dupsOpen ? "duplicates"
     : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
     : statsOpen ? "stats" : spaceOpen ? "space"
-    : trackersOpen ? "trackers" : auditOpen ? "activity" : null;
+    : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
+    : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
+  // "Only the unused" is for the visit the Overview's Review started.
+  useEffect(() => {
+    if (shownTool !== "subscriptions") setSubsOnlyUnused(false);
+  }, [shownTool]);
   // A tool open as a page in the content column (>= 1024).
   const routed = wide && shownTool !== null;
   // Pages that replace the sender list / toolbar.
@@ -491,6 +504,82 @@ export default function App() {
       ids: new Set(open.map((p) => p.id)) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.rules, state?.account]);
+
+  /* The subscriptions found (backend/subscriptions.py): the sidebar count, the
+     Overview's "N you may not use" line and the Insights widget. Fetched when
+     the account or its last scan changes; the page itself keeps it fresh after
+     its own changes (`loadSubs`). Local data, nothing is asked of the mail
+     server. */
+  const [subs, setSubs] = useState<SubscriptionsResp | null>(null);
+  const loadSubs = useCallback(() => {
+    Promise.resolve().then(() => api.subscriptions())
+      .then((d) => setSubs(d.scanned ? d : null)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    setSubs(null);
+    if (authOk && state?.status === "done") loadSubs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, authOk, state?.scanned_ts, state?.status]);
+
+  /* A reminder the user asked for fired (3 days before a subscription's next
+     receipt): the server also pushes it to devices that are not looking at the
+     app; this page shows it once as a toast (and as a browser notification
+     when those are on and the page is hidden). */
+  const openSubsRef = useRef<() => void>(() => {});
+  const REMINDER_POLL_MS = 60 * 1000;
+  useEffect(() => {
+    if (!authOk) return;
+    let live = true;
+    const check = (lastVisible: number) => {
+      Promise.resolve().then(() => api.subscriptionReminders())
+        .then(({ reminders }) => {
+          if (!live || !reminders.length) return;
+          let seen: string[] = [];
+          try { seen = JSON.parse(localStorage.getItem("pmc_sub_seen") ?? "[]"); }
+          catch { /* start over */ }
+          for (const r of reminders) {
+            const id = `${account}:${r.key}:${r.ts}`;
+            if (seen.includes(id)) continue;
+            seen.push(id);
+            const days = Math.max(0, Math.ceil((r.next - nowMs() / 1000) / 86400));
+            const text = days === 0 ? t("sub.reminder_0", { name: r.name })
+              : t("sub.reminder_n", { name: r.name, n: days });
+            // With Web Push on, a device that was not looking got the push
+            // itself; one that WAS looking was left out and shows the toast
+            // (however late it is back), never a second one on top of a push.
+            if (!showReminderToast(pushMode(), r.ts, lastVisible)) continue;
+            toast.show(text, { action: { label: t("sub.reminder_open"),
+              onClick: () => openSubsRef.current() } });
+            fire(text);
+          }
+          try { localStorage.setItem("pmc_sub_seen", JSON.stringify(seen.slice(-50))); }
+          catch { /* private mode: it may show again */ }
+        }).catch(() => {});
+    };
+    // While the page is visible: noted every minute (what a push left out
+    // depends on it) and checked every minute; on load and when it becomes
+    // visible again at once. Hidden pages are the push's job.
+    const stamp = () => {
+      try { localStorage.setItem(VISIBLE_KEY, String(Math.floor(nowMs() / 1000))); }
+      catch { /* private mode: a late reminder may be missed */ }
+    };
+    const tick = () => {
+      if (document.hidden) return;
+      // read BEFORE noting now: "when was this page last seen" is the question
+      check(Number(localStorage.getItem(VISIBLE_KEY)) || 0);
+      stamp();
+    };
+    tick();
+    const h = setInterval(tick, REMINDER_POLL_MS);
+    const vis = () => { if (document.hidden) stamp(); else tick(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => {
+      live = false;
+      clearInterval(h);
+      document.removeEventListener("visibilitychange", vis);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, authOk]);
 
   /* Job outcomes as toasts. A finished move is detected by NEW undo entries
      as well as by its status changing: SSE ticks once a second, so a short
@@ -935,7 +1024,7 @@ export default function App() {
     setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
-    setAuditOpen(false);
+    setSubsOpen(false); setAuditOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1009,7 +1098,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -1985,6 +2074,7 @@ export default function App() {
   // What the folder picker needs next to the raw folder names.
   const openRules = () => openTool("rules");
   openRulesRef.current = openRules;
+  openSubsRef.current = () => { setSubsOnlyUnused(false); openTool("subscriptions"); };
   const pickEnv = { labels: state?.folders, account: state?.account ?? "",
     onOpenRules: openRules };
 
@@ -2171,6 +2261,7 @@ export default function App() {
     space: () => setSpaceOpen(true),
     wrapped: () => setWrappedOpen(true),
     trackers: () => setTrackersOpen(true),
+    subscriptions: () => setSubsOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
       if (navPage !== "settings") settingsFrom.current = navPage;
@@ -2623,6 +2714,17 @@ export default function App() {
         }}
       />
     )}
+    {toolShown("subscriptions") && (
+      <SubscriptionsPanel key={account} account={account}
+        scannedTs={state?.scanned_ts ?? null} onlyUnused={subsOnlyUnused}
+        onClose={() => closeTool(() => setSubsOpen(false))}
+        onChanged={loadSubs}
+        onNotifications={() => {
+          setSubsOpen(false);
+          openTool("settings");
+          openSettingsSection("notifications", null, true);
+        }} />
+    )}
     {toolShown("attachments") && state && (
       <AttachmentsPanel key={account}
         state={state}
@@ -2707,6 +2809,7 @@ export default function App() {
             .reduce((n, g) => n + g.count, 0) : undefined}
         junkCount={state?.junk_count} trashCount={state?.trash_count}
         proposals={openProposals(state?.rules).length}
+        subscriptions={subs?.totals.count}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
@@ -3114,7 +3217,8 @@ export default function App() {
           demoHint={demo ? demoHint() : undefined}
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
-        <InsightsPage groups={senderGroups} state={state} onOpen={openTool}
+        <InsightsPage groups={senderGroups} state={state} subs={subs}
+          onOpen={openTool}
           onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
           onUnsubscribe={(key) => {
             if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
@@ -3143,7 +3247,12 @@ export default function App() {
             onOpenStillMailing={(w) => openSendersFiltered(
               `is:still-mailing in:${w}`)}
             onOpenJunk={() => openTool("junk")}
-            onOpenAiVerdicts={(w) => openSendersFiltered(`ai:safe in:${w}`)} />
+            onOpenAiVerdicts={(w) => openSendersFiltered(`ai:safe in:${w}`)}
+            subs={subs}
+            onReviewSubscriptions={() => {
+              setSubsOnlyUnused(true);
+              openTool("subscriptions");
+            }} />
         )
       ) : flat ? (
         state && (
