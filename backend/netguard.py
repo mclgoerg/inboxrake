@@ -72,4 +72,8 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
 
     def connect(self):
         sock = socket.create_connection((self._ip, self.port), self.timeout)
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        # the handshake runs after self.sock is set, so a caller's deadline
+        # timer can shut the socket down while the handshake is still going
+        self.sock = self._context.wrap_socket(
+            sock, server_hostname=self.host, do_handshake_on_connect=False)
+        self.sock.do_handshake()

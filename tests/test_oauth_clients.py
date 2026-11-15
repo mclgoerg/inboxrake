@@ -477,3 +477,60 @@ def test_logo_uri_and_other_fields_are_never_fetched_or_kept(net):
     client = oauthclients.get(URL)
     assert set(client) == {"client_id", "host", "name", "redirect_uris"}
     assert net.calls == [URL]                  # nothing else was requested
+
+
+# ----------------------------------------- the wall-clock limit of a fetch
+
+class _Drip:
+    """A local server (127.0.0.1) that answers one request at 1 byte a second
+    and stops when the client hangs up."""
+
+    def __init__(self, where):
+        import threading
+        self.where = where
+        self.srv = socket.socket()
+        self.srv.bind(("127.0.0.1", 0))
+        self.srv.listen(4)
+        self.port = self.srv.getsockname()[1]
+        threading.Thread(target=self.run, daemon=True).start()
+
+    def run(self):
+        import time
+        c, _ = self.srv.accept()
+        c.recv(4096)
+        head = (b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                b"Content-Length: 4000\r\n\r\n")
+        data = head + b"x" * 4000
+        try:
+            if self.where == "body":
+                c.sendall(head)
+                data = data[len(head):]
+            for i in range(len(data)):
+                time.sleep(1)
+                c.send(data[i:i + 1])
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+
+@pytest.mark.parametrize("where", ["headers", "body"])
+def test_a_slow_drip_host_is_cut_at_the_total_deadline(monkeypatch, where):
+    import http.client
+    import threading
+    import time
+    drip = _Drip(where)
+    monkeypatch.setattr(netguard, "resolve_public", lambda h, p: ["127.0.0.1"])
+
+    class Plain(http.client.HTTPConnection):
+        def __init__(self, host, port, ip, timeout):
+            super().__init__(ip, drip.port, timeout=timeout)
+    monkeypatch.setattr(netguard, "PinnedHTTPSConnection", Plain)
+    before = threading.active_count()
+    t0 = time.monotonic()
+    with pytest.raises(TimeoutError):
+        oauthclients._fetch(URL)
+    took = time.monotonic() - t0
+    assert took < oauthclients.TOTAL_TIMEOUT + 0.5
+    time.sleep(0.2)
+    assert threading.active_count() <= before      # the timer is gone too

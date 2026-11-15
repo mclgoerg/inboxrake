@@ -169,11 +169,24 @@ def _deadline_left(end: float) -> float:
     return left
 
 
+def _cut(conn, fired: threading.Event) -> None:
+    """The deadline passed: shut the connection's socket down so a blocked
+    receive returns at once (a per-receive timeout alone restarts on every
+    byte a slow host drips)."""
+    fired.set()
+    sock = getattr(conn, "sock", None)
+    if sock is not None:
+        try:
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+
 def _fetch(client_id: str) -> tuple[int, dict, bytes]:
     """GET the document: (status, headers with lower-case names, body of at
-    most DOC_MAX + 1 bytes). Raises RuntimeError / OSError when no connection
-    could be made. The one place that touches the network - the tests
-    replace it."""
+    most DOC_MAX + 1 bytes), all within TOTAL_TIMEOUT wall-clock seconds.
+    Raises RuntimeError / OSError / TimeoutError when no answer could be had.
+    The one place that touches the network - the tests replace it."""
     parts = urllib.parse.urlsplit(client_id)
     host = parts.hostname or ""
     end = time.monotonic() + TOTAL_TIMEOUT
@@ -181,25 +194,30 @@ def _fetch(client_id: str) -> tuple[int, dict, bytes]:
     for ip in netguard.resolve_public(host, 443):
         conn = netguard.PinnedHTTPSConnection(
             host, 443, ip, min(CONNECT_TIMEOUT, _deadline_left(end)))
+        fired = threading.Event()
+        timer = threading.Timer(_deadline_left(end), _cut, (conn, fired))
+        timer.daemon = True
+        timer.start()
         try:
             conn.request("GET", parts.path, headers={
                 "Accept": "application/json", "User-Agent": "inboxrake"})
-            if conn.sock is not None:
-                conn.sock.settimeout(_deadline_left(end))
             resp = conn.getresponse()
             body = b""
             while len(body) <= DOC_MAX:
-                if conn.sock is not None:
-                    conn.sock.settimeout(_deadline_left(end))
                 chunk = resp.read(DOC_MAX + 1 - len(body))
                 if not chunk:
                     break
                 body += chunk
+            if fired.is_set():
+                raise TimeoutError("client metadata fetch timed out")
             return (resp.status,
                     {k.lower(): v for k, v in resp.getheaders()}, body)
-        except (OSError, http.client.HTTPException, socket.timeout) as exc:
+        except (OSError, http.client.HTTPException) as exc:
+            if fired.is_set():          # the deadline is for all addresses
+                raise TimeoutError("client metadata fetch timed out") from exc
             last = exc          # try the next validated address
         finally:
+            timer.cancel()
             conn.close()
     raise last or RuntimeError(mailops.coded(mailops.UNSUB_UNREACHABLE))
 
