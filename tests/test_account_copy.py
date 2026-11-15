@@ -1165,6 +1165,31 @@ def test_one_shared_message_id_in_a_tiny_mailbox_is_not_an_alias():
     assert accountcopy.same_server_mailbox(a, b) is False
 
 
+@pytest.mark.parametrize("gap", [45, 400, 5000])
+def test_an_alias_is_found_although_the_newest_uids_were_all_expunged(env, gap):
+    """A cleaned-up inbox: UIDNEXT is far above the mails that are left."""
+    _alias(env)
+    env["host-g"]._high["INBOX"] = 11 + gap
+    assert env["host-g"].status('"INBOX"', "")[1][0].decode().count(
+        f"UIDNEXT {12 + gap}") == 1
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert _no_writes(env)
+    a, b = _two([f"<s{i}@x>" for i in range(1, 4)],
+                [f"<s{i}@x>" for i in range(1, 4)])
+    a._high["INBOX"] = b._high["INBOX"] = 3 + gap
+    assert accountcopy.same_server_mailbox(a, b) is True
+
+
+def test_with_no_uid_to_compare_the_folder_counts_decide(env, monkeypatch):
+    monkeypatch.setattr(accountcopy, "_newest_below", lambda c, top: [])
+    a = FakeIMAP({"INBOX": [make_msg(1, msgid="<a@x>")],
+                  "Archive": [make_msg(1, msgid="<b@x>")]})
+    assert accountcopy.same_server_mailbox(a, a) is True
+    c = FakeIMAP({"INBOX": [make_msg(1, msgid="<a@x>")], "Archive": []})
+    assert accountcopy.same_server_mailbox(a, c) is False
+
+
 def test_a_check_that_cannot_be_answered_fails_closed_on_one_host(env):
     """Same host, other login: the config says "close", the check cannot be
     answered - refuse instead of risking a write into the source."""

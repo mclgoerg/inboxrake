@@ -452,13 +452,22 @@ def _ids_at(conn, uids: list[int]) -> set[str]:
 
 
 def _newest_below(conn, top: int) -> list[int]:
-    """The five highest UIDs of INBOX below `top`."""
+    """The five highest UIDs of INBOX below `top`. The newest UIDs may all be
+    gone (a cleaned-up inbox): the window grows tenfold, up to the whole
+    range, until it holds some."""
     st, _ = conn.select(mailops.quote_folder("INBOX"), readonly=True)
     if st != "OK" or top <= 1:
         return []
-    st, data = conn.uid("SEARCH", None, "UID", f"{max(1, top - 40)}:{top - 1}")
-    return sorted(int(u) for u in (data[0].split() if st == "OK" and data
-                                   and data[0] else []) if int(u) < top)[-5:]
+    width = 40
+    while True:
+        low = max(1, top - width)
+        st, data = conn.uid("SEARCH", None, "UID", f"{low}:{top - 1}")
+        found = sorted(int(u) for u in (data[0].split() if st == "OK"
+                                        and data and data[0] else [])
+                       if int(u) < top)
+        if len(found) >= 5 or low == 1:
+            return found[-5:]
+        width *= 10
 
 
 def _signature(conn) -> dict[str, tuple[int, int]]:
@@ -495,8 +504,7 @@ def same_server_mailbox(a, b) -> bool | None:
             if uids:
                 ids = _ids_at(a, uids)
                 return bool(ids) and ids == _ids_at(b, uids)
-            if x.get("MESSAGES") or y.get("MESSAGES"):
-                return False             # mail on one side only: not one box
+            # no UID to compare: the folders' counts decide (below)
         sig = _signature(a)
         return any(n for _, n in sig.values()) and sig == _signature(b)
     except (imaplib.IMAP4.error, OSError, ValueError):
