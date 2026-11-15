@@ -1172,6 +1172,8 @@ def test_an_alias_is_found_although_the_newest_uids_were_all_expunged(env, gap):
     env["host-g"]._high["INBOX"] = 11 + gap
     assert env["host-g"].status('"INBOX"', "")[1][0].decode().count(
         f"UIDNEXT {12 + gap}") == 1
+    assert accountcopy._newest_below(env["host-g"], 12 + gap) == [
+        7, 8, 9, 10, 11]                       # the window grew to find them
     r = _start()
     assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
     assert _no_writes(env)
