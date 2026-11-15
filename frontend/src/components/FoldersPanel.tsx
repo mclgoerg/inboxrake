@@ -6,6 +6,7 @@ import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
 import { groupByDate, monthHeading } from "../dayGroups";
 import { getLang, t } from "../i18n";
+import { confirmTrash } from "../keepsafe";
 import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
   UndoIdent }
@@ -357,13 +358,29 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // stays unless you say so (the same second question as the group Block).
   const blockRow = async (g: SenderGroup) => {
     if (!onBlock || !await onBlock(g.addr)) return;
-    if (await confirmDialog({
-      title: t("fp.block_trash", { n: g.uids.length }), tone: "danger",
-      cancelLabel: t("fp.block_keep"),
-      confirmLabel: t("confirm.btn_n",
-        { verb: t("fp.to_trash"), n: g.uids.length }) })) {
-      await moveJunk("trash", g.uids);
+    let uids = g.uids;
+    try {
+      // a big move carries the keep-safe box: the mails kept safe are
+      // protected (their pin keeps them out of the move)
+      const answer = await confirmTrash({
+        title: t("fp.block_trash", { n: g.uids.length }), bullets: [],
+        tone: "danger", cancelLabel: t("fp.block_keep"),
+        label: (k) => t("confirm.btn_n", { verb: t("fp.to_trash"), n: k }),
+        n: g.uids.length,
+        scope: list ? { items: g.uids.map((u) => [list.folder, u] as
+          [string, number]), role: "junk" }
+          : null });
+      if (!answer.ok) return;
+      const kept = new Set(answer.pinned.map(([, u]) => u));
+      uids = g.uids.filter((u) => !kept.has(u));
+    } catch (e: any) {
+      // the block stands; nothing is moved on a failed protection
+      const msg = t("err.generic", { msg: e.message ?? e });
+      setNote(msg);
+      toast.show(msg, { variant: "error" });
+      return;
     }
+    if (uids.length) await moveJunk("trash", uids);
   };
 
   const purgeOlder = async () => {

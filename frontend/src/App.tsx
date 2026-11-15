@@ -1585,8 +1585,10 @@ export default function App() {
       notify(t(trash.length ? "toast.all_pinned" : "toast.all_protected"));
       return false;
     }
-    const bullets = [
-      ...(moves ? [t("triage.c_trash", { n: trash.length, mails })] : []),
+    // (a function: the mails kept safe in the box are not counted as moved)
+    const bullets = (kept: number) => [
+      ...(moves ? [t("triage.c_trash", { n: trash.length,
+        mails: Math.max(0, mails - kept) })] : []),
       ...(unsub.length ? [t("triage.c_unsub", { n: unsub.length })] : []),
       ...(protect.length ? [t("triage.c_protect", { n: protect.length })] : []),
       ...(skipped ? [t("confirm.b_protected_groups_skipped", { n: skipped })] : []),

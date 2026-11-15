@@ -188,7 +188,7 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
             </div>
             <div>
               <b className="type-title2 tabular-nums">{fmtNum(
-                r.skipped_protected + r.skipped_pinned)}</b>
+                r.skipped_pinned)}</b>
               <div className="type-meta text-muted">
                 {t("rule.stat_skipped")}</div>
             </div>

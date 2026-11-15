@@ -1065,7 +1065,7 @@ test("keep-safe: the report sheet shows moved / skipped / kept safe side by "
   fireEvent.click(screen.getByRole("button", { name: /Last report/ }));
   const sheet = screen.getAllByRole("dialog").at(-1)!;
   expect(sheet.textContent).toContain("147moved to Trash");
-  expect(sheet.textContent).toContain("3protected, skipped");
+  expect(sheet.textContent).toContain("2protected mails, skipped");
   expect(sheet.textContent).toContain("2kept safe · invoices");
   cleanup();
   // a report run says "would move"; nothing kept safe: no stat row

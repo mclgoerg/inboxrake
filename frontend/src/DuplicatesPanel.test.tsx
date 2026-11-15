@@ -12,7 +12,7 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
-import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
+import { KEEP_FOUND } from "./keepSafeTestUtil";
 
 const duplicates = vi.fn();
 const possibleDuplicates = vi.fn();
@@ -822,50 +822,20 @@ const bigWorld = () => {
   duplicatesSummary.mockResolvedValue(summaryOf({ sets: 11, wasted: 45056 }));
 };
 
-test("keep-safe: Remove 22 copies shows the box; the copies kept safe are "
-  + "protected and left out of the move", async () => {
+test("keep-safe: Duplicates never shows the box - a copy always stays, and a "
+  + "pin by Message-ID would lock every copy of the set", async () => {
   bigWorld();
   keepSafeCheck.mockResolvedValue(KEEP_FOUND);
-  keepSafePin.mockResolvedValue({ pinned: 2,
-    items: [["Archive", 301], ["INBOX", 302]] });
-  deleteMessages.mockResolvedValue({ ok: true, queued: 20 });
+  deleteMessages.mockResolvedValue({ ok: true, queued: 22 });
   show();
   fireEvent.click(await screen.findByRole("button",
     { name: "Remove 22\u00a0copies" }));
   const dlg = await findDialog();
-  expectKeepBox(dlg);
-  expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(22);
-  await pressDialog(/^Move to Trash \(18\)$/);            // 22 - 4 kept safe
+  expect(dlg.textContent).toContain("22 selected mails");
+  expect(dlg.textContent).not.toContain("look worth keeping");
+  await pressDialog(/^Move to Trash \(22\)$/);          // every copy but one
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
-  const sent = deleteMessages.mock.calls[0][0] as [string, number][];
-  expect(sent).toHaveLength(20);
-  expect(sent).not.toContainEqual(["Archive", 301]);
-  expect(keepSafePin.mock.invocationCallOrder[0])
-    .toBeLessThan(deleteMessages.mock.invocationCallOrder[0]);
-});
-
-test("keep-safe: Cancel on the box moves and pins nothing", async () => {
-  bigWorld();
-  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
-  show();
-  fireEvent.click(await screen.findByRole("button",
-    { name: "Remove 22\u00a0copies" }));
-  await findDialog();
-  await cancelDialog();
-  await expectNoDialog();
+  expect(deleteMessages.mock.calls[0][0]).toHaveLength(22);
+  expect(keepSafeCheck).not.toHaveBeenCalled();
   expect(keepSafePin).not.toHaveBeenCalled();
-  expect(deleteMessages).not.toHaveBeenCalled();
-});
-
-test("keep-safe: a pin that fails moves nothing and says so", async () => {
-  bigWorld();
-  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
-  keepSafePin.mockRejectedValue(new Error("could not protect"));
-  show();
-  fireEvent.click(await screen.findByRole("button",
-    { name: "Remove 22\u00a0copies" }));
-  await findDialog();
-  await pressDialog(/^Move to Trash \(18\)$/);
-  expect(await screen.findByText(/could not protect/)).toBeTruthy();
-  expect(deleteMessages).not.toHaveBeenCalled();
 });

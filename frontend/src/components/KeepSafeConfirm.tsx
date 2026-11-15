@@ -30,7 +30,7 @@ export interface KeepSafeAnswer { ticked: KeepSafeClass[] }
  *  count. */
 export function KeepSafeConfirm({ title, bullets, tone = "danger", label, n,
   found, cancelLabel, onResult }: {
-  title: string; bullets: string[]; tone?: "danger" | "primary";
+  title: string; bullets: (kept: number) => string[]; tone?: "danger" | "primary";
   /** The confirm button's text for this many mails moving. */
   label: (moving: number) => string;
   /** Mails the move would act on (the count the dialog is about). */
@@ -67,9 +67,9 @@ export function KeepSafeConfirm({ title, bullets, tone = "danger", label, n,
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
         <div id={titleId} className="type-heading">{title}</div>
         <div id={bodyId} className="flex flex-col gap-3 type-body text-muted">
-          {bullets.length > 0 && (
+          {bullets(kept).length > 0 && (
             <ul className="list-disc space-y-1 pl-5">
-              {bullets.map((b, i) => <li key={i}>{b}</li>)}
+              {bullets(kept).map((b, i) => <li key={i}>{b}</li>)}
             </ul>
           )}
           <section aria-labelledby={`${bodyId}-box`}

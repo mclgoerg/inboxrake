@@ -3432,18 +3432,20 @@ def group_move_mails(grouping: str, keys: list[str],
     return out
 
 
-def item_mails(items: list, acc=None) -> list[dict]:
+def item_mails(items: list, acc=None, role: str | None = None) -> list[dict]:
     """The unpinned index entries of ([folder, uid], ...) pairs - what a
     Trash move of a mail selection would act on. Unknown pairs are
-    ignored."""
+    ignored. `role` ("junk" / "trash") reads that special folder's own
+    cache instead of the main index."""
     acc = acc or accounts.get()
     pinned = pinstore.load_account(acc.name)
     out: list[dict] = []
     with acc.lock:
+        index = acc.role_index.get(role, {}) if role else acc.index
         for it in items:
             if not (isinstance(it, (list, tuple)) and len(it) == 2):
                 continue
-            m = acc.index.get(ikey(str(it[0]), int(it[1])))
+            m = index.get(ikey(str(it[0]), int(it[1])))
             if m and m["msgid"] not in pinned:
                 out.append(m)
     return out

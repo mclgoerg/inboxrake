@@ -6,6 +6,7 @@
  * that ends in "Move to Trash" goes through `confirmTrash`. */
 
 import { api } from "./api";
+import { t } from "./i18n";
 import { KeepSafeConfirm, type KeepSafeAnswer }
   from "./components/KeepSafeConfirm";
 import { confirmDialog, customDialog } from "./components/ui";
@@ -17,7 +18,10 @@ export const KEEP_SAFE_MIN = 20;
 
 export interface TrashAsk {
   title: string;
-  bullets: string[];
+  /** The confirm's bullets; a function gets how many mails are being kept
+   *  safe right now (it follows the ticks), for counts that must not
+   *  include them. */
+  bullets: string[] | ((kept: number) => string[]);
   tone?: "danger" | "primary";
   /** The confirm button's text for this many mails moving. */
   label: (moving: number) => string;
@@ -47,23 +51,31 @@ export type TrashAnswer =
  *  plain confirm. A failed pin THROWS: the mails the user ticked must never
  *  be moved on the strength of a protection that did not happen. */
 export async function confirmTrash(ask: TrashAsk): Promise<TrashAnswer> {
-  const { title, bullets, tone = "danger", label, n, scope, account,
+  const { title, tone = "danger", label, n, scope, account,
     cancelLabel, onlyIfFound } = ask;
-  const plain = async (): Promise<TrashAnswer> => onlyIfFound
-    ? { ok: true, pinned: [] }
-    : await confirmDialog({ title, bullets, tone, confirmLabel: label(n),
-      ...(cancelLabel ? { cancelLabel } : {}) })
+  const bulletsFor = (kept: number) => typeof ask.bullets === "function"
+    ? ask.bullets(kept) : ask.bullets;
+  const plain = async (extra: string[] = []): Promise<TrashAnswer> =>
+    await confirmDialog({ title, bullets: [...bulletsFor(0), ...extra], tone,
+      confirmLabel: label(n), ...(cancelLabel ? { cancelLabel } : {}) })
       ? { ok: true, pinned: [] } : { ok: false };
-  if (!scope || n <= KEEP_SAFE_MIN) return plain();
+  if (!scope || n <= KEEP_SAFE_MIN) return onlyIfFound ? { ok: true, pinned: [] }
+    : plain();
   let found: KeepSafeCheck | null = null;
   try { found = await api.keepSafeCheck(scope, account); } catch { found = null; }
-  if (!found?.classes?.length) return plain();
+  // No answer is said out loud: the confirm still works, without the box.
+  if (!found || !Array.isArray(found.classes))
+    return plain([t("keepsafe.check_failed")]);
+  if (!found.classes.length)
+    return onlyIfFound ? { ok: true, pinned: [] } : plain();
+  // the pin goes to the account that answered, whatever was switched since
+  const where = found.account ?? account;
   const answer = await customDialog<KeepSafeAnswer>((done) => (
-    <KeepSafeConfirm title={title} bullets={bullets} tone={tone}
+    <KeepSafeConfirm title={title} bullets={bulletsFor} tone={tone}
       label={label} n={n} found={found!} cancelLabel={cancelLabel}
       onResult={done} />));
   if (!answer) return { ok: false };
   if (!answer.ticked.length) return { ok: true, pinned: [] };
-  const r = await api.keepSafePin(scope, answer.ticked, account);
+  const r = await api.keepSafePin(scope, answer.ticked, where);
   return { ok: true, pinned: r.items };
 }

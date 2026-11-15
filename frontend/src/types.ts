@@ -414,7 +414,7 @@ export type KeepSafeSettings = Record<KeepSafeClass, boolean>
 /** The mails a Trash move would act on: a selection of mails or groups (with
  *  the move's own retention / sender limits). */
 export type KeepSafeScope =
-  | { items: [string, number][] }
+  | { items: [string, number][]; role?: "junk" | "trash" }
   | { grouping: Grouping; keys: string[]; keep_latest?: number | null;
       older_than_days?: number | null; only_addrs?: string[] | null };
 export interface KeepSafeGroup {
@@ -424,6 +424,8 @@ export interface KeepSafeGroup {
   subjects: { subject: string; sender: string; ts: number }[];
 }
 export interface KeepSafeCheck {
+  /** The account the answer is for: the pin goes to the same one. */
+  account?: string;
   /** Mails the move would act on, and how many of them look worth keeping. */
   total: number;
   kept: number;

@@ -97,10 +97,12 @@ def mail_class(m: dict, enabled) -> str | None:
 
 def _scope_mails(acc, scope: dict) -> list[dict]:
     """The mails a Trash move of `scope` would act on: {"items": [[folder,
-    uid], ...]} (a selection of mails) or {"grouping", "keys",
+    uid], ...], "role"?: "junk" | "trash"} (a selection of mails, optionally
+    in a special folder) or {"grouping", "keys",
     "keep_latest"?, "older_than_days"?, "only_addrs"?} (groups)."""
     if scope.get("items") is not None:
-        return mailops.item_mails(list(scope["items"])[:MAX_ITEMS], acc)
+        return mailops.item_mails(list(scope["items"])[:MAX_ITEMS], acc,
+                                  scope.get("role"))
     return mailops.group_move_mails(
         scope.get("grouping") or "sender", list(scope.get("keys") or []),
         scope.get("keep_latest"), scope.get("older_than_days"),
@@ -113,7 +115,7 @@ def _sender_name(m: dict) -> str:
 
 def check(scope: dict, acc=None) -> dict:
     """Which of the mails a Trash move of `scope` would act on look worth
-    keeping: {"total", "kept", "classes": [{"id", "count", "senders":
+    keeping: {"account" (the one it was asked of), "total", "kept", "classes": [{"id", "count", "senders":
     [{"name", "count"}], "subjects": [{"subject", "sender", "ts"}]}]}.
     Classes the tenant switched off are not looked for."""
     acc = acc or accounts.get()
@@ -142,7 +144,7 @@ def check(scope: dict, acc=None) -> dict:
                         for n, c in top[:SENDERS_SHOWN]],
             "subjects": [{"subject": m["subject"], "sender": _sender_name(m),
                           "ts": m["ts"]} for m in newest]})
-    return {"total": len(mails),
+    return {"account": acc.name, "total": len(mails),
             "kept": sum(c["count"] for c in classes), "classes": classes}
 
 

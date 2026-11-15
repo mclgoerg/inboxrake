@@ -167,6 +167,9 @@ test("a failed check is the plain confirm; so is one that finds nothing",
   run();
   let dlg = await findDialog();
   expect(within(dlg).queryByText(/look worth keeping/)).toBeNull();
+  // ... and it says so, instead of looking like nothing was found
+  expect(within(dlg).getByText(/Could not check for mail worth keeping/))
+    .toBeTruthy();
   await pressDialog(/Move to Trash \(326\)/);
   expect(await answer).toEqual({ ok: true, pinned: [] });
   cleanup();
@@ -174,6 +177,7 @@ test("a failed check is the plain confirm; so is one that finds nothing",
   run();
   dlg = await findDialog();
   expect(within(dlg).queryByText(/look worth keeping/)).toBeNull();
+  expect(within(dlg).queryByText(/Could not check/)).toBeNull();
   await cancelDialog();
 });
 
@@ -268,4 +272,50 @@ test("one mail found reads in the singular", async () => {
   expect(within(dlg).getByRole("checkbox",
     { name: "Keep Job applications: 1 mail" })).toBeTruthy();
   await cancelDialog();
+});
+
+test("a failed check is said in German too", async () => {
+  setLang("de");
+  check.mockRejectedValue(new Error("down"));
+  run({ label: (k) => `In den Papierkorb (${k})` });
+  const dlg = await findDialog();
+  expect(within(dlg).getByText(/Die Prüfung .* war nicht möglich/)).toBeTruthy();
+  fireEvent.click(within(dlg).getByRole("button", { name: "Abbrechen" }));
+  expect(await answer).toEqual({ ok: false });
+});
+
+test("onlyIfFound: nothing found or too small asks nothing; a failed check "
+  + "still asks, saying so", async () => {
+  render(<DialogProvider><div /></DialogProvider>);
+  check.mockResolvedValue({ total: 326, kept: 0, classes: [] });
+  expect(await confirmTrash(ask({ onlyIfFound: true })))
+    .toEqual({ ok: true, pinned: [] });
+  expect(await confirmTrash(ask({ onlyIfFound: true, n: 5 })))
+    .toEqual({ ok: true, pinned: [] });
+  check.mockRejectedValue(new Error("down"));
+  const p = confirmTrash(ask({ onlyIfFound: true }));
+  const dlg = await findDialog();
+  expect(within(dlg).getByText(/Could not check/)).toBeTruthy();
+  await cancelDialog();
+  expect(await p).toEqual({ ok: false });
+});
+
+test("bullets follow the ticks: counts there leave out what is kept safe",
+  async () => {
+  run({ bullets: (kept) => [`Move ${326 - kept} mails`] });
+  const dlg = await findDialog();
+  expect(within(dlg).getByText("Move 314 mails")).toBeTruthy();
+  fireEvent.click(within(dlg).getByRole("checkbox",
+    { name: /Keep Invoices & receipts: 8 mails/ }));
+  expect(within(dlg).getByText("Move 322 mails")).toBeTruthy();
+  await cancelDialog();
+});
+
+test("the pin goes to the account that answered the check", async () => {
+  check.mockResolvedValue({ ...FOUND, account: "work" });
+  run({ account: "home" });
+  await findDialog();
+  await pressDialog(/Move to Trash \(314\)/);
+  await waitFor(() => expect(pin).toHaveBeenCalled());
+  expect(pin.mock.calls[0][2]).toBe("work");
 });

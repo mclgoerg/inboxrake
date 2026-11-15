@@ -423,3 +423,44 @@ def test_delete_groups_exempt_is_not_a_pin(box):
     wait_delete_done()
     assert 1 not in {m["uid"] for m in box.mailbox["Trash"]}
     assert pinstore.load_account("default") == set()
+
+
+def test_kept_safe_counts_only_the_groups_the_cap_takes(box, monkeypatch):
+    """A group RULE_CAP leaves for the next run is not 'kept safe' yet."""
+    monkeypatch.setattr(rulesmod, "RULE_CAP", 26)
+    # every sender group: news (25) and the id mail (1) fit; the shop group
+    # (2 movable + 2 kept invoices) does not and is capped; the groups made
+    # only of kept-safe mails have nothing to cap and are reported
+    res = rulesmod.run_rule(_rule(query="")["id"], rescan=False)
+    assert res["capped"] == 2
+    assert res["kept_safe"] == {"bookings": 1, "contracts": 1, "jobs": 1}
+
+
+def test_a_group_with_only_kept_safe_mails_still_reports_them(box):
+    rule = _rule(query="from:trips@travelly.example")
+    res = rulesmod.run_rule(rule["id"], rescan=False)
+    assert res["mails"] == 0 and res["kept_safe"] == {"bookings": 1}
+
+
+def test_check_names_the_account_and_a_role_folder_selection(box):
+    assert check()["account"] == "default"
+
+
+def test_role_items_read_the_special_folders_own_cache(box):
+    acc = accountsmod.get()
+    rec = mailops.ikey("Spam", 900)
+    with acc.lock:
+        acc.role_index["junk"] = {rec: {
+            "folder": "Spam", "uid": 900, "subject": "Invoice 1",
+            "msgid": "<j900@x.example>", "addr": "a@x.example", "name": "A",
+            "ts": 1, "unsub": False}}
+    res = check({"items": [["Spam", 900]], "role": "junk"})
+    assert res["kept"] == 1 and list(by_id(res)) == ["invoices"]
+    # the same pair is unknown to the main index
+    assert check({"items": [["Spam", 900]]})["kept"] == 0
+    got = pin(["invoices"], {"items": [["Spam", 900]], "role": "junk"})
+    assert got["items"] == [["Spam", 900]]
+    assert "<j900@x.example>" in pinstore.load_account("default")
+    r = client.post("/api/keepsafe/check",
+                    json={"items": [["Spam", 900]], "role": "nope"})
+    assert r.status_code == 422

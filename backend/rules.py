@@ -946,7 +946,7 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                    and rule.get("origin") != "block"
                    and keepsafe.settings().get("rules"))
         enabled = keepsafe.enabled_classes() if keep_on else []
-        exempt: set[str] = set()
+        kept_by_key: dict[str, tuple[dict[str, int], set[str]]] = {}
         with acc.lock:
             recs = acc.state["groups"][rule["grouping"]]
             counts = {}
@@ -960,10 +960,7 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                     kept, ids = keepsafe.rule_kept(
                         rec, acc, keep_latest, older_than_days, pinned,
                         enabled) if enabled else ({}, set())
-                    exempt |= ids
-                    for cls, n in kept.items():
-                        result["kept_safe"][cls] = \
-                            result["kept_safe"].get(cls, 0) + n
+                    kept_by_key[g["key"]] = (kept, ids)
                     counts[g["key"]] = base - sum(kept.values())
         result["mails"] = sum(counts.values())
 
@@ -975,6 +972,18 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                 picked.append(g)
                 total += c
         result["capped"] = result["mails"] - total
+        # what keep-safe left alone counts only for the groups this run deals
+        # with: the ones it takes, and those with nothing else to move. A
+        # group the cap leaves for the next run is not "kept safe" yet.
+        taken = {g["key"] for g in picked}
+        exempt: set[str] = set()
+        for g in acted_on:
+            if counts.get(g["key"], 0) and g["key"] not in taken:
+                continue
+            kept, ids = kept_by_key.get(g["key"], ({}, set()))
+            exempt |= ids
+            for cls, n in kept.items():
+                result["kept_safe"][cls] = result["kept_safe"].get(cls, 0) + n
         result["preview"] = [
             {"key": g["key"], "label": g["label"], "count": counts[g["key"]]}
             for g in sorted(picked, key=lambda g: -counts[g["key"]])[:10]]

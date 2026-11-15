@@ -99,9 +99,12 @@ export const confirmTrashMails = (n: number, subject?: string):
 /** Like confirmTrashMails for a list of [folder, uid] pairs, with the
  *  keep-safe box on a big move: resolves the pairs that really move (the
  *  mails the user kept safe are protected and left out - possibly none), or
- *  null when cancelled. THROWS when the protection could not be written. */
+ *  null when cancelled. THROWS when the protection could not be written.
+ *  `keepSafe: false` (Duplicates: a copy always stays, and a pin by
+ *  Message-ID would lock every copy of the set) asks the plain confirm. */
 export async function confirmTrashItems(items: [string, number][],
-    subject?: string): Promise<[string, number][] | null> {
+    subject?: string, opts: { keepSafe?: boolean } = {}):
+    Promise<[string, number][] | null> {
   const n = items.length;
   const verb = actionVerb("trash");
   const what = n === 1 && subject !== undefined
@@ -109,7 +112,8 @@ export async function confirmTrashItems(items: [string, number][],
     : t("confirm.b_selected", { n });
   const answer = await confirmTrash({ title: verb, tone: "danger",
     bullets: [what, t("confirm.b_space")],
-    label: (k) => t("confirm.btn_n", { verb, n: k }), n, scope: { items } });
+    label: (k) => t("confirm.btn_n", { verb, n: k }), n,
+    scope: opts.keepSafe === false ? null : { items } });
   if (!answer.ok) return null;
   if (!answer.pinned.length) return items;
   const kept = new Set(answer.pinned.map(([folder, uid]) =>

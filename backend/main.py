@@ -1271,6 +1271,7 @@ class KeepSafeBody(BaseModel):
     """The mails a Trash move would act on: a selection (`items`) or groups
     (`grouping` + `keys` and the move's retention / sender limits)."""
     items: list[tuple[str, int]] | None = Field(None, max_length=keepsafemod.MAX_ITEMS)
+    role: Literal["junk", "trash"] | None = None   # items live in that folder
     grouping: str = "sender"
     keys: list[str] = []
     keep_latest: int | None = Field(None, ge=1)
@@ -1280,7 +1281,8 @@ class KeepSafeBody(BaseModel):
 
     def scope(self) -> dict:
         if self.items is not None:
-            return {"items": [list(i) for i in self.items]}
+            return {"items": [list(i) for i in self.items],
+                    "role": self.role}
         return {"grouping": self.grouping, "keys": self.keys,
                 "keep_latest": self.keep_latest,
                 "older_than_days": self.older_than_days,

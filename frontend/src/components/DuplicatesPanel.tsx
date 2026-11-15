@@ -210,9 +210,11 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     busy.current = true;
     const switched = accountGuard();
     try {
-      // a big move carries the keep-safe box (the mails kept safe stay)
+      // (no keep-safe box here: a copy of each set always stays, and a pin
+      // works by Message-ID, so it would lock every copy of the set)
       const items = await confirmTrashItems(itemsOf(chosen),
-        chosen.length === 1 ? chosen[0].subject ?? "" : undefined);
+        chosen.length === 1 ? chosen[0].subject ?? "" : undefined,
+        { keepSafe: false });
       if (!items) return;
       await trashItems(items, switched);
     } catch (e: any) {
@@ -243,7 +245,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
       }
       if (now.items.length === 0) { setNote(t("dups.gone")); return; }
       const items = await confirmTrashItems(itemsOf(now.items),
-        now.items.length === 1 ? now.items[0].subject ?? "" : undefined);
+        now.items.length === 1 ? now.items[0].subject ?? "" : undefined,
+        { keepSafe: false });
       if (!items) return;
       await trashItems(items, switched);
     } catch (e: any) {
@@ -269,7 +272,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     let items: [string, number][] | null;
     try {
       items = await confirmTrashItems(itemsOf(s.mails.slice(1)),
-        s.mails.length === 2 ? s.mails[1].subject ?? "" : undefined);
+        s.mails.length === 2 ? s.mails[1].subject ?? "" : undefined,
+        { keepSafe: false });
     } catch (e: any) {
       setNote(t("err.generic", { msg: e.message ?? e }));
       return;

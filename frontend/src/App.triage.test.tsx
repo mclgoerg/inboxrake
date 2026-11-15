@@ -556,7 +556,14 @@ test("keep-safe: Apply's one confirm carries the box for the trash step; the "
   fireEvent.click(btn(dlg, "Apply"));
   const c = await findDialog();
   expectKeepBox(c);
-  expect(c.textContent).toContain("Move 40\u00a0mails from 1\u00a0group to Trash");
+  // the bullet does not count the 4 mails kept safe; unticking brings them back
+  expect(c.textContent).toContain("Move 36\u00a0mails from 1\u00a0group to Trash");
+  fireEvent.click(within(c).getByRole("checkbox",
+    { name: /Keep Invoices & receipts/ }));
+  expect(c.textContent).toContain("Move 39\u00a0mails from 1\u00a0group to Trash");
+  fireEvent.click(within(c).getByRole("checkbox",
+    { name: /Keep Invoices & receipts/ }));
+  expect(c.textContent).toContain("Move 36\u00a0mails from 1\u00a0group to Trash");
   expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
     keys: ["b@shop.example"] });
   await pressDialog("Apply");
