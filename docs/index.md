@@ -56,7 +56,7 @@ and any other IMAP server.
 - **You see it first**\
   Nothing is deleted without asking: moving to Trash always shows the exact count first.
 - **Undo**\
-  Moving to Trash can be undone - each account keeps its last 10 undoable actions.
+  Moving to Trash can be undone - each account keeps its undoable actions for 30 days, and the Time machine restores your mailbox to any point in that time.
 - **Scans only read**\
   Scans are read-only. Nothing changes until you say so.
 - **Protected stays**\

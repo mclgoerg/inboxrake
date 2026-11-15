@@ -3,6 +3,7 @@ UIDVALIDITY-checked, never `1:*` nor a plain EXPUNGE for a partial purge;
 the undo log is only pruned after success. Plus FakeIMAP STORE/EXPUNGE
 realism (F8)."""
 
+import time
 import imaplib
 
 import pytest
@@ -201,7 +202,7 @@ def test_no_uidplus_refuses_when_trash_changes_during_the_recheck(monkeypatch):
 # ----------------------------------------------------- undo log + audit
 
 def _undo_entry(items, dest="Trash", label="x"):
-    mailops.UNDO_LOG.append({"ts": 1, "label": label, "action": "trash",
+    mailops.UNDO_LOG.append({"ts": int(time.time()), "label": label, "action": "trash",
                              "count": len(items), "items": items,
                              "in": dest})
 

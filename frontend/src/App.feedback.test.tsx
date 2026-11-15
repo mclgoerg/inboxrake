@@ -399,6 +399,16 @@ test("an Undo's result is a toast that words the label itself, no scroll",
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+test("an Undo that left mails with a shared Message-ID says so", async () => {
+  await mount({ ...baseState, undo: [entry(1, 5)] } as any);
+  undoApi.mockResolvedValueOnce({ restored: 4, of: 5, rescan: true, ambiguous: 1 });
+  fireEvent.click(await screen.findByRole("button", { name: /Undo/ }));
+  fireEvent.click(screen.getByText(/Move to Trash: 5/));
+  await pressDialog(/Restore/);
+  expect(await screen.findByText(
+    "1 mail shares its Message-ID with another mail and stayed where it is.")).toBeTruthy();
+});
+
 test("a partial Undo toasts how many came back; a refused one the error",
   async () => {
     const st = { ...baseState, undo: [entry(1, 5)] };

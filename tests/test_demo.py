@@ -139,6 +139,26 @@ def test_scan_delete_undo_run_on_one_thread(bridge, shim):
     assert started and set(started) == {main}
 
 
+def test_a_time_machine_restore_runs_inside_its_request(bridge, shim):
+    """The restore is a job on a thread in the real app; the demo has none:
+    it must be over (and its rescan too) when the response arrives."""
+    assert call("POST", "/api/scan", body={})["status"] == 200
+    assert call("POST", "/api/delete", body={
+        "grouping": "sender", "keys": ["noreply@dhl.example"]})["status"] == 200
+    listing = jbody(call("GET", "/api/timemachine"))
+    assert [s["status"] for s in listing["steps"]] == ["back"]
+    point = ""                              # before every step
+    preview = jbody(call("POST", "/api/timemachine/preview",
+                         body={"point": point}))
+    assert preview["mails"] == 3
+    res = call("POST", "/api/timemachine/restore",
+               body={"point": point, "top": preview["top"]})
+    assert res["status"] == 200, res["body"]
+    assert mailops.STATE["restore"]["status"] == "done"
+    assert mailops.STATE["restore"]["moved"] == 3
+    assert "noreply@dhl.example" in mailops.STATE["groups"]["sender"]
+
+
 def test_responses_match_the_normal_path(bridge):
     client = TestClient(app)
     body = {"grouping": "sender", "keys": ["noreply@dhl.example"]}

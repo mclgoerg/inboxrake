@@ -1331,8 +1331,8 @@ def _undo_action(ctx: Ctx, args: UndoActionIn) -> dict:
             token=ctx.token_id, actor=ctx.actor)
     except RuntimeError as exc:
         if str(exc) == mailops.NOTHING_TO_UNDO:
-            raise ToolError("No such step: only this token's own recent "
-                            "steps (the last 10) can be undone, by the "
+            raise ToolError("No such step: only this token's own steps of "
+                            "the last 30 days can be undone, by the "
                             "undo_id apply_action returned.")
         raise ToolError("Undo failed: " + clean(str(exc), 120))
     return {"account": acc.name, "restored": res["restored"], "of": res["of"]}
@@ -1516,9 +1516,9 @@ TOOLS: tuple[Tool, ...] = (
          meta={"anthropic/requiresUserInteraction": True}),
     Tool("undo_action", "Undo one of this token's steps",
          "Move the mails of one of this token's own earlier steps back to "
-         "where they came from (the undo_id apply_action returned). Only the "
-         "last 10 steps of this token can be undone, and only until the "
-         "server restarts; the user can undo any step in Inboxrake.",
+         "where they came from (the undo_id apply_action returned). Only "
+         "this token's own steps of the last 30 days can be undone; the "
+         "user can undo any step in Inboxrake.",
          "act", UndoActionIn, UndoActionOut, _undo_action,
          annotations={"readOnlyHint": False, "destructiveHint": False,
                       "idempotentHint": False}),

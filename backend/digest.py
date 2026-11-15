@@ -948,6 +948,7 @@ def _tick() -> None:
                     busy = (acc.state["status"] == "scanning"
                             or acc.state["ai"]["status"] == "running"
                             or acc.state["delete"]["status"] == "running"
+                            or acc.state["restore"]["status"] == "running"
                             or acc.state["atts"]["status"] == "running"
                             or acc.state["unsub"]["status"] == "running")
                 if busy:

@@ -21,6 +21,7 @@ import os
 import re
 import ssl
 import threading
+from collections import Counter
 import time
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
@@ -47,6 +48,7 @@ from . import smartkinds
 from . import stats as statsmod
 from . import tenants
 from . import trackers
+from . import undostore
 from . import unsubstore
 from . import verdictstore
 from . import webpush
@@ -133,6 +135,7 @@ NO_KNOWN_SELECTED = "no_known_selected"
 UNKNOWN_TARGET = "unknown_target"    # folder=
 TARGET_IS_TRASH = "target_is_trash"
 NOTHING_TO_UNDO = "nothing_to_undo"
+UNKNOWN_POINT = "unknown_point"      # Time machine: that step is not listed
 # a failure after part of the work was done: n= mails, cause= the failure
 DELETED_THEN_FAILED = "deleted_then_failed"
 STRANDED_THEN_FAILED = "stranded_then_failed"
@@ -307,6 +310,7 @@ FOLDER_ERROR_CODES = frozenset({
     UNKNOWN_TARGET,
     TARGET_IS_TRASH,
     NOTHING_TO_UNDO,
+    UNKNOWN_POINT,
     DELETED_THEN_FAILED,
     STRANDED_THEN_FAILED,
     MOVED_THEN_FAILED,
@@ -461,10 +465,19 @@ def error_text(exc: Exception, host: str = "",
         or (coded(generic) if generic else f"{type(exc).__name__}: {text}")
 
 
-UNDO_MAX = 10
+# Undo steps are kept for UNDO_KEEP_DAYS (the Time machine goes back that far;
+# they are written to disk, see undostore.py, so a restart keeps them). The
+# two limits below are only safety nets, not the retention: a step list never
+# grows past UNDO_MAX steps, and the mails remembered across all the steps of
+# one list stay under UNDO_MAIL_CAP (the oldest steps go first, the newest
+# step is always kept). Measured: a remembered mail costs ~0.6 KB of memory
+# and ~0.26 KB on disk, so a list at the cap is ~60 MB / ~26 MB.
+UNDO_KEEP_DAYS = 30
+UNDO_MAX = 500
+UNDO_MAIL_CAP = 100_000
 # An AI assistant's steps live in their own list, so an active assistant
-# never pushes the user's own steps out of `undo_log`: the last N per token.
-ASSISTANT_UNDO_MAX = 10
+# never pushes the user's own steps out of `undo_log`: at most N per token.
+ASSISTANT_UNDO_MAX = 100
 
 # All mutable mail state lives in per-account AccountState objects (see
 # backend/accounts.py); every function below takes `acc` (None = default
@@ -749,6 +762,12 @@ def _undo_ident(entry: dict) -> dict:
             **({"id": entry["id"]} if entry.get("id") else {})}
 
 
+# /api/state (and every SSE tick) carries the newest steps of each list only:
+# the lists hold 30 days of steps, the Activity page and the Time machine
+# have all of them.
+UNDO_SUMMARY_MAX = 100
+
+
 def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
@@ -762,24 +781,108 @@ def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
              # an assistant's step: who did it (the token's name)
              **({"actor": u["actor"], "token": u["token"]}
                 if u.get("token") else {})}
-            for u in (acc.undo_log if entries is None else entries)]
+            for u in (acc.undo_log if entries is None else entries)
+            [-UNDO_SUMMARY_MAX:]]
+
+
+def _undo_mails(entry: dict) -> int:
+    """How many mails one step remembers (what the memory cap counts)."""
+    return len(entry["items"]) + sum(len(p.get("mails", ()))
+                                     for p in entry.get("parts") or ())
+
+
+def _trim_undo_list(entries: list[dict], now: float) -> None:
+    """Age cut, step cap, mail cap of ONE undo list (oldest first), in place;
+    the newest step always survives."""
+    cutoff = now - UNDO_KEEP_DAYS * 86400
+    entries[:] = [e for e in entries if e["ts"] >= cutoff]
+    if any(e.get("token") for e in entries):
+        seen: dict[str, int] = {}
+        kept = []
+        for e in reversed(entries):
+            seen[e["token"]] = seen.get(e["token"], 0) + 1
+            if seen[e["token"]] <= ASSISTANT_UNDO_MAX:
+                kept.append(e)
+        entries[:] = kept[::-1]
+    del entries[:-UNDO_MAX]
+    total = sum(_undo_mails(e) for e in entries)
+    while len(entries) > 1 and total > UNDO_MAIL_CAP:
+        total -= _undo_mails(entries.pop(0))
 
 
 def _sync_undo(acc) -> None:
-    """Refresh the public summaries of both undo lists (acc.lock held)."""
+    """Apply the retention to both undo lists and refresh their public
+    summaries (acc.lock held). The lists are written to disk by
+    `flush_undo`, which the caller runs once the lock is released."""
+    now = time.time()
+    _trim_undo_list(acc.undo_log, now)
+    _trim_undo_list(acc.assistant_undo, now)
     acc.state["undo"] = _undo_summaries(acc)
     acc.state["assistant_undo"] = _undo_summaries(acc, acc.assistant_undo)
+    # the summaries are the newest UNDO_SUMMARY_MAX: the UI says how many more
+    acc.state["undo_total"] = len(acc.undo_log)
+    acc.state["assistant_undo_total"] = len(acc.assistant_undo)
+    acc.undo_dirty = True
 
 
-def _trim_assistant_undo(acc) -> None:
-    """Keep the last ASSISTANT_UNDO_MAX steps of each token (acc.lock held)."""
-    seen: dict[str, int] = {}
-    kept = []
-    for e in reversed(acc.assistant_undo):
-        seen[e["token"]] = seen.get(e["token"], 0) + 1
-        if seen[e["token"]] <= ASSISTANT_UNDO_MAX:
-            kept.append(e)
-    acc.assistant_undo[:] = kept[::-1]
+def flush_undo(acc) -> None:
+    """Write the undo lists to disk if they changed - without holding the
+    account lock (a list at its cap is tens of MB of JSON). Never raises: a
+    failed write must not fail the action that was just done. Steps are not
+    changed in place once listed (a popped step is not in the list), so the
+    snapshot of the two lists is safe to serialise unlocked; an older
+    snapshot never overwrites a newer one."""
+    if not acc.undo_dirty:
+        return
+    with acc.lock:
+        if not acc.undo_dirty or acc.undo_busy:
+            return
+        acc.undo_dirty = False
+        acc.undo_seq += 1
+        seq = acc.undo_seq
+        user, bots = list(acc.undo_log), list(acc.assistant_undo)
+    with acc.undo_write:
+        if seq < acc.undo_written:
+            return
+        acc.undo_written = seq
+        try:
+            undostore.save(acc.name, acc.tenant, SNAPSHOT_DIR, user, bots)
+        except Exception:       # a full disk, an entry JSON cannot hold, ...
+            log.exception("[%s] could not persist the undo log", acc.name)
+            acc.undo_dirty = True        # try again with the next flush
+
+
+def expire_undo(acc) -> None:
+    """Drop steps older than the retention (an idle account records nothing
+    that would): the Time machine calls this before it lists them."""
+    with acc.lock:
+        before = len(acc.undo_log) + len(acc.assistant_undo)
+        _trim_undo_list(acc.undo_log, time.time())
+        _trim_undo_list(acc.assistant_undo, time.time())
+        if len(acc.undo_log) + len(acc.assistant_undo) != before:
+            _sync_undo(acc)
+    flush_undo(acc)
+
+
+def load_undo(acc) -> None:
+    """Read the account's undo steps from disk into its (still empty) lists;
+    steps past the retention are dropped. Never clobbers live steps."""
+    user, assistant = undostore.load(acc.name, acc.tenant, SNAPSHOT_DIR)
+    with acc.lock:
+        if acc.undo_log or acc.assistant_undo:
+            return
+        acc.undo_log[:] = user
+        acc.assistant_undo[:] = assistant
+        _sync_undo(acc)
+    flush_undo(acc)
+
+
+def rename_undo(old: str, new: str) -> None:
+    undostore.rename(old, new, tenants.current(), SNAPSHOT_DIR)
+
+
+def drop_undo(name: str) -> None:
+    undostore.drop(name, tenants.current(), SNAPSHOT_DIR)
 
 
 def clear_ai_marks() -> None:
@@ -2686,7 +2789,8 @@ def public_status(acc=None) -> dict:
             {k: v for k, v in acc.state.items() if k != "groups"}))
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
-        return out
+    flush_undo(acc)          # a safety net: whatever was left unwritten
+    return out
 
 
 def _rcpt_context(acc, im: dict) -> addresspick.Context:
@@ -2877,6 +2981,7 @@ def start_scan(acc=None, notice: dict | None = None,
         if acc.state["status"] == "scanning" \
                 or acc.state["ai"]["status"] == "running" \
                 or acc.state["delete"]["status"] == "running" \
+                or acc.state["restore"]["status"] == "running" \
                 or acc.state["atts"]["status"] == "running" \
                 or acc.state["unsub"]["status"] == "running" \
                 or acc.state["index"]["status"] == "running":
@@ -3166,6 +3271,13 @@ def _apply_seen(folder: str, uids: list[int], acc) -> None:
 # practice (one IMAP connection) and keeps the bookkeeping exact.
 
 
+def _job_running(acc) -> bool:
+    """A move / deletion job or a Time machine restore is running (acc.lock
+    held): nothing else may change the mailbox meanwhile."""
+    return (acc.state["delete"]["status"] == "running"
+            or acc.state["restore"]["status"] == "running")
+
+
 def _from_role_label(n: int, role: str) -> tuple[str, dict]:
     """`(English label, label fields)` of an undo entry for `n` mails moved
     out of a role folder: the UI words it in its own language from the
@@ -3188,29 +3300,44 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
     what it undid. `quiet` = the
     caller shows its own toast (Folders panel), so the UI's generic "moved
     N" toast for new undo entries stays silent. `label_fields`: optional
-    structured label (see `_from_role_label`)."""
-    items = [(folder, m["msgid"])
-             for folder, by_uid in meta.items()
-             for m in by_uid.values() if copies is not None or m.get("msgid")]
+    structured label (see `_from_role_label`).
+
+    Besides where each mail came from, the step remembers its sender and
+    size (`who`, or `addr` / `size` on its `copies`): the Time machine
+    previews what a restore brings back, per folder and per sender."""
+    items = []
+    who = []
+    sizes: dict[tuple[str, int], tuple[str, int]] = {}
+    for folder, by_uid in meta.items():
+        for uid, m in by_uid.items():
+            if copies is None and not m.get("msgid"):
+                continue
+            items.append((folder, m["msgid"]))
+            info = (str(m.get("addr") or "").lower(), int(m.get("size") or 0))
+            who.append(list(info))
+            sizes[(folder, uid)] = info
     if not items:
         return ""
     if copies is not None:
         for copy in copies:
             copy.setdefault("msgid", meta.get(copy["folder"], {}).get(
                 copy["source_uid"], {}).get("msgid", ""))
+            addr, size = sizes.get((copy["folder"], copy["source_uid"]),
+                                   ("", 0))
+            copy.setdefault("addr", addr)
+            copy.setdefault("size", size)
     entry = {"id": f"{time.time_ns():x}", "ts": int(time.time()), "label": label,
              "action": action, "count": len(items),
+             "bytes": sum(w[1] for w in who),
              "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
-             **({"copies": copies} if copies is not None else {}),
+             **({"copies": copies} if copies is not None else {"who": who}),
              **({"audit_id": audit_id} if audit_id else {}),
              **(label_fields or {})}
     if token:
         entry.update(token=token, actor=actor)
         acc.assistant_undo.append(entry)
-        _trim_assistant_undo(acc)
     else:
         acc.undo_log.append(entry)
-        del acc.undo_log[:-UNDO_MAX]
     _sync_undo(acc)
     return entry["id"]
 
@@ -3334,6 +3461,7 @@ def _delete_worker(acc) -> None:
             with acc.lock:
                 apply_partial()
                 acc.state["delete"]["error"] = error
+        flush_undo(acc)
         if action != "mark_read" and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
         auditlog.record(
@@ -3360,6 +3488,8 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         raise ValueError("move needs a target folder")
     if acc.state["status"] == "scanning":
         raise RuntimeError("busy: scan running")
+    if acc.state["restore"]["status"] == "running":
+        raise RuntimeError(BUSY_ACTION)
     # Drop UIDs already sitting in queued jobs - or in the job the worker is
     # processing right now - so overlapping selections (e.g. a sender group,
     # then its whole domain) don't get moved twice.
@@ -3859,7 +3989,7 @@ def start_att_scan(acc=None) -> None:
             raise RuntimeError("scan first")
         if acc.state["status"] == "scanning" \
                 or acc.state["atts"]["status"] == "running" \
-                or acc.state["delete"]["status"] == "running":
+                or _job_running(acc):
             raise RuntimeError("busy")
         acc.state["atts"] = {"status": "running", "progress": "starting…",
                          "error": "", "mails": 0, "size": 0}
@@ -4413,34 +4543,182 @@ def _present_in_targets(conn, items) -> set[tuple[str, str]]:
     return present
 
 
+def _senders_of(conn, uids) -> dict[int, str]:
+    """`{uid: sender address (lower case)}` of mails in the selected folder."""
+    out: dict[int, str] = {}
+    uids = [int(u) for u in uids]
+    for start in range(0, len(uids), FETCH_CHUNK):
+        part = uids[start:start + FETCH_CHUNK]
+        status, data = conn.uid("FETCH", ",".join(str(u) for u in part),
+                                "(UID BODY.PEEK[HEADER.FIELDS (FROM)])")
+        if status != "OK":
+            raise RuntimeError(CANNOT_READ_MOVED)
+        for item in data or []:
+            if isinstance(item, tuple) and len(item) >= 2:
+                m = _UID_RE.search(item[0])
+                if m:
+                    out[int(m.group(1))] = parseaddr(header_text(
+                        email.message_from_bytes(item[1]).get("From")
+                    ))[1].lower()
+    return out
+
+
+def _present_strict(conn, mails: list[dict]) -> set[tuple[str, str]]:
+    """Like `_present_in_targets`, for a step whose Message-IDs may belong to
+    OTHER mails (a restore step): a mail counts as already there only when a
+    mail with its Message-ID AND its recorded sender is in the folder."""
+    present: set[tuple[str, str]] = set()
+    by_folder: dict[str, list[dict]] = {}
+    for m in mails:
+        if m["msgid"] and m["addr"]:
+            by_folder.setdefault(m["folder"], []).append(m)
+    for folder, ms in by_folder.items():
+        status, _ = conn.select(quote_folder(folder), readonly=True)
+        if status != "OK":
+            continue
+        for m in ms:
+            found = _search_message_id(conn, m["msgid"])
+            if found and m["addr"] in _senders_of(conn, found).values():
+                present.add((folder, m["msgid"]))
+    return present
+
+
 def _reinsert_undo(acc, entry: dict, pos: int) -> None:
     """Put a taken-off undo entry back (acc.lock held). The list may have
     changed while the IMAP work ran (new entries, front-trimming, pruning),
     so `pos` is only a hint: the entry goes into its timestamp slot, at
     `pos` where the timestamps leave a choice. An assistant's step (it has
     a `token`) goes back to the assistant list."""
-    assistant = bool(entry.get("token"))
-    log_ = acc.assistant_undo if assistant else acc.undo_log
+    log_ = acc.assistant_undo if entry.get("token") else acc.undo_log
     lo = sum(1 for e in log_ if e["ts"] < entry["ts"])
     hi = sum(1 for e in log_ if e["ts"] <= entry["ts"])
     log_.insert(min(max(pos, lo), hi), entry)
-    if assistant:
-        _trim_assistant_undo(acc)
-    else:
-        del log_[:-UNDO_MAX]
     _sync_undo(acc)
 
 
-def undo_last(index: int = -1, acc=None, ident: dict | None = None,
-              assistant: bool = False, token: str | None = None,
-              actor: str = "user") -> dict:
-    """Restore a recorded move job by exact destination copies where available.
-    `ident` ({ts, label, count} of the entry, as returned when it was
-    recorded) picks the entry by identity instead of by position.
-    `assistant` picks from the AI assistants' list instead of the user's;
-    `token` (an assistant's own call) limits that to the steps of that token,
-    so it can neither see nor undo another's. `actor` is the audit actor."""
-    acc = acc or accounts.get()
+def undo_mails(entry: dict) -> list[dict]:
+    """The mails of one undo step as `{folder, msgid, addr, size, copy}`:
+    `folder` is where the mail came from (and goes back to), `copy` the exact
+    destination copy it is tracked by (None on a step without copies). Sender
+    and size are empty / 0 on a step recorded before they were remembered."""
+    if entry.get("copies") is not None:
+        return [{"folder": c["folder"], "msgid": c.get("msgid", ""),
+                 "addr": c.get("addr", ""), "size": c.get("size", 0),
+                 "copy": c} for c in entry["copies"]]
+    who = entry.get("who") or []
+    return [{"folder": f, "msgid": m,
+             "addr": who[i][0] if i < len(who) else "",
+             "size": who[i][1] if i < len(who) else 0, "copy": None}
+            for i, (f, m) in enumerate(entry["items"])]
+
+
+def undo_skipper(acc, picked: set[str] | None = None):
+    """`skip(addr, msgid, folder="")` of the mails a restore leaves alone:
+    protected senders, pinned mails, (Pick senders) every sender not picked
+    and mails whose folder is gone (`skip.gone`, filled in once the server
+    was asked). its `net` set holds the ids of steps a restore covers anyway:
+    the parts of an earlier restore that undid them are dropped, not redone.
+    `skip.reason(...)` names why ("protected", "pinned", "unpicked", "gone")."""
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    pinned = pinstore.load_account(acc.name)
+    chosen = None if picked is None else {a.lower() for a in picked}
+    with acc.lock:                 # a step recorded without its senders: the
+        known = {m["msgid"]: m["addr"] for ix in acc.role_index.values()
+                 for m in ix.values() if m.get("msgid")}   # Trash knows them
+    gone: set[str] = set()
+
+    def reason(addr: str, msgid: str, folder: str = "") -> str:
+        if folder and folder in gone:
+            return "gone"
+        addr = addr or known.get(msgid, "")
+        if addr and cfgmod.is_protected(addr, plist):
+            return "protected"
+        if msgid and msgid in pinned:
+            return "pinned"
+        if chosen is not None and (addr or "").lower() not in chosen:
+            return "unpicked"
+        return ""
+
+    def skip(addr: str, msgid: str, folder: str = "") -> bool:
+        return bool(reason(addr, msgid, folder))
+    skip.reason = reason          # type: ignore[attr-defined]
+    skip.gone = gone              # type: ignore[attr-defined]
+    skip.net = set()              # type: ignore[attr-defined]
+    return skip
+
+
+def _netted(skip, part: dict) -> bool:
+    """A part of a restore step that re-arms a step the current restore
+    undoes anyway (see `undo_skipper`)."""
+    net = getattr(skip, "net", ())
+    head = part["head"]
+    return bool(net) and (head.get("audit_id") in net or head.get("id") in net)
+
+
+def _netted_entry(skip, entry: dict) -> bool:
+    """A re-armed restore step (a plain Message-ID step of action `restore`,
+    `undid` = the steps it had undone) whose steps this restore undoes
+    anyway: it cancels out, like the parts of a restore step."""
+    undid = entry.get("undid")
+    return bool(undid) and entry.get("action") == "restore" \
+        and entry.get("parts") is None \
+        and set(undid) <= getattr(skip, "net", set())
+
+
+def _split_entry(entry: dict, skip) -> tuple[dict, dict | None]:
+    """`(take, keep)`: the part of a step that goes back and the part that
+    stays where it is (`skip(addr, msgid, folder)` is true for the mails to
+    leave). `take` shares the step's copy records, so their `restored` marks
+    live on in the step if the restore fails half-way. `keep` is None when
+    nothing is left behind. A restore step (`parts`) is split part by part;
+    parts `_netted` are in neither (nor is a `_netted_entry`)."""
+    if _netted_entry(skip, entry):
+        return {**entry, "count": 0, "items": [], "who": []}, None
+    if entry.get("parts") is not None:
+        take_p, keep_p = [], []
+        for p in entry["parts"]:
+            if _netted(skip, p):
+                continue
+            go = [m for m in p["mails"]
+                  if not skip(m[2], m[1], p["head"]["in"])]
+            stay = [m for m in p["mails"]
+                    if skip(m[2], m[1], p["head"]["in"])]
+            if go:
+                take_p.append({**p, "mails": go})
+            if stay:
+                keep_p.append({**p, "mails": stay})
+        n = sum(len(p["mails"]) for p in take_p)
+        take = {**entry, "parts": take_p, "count": n}
+        stay_n = sum(len(p["mails"]) for p in keep_p)
+        return take, ({**entry, "parts": keep_p, "count": stay_n}
+                      if keep_p else None)
+    if entry.get("copies") is not None:
+        go = [c for c in entry["copies"] if not skip(
+            c.get("addr", ""), c.get("msgid", ""), c["folder"])]
+        stay = [c for c in entry["copies"] if skip(
+            c.get("addr", ""), c.get("msgid", ""), c["folder"])]
+
+        def build(cs: list[dict]) -> dict:
+            return {**entry, "copies": cs, "count": len(cs),
+                    "items": [(c["folder"], c.get("msgid", "")) for c in cs]}
+        return build(go), (build(stay) if stay else None)
+    mails = undo_mails(entry)
+    flags = [skip(m["addr"], m["msgid"], m["folder"]) for m in mails]
+
+    def build_items(want: bool) -> dict:
+        picked = [m for m, f in zip(mails, flags) if f == want]
+        return {**entry, "count": len(picked),
+                "items": [(m["folder"], m["msgid"]) for m in picked],
+                "who": [[m["addr"], m["size"]] for m in picked]}
+    return build_items(False), (build_items(True) if any(flags) else None)
+
+
+def pop_undo(acc, index: int = -1, ident: dict | None = None,
+             assistant: bool = False, token: str | None = None,
+             busy_check: bool = True) -> tuple[dict, int]:
+    """Take one step off its list (the checks of an undo request): `(entry,
+    its position)`. Raises NOTHING_TO_UNDO / BUSY_ACTION (`busy_check` off:
+    the Time machine's own job, which is what makes the account busy)."""
     with acc.lock:
         lst = acc.assistant_undo if assistant else acc.undo_log
         if token is not None:
@@ -4460,19 +4738,28 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
             raise RuntimeError(NOTHING_TO_UNDO)
         if not -len(lst) <= index < len(lst):
             raise RuntimeError(NOTHING_TO_UNDO)     # a stale list position
-        if acc.state["delete"]["status"] == "running":
+        if busy_check and _job_running(acc):
             raise RuntimeError(BUSY_ACTION)
         pos = index if index >= 0 else len(lst) + index
         entry = lst.pop(index)
+        # a step is off its list until run_undo puts the rest back: the file
+        # is not written in between (flush_undo)
+        acc.undo_busy += 1
         _sync_undo(acc)
+    return entry, pos
 
+
+def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
+    """Move the mails of one step (or one part of a restore step) back to
+    where they came from, as far as they can be found, and book them in
+    `run`: `restored`, `items` (what went back: `(folder, msgid, addr,
+    size)`) and `steps` (folder counts, for the header numbers). Raises on any
+    failure after booking what did move; the caller keeps the step."""
     restored = 0
     moved: list[int] = []
     trash = ""
-    failed: Exception | None = None
-    conn = None
+    back: list[tuple[str, str, str, int]] = []
     try:
-        conn = connect(cfgmod.account_imap(acc.name), acc.name)
         trash = entry.get("in") or folder_roles(conn, acc).get("trash")
         if not trash:
             raise RuntimeError(coded(ROLE_MISSING, role="trash"))
@@ -4484,8 +4771,12 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
         # target with the originals still in Trash. What the target already
         # holds by Message-ID counts as restored.
         exact_copies = entry.get("copies")
-        present = (_present_in_targets(conn, entry["items"])
-                   if exact_copies is None else set())
+        if exact_copies is not None:
+            present = set()
+        elif entry.get("strict"):
+            present = _present_strict(conn, undo_mails(entry))
+        else:
+            present = _present_in_targets(conn, entry["items"])
         status, _ = conn.select(quote_folder(trash), readonly=False)
         if status != "OK":
             raise RuntimeError(coded(CANNOT_OPEN, folder=decode_mutf7(trash)))
@@ -4522,10 +4813,23 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
                     if copy.get("restored") or copy.get("attempt"):
                         continue
                 by_target.setdefault(copy["folder"], []).append(str(copy["uid"]).encode())
-        for folder, msgid in entry["items"] if exact_copies is None else []:
+        found_by: dict[int, tuple[str, str, str, int]] = {}
+        want = Counter(m["msgid"] for m in undo_mails(entry))
+        for mail in undo_mails(entry) if exact_copies is None else []:
+            folder, msgid = mail["folder"], mail["msgid"]
             if not msgid or (folder, msgid) in present:
                 continue
             found = _search_message_id(conn, msgid)
+            if entry.get("strict") and found and (
+                    len(found) > want[msgid] or (mail["addr"] and any(
+                        a != mail["addr"]
+                        for a in _senders_of(conn, found).values()))):
+                # more mails carry this Message-ID than the step recorded, or
+                # one is from someone else: it is not (only) ours - none moves
+                run["ambiguous"] = run.get("ambiguous", 0) + 1
+                continue
+            for u in found:
+                found_by[int(u)] = (folder, msgid, mail["addr"], mail["size"])
             if found:
                 by_target.setdefault(folder, []).extend(found)
         for folder, uids in by_target.items():
@@ -4540,16 +4844,222 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
                         if copy["folder"] == folder and copy.get("uid") in {int(u) for u in chunk}:
                             copy["attempt"] = attempt
                     conn.select(quote_folder(trash), readonly=False)
+                refs: list[dict] = []
+                before = None
+                if exact_copies is None:
+                    # older steps that tracked these mails inside `folder`
+                    # need their new UIDs (see _rebase_chain)
+                    refs = _chain_refs(acc, folder, {
+                        found_by[int(u)][1] for u in chunk
+                        if int(u) in found_by})
+                    if refs:
+                        try:
+                            before = _folder_before(conn, folder, trash)
+                        except (imaplib.IMAP4.error, RuntimeError):
+                            before = None
                 if _uid_move(conn, b",".join(chunk).decode(), folder,
                              trash):
                     restored += len(chunk)
                     moved.extend(int(u) for u in chunk)
                     if exact_copies is not None:
-                        for copy in exact_copies:
-                            if copy["folder"] == folder and copy.get("uid") in {int(u) for u in chunk}:
-                                copy["restored"] = True
+                        landed = [c for c in exact_copies
+                                  if c["folder"] == folder
+                                  and c.get("uid") in {int(u) for u in chunk}]
+                        for copy in landed:
+                            copy["restored"] = True
+                            back.append((folder, copy.get("msgid", ""),
+                                         copy.get("addr", ""),
+                                         copy.get("size", 0)))
+                        try:
+                            _rebase_chain(conn, acc, folder, trash, attempt,
+                                          _chain_refs(acc, folder, {
+                                              c["msgid"] for c in landed
+                                              if c.get("msgid")}))
+                        except (imaplib.IMAP4.error, RuntimeError):
+                            # a best-effort help for going back further: the
+                            # mails ARE back, never fail the restore for it
+                            log.warning("[%s] could not follow the restored "
+                                        "mails' new UIDs", acc.name)
+                    else:
+                        back.extend(found_by[int(u)] for u in chunk
+                                    if int(u) in found_by)
+                        if refs and before:
+                            try:
+                                _rebase_chain(conn, acc, folder, trash,
+                                              before, refs)
+                            except (imaplib.IMAP4.error, RuntimeError):
+                                log.warning("[%s] could not follow the "
+                                            "restored mails' new UIDs",
+                                            acc.name)
         if unresolved:
             raise RuntimeError("undo_copy_unknown")
+    finally:
+        role = role_of_folder(trash, acc) if trash else None
+        if role:
+            role_drop(role, trash, moved, acc)
+        run["restored"] += restored
+        run["items"].extend((f, mid, addr, size, trash)
+                            for f, mid, addr, size in back)
+        run["steps"].append({"in": trash, "restored": restored,
+                             "targets": {f for f, *_ in back}})
+
+
+def _chain_refs(acc, folder: str, wanted: set[str]) -> list[dict]:
+    """The exact copies of OTHER steps that sit in `folder` under one of these
+    Message-IDs: the steps that had put those mails into `folder`."""
+    if not wanted:
+        return []
+    with acc.lock:
+        return [c for e in (*acc.undo_log, *acc.assistant_undo)
+                for c in e.get("copies") or ()
+                if c.get("in") == folder and c.get("msgid") in wanted
+                and not c.get("restored")]
+
+
+def _folder_before(conn, folder: str, back: str) -> dict | None:
+    """`{"uv", "before"}`: UIDVALIDITY and UIDs of `folder` right now (to
+    find the UIDs mails get in it next), with `back` selected again."""
+    status, _ = conn.select(quote_folder(folder), readonly=True)
+    try:
+        if status != "OK":
+            return None
+        return {"uv": uidvalidity(conn), "before": _list_uids(conn)}
+    finally:
+        conn.select(quote_folder(back), readonly=False)
+
+
+def _rebase_chain(conn, acc, folder: str, back: str, state: dict,
+                  refs: list[dict]) -> None:
+    """Mails just moved into `folder` got new UIDs there. An older step that
+    had put those same mails INTO `folder` tracks them by their old ones:
+    point its copies at the new UIDs (`state` = `_folder_before` from before
+    the move), or going back further - the Time machine undoes steps newest
+    first - would find nothing to move. A mail that cannot be told apart by
+    Message-ID is left as it was."""
+    if not refs:
+        return
+    status, _ = conn.select(quote_folder(folder), readonly=True)
+    try:
+        if status != "OK" or uidvalidity(conn) != state["uv"]:
+            return
+        new = sorted(set(_list_uids(conn)) - set(state["before"]))
+        by_id: dict[str, list[int]] = {}
+        for uid, mid in _fetch_msgid_map(conn, new).items():
+            by_id.setdefault(mid, []).append(uid)
+    finally:
+        conn.select(quote_folder(back), readonly=False)
+    with acc.lock:
+        for c in refs:
+            hits = by_id.get(c["msgid"], [])
+            if len(hits) == 1:
+                c["uid"], c["uv"] = hits[0], state["uv"]
+
+
+def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
+    """Undo a restore step: put every mail it brought back where it was
+    before, the steps in the reverse of the order the restore undid them."""
+    for part in reversed(entry["parts"]):
+        target = part["head"]["in"]
+        by_src: dict[str, list[tuple]] = {}
+        for mail in part["mails"]:
+            by_src.setdefault(mail[0], []).append(mail)
+        for src, mails in by_src.items():
+            _restore_entry(conn, acc, {
+                "items": [(target, m[1]) for m in mails], "in": src,
+                "who": [[m[2], m[3]] for m in mails], "count": len(mails),
+                "label": entry["label"],
+                # a Message-ID found more often than recorded is not moved
+                "strict": True}, run)
+
+
+def _unmoved(entry: dict, run: dict) -> dict | None:
+    """The step without the mails that went back (what a short restore leaves
+    in it), or None when nothing is left."""
+    if entry.get("copies") is not None:
+        rest = [c for c in entry["copies"] if not c.get("restored")]
+        if not rest:
+            return None
+        return {**entry, "copies": rest, "count": len(rest),
+                "items": [(c["folder"], c.get("msgid", "")) for c in rest]}
+    moved = Counter((f, mid) for f, mid, *_ in run["items"])
+    mails = []
+    for m in undo_mails(entry):
+        key = (m["folder"], m["msgid"])
+        if moved[key] > 0:
+            moved[key] -= 1
+        else:
+            mails.append(m)
+    if not mails:
+        return None
+    return {**entry, "count": len(mails),
+            "items": [(m["folder"], m["msgid"]) for m in mails],
+            "who": [[m["addr"], m["size"]] for m in mails]}
+
+
+def _reinstate_steps(acc, entry: dict) -> None:
+    """After a restore was undone: the steps it had undone are undoable again
+    (found by Message-ID, as their exact copies are gone). A step that is
+    still listed (a short restore left a rest of it there) gets the mails as
+    a step of its own, so none of them is lost."""
+    by_head: dict[tuple, tuple[dict, list]] = {}
+    for part in entry["parts"]:
+        head = part["head"]
+        # (a step that came back from two folders is two parts: each is
+        # undone from its own folder)
+        by_head.setdefault((head["id"], head["in"]), (head, []))[1].extend(
+            part["mails"])
+    for head, mails in by_head.values():
+        with acc.lock:
+            lst = acc.assistant_undo if head.get("token") else acc.undo_log
+            fresh = {**head}
+            if any(e.get("id") == head["id"] for e in lst):
+                fresh["id"] = f"{head['id']}-{time.time_ns():x}"
+                fresh.pop("audit_id", None)
+            _reinsert_undo(acc, {
+                **fresh, "count": len(mails),
+                "items": [(m[0], m[1]) for m in mails],
+                "who": [[m[2], m[3]] for m in mails],
+                "bytes": sum(m[3] for m in mails),
+                # a re-armed step is found by Message-ID: never move a mail
+                # that is merely another mail's namesake
+                "strict": True}, len(lst))
+
+
+def run_undo(acc, entry: dict, pos: int, only=None,
+             expected: int | None = None) -> dict:
+    """`_run_undo`, then the step counts as back on its list again (see
+    pop_undo), whatever happened."""
+    try:
+        return _run_undo(acc, entry, pos, only, expected)
+    finally:
+        with acc.lock:
+            acc.undo_busy -= 1
+
+
+def _run_undo(acc, entry: dict, pos: int, only=None,
+              expected: int | None = None) -> dict:
+    """Do the IMAP side of one taken-off step. `only` (a `skip(addr, msgid)`
+    predicate) leaves the mails it matches where they are: they stay in the
+    list as the rest of the step. Never raises for an IMAP failure: the step
+    goes back on its list (an exact copy of what was taken off) and the
+    exception is in the result's `failed`. Result: `entry`, `restored`, `of`,
+    `items` (the mails that went back, with the folder they were in), `steps`
+    and `failed`."""
+    run: dict = {"entry": entry, "restored": 0, "of": entry["count"],
+                 "items": [], "steps": [], "failed": None}
+    take, keep = entry, None
+    conn = None
+    try:
+        if only is not None:
+            take, keep = _split_entry(entry, only)
+        if entry.get("action") == "restore" and entry.get("parts") is None:
+            take = {**take, "strict": True}   # (a re-armed restore step)
+        run["of"] = take["count"]
+        conn = connect(cfgmod.account_imap(acc.name), acc.name)
+        if entry.get("parts") is not None:
+            _undo_parts(conn, acc, take, run)
+        else:
+            _restore_entry(conn, acc, take, run)
     except Exception as exc:
         # Whatever went wrong (a refusal because another program flagged
         # mails \Deleted, a failed connect, an unopenable or missing
@@ -4557,33 +5067,117 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
         # the list, so put it back for a retry - mails that did move are
         # no longer in Trash, so a retry only picks up the rest - and still
         # do the bookkeeping for whatever did move before the failure.
-        failed = exc
+        run["failed"] = exc
         with acc.lock:
             _reinsert_undo(acc, entry, pos)
     finally:
-        role = role_of_folder(trash, acc) if trash else None
-        if role:
-            role_drop(role, trash, moved, acc)
         try:
             if conn is not None:
                 conn.logout()
         except Exception:
             pass
+    run["short"] = 0
+    if run["failed"] is None:
+        parts = entry.get("parts") is not None
+        if parts:
+            moved, rest_parts = _moved_parts(take, run)
+            rest_parts += (keep or {}).get("parts", [])
+            if rest_parts:
+                n = sum(len(p["mails"]) for p in rest_parts)
+                with acc.lock:
+                    _reinsert_undo(acc, {**entry, "parts": rest_parts,
+                                         "count": n}, pos)
+            _reinstate_steps(acc, moved)
+        elif (expected is not None and run["restored"] < expected) \
+                or run.get("ambiguous"):
+            # fewer found than the caller counted, or mails that share a
+            # Message-ID with another mail stayed: what did not move is
+            # still in the step (restored copies are marked), never lost
+            run["short"] = max(0, (expected or 0) - run["restored"])
+            rest = _unmoved(entry, run)
+            if rest is not None:
+                with acc.lock:
+                    _reinsert_undo(acc, rest, pos)
+        elif keep is not None:
+            with acc.lock:
+                _reinsert_undo(acc, keep, pos)
+    return run
 
+
+def _moved_parts(entry: dict, run: dict) -> tuple[dict, list[dict]]:
+    """Split a taken restore step's parts into what went back (an entry with
+    only those mails) and the parts of what did not move."""
+    moved = Counter((f, mid) for _, mid, _, _, f in run["items"])
+    went, rest = [], []
+    for p in entry["parts"]:
+        yes, no = [], []
+        for m in p["mails"]:
+            if moved[(m[0], m[1])] > 0:
+                moved[(m[0], m[1])] -= 1
+                yes.append(m)
+            else:
+                no.append(m)
+        if yes:
+            went.append({**p, "mails": yes})
+        if no:
+            rest.append({**p, "mails": no})
+    return {**entry, "parts": went}, rest
+
+
+def apply_undo_counts(acc, run: dict) -> None:
+    """The header counters after a step went back: mails left Trash / Junk
+    (their counts shrink) or came back into one (they grow)."""
+    parts = run["entry"].get("parts") is not None
+    # role_of_folder takes the lock itself: look the roles up first
+    moves = [(step["restored"],
+              role_of_folder(step["in"], acc) if parts and step["in"] else None,
+              {role_of_folder(f, acc) for f in step["targets"]
+               if f != step["in"]} & ROLE_COUNTED.keys())
+             for step in run["steps"]]
+    with acc.lock:
+        for n, left, back in moves:
+            if not parts:
+                # an ordinary step restores out of Trash
+                if acc.state["trash_count"] is not None:
+                    acc.state["trash_count"] = max(
+                        0, acc.state["trash_count"] - n)
+            elif left in ROLE_COUNTED \
+                    and acc.state[ROLE_COUNTED[left]] is not None:
+                acc.state[ROLE_COUNTED[left]] = max(
+                    0, acc.state[ROLE_COUNTED[left]] - n)
+            # the mails went back to where they came from: when that is a
+            # role folder (Undo of "Not junk"), its count grows again
+            for role in back:
+                if acc.state[ROLE_COUNTED[role]] is not None:
+                    acc.state[ROLE_COUNTED[role]] += n
+
+
+def _said(run: dict) -> dict:
+    """`{"ambiguous": n}` when mails stayed because their Message-ID belongs
+    to another mail too (absent otherwise: the answer keeps its old shape)."""
+    return {"ambiguous": run["ambiguous"]} if run.get("ambiguous") else {}
+
+
+def undo_last(index: int = -1, acc=None, ident: dict | None = None,
+              assistant: bool = False, token: str | None = None,
+              actor: str = "user") -> dict:
+    """Restore a recorded move job by exact destination copies where available.
+    `ident` ({ts, label, count} of the entry, as returned when it was
+    recorded) picks the entry by identity instead of by position.
+    `assistant` picks from the AI assistants' list instead of the user's;
+    `token` (an assistant's own call) limits that to the steps of that token,
+    so it can neither see nor undo another's. `actor` is the audit actor."""
+    acc = acc or accounts.get()
+    entry, pos = pop_undo(acc, index, ident, assistant, token)
+    # undoing a restore never moves protected senders' or pinned mail either
+    run = run_undo(acc, entry, pos,
+                   only=undo_skipper(acc)
+                   if entry.get("action") == "restore" else None)
+    flush_undo(acc)
+    restored, failed = run["restored"], run["failed"]
     log.info("undo: restored %d/%d mails (%s)", restored, entry["count"],
              entry["label"])
-    # The mails went back to where they came from: when that is a role
-    # folder (Undo of "Not junk"), its count grows again and its index
-    # (refreshed incrementally the next time the view opens) is stale.
-    back_roles = {role_of_folder(f, acc) for f, _ in entry["items"]
-                  if f != trash} & ROLE_COUNTED.keys()
-    with acc.lock:
-        if acc.state["trash_count"] is not None:
-            acc.state["trash_count"] = max(0, acc.state["trash_count"] - restored)
-        for role in back_roles:
-            key = ROLE_COUNTED[role]
-            if acc.state[key] is not None:
-                acc.state[key] += restored
+    apply_undo_counts(acc, run)
     auditlog.record(
         "undo", actor=actor, account=acc.name, count=restored,
         label=entry["label"],
@@ -4602,7 +5196,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
     if entry.get("action") == "move_contents":
         # the mails went back to a folder that is never scanned: nothing
         # in the index changes, so no rescan and no "rescan" notice
-        return {"restored": restored, "of": entry["count"], "rescan": False}
+        return {"restored": restored, "of": entry["count"], "rescan": False,
+                **_said(run)}
     params = {"restored": restored, "of": entry["count"],
               "label": entry["label"]}
     if entry.get("label_key"):     # the notice words the label itself, too
@@ -4610,7 +5205,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
         params.update({f"label_{k}": v
                        for k, v in entry["label_params"].items()})
     rescan = _rescan_after_restore(acc, restored, "restored", params)
-    return {"restored": restored, "of": entry["count"], "rescan": rescan}
+    return {"restored": restored, "of": entry["count"], "rescan": rescan,
+            **_said(run)}
 
 
 # -- role indexes ----------------------------------------------------------
@@ -4839,7 +5435,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
     if (role, action) not in ROLE_MOVES:
         raise ValueError("bad action")
     with acc.lock:
-        if acc.state["delete"]["status"] == "running":
+        if _job_running(acc):
             raise RuntimeError(BUSY_ACTION)
     clean = sorted({int(u) for u in uids})
     conn = connect(cfgmod.account_imap(acc.name), acc.name)
@@ -4902,6 +5498,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
                 acc.state[key] = max(0, acc.state[key] - len(moved))
             if action == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += len(moved)
+        flush_undo(acc)
         statsmod.record_action(move_action, len(moved), size, acc.name)
         save_snapshot(acc)
     auditlog.record(
@@ -4930,7 +5527,7 @@ def trash_restore(uids: list[int], dest: str, uv: int = 0,
     """Move mails out of Trash into `dest` (raw folder name)."""
     acc = acc or accounts.get()
     with acc.lock:
-        if acc.state["delete"]["status"] == "running":
+        if _job_running(acc):
             raise RuntimeError(BUSY_ACTION)
     restored = 0
     moved: list[int] = []
@@ -5085,7 +5682,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
     (the failure is then raised). Mail that arrived later stays."""
     acc = acc or accounts.get()
     with acc.lock:
-        if acc.state["delete"]["status"] == "running":
+        if _job_running(acc):
             raise RuntimeError(BUSY_ACTION)
     if uv <= 0:
         raise RuntimeError(COUNT_REQUIRED)
@@ -5134,11 +5731,11 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
                     "ts": int(time.time()), "label": label,
                     "action": "move_contents", "count": len(items),
                     "items": items, "in": target, "copies": copies})
-                del acc.undo_log[:-UNDO_MAX]
                 _sync_undo(acc)
                 undo = _undo_ident(acc.undo_log[-1])
             if role == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += moved
+        flush_undo(acc)
         log.info("moved %d mails from a look-alike %s folder", moved, role)
         auditlog.record("move_contents", account=acc.name, count=moved,
                         label=f"{label} \u2192 {decode_mutf7(target)}",
@@ -5185,12 +5782,20 @@ def _prune_undo(acc, trash: str, purged: set[str], uids: set[int] | None = None)
         acc.assistant_undo[:] = _pruned_undo(acc.assistant_undo, trash,
                                              purged, uids)
         _sync_undo(acc)
+    flush_undo(acc)
 
 
 def _pruned_undo(entries: list[dict], trash: str, purged: set[str],
                  uids: set[int] | None) -> list[dict]:
+    """The steps without the mails that were deleted for good. What a step
+    loses is counted in its `lost` (the Time machine says why it can't bring
+    those back); a step left with no mails disappears, its audit entry keeps
+    it in the log."""
     kept = []
     for e in entries:
+        if e.get("parts") is not None:
+            kept.append(e)      # a restore step: its mails are not in Trash
+            continue
         if e.get("copies") is not None:
             # IDs are not copy identities. Another mail with the same ID
             # may have been purged; don't discard an exact, still-live copy.
@@ -5199,15 +5804,28 @@ def _pruned_undo(entries: list[dict], trash: str, purged: set[str],
             if remaining:
                 kept.append({**e, "copies": remaining,
                              "items": [(c["folder"], c.get("msgid", "")) for c in remaining],
-                             "count": len(remaining)})
+                             "count": len(remaining),
+                             **_lost(e, len(e["copies"]) - len(remaining))})
             continue
         if (e.get("in") or trash) != trash:
             kept.append(e)
             continue
-        items = [it for it in e["items"] if it[1] not in purged]
-        if items:
-            kept.append({**e, "items": items, "count": len(items)})
+        keep_idx = [i for i, it in enumerate(e["items"])
+                    if it[1] not in purged]
+        if keep_idx:
+            who = e.get("who")
+            kept.append({
+                **e, "items": [e["items"][i] for i in keep_idx],
+                "count": len(keep_idx),
+                **({"who": [who[i] for i in keep_idx if i < len(who)]}
+                   if who is not None else {}),
+                **_lost(e, len(e["items"]) - len(keep_idx))})
     return kept
+
+
+def _lost(entry: dict, n: int) -> dict:
+    """`{"lost": total}` for a step that lost `n` more mails."""
+    return {"lost": entry.get("lost", 0) + n} if n else {}
 
 
 def empty_trash(acc=None, uv: int = 0, max_uid: int = 0) -> dict:
@@ -5234,7 +5852,7 @@ def _empty_trash(acc, uv: int, max_uid: int) -> dict:
     the whole folder. A failure part-way still books what was really
     deleted (audit, undo pruning, count) and then raises."""
     with acc.lock:
-        if acc.state["delete"]["status"] == "running":
+        if _job_running(acc):
             raise RuntimeError(BUSY_ACTION)
     if uv <= 0:
         raise RuntimeError(COUNT_REQUIRED)
@@ -5779,7 +6397,7 @@ def purge_mails(role: str, uids, uv: int, acc=None, *, folder: str = "",
         raise RuntimeError(BUSY_PURGE)
     try:
         with acc.lock:
-            if acc.state["delete"]["status"] == "running":
+            if _job_running(acc):
                 raise RuntimeError(BUSY_ACTION)
             if acc.state["status"] == "scanning":
                 raise RuntimeError(BUSY_SCAN)
@@ -5861,6 +6479,7 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
             last = acc.undo_log[-1] if acc.undo_log else None
             if last and last["label"] == stranded_label:
                 res["undo"] = _undo_ident(last)
+    flush_undo(acc)
     if led.deleted:
         statsmod.record_action("purge", led.deleted, led.freed, acc.name)
     if stranded:

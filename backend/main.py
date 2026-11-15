@@ -65,6 +65,7 @@ from . import stats as statsmod
 from . import substore
 from . import subscriptions
 from . import tenants
+from . import timemachine
 from . import trackers
 from . import webguard
 from . import unsub
@@ -209,6 +210,7 @@ async def _lifespan(app: FastAPI):
         with tenants.use(tenant):
             for name in accountsmod.names():
                 mailops.load_snapshot(accountsmod.get(name))
+                mailops.load_undo(accountsmod.get(name))
     accountcopy.resume_all()
     rulesmod.start_scheduler()
     presetsmod.publish()
@@ -2115,7 +2117,8 @@ class ProtectBody(BaseModel):
 
 
 @app.post("/api/protect")
-def post_protect(body: ProtectBody):
+def post_protect(body: ProtectBody, account: str | None = Query(None)):
+    acc = _acc(account)
     entries = body.entries if body.entries is not None else [body.entry]
     if len(entries) > 5000:
         raise HTTPException(400, "too many entries")
@@ -2127,6 +2130,10 @@ def post_protect(body: ProtectBody):
         "protected list %s %d entr%s (%d entries)",
         "add" if body.on else "remove", len(entries),
         "y" if len(entries) == 1 else "ies", len(protected))
+    if body.on and entries:
+        # the Time machine lists it ("Protected 3 senders"); additive
+        auditlog.record("protect", account=acc.name, count=len(entries),
+                        label=", ".join(str(e) for e in entries))
     # Smart rows keep a protected sender in the protected bucket: re-derive.
     mailops.rebuild_smart_all()
     return {"protected": protected}
@@ -2138,6 +2145,50 @@ def post_undo(body: UndoBody, account: str | None = Query(None)):
     try:
         return mailops.undo_last(body.index, acc, body.ident,
                                  assistant=body.assistant)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class TimeMachineBody(BaseModel):
+    point: str = Field("", max_length=64)     # a step id; "" = before all
+    top: str | None = Field(None, max_length=64)   # newest step counted
+    senders: list[str] | None = Field(None, max_length=5000)
+    pause: list[str] = Field(default_factory=list, max_length=100)
+
+
+@app.get("/api/timemachine")
+def get_timemachine(account: str | None = Query(None)):
+    """The Time machine page: the last 30 days as steps and sessions."""
+    acc = _acc(account)
+    try:
+        return timemachine.listing(acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.post("/api/timemachine/preview")
+def post_timemachine_preview(body: TimeMachineBody,
+                             account: str | None = Query(None)):
+    """What a restore to `point` would do (live: looks at the server)."""
+    acc = _acc(account)
+    try:
+        return timemachine.preview(acc, body.point, body.senders, body.top)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.post("/api/timemachine/restore")
+def post_timemachine_restore(body: TimeMachineBody,
+                             account: str | None = Query(None)):
+    """Start the restore job (progress in `state.restore`)."""
+    acc = _acc(account)
+    try:
+        return timemachine.start(acc, body.point, body.top, body.senders,
+                                 body.pause)
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:
@@ -2881,6 +2932,7 @@ def post_config(body: dict, request: Request, response: Response):
     if body.get("delete_account"):
         accountsmod.drop(str(body["delete_account"]))
         mailops.drop_snapshot(str(body["delete_account"]))
+        mailops.drop_undo(str(body["delete_account"]))
         bodyindex.drop(str(body["delete_account"]))
         unsubstore.drop_account(str(body["delete_account"]))
         aisortstore.drop_account(str(body["delete_account"]))
@@ -2906,6 +2958,7 @@ def post_config(body: dict, request: Request, response: Response):
         if old != new:
             accountsmod.rename(old, new)
             mailops.rename_snapshot(old, new)
+            mailops.rename_undo(old, new)
             bodyindex.rename(old, new)
             verdictstore.rename_account(old, new)
             aisortstore.rename_account(old, new)

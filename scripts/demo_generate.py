@@ -958,6 +958,87 @@ PROTON.mailbox["INBOX"] += mails(
 random.setstate(_state)
 
 
+def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
+    """The Time machine's demo history of the Proton account: real undo steps
+    over mails that really sit in its Trash / Archive (so a restore moves
+    them), at fixed ages: a session of five steps ending ~65 minutes ago and
+    older ones from yesterday, 4, 9 days ago (one by an assistant). Returns
+    `(audit rows, user steps, assistant steps)`; the rows are tuples like the
+    audit rows of `generate()` plus an extra-fields dict."""
+    def mins(m: float) -> int:
+        return int(now - m * 60)
+
+    pool = {"Trash": {}, "Archive": {}}
+    for folder in pool:
+        for m in sorted(box.mailbox[folder], key=lambda x: x["uid"]):
+            pool[folder].setdefault(
+                m["from"].rsplit("<", 1)[-1].rstrip(">"), []).append(m)
+    rows: list[tuple] = []
+    users: list[dict] = []
+    bots: list[dict] = []
+    n = [0]
+
+    def step(folder, addr, count, ts, action, label, actor="user", lost=0,
+             bot=None):
+        """Move `count` of the next mails of `addr` (from the folder's pool)
+        into a step of `action` at `ts`."""
+        n[0] += 1
+        mine = pool[folder][addr][:count]
+        del pool[folder][addr][:count]
+        copies = [{"folder": "INBOX", "source_uid": 90000 + n[0] * 100 + i,
+                   "msgid": m["msgid"], "uid": m["uid"],
+                   "uv": box.uv[folder], "in": folder, "addr": addr,
+                   "size": m["size"]} for i, m in enumerate(mine)]
+        size = sum(m["size"] for m in mine)
+        entry = {"id": f"tm{n[0]:02d}", "ts": ts, "label": label,
+                 "action": action, "count": len(mine), "bytes": size,
+                 "items": [("INBOX", c["msgid"]) for c in copies],
+                 "in": folder, "quiet": False, "copies": copies,
+                 "audit_id": f"tma{n[0]:02d}",
+                 **({"lost": lost} if lost else {}),
+                 **({"token": bot[0], "actor": bot[1]} if bot else {})}
+        (bots if bot else users).append(entry)
+        rows.append(("proton", action, ts, len(mine) + lost, "ok",
+                     bot[1] if bot else actor, label,
+                     {"id": entry["audit_id"], "bytes": size}))
+
+    # today: marked read, a rule's sweep, six unsubscribes, an archive, a
+    # trashing the Trash lost 12 mails of to Empty Trash, and that emptying
+    rows.append(("proton", "protect", mins(101), 3, "ok", "user",
+                 "anna.weber@mailfox.example, praxis@dr-meier.example, "
+                 "@paybank.example", {}))
+    rows.append(("proton", "mark_read", mins(98), 220, "ok", "user", "", {}))
+    step("Trash", "newsletter@bergsport-huber.example", 22, mins(92), "trash",
+         "Bergsport Huber", actor=f"rule:{sweep_id}")
+    for i, addr in enumerate(("news@oldgazette.example",
+                              "hello@retrodeals.example",
+                              "weekly@citybulletin.example",
+                              "offers@shopnow.example",
+                              "digest@oldforum.example",
+                              "hello@dealhunter.example")):
+        rows.append(("proton", "unsubscribe", mins(88) + 7 * i, 1, "ok",
+                     "user", addr, {}))
+    step("Archive", "billing@cloudbox.example", 6, mins(84), "archive",
+         "CloudBox, Finanzamt Musterstadt")
+    step("Archive", "bescheid@finanzamt-musterstadt.example", 5, mins(83),
+         "archive", "CloudBox, Finanzamt Musterstadt")
+    step("Trash", "orders@ticketshop.example", 14, mins(77), "trash",
+         "Ticket Shop", lost=12)
+    rows.append(("proton", "empty_trash", mins(70), 12, "ok", "user", "", {}))
+    # older sessions
+    step("Trash", "bye@gone.example", 12, mins(26 * 60), "trash",
+         "Old Newsletter")
+    step("Archive", "kundenservice@greenenergy.example", 4,
+         mins(26 * 60 - 4), "archive", "GreenEnergy AG")
+    step("Trash", "bye@gone.example", 10, mins(4 * 24 * 60 + 300), "trash",
+         "Old Newsletter", bot=("tok-demo", "mcp:Laptop"))
+    step("Trash", "bye@gone.example", 12, mins(9 * 24 * 60 + 180), "trash",
+         "Old Newsletter")
+    step("Archive", "praxis@dr-meier.example", 3, mins(9 * 24 * 60 + 170),
+         "archive", "Dr. Meier Praxis")
+    return rows, users, bots
+
+
 def generate() -> dict:
     """Fill the data dir, scan both accounts and return `{host: FakeIMAP}`."""
     def _connect(im, name=None):
@@ -1143,6 +1224,10 @@ def generate() -> dict:
             "offers@shopnow.example"),
            ("icloud", "unsubscribe", _t(400), 1, "ok", "user",
             "news@citybulletin.example")]
+    # the Time machine's history (see _time_machine): its steps are real
+    # cleaning, so they are in the log and in this month's statistics too
+    _tm_rows, _tm_user, _tm_bots = _time_machine(NOW, PROTON, sweep["id"])
+    _au.extend(_tm_rows)
     for rule, d, count in ((sweep, 21, 150), (parcels, 14, 60),
                            (lapsed, 9, 48)):
         ts = _t(d)
@@ -1177,9 +1262,11 @@ def generate() -> dict:
         _month = history["accounts"][_acct]["actions"][_ym]
         for _action in ("trash", "archive"):
             _have = sum(e[3] for e in _au
-                        if e[0] == _acct and e[1] == "rule_execute"
+                        if e[0] == _acct and e[4] == "ok"
                         and time.strftime("%Y-%m", time.gmtime(e[2])) == _ym
-                        and _rule_action[e[6]] == _action)
+                        and (e[1] == _action
+                             or (e[1] == "rule_execute"
+                                 and _rule_action[e[6]] == _action)))
             _rest = _month[_action] - _have
             if _rest < 0:
                 _month[_action] = _have
@@ -1197,9 +1284,10 @@ def generate() -> dict:
         json.dumps({"ts": ts, "account": acct, "actor": actor,
                     "action": action, "count": count, "bytes": 0,
                     "label": label, "outcome": outcome,
-                    "error": "unsub_no_method" if outcome == "failed" else ""})
+                    "error": "unsub_no_method" if outcome == "failed" else "",
+                    **(extra[0] if extra else {})})
         + "\n"
-        for acct, action, ts, count, outcome, actor, label in _au))
+        for acct, action, ts, count, outcome, actor, label, *extra in _au))
     Path(os.environ["STATS_PATH"]).write_text(json.dumps(
         {"input_tokens": 412_331, "output_tokens": 60_112, "cost": 1.43,
          "runs": 9, "months": {time.strftime("%Y-%m"): 0.38}}))
@@ -1254,4 +1342,12 @@ def generate() -> dict:
     for fake in FAKES.values():
         for box in fake.mailbox.values():
             fill_bodies(box)
+    # the Time machine's steps (their audit rows are in the log above); put
+    # on the account last: the scans above never touch the undo lists
+    proton = accounts.get("proton")
+    with proton.lock:
+        proton.undo_log[:] = sorted(_tm_user, key=lambda e: e["ts"])
+        proton.assistant_undo[:] = sorted(_tm_bots, key=lambda e: e["ts"])
+        mailops._sync_undo(proton)
+    mailops.flush_undo(proton)
     return FAKES

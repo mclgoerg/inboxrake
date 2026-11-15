@@ -351,6 +351,7 @@ def load(seed_dir) -> dict:
         if not mailops.load_snapshot(acc):
             raise DemoError(f"the scan snapshot of {name!r} in the seed is "
                             "unusable; rebuild it with --build-seed")
+        mailops.load_undo(acc)       # the Time machine's steps
         acc.state.update(seed.runtime.get(name, {}))
     rules.publish()          # the lifespan does this too; it is idempotent
     return seed.fakes
