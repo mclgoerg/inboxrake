@@ -147,11 +147,13 @@ def _by(entry: dict, by: str) -> bool:
 
 
 def load(account: str | None = None, offset: int = 0,
-        limit: int = 50, by: str = "all") -> dict:
+        limit: int = 50, by: str = "all", actor: str | None = None) -> dict:
     """One account's entries, newest first, paged: {total, entries}. `by`
-    narrows them to who did it: "user", "rules" or "assistants"."""
+    narrows them to who did it: "user", "rules" or "assistants"; `actor`
+    to one exact actor (a single assistant token's `mcp:<name>`)."""
     account = account or accounts.default_name()
-    entries = [e for e in reversed(_load_all(account)) if _by(e, by)]
+    entries = [e for e in reversed(_load_all(account)) if _by(e, by)
+               and (actor is None or e["actor"] == actor)]
     return {"total": len(entries),
             "entries": entries[max(0, offset):max(0, offset) + max(0, limit)]}
 

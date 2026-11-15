@@ -23,6 +23,7 @@ const revoked: string[] = [];
 const caps: [string, number][] = [];
 let capResult: () => Promise<unknown> = () => Promise.resolve({ token: {} });
 let steps = 0;
+let lastSteps: unknown = null;
 const saveCalls: any[] = [];
 let createResult: () => Promise<unknown> = () => Promise.resolve({
   token: tok({ id: "new", name: "New one" }), secret: "irk_AbCd" + "x".repeat(43) });
@@ -41,6 +42,7 @@ vi.mock("./api", () => ({
     folders: () => new Promise(() => {}),
   },
   fmtUsd: (n: number) => `$${n}`,
+  errorText: (m: unknown) => `worded:${String(m)}`,
 }));
 
 import { SettingsPage } from "./components/SettingsPage";
@@ -92,7 +94,7 @@ function Settings({ cfg, section: first = "assistants" }: {
   return <SettingsPage cfg={cfg} account="proton" section={section}
     onSection={setSection} onClose={() => {}} onAddAccount={() => {}}
     onSaved={() => {}} onAccountsChanged={() => {}}
-    onShowAssistantSteps={() => { steps += 1; }} />;
+    onShowAssistantSteps={(tk) => { steps += 1; lastSteps = tk; }} />;
 }
 const show = async (cfg: Config, section: SettingsSection | null = "assistants") => {
   render(<Settings cfg={cfg} section={section} />);
@@ -647,3 +649,41 @@ test("the detail links to the assistants' steps in Activity and holds Revoke",
     await pressDialog("Revoke");
     await waitFor(() => expect(revoked).toEqual(["t1"]));
   });
+
+test("closing the detail at once still sends the changed daily limit, however " +
+  "it is closed", async () => {
+  listed = [tok({ level: "act", daily_cap: 2000 })];
+  await show(baseCfg(ALL));
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Decrease" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(caps).toEqual([["t1", 1900]]));
+  // Escape
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Decrease" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() => expect(caps.length).toBe(2));
+  expect(caps[1]).toEqual(["t1", 1900]);    // the list still says 2,000
+  await waitFor(() => expect(screen.queryByText(/· today$/)).toBeNull());
+  // the link to the token's steps
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Decrease" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show its steps in Activity" }));
+  await waitFor(() => expect(caps.length).toBe(3));
+  expect(caps[2]).toEqual(["t1", 1900]);
+  expect(steps).toBe(1);
+  expect(lastSteps).toEqual({ id: "t1", name: "Claude Code · laptop" });
+});
+
+test("a refused daily limit is worded and the old value stays shown", async () => {
+  listed = [tok({ level: "act", daily_cap: 2000 })];
+  capResult = () => Promise.reject(new Error("assistant_token_cap"));
+  await show(baseCfg(ALL));
+  await openDetail();
+  fireEvent.click(screen.getByRole("button", { name: "Increase" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(caps.length).toBe(1));
+  await waitFor(() => expect(document.querySelector("[data-variant=error]"))
+    .toBeTruthy());
+  expect(document.body.textContent).toMatch(/worded:assistant_token_cap/);
+});

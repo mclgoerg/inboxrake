@@ -2,6 +2,7 @@
  * grouping, computed from the audit entries the page already loaded. */
 
 import { t } from "./i18n";
+import { fmtNum } from "./numfmt";
 import type { AuditEntry, AuditResp, Rule } from "./types";
 
 /** Entry actions that move mails out of the inbox. A rule run is logged as
@@ -336,7 +337,8 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       // the label is "<token name>: <daily limit>"
       const at = label.lastIndexOf(": ");
       title = at > 0 ? t("audit.h.assistant_token_cap", {
-        name: label.slice(0, at), n: label.slice(at + 2) })
+        name: label.slice(0, at),
+        n: fmtNum(Number(label.slice(at + 2)) || 0) })
         : tOr("audit.act", e.action);
       detail = "";
       break;

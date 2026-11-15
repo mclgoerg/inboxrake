@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, fireEvent, within } from
+import { act, cleanup, render, screen, waitFor, fireEvent, within } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { setLang } from "./i18n";
@@ -432,13 +432,13 @@ test("the filter row asks the server for one kind and starts over", async () => 
   const filter = screen.getByRole("group", { name: "Filter" });
   expect(within(filter).getByRole("button", { name: "All" })
     .getAttribute("aria-pressed")).toBe("true");
-  fireEvent.click(within(filter).getByRole("button", { name: "By assistants" }));
+  fireEvent.click(within(filter).getByRole("button", { name: "Assistants" }));
   await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "assistants"));
-  expect(within(filter).getByRole("button", { name: "By assistants" })
+  expect(within(filter).getByRole("button", { name: "Assistants" })
     .getAttribute("aria-pressed")).toBe("true");
   // nothing of that kind: a short note, the filter stays
   audit.mockResolvedValue({ total: 0, entries: [] });
-  fireEvent.click(within(filter).getByRole("button", { name: "By rules" }));
+  fireEvent.click(within(filter).getByRole("button", { name: "Rules" }));
   await screen.findByText("Nothing here yet.");
   expect(screen.getByRole("group", { name: "Filter" })).toBeTruthy();
 });
@@ -446,4 +446,45 @@ test("the filter row asks the server for one kind and starts over", async () => 
 test("Activity can open already narrowed to the assistants", async () => {
   render(<AuditLogPanel rules={[]} onClose={() => {}} initialBy="assistants" />);
   await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "assistants"));
+});
+
+test("one token's steps get a button of their own, the subtitle follows the " +
+  "filter and leaving the page calls onLeave", async () => {
+  audit.mockResolvedValue({ total: 4, entries });
+  const left = vi.fn();
+  const { unmount } = render(<AuditLogPanel rules={[]} onClose={() => {}}
+    initialBy="token:ab12" byName="Claude Code · laptop" onLeave={left} />);
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "token:ab12"));
+  await waitFor(() => screen.getByText(/what Claude Code · laptop did, newest first/));
+  const filter = screen.getByRole("group", { name: "Filter" });
+  expect(within(filter).getByRole("button", { name: "Claude Code · laptop" })
+    .getAttribute("aria-pressed")).toBe("true");
+  expect(within(filter).getByText("Filter:")).toBeTruthy();
+  fireEvent.click(within(filter).getByRole("button", { name: "You" }));
+  await waitFor(() => screen.getByText(/what you did, newest first/));
+  expect(within(screen.getByRole("group", { name: "Filter" }))
+    .queryByRole("button", { name: "Claude Code · laptop" })).toBeNull();
+  expect(left).not.toHaveBeenCalled();
+  unmount();
+  expect(left).toHaveBeenCalledTimes(1);
+});
+
+test("a slow answer to an earlier filter never replaces the later one", async () => {
+  let slow: (v: unknown) => void = () => {};
+  audit.mockImplementation((_o: number, _l: number, by: string) =>
+    by === "rules" ? new Promise((r) => { slow = r; })
+      : Promise.resolve({ total: 1, entries: [mk({ label: `only ${by}`,
+        action: "assistant_scan", count: 0 })] }));
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await screen.findByText(/Started a rescan/);
+  const filter = screen.getByRole("group", { name: "Filter" });
+  fireEvent.click(within(filter).getByRole("button", { name: "Rules" }));
+  fireEvent.click(within(filter).getByRole("button", { name: "You" }));
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "user"));
+  await screen.findByText(/Started a rescan/);
+  // the earlier (rules) answer arrives last
+  await act(async () => slow({ total: 1, entries: [mk({
+    action: "trash", count: 7, label: "STALE" })] }));
+  expect(screen.queryByText("Moved 7 mails to Trash")).toBeNull();
+  expect(screen.getByText(/what you did/)).toBeTruthy();
 });

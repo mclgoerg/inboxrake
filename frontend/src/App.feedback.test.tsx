@@ -528,3 +528,33 @@ test("the status line's Undo menu lists the user's and the assistants' " +
   await waitFor(() => expect(undoApi).toHaveBeenCalledWith(-1,
     { ts: 2, label: "8 selected mails", count: 8, id: "a2" }, "proton", true));
 });
+
+test("an assistant's mark-as-read is named, not the generic text", async () => {
+  await mount({ ...baseState });
+  tick({ delete: job("done", { moved: 3, actor: "mcp:Claude Code · laptop",
+    action: "mark_read" }) as any });
+  expect(await screen.findByText(
+    "Claude Code · laptop marked 3 mails as read")).toBeTruthy();
+});
+
+test("an assistant job that failed or only half finished is never a success " +
+  "toast", async () => {
+  await mount({ ...baseState });
+  tick({ delete: job("done", { moved: 5, error: "cannot_move",
+    actor: "mcp:Claude Code · laptop", action: "trash" }) as any,
+    assistant_undo: [bot(5, 5)] });
+  await waitFor(() => expect(document.querySelector("[data-variant=error]"))
+    .toBeTruthy());
+  expect(screen.queryByText(/moved 5|Moved 5|Done/)).toBeNull();
+  expect(screen.queryByText(/laptop moved/)).toBeNull();
+});
+
+test("a user step and an assistant step ending together are both counted",
+  async () => {
+    await mount({ ...baseState });
+    tick({ delete: job("done", { moved: 17, actor: "mcp:Claude Code · laptop",
+      action: "trash" }) as any,
+      undo: [entry(1, 5)], assistant_undo: [bot(2, 12)] });
+    expect(await screen.findByText("Done: 17 mails processed.")).toBeTruthy();
+    expect(screen.queryByText(/laptop moved/)).toBeNull();
+  });

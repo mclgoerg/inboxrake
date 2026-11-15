@@ -211,8 +211,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   /** Leave the page (Esc / Back from the root): the app returns where the
    *  user came from. */
   onClose: () => void;
-  /** AI assistants: open Activity narrowed to what assistants did. */
-  onShowAssistantSteps?: () => void;
+  /** AI assistants: open Activity narrowed to one token's steps. */
+  onShowAssistantSteps?: (token: { id: string; name: string }) => void;
   onSaved: (c: Config) => void;
   /** Filed senders: AI answers of the active account that apply now (what
    *  "Keep all AI answers" would keep) and a refresh after a change. */

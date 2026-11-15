@@ -2,10 +2,11 @@ import { Bot, Check, ChevronRight, CircleCheck, Copy, Eye, EyeOff, Info, ListChe
   Plus, ExternalLink, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState,
   type ReactNode } from "react";
-import { api } from "../api";
+import { api, errorText } from "../api";
 import { NOTIFY_KEY } from "../push";
 import { getLang, t } from "../i18n";
 import { fmtAgo, fmtTs } from "../lib";
+import { fmtNum } from "../numfmt";
 import { useDemo } from "../demoMode";
 import type { AssistantAccess, AssistantLevel, AssistantToken,
   Config } from "../types";
@@ -518,31 +519,44 @@ function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
   const toast = useToast();
   const [cap, setCap] = useState(tk.daily_cap);
   const saved = useRef(tk.daily_cap);
+  const wanted = useRef<number | null>(null);    // changed, not yet sent
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const ago = fmtAgo(tk.last_used);
   const act = tk.level === "act";
-  // the stepper changes at once; the server hears about it a moment later
+  // Send a pending change now. A lowered limit is a safety setting: it must
+  // never stay at the old value because the dialog was closed too fast.
+  const flush = async () => {
+    clearTimeout(timer.current);
+    const v = wanted.current;
+    wanted.current = null;
+    if (v === null || v === saved.current) return;
+    try {
+      await api.setAssistantCap(tk.id, v);
+      saved.current = v;
+      toast.show(t("assistants.detail_saved"), { variant: "success" });
+      await onChanged();
+    } catch (e: any) {
+      setCap(saved.current);
+      toast.show(t("err.generic", { msg: errorText(e?.message ?? e) }),
+        { variant: "error" });
+    }
+  };
+  // the stepper changes at once; the server hears about it a moment later,
+  // or at once when the detail goes away
   const change = (v: number) => {
     setCap(v);
+    wanted.current = v;
     clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      if (v === saved.current) return;
-      try {
-        await api.setAssistantCap(tk.id, v);
-        saved.current = v;
-        toast.show(t("assistants.detail_saved"), { variant: "success" });
-        await onChanged();
-      } catch (e: any) {
-        setCap(saved.current);
-        toast.show(String(e?.message ?? e), { variant: "error" });
-      }
-    }, 600);
+    timer.current = setTimeout(() => void flush(), 600);
   };
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const latest = useRef(flush);
+  latest.current = flush;
+  useEffect(() => () => void latest.current(), []);
+  const close = () => { void flush(); onClose(); };
   const row = "flex items-center justify-between gap-3 border-b border-line "
     + "py-2.5";
   return (
-    <Modal size="sm" labelledBy={titleId} onClose={onClose}>
+    <Modal size="sm" labelledBy={titleId} onClose={close}>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <div id={titleId} className="type-meta uppercase tracking-wide
           text-muted">
@@ -559,8 +573,7 @@ function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
               <dt className="type-body">{t("assistants.detail_moved")}</dt>
               <dd className="type-body tabular-nums text-muted">
                 {t("assistants.detail_moved_of", {
-                  n: tk.mails_today.toLocaleString(getLang()),
-                  cap: tk.daily_cap.toLocaleString(getLang()) })}</dd>
+                  n: fmtNum(tk.mails_today), cap: fmtNum(tk.daily_cap) })}</dd>
             </div>
           )}
           {tk.level !== "read" && (
@@ -588,7 +601,7 @@ function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
               <dd>
                 <Stepper value={cap} onChange={change} min={100} max={10000}
                   step={100} label={t("assistants.daily")}
-                  format={(n) => n.toLocaleString(getLang())} />
+                  format={(n) => fmtNum(n)} />
               </dd>
             </div>
           )}
@@ -596,17 +609,18 @@ function TokenDetail({ tk, busy, onClose, onChanged, onShowSteps, onRevoke }: {
         <div className="mt-3 flex items-center justify-between gap-3">
           {onShowSteps ? (
             <button type="button" className={LINK_ACCENT}
-              onClick={onShowSteps}>
+              onClick={() => { void flush(); onShowSteps(); }}>
               {t("assistants.detail_steps")}</button>
           ) : <span />}
           <Button size="sm" variant="danger-quiet" disabled={busy}
-            onClick={onRevoke}>
+            onClick={() => wanted.current === null ? onRevoke()
+              : void flush().then(onRevoke)}>
             {t(isExpired(tk) ? "assistants.remove" : "assistants.revoke")}
           </Button>
         </div>
       </div>
       <div className="flex justify-end border-t border-line px-4 py-3 sm:px-5">
-        <Button type="button" variant="secondary" onClick={onClose}>
+        <Button type="button" variant="secondary" onClick={close}>
           {t("assistants.detail_close")}
         </Button>
       </div>
@@ -665,8 +679,8 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
   onNotifyEmail: (on: boolean) => void;
   tokens: AssistantToken[] | null; tokensError: string;
   reload: () => Promise<unknown>;
-  /** Open Activity narrowed to what assistants did. */
-  onShowSteps?: () => void;
+  /** Open Activity narrowed to this token's steps. */
+  onShowSteps?: (token: { id: string; name: string }) => void;
 }) {
   const demo = useDemo();
   const toast = useToast();
@@ -910,7 +924,11 @@ export function AssistantsSection({ cfg, admin, access, onAccess, notifyEmail,
       <TokenDetail tk={list.find((tk) => tk.id === detailId)!}
         busy={busyId === detailId} onClose={() => setDetailId(null)}
         onChanged={reload}
-        onShowSteps={onShowSteps && (() => { setDetailId(null); onShowSteps(); })}
+        onShowSteps={onShowSteps && (() => {
+          const tk = list.find((x) => x.id === detailId)!;
+          setDetailId(null);
+          onShowSteps({ id: tk.id, name: tk.name });
+        })}
         onRevoke={async () => {
           const tk = list.find((x) => x.id === detailId)!;
           if (await revoke(tk)) setDetailId(null);

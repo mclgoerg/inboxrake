@@ -1511,8 +1511,18 @@ def get_wrapped(year: int | None = Query(None, ge=1970, le=9999),
 @app.get("/api/audit")
 def get_audit(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500),
              account: str | None = Query(None),
-             by: str = Query("all", pattern="^(all|user|rules|assistants)$")):
+             by: str = Query(
+                 "all", pattern="^(all|user|rules|assistants|token:[0-9a-f]{1,32})$")):
     acc = _acc(account)
+    if by.startswith("token:"):
+        # one assistant token's steps: only a token of THIS workspace
+        tid = by[6:]
+        tk = next((t for t in assistanttokens.list_for(tenants.current().id)
+                   if t["id"] == tid), None)
+        if tk is None:
+            raise HTTPException(404, assistanttokens.UNKNOWN)
+        return auditlog.load(acc.name, offset, limit, "assistants",
+                             actor=f"mcp:{tk['name']}")
     return auditlog.load(acc.name, offset, limit, by)
 
 

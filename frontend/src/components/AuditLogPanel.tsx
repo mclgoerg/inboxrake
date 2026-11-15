@@ -3,7 +3,7 @@ import { Archive, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
   Circle, Mail, MailCheck, Pin, RefreshCw, ScrollText, Send, ShieldCheck,
   Trash2, Undo2, type LucideIcon }
   from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { assistantActorName, entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
   weekRanges } from "../activity";
 import { nowDate } from "../clock";
@@ -161,25 +161,30 @@ const FILTERS: { by: AuditBy; label: string }[] = [
 
 /** "Filter: All · By you · By rules · By assistants": narrows the log to who
  *  did it (the server filters, so every page follows). */
-function FilterRow({ by, onChange }: {
-  by: AuditBy; onChange: (by: AuditBy) => void;
+function FilterRow({ by, name, onChange }: {
+  by: AuditBy; name: string; onChange: (by: AuditBy) => void;
 }) {
+  // one token's steps (from Settings) get a button of their own while active
+  const choices: { by: AuditBy; label: string }[] = [
+    ...FILTERS.map((f) => ({ by: f.by, label: t(f.label) })),
+    ...(by.startsWith("token:")
+      ? [{ by, label: name || t("activity.filter_assistants") }] : [])];
   return (
     <div role="group" aria-label={t("activity.filter")}
       className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-1
         type-meta text-muted">
-      <span>{t("activity.filter")}:</span>
-      {FILTERS.map(({ by: v, label }) => (
-        <span key={v} className="inline-flex items-center">
-          <button type="button" aria-pressed={by === v}
-            onClick={() => onChange(v)}
-            className={`inline-flex items-center gap-1 rounded-control px-1
-              coarse:min-h-11 focus-visible:ring-2 focus-visible:ring-accent
-              ${by === v ? "font-semibold text-accent" : "hover:text-body"}`}>
-            {v === "assistants" && <Bot size={14} aria-hidden />}
-            {t(label)}
-          </button>
-        </span>
+      <span>{t("activity.filter_colon")}</span>
+      {choices.map(({ by: v, label }) => (
+        <button key={v} type="button" aria-pressed={by === v}
+          onClick={() => onChange(v)}
+          className={`inline-flex items-center gap-1 whitespace-nowrap
+            rounded-control px-1 coarse:min-h-11 focus-visible:ring-2
+            focus-visible:ring-accent ${by === v
+            ? "font-semibold text-accent" : "hover:text-body"}`}>
+          {(v === "assistants" || v.startsWith("token:"))
+            && <Bot size={14} aria-hidden />}
+          {label}
+        </button>
       ))}
     </div>
   );
@@ -280,10 +285,15 @@ export function TimelineRow({ e, rules, retry, undone = 0 }: {
  *  cards), then the log as a timeline grouped by month. Paged, newest
  *  first, CSV export. */
 export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetryUnsub,
-  initialBy = "all" }: {
+  initialBy = "all", byName = "", onLeave }: {
   rules: Rule[]; onClose: () => void;
   /** Open with the log narrowed to one kind (Settings > a token's steps). */
   initialBy?: AuditBy;
+  /** The token's name when `initialBy` is one token's steps. */
+  byName?: string;
+  /** The page was left: the app forgets the narrowing it opened with, so a
+   *  fresh visit starts at All. */
+  onLeave?: () => void;
   /** The Activity page puts the undo cards here, under the month summary. */
   above?: ReactNode;
   /** Changes when something new was logged behind the panel (an undo). */
@@ -296,17 +306,29 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
   const [retrying, setRetrying] = useState(false);
   const [offset, setOffset] = useState(0);
   const [by, setBy] = useState<AuditBy>(initialBy);
+  const leave = useRef(onLeave);
+  leave.current = onLeave;
+  useEffect(() => () => leave.current?.(), []);
   const [total, setTotal] = useState<number | null>(null);
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [recent, setRecent] = useState<{ entries: AuditEntry[];
     complete: boolean } | null>(null);
   const [error, setError] = useState("");
 
+  // Only the newest request may fill the list: a slow answer to an earlier
+  // filter click must not replace the page of the later one.
+  const loadSeq = useRef(0);
   const load = (off: number, keep = false) => {
     if (!keep) setEntries(null);
+    const mine = ++loadSeq.current;
     api.audit(off, PAGE_SIZE, by)
-      .then((r) => { setEntries(r.entries); setTotal(r.total); })
-      .catch((e) => setError(String(e.message ?? e)));
+      .then((r) => {
+        if (mine !== loadSeq.current) return;
+        setEntries(r.entries); setTotal(r.total);
+      })
+      .catch((e) => {
+        if (mine === loadSeq.current) setError(String(e.message ?? e));
+      });
   };
   useEffect(() => load(offset), [offset, reloadKey, by]);
   // The month summary needs the whole month, not just this page.
@@ -362,7 +384,9 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           <ScrollText size={18} /> {t("nav.activity")}
         </span>}
         sub={total == null ? t("loading…") : total === 0 ? ""
-          : t("audit.entries", { n: total })}
+          : t(by === "all" ? "audit.entries"
+            : by.startsWith("token:") ? "audit.entries_token"
+            : `audit.entries_${by}`, { n: total, name: byName })}
         actions={!!total && (
           <Button variant="secondary" size="icon"
             label={t("audit.export")}
@@ -380,7 +404,8 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
             <div className="flex flex-col gap-3 lg:sticky lg:top-0
               lg:col-start-2 lg:row-start-1 lg:self-start">
               <MonthCard recent={recent} rules={rules} />
-              <FilterRow by={by} onChange={(v) => { setBy(v); setOffset(0); }} />
+              <FilterRow by={by} name={byName}
+                onChange={(v) => { setBy(v); setOffset(0); }} />
             </div>
           )}
           <div className="flex min-w-0 flex-col gap-4 lg:col-start-1

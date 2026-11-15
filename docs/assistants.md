@@ -233,9 +233,9 @@ Act is off unless **both** the admin has set the cap to **Also act** and the tok
 
 ### Limits and undo
 
-- **Daily limit:** each Act token has its own, 2,000 mails a day by default (100 to 10,000). Every mail an apply moves counts against it and the count restarts at 00:00 UTC. An apply that would go over is refused, with the number left in the answer. Change it any time: **Settings → AI assistants →** tap the token → **Daily limit**; it applies from the next plan.
+- **Daily limit:** each Act token has its own, 2,000 mails a day by default (100 to 10,000). Every mail an apply moves or marks read counts against it and the count restarts at 00:00 UTC. An apply that would go over is refused, with the number left in the answer. Change it any time: **Settings → AI assistants →** tap the token → **Daily limit**; it applies from the next plan.
 - **Undo:** every move is undoable. The assistant's moves go in a list of their own (the last 10 steps per token), shown as **Assistant steps** next to **Your steps** in **Activity** and in the status line's **Undo** menu, so a busy assistant can never push your own steps out. You can undo any assistant step; an assistant can undo only its own. Like your own undo list it lives in memory and is gone after a restart; the mails stay in Trash and Activity keeps the entry. Marking mail read is not undoable.
-- **Activity:** every step shows as "by <token name>" with a bot icon (moves, protections, pins, scans, and the token's creation, revocation and daily-limit changes). The filter row narrows the log to **By assistants**, the month card has a **By assistants** line, and an open Inboxrake shows the usual toast ("Claude Code · laptop moved 120 mails to Trash · Undo").
+- **Activity:** every step the assistant takes shows as "by <token name>" with a bot icon (moves, protections, pins, scans). Creating or revoking a token and changing its daily limit are your own actions, so they appear as "by you". The filter row narrows the log to **By assistants**, the month card has a **By assistants** line, and an open Inboxrake shows the usual toast ("Claude Code · laptop moved 120 mails to Trash · Undo").
 - **Notifications:** an assistant's moves do not send a push notification; you see them in the app and in Activity.
 
 ### The confirmation prompt

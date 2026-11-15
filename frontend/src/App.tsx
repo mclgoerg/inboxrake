@@ -242,6 +242,7 @@ export default function App() {
   const [auditOpen, setAuditOpen] = useState(false);
   // Activity opened narrowed to one kind (Settings > a token's steps)
   const [activityBy, setActivityBy] = useState<AuditBy>("all");
+  const [activityByName, setActivityByName] = useState("");
   const [triageOpen, setTriageOpen] = useState(false);
   // Folders panel (Junk | Trash): which folder it opens on, null = closed
   const [foldersOpen, setFoldersOpen] = useState<FolderRole | null>(null);
@@ -541,39 +542,51 @@ export default function App() {
       : (state.assistant_undo ?? []).filter((u) => !u.quiet
         && !prev.aundo.includes(undoId(u)));
     const newJob = del.seq != null && prev.seq != null && del.seq > prev.seq;
-    if (!staleDel && del.status !== "running" && freshA.length
-        && !fresh.length) {
-      const entry = freshA.length === 1 ? freshA[0] : undefined;
-      const n = freshA.reduce((a, u) => a + u.count, 0);
-      const names = [...new Set(freshA.map(
-        (u) => assistantActorName(u.actor ?? "") ?? ""))].join(", ");
-      const kind = freshA.every((u) => u.action === "trash") ? "trash"
-        : freshA.every((u) => u.action === "archive") ? "archive" : "move";
-      toast.show(t(`toast.assistant_${kind}`, { name: names, n }), {
-        variant: "success",
-        action: entry ? { label: t("Undo"), onClick: () => {
-          const i = stateRef.current?.assistant_undo?.findIndex(
-            (u) => undoId(u) === undoId(entry)) ?? -1;
-          if (i >= 0) void undo(i, false, true);
-        } } : undefined,
-      });
-    } else if (!staleDel && del.status !== "running" && (fresh.length || newJob
+    const botName = assistantActorName(del.actor ?? "");
+    if (!staleDel && del.status !== "running" && (fresh.length
+        || freshA.length || newJob
         || (del.seq == null && del.status !== prev.d))) {
       if (del.status === "error") {
         notify(t("err.generic", { msg: errorText(del.error) }), "error");
-      } else if (fresh.length || del.moved > 0) {
-        const n = fresh.length
-          ? fresh.reduce((a, u) => a + u.count, 0) : del.moved;
-        const entry = fresh.length === 1 ? fresh[0] : undefined;
-        toast.show(fresh.length && fresh.every((u) => u.action === "trash")
-          ? t("toast.moved_trash", { n }) : t("done_moved", { n }), {
+      } else if (botName !== null && del.error) {
+        // an assistant's job that did not finish: the failure, never the
+        // success toast (what did move can be undone from Activity)
+        notify(t("err.generic", { msg: errorText(del.error) }), "error");
+      } else if (fresh.length || freshA.length || del.moved > 0) {
+        const n = fresh.length || freshA.length
+          ? [...fresh, ...freshA].reduce((a, u) => a + u.count, 0)
+          : del.moved;
+        // Undo targets THIS job's entry by identity (the list may have
+        // shifted by click time), never "the latest".
+        const mineOnly = fresh.length === 1 && !freshA.length ? fresh[0]
+          : undefined;
+        const botOnly = freshA.length === 1 && !fresh.length ? freshA[0]
+          : undefined;
+        let text: string;
+        if (freshA.length && !fresh.length) {
+          const names = [...new Set(freshA.map(
+            (u) => assistantActorName(u.actor ?? "") ?? ""))].join(", ");
+          const kind = freshA.every((u) => u.action === "trash") ? "trash"
+            : freshA.every((u) => u.action === "archive") ? "archive"
+            : "move";
+          text = t(`toast.assistant_${kind}`, { name: names, n });
+        } else if (!fresh.length && !freshA.length && botName !== null
+            && del.action === "mark_read") {
+          text = t("toast.assistant_mark_read", { name: botName, n });
+        } else if (fresh.length && fresh.every((u) => u.action === "trash")
+            && !freshA.length) {
+          text = t("toast.moved_trash", { n });
+        } else text = t("done_moved", { n });    // also: both lists at once
+        toast.show(text, {
           variant: "success",
-          // Undo targets THIS job's entry by identity (the list may have
-          // shifted by click time), never "the latest".
-          action: entry ? { label: t("Undo"), onClick: () => {
+          action: mineOnly ? { label: t("Undo"), onClick: () => {
             const i = stateRef.current?.undo.findIndex(
-              (u) => undoId(u) === undoId(entry)) ?? -1;
+              (u) => undoId(u) === undoId(mineOnly)) ?? -1;
             if (i >= 0) undo(i, false);
+          } } : botOnly ? { label: t("Undo"), onClick: () => {
+            const i = stateRef.current?.assistant_undo?.findIndex(
+              (u) => undoId(u) === undoId(botOnly)) ?? -1;
+            if (i >= 0) void undo(i, false, true);
           } } : undefined,
         });
         if (del.error) notify(t("err.generic", { msg: errorText(del.error) }), "error");
@@ -2468,12 +2481,12 @@ export default function App() {
     )}
     {toolShown("activity") && (
       <AuditLogPanel key={account} rules={state?.rules ?? []}
-        above={undoHistory} reloadKey={undoRev} initialBy={activityBy}
+        above={undoHistory} reloadKey={undoRev} initialBy={activityBy} byName={activityByName}
+        onLeave={() => { setActivityBy("all"); setActivityByName(""); }}
         groups={state?.groups.sender}
         onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
         onClose={() => closeTool(() => {
           setAuditOpen(false);
-          setActivityBy("all");
         })} />
     )}
     {(shownTool === "junk" || shownTool === "trash") && state && (
@@ -3174,7 +3187,11 @@ export default function App() {
           onClose={closeSettings}
           onAddAccount={() => setWizard({ mode: "add", previous: account })}
           onSaved={setCfg}
-          onShowAssistantSteps={() => { setActivityBy("assistants"); openTool("activity"); }}
+          onShowAssistantSteps={(tk) => {
+            setActivityBy(`token:${tk.id}`);
+            setActivityByName(tk.name);
+            openTool("activity");
+          }}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
           scanState={state ? { account: state.account, status: state.status,
             scanned_ts: state.scanned_ts, error: state.error } : null}

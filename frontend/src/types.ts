@@ -179,6 +179,10 @@ export interface DeleteState {
   error: string;
   moved: number;
   seq?: number;   // bumped by the backend whenever a new job starts
+  /** Who runs / ran the current job (`user`, `rule:<id>`, `mcp:<token name>`)
+   *  and what it does; absent before a job ran. */
+  actor?: string;
+  action?: string;
 }
 
 export interface AttsState {
@@ -392,7 +396,8 @@ export interface AuditEntry {
 }
 
 /** Who did it, for the Activity filter. */
-export type AuditBy = "all" | "user" | "rules" | "assistants";
+export type AuditBy = "all" | "user" | "rules" | "assistants"
+  | `token:${string}`;   // one assistant token's steps (its id)
 
 export interface AuditResp {
   total: number;

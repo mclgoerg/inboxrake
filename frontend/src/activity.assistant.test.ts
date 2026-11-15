@@ -74,7 +74,7 @@ test("what an assistant did besides moving mail has its own headlines", () => {
   expect(a("assistant_scan", 0).title).toBe("Started a rescan");
   expect(words(entryText(e({ actor: "user", action: "assistant_token_cap",
     count: 0, label: "Claude Code · laptop: 3000" }), [])).title)
-    .toBe("Set the daily limit of “Claude Code · laptop” to 3000 mails");
+    .toBe("Set the daily limit of “Claude Code · laptop” to 3,000 mails");
   // an entry from a newer build without a label: the plain action word
   expect(a("assistant_token_cap", 0).title).toBe("Daily limit changed");
   setLang("de");

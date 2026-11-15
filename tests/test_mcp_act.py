@@ -714,3 +714,97 @@ def test_the_token_list_counts_proposals_still_waiting(mbox):
         "proposals"] == 1
     assert [r for r in rulesmod.load_rules()
             if r.get("proposed_by", {}).get("token_id") == ident]
+
+
+# ------------------------------------------------- review round 2 additions
+
+def test_a_cap_cannot_be_changed_across_tenants(mbox):
+    act_token()
+    ident = token_id()
+    other, _ = assistanttokens.create("tenant-b", "Theirs", ["x"], "act")
+    # tenant B's token: unknown to this workspace, and left alone
+    r = client.patch(f"/api/assistants/tokens/{other['id']}",
+                     json={"daily_cap": 100})
+    assert r.status_code == 404
+    with pytest.raises(assistanttokens.TokenError):
+        assistanttokens.set_cap("default", other["id"], 100)
+    with pytest.raises(assistanttokens.TokenError):
+        assistanttokens.set_cap("tenant-b", ident, 100)
+    caps = {t["id"]: t["daily_cap"] for t in assistanttokens._read()}
+    assert caps[other["id"]] == 2000 and caps[ident] == 2000
+
+
+def test_move_below_a_localised_trash_or_junk_is_refused(monkeypatch):
+    from conftest import FakeIMAP
+    fake = FakeIMAP({
+        "INBOX": [make_msg(1, frm="A <a@shop.example>", subject="x")],
+        "Papierkorb": [], "Papierkorb/Alt": [],
+        "Unerwuenscht": [], "Unerwuenscht/Alt": [], "Belege": []},
+        flags={"Papierkorb": "\\Trash", "Unerwuenscht": "\\Junk"})
+    monkeypatch.setattr(mailops, "connect", lambda cfg, name=None: fake)
+    cfgmod.update_config({"imap": {"host": "h.example", "user": "u@x.example",
+                                   "password": "p"}})
+    assert client.post("/api/scan").status_code == 200
+    wait_scan_done()
+    secret = act_token()
+    mail = [{"folder": "INBOX", "uid": 1}]
+    for dest in ("Papierkorb", "Papierkorb/Alt", "Unerwuenscht",
+                 "Unerwuenscht/Alt"):
+        res = call(secret, "preview_action", {
+            "action": "move", "mails": mail, "dest": dest})
+        assert res["isError"] is True, dest
+    assert preview(secret, "move", mails=mail, dest="Belege")["mails"] == 1
+
+
+def test_only_waiting_proposals_of_that_token_are_counted(mbox):
+    from backend import rules as rulesmod
+    first = act_token()
+    second = _token(name="Other", level="propose")
+    ok(first, "propose_rule", {"name": "One", "query": "from:@shop.example",
+                               "action": "trash"})
+    ok(first, "propose_rule", {"name": "Two", "query": "from:@parcels.example",
+                               "action": "archive"})
+    ok(second, "propose_rule", {"name": "Three", "query": "from:@friends.example",
+                                "action": "trash"})
+
+    def counts():
+        return {t["name"]: t["proposals"] for t in client.get(
+            "/api/assistants/tokens").json()["tokens"]}
+    assert counts() == {"Laptop": 2, "Other": 1}
+    rules = rulesmod.load_rules()
+    approved = next(r for r in rules if r["name"] == "One")
+    approved["mode"] = "execute"            # approved: no longer waiting
+    rulesmod._save(rules)
+    assert counts() == {"Laptop": 1, "Other": 1}
+
+
+def test_the_audit_log_can_be_filtered_to_one_token(mbox):
+    first = act_token()
+    second = _token(name="Other", level="act")
+    for secret, mails in ((first, SHOP), (second, PARCEL)):
+        ok(secret, "apply_action", {
+            "plan_id": preview(secret, mails=mails)["plan_id"]})
+    ident, other = token_id(), token_id("Other")
+
+    def steps(by):
+        r = client.get("/api/audit", params={"by": by, "limit": 20})
+        assert r.status_code == 200, r.text
+        r = r.json()
+        assert r["total"] == len(r["entries"])
+        return {(e["actor"], e["count"]) for e in r["entries"]}
+    assert steps(f"token:{ident}") == {("mcp:Laptop", 2)}
+    assert steps(f"token:{other}") == {("mcp:Other", 1)}
+    # not another workspace's token, not a made-up one, not a bad shape
+    foreign, _ = assistanttokens.create("tenant-b", "Theirs", ["x"], "act")
+    for bad in (f"token:{foreign['id']}", "token:0123456789ab"):
+        assert client.get("/api/audit", params={"by": bad}).status_code == 404
+    for bad in ("token:", "token:../x", "token:xyz", "token:" + "a" * 40):
+        assert client.get("/api/audit", params={"by": bad}).status_code == 422
+
+
+def test_the_delete_state_says_who_is_moving_what(mbox):
+    secret = act_token()
+    ok(secret, "apply_action", {
+        "plan_id": preview(secret, "mark_read", mails=PARCEL)["plan_id"]})
+    st = mailops.public_state(acc())["delete"]
+    assert st["actor"] == "mcp:Laptop" and st["action"] == "mark_read"

@@ -3145,6 +3145,11 @@ def _delete_worker(acc) -> None:
         action, dest = job["action"], job["dest"]
         actor = job.get("actor", "user")
         token = job.get("token", "")
+        with acc.lock:
+            # who is moving what, for the UI's toast (an assistant's job is
+            # worded with its name)
+            acc.state["delete"]["actor"] = actor
+            acc.state["delete"]["action"] = action
         by_user = by_user or not str(actor).startswith(("rule:", "mcp:"))
 
         def progress_cb(moved, total):
