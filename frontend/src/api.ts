@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest,
-  AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditResp, AuthProbe,
+  AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail,
@@ -270,7 +270,7 @@ export function noticeParams(
 }
 
 async function req<T>(path: string, body?: unknown,
-                      method?: "PUT" | "DELETE",
+                      method?: "PUT" | "DELETE" | "PATCH",
                       signal?: AbortSignal): Promise<T> {
   const res = await fetch(withAccount(path), {
     signal,
@@ -386,6 +386,10 @@ export const api = {
   createAssistantToken: (body: AssistantTokenRequest) =>
     req<{ token: AssistantToken; secret: string }>(
       "/api/assistants/tokens", body),
+  setAssistantCap: (id: string, daily_cap: number) =>
+    req<{ token: AssistantToken }>(
+      `/api/assistants/tokens/${encodeURIComponent(id)}`, { daily_cap },
+      "PATCH"),
   revokeAssistantToken: (id: string) =>
     req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
       undefined, "DELETE"),
@@ -400,9 +404,13 @@ export const api = {
   unsubscribeAck: (addr: string, done = true) =>
     req<{ status?: string; ok?: boolean }>("/api/unsubscribe/ack",
       { addr, done }),
-  undo: (index = -1, ident?: UndoIdent, account?: string) =>
+  /** `assistant`: the step is in the AI assistants' list. */
+  undo: (index = -1, ident?: UndoIdent, account?: string,
+      assistant = false) =>
     req<{ restored: number; of: number; rescan: boolean }>(
-      forAccount("/api/undo", account), ident ? { index, ident } : { index }),
+      forAccount("/api/undo", account),
+      { index, ...(ident ? { ident } : {}),
+        ...(assistant ? { assistant: true } : {}) }),
   emptyTrash: (counted: { uv: number; max_uid: number }) =>
     req<{ deleted: number }>("/api/empty_trash", counted),
   cancel: (target: "scan" | "ai" | "delete" | "atts" | "unsub" | "index") =>
@@ -483,8 +491,9 @@ export const api = {
   overview: (since?: number | null) =>
     req<OverviewResp>("/api/overview"
       + (since == null ? "" : `?since=${Math.floor(since)}`)),
-  audit: (offset = 0, limit = 50) =>
-    req<AuditResp>(`/api/audit?offset=${offset}&limit=${limit}`),
+  audit: (offset = 0, limit = 50, by: AuditBy = "all") =>
+    req<AuditResp>(`/api/audit?offset=${offset}&limit=${limit}`
+      + (by === "all" ? "" : `&by=${by}`)),
   auditExportUrl: () => withAccount("/api/audit/export"),
   trash: () => req<TrashResp>("/api/trash"),
   foldersPanel: (role: FolderRole) =>

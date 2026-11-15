@@ -1,14 +1,15 @@
-import { Archive, BellOff, Ban, ChevronLeft, ChevronRight, CircleAlert,
+import { Archive, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
   CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, KeyRound, ListChecks,
-  Circle, Mail, MailCheck, ScrollText, Send, Trash2, Undo2, type LucideIcon }
+  Circle, Mail, MailCheck, Pin, RefreshCw, ScrollText, Send, ShieldCheck,
+  Trash2, Undo2, type LucideIcon }
   from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { assistantActorName, entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
   weekRanges } from "../activity";
 import { nowDate } from "../clock";
 import { api, downloadFile, errorText, fmtSize } from "../api";
 import { getLang, t } from "../i18n";
-import type { AuditEntry, Group, Rule } from "../types";
+import type { AuditBy, AuditEntry, Group, Rule } from "../types";
 import { retryableGroup } from "../unsub";
 import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
   ShortDate, Tag } from "./ui";
@@ -47,6 +48,10 @@ const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   digest_sent: { icon: Send, tone: "bg-chip text-chiptext" },
   assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
   assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
+  assistant_token_cap: { icon: KeyRound, tone: "bg-chip text-chiptext" },
+  assistant_protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },
+  assistant_pin: { icon: Pin, tone: "bg-safe-bg text-safe-fg" },
+  assistant_scan: { icon: RefreshCw, tone: "bg-chip text-chiptext" },
 };
 const FALLBACK_LOOK = { icon: Mail, tone: "bg-chip text-chiptext" };
 
@@ -91,12 +96,12 @@ function MonthCard({ recent, rules }: {
   const split: { icon: LucideIcon; label: string; n: number }[] = [
     { icon: ListChecks, label: t("activity.by_rules"), n: sum.byRules },
     { icon: Hand, label: t("activity.by_you"), n: sum.byYou },
+    { icon: Bot, label: t("activity.by_assistants"), n: sum.byAssistants },
     { icon: BellOff, label: t("activity.unsubscribed"), n: sum.unsubscribed },
   ];
   return (
     <section aria-label={t("activity.month")}
-      className="rounded-card border border-line bg-panel p-4
-        lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1 lg:self-start">
+      className="rounded-card border border-line bg-panel p-4">
       <div className="type-meta text-muted">{t("activity.month")}</div>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="type-largetitle tabular-nums">
@@ -147,6 +152,44 @@ function MonthCard({ recent, rules }: {
   );
 }
 
+const FILTERS: { by: AuditBy; label: string }[] = [
+  { by: "all", label: "activity.filter_all" },
+  { by: "user", label: "activity.filter_you" },
+  { by: "rules", label: "activity.filter_rules" },
+  { by: "assistants", label: "activity.filter_assistants" },
+];
+
+/** "Filter: All · By you · By rules · By assistants": narrows the log to who
+ *  did it (the server filters, so every page follows). */
+function FilterRow({ by, name, onChange }: {
+  by: AuditBy; name: string; onChange: (by: AuditBy) => void;
+}) {
+  // one token's steps (from Settings) get a button of their own while active
+  const choices: { by: AuditBy; label: string }[] = [
+    ...FILTERS.map((f) => ({ by: f.by, label: t(f.label) })),
+    ...(by.startsWith("token:")
+      ? [{ by, label: name || t("activity.filter_assistants") }] : [])];
+  return (
+    <div role="group" aria-label={t("activity.filter")}
+      className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-1
+        type-meta text-muted">
+      <span>{t("activity.filter_colon")}</span>
+      {choices.map(({ by: v, label }) => (
+        <button key={v} type="button" aria-pressed={by === v}
+          onClick={() => onChange(v)}
+          className={`inline-flex items-center gap-1 whitespace-nowrap
+            rounded-control px-1 coarse:min-h-11 focus-visible:ring-2
+            focus-visible:ring-accent ${by === v
+            ? "font-semibold text-accent" : "hover:text-body"}`}>
+          {(v === "assistants" || v.startsWith("token:"))
+            && <Bot size={14} aria-hidden />}
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** One entry of the log; the Insights hub's Recent activity uses it too. */
 export function TimelineRow({ e, rules, retry, undone = 0 }: {
   e: AuditEntry; rules: Rule[];
@@ -161,6 +204,9 @@ export function TimelineRow({ e, rules, retry, undone = 0 }: {
   const StatusIcon = status.icon;
   const failed = e.outcome === "error" || e.outcome === "failed";
   const text = entryText(e, rules);
+  const bot = assistantActorName(e.actor);
+  const [before, after] = bot !== null
+    ? t("audit.by_assistant", { name: "\u0000" }).split("\u0000") : ["", ""];
   const [why, setWhy] = useState(false);
   // Grid: icon | headline + second line | date + status. On phones the date
   // and status drop under the headline so it keeps the full width.
@@ -182,7 +228,12 @@ export function TimelineRow({ e, rules, retry, undone = 0 }: {
           )}
           <span className="shrink-0 whitespace-pre-wrap">
             {text.detail && (text.who || e.bytes > 0) ? " · " : ""}
-            {text.who}
+            {bot !== null ? (
+              <span className="inline-flex items-baseline gap-1">
+                {before}<Bot size={14} aria-hidden
+                  className="self-center text-info-fg" />{bot}{after}
+              </span>
+            ) : text.who}
             {e.bytes > 0 && `${text.who ? " · " : ""}${fmtSize(e.bytes)}`}
           </span>
         </span>
@@ -233,8 +284,16 @@ export function TimelineRow({ e, rules, retry, undone = 0 }: {
  *  empty-trash. The Activity page: a month summary, `above` (the undo
  *  cards), then the log as a timeline grouped by month. Paged, newest
  *  first, CSV export. */
-export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetryUnsub }: {
+export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetryUnsub,
+  initialBy = "all", byName = "", onLeave }: {
   rules: Rule[]; onClose: () => void;
+  /** Open with the log narrowed to one kind (Settings > a token's steps). */
+  initialBy?: AuditBy;
+  /** The token's name when `initialBy` is one token's steps. */
+  byName?: string;
+  /** The page was left: the app forgets the narrowing it opened with, so a
+   *  fresh visit starts at All. */
+  onLeave?: () => void;
   /** The Activity page puts the undo cards here, under the month summary. */
   above?: ReactNode;
   /** Changes when something new was logged behind the panel (an undo). */
@@ -246,19 +305,32 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
 }) {
   const [retrying, setRetrying] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [by, setBy] = useState<AuditBy>(initialBy);
+  const leave = useRef(onLeave);
+  leave.current = onLeave;
+  useEffect(() => () => leave.current?.(), []);
   const [total, setTotal] = useState<number | null>(null);
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [recent, setRecent] = useState<{ entries: AuditEntry[];
     complete: boolean } | null>(null);
   const [error, setError] = useState("");
 
+  // Only the newest request may fill the list: a slow answer to an earlier
+  // filter click must not replace the page of the later one.
+  const loadSeq = useRef(0);
   const load = (off: number, keep = false) => {
     if (!keep) setEntries(null);
-    api.audit(off, PAGE_SIZE)
-      .then((r) => { setEntries(r.entries); setTotal(r.total); })
-      .catch((e) => setError(String(e.message ?? e)));
+    const mine = ++loadSeq.current;
+    api.audit(off, PAGE_SIZE, by)
+      .then((r) => {
+        if (mine !== loadSeq.current) return;
+        setEntries(r.entries); setTotal(r.total);
+      })
+      .catch((e) => {
+        if (mine === loadSeq.current) setError(String(e.message ?? e));
+      });
   };
-  useEffect(() => load(offset), [offset, reloadKey]);
+  useEffect(() => load(offset), [offset, reloadKey, by]);
   // The month summary needs the whole month, not just this page.
   useEffect(() => {
     let live = true;
@@ -312,7 +384,9 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           <ScrollText size={18} /> {t("nav.activity")}
         </span>}
         sub={total == null ? t("loading…") : total === 0 ? ""
-          : t("audit.entries", { n: total })}
+          : t(by === "all" ? "audit.entries"
+            : by.startsWith("token:") ? "audit.entries_token"
+            : `audit.entries_${by}`, { n: total, name: byName })}
         actions={!!total && (
           <Button variant="secondary" size="icon"
             label={t("audit.export")}
@@ -326,16 +400,26 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
             the left, the card beside it */}
         <div className="mx-auto flex max-w-180 flex-col gap-4
           lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
-          {total !== 0 && <MonthCard recent={recent} rules={rules} />}
+          {(total !== 0 || by !== "all") && (
+            <div className="flex flex-col gap-3 lg:sticky lg:top-0
+              lg:col-start-2 lg:row-start-1 lg:self-start">
+              <MonthCard recent={recent} rules={rules} />
+              <FilterRow by={by} name={byName}
+                onChange={(v) => { setBy(v); setOffset(0); }} />
+            </div>
+          )}
           <div className="flex min-w-0 flex-col gap-4 lg:col-start-1
             lg:row-start-1">
           {above}
           {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
           {!entries && !error && <Loading />}
-          {entries && entries.length === 0 && (
+          {entries && entries.length === 0 && (by === "all" ? (
             <EmptyState icon={<ScrollText size={18} />}
               title={t("audit.empty")} hint={t("audit.empty_hint")} />
-          )}
+          ) : (
+            <p className="px-1 type-body text-muted">
+              {t("activity.filter_empty")}</p>
+          ))}
           {months.map((m) => (
             <section key={m.key} aria-label={monthName(m.ts)}>
               <SectionLabel className="px-1 pb-1">{monthName(m.ts)}</SectionLabel>

@@ -23,13 +23,13 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from . import FORMER_ENV
 from . import accounts as accountsmod
 from . import aifilter
 from . import aihelper
-from . import assistanttokens
+from . import assistantplans, assistanttokens
 from . import auditlog
 from . import auth as authmod
 from . import bodyindex
@@ -689,6 +689,7 @@ class DeleteMessagesBody(BaseModel):
 class UndoBody(BaseModel):
     index: int = -1
     ident: dict | None = None    # {ts, label, count}: pick by identity
+    assistant: bool = False      # an AI assistant's step (its own list)
 
 
 class NoticeClearBody(BaseModel):
@@ -884,7 +885,17 @@ def get_assistant_tokens():
     """This workspace's assistant access tokens (never their secrets), the
     admin cap and the levels a token can have right now."""
     _assistants_gate()
-    return {"tokens": assistanttokens.list_for(tenants.current().id),
+    # proposals of each token still waiting for the user (the token detail)
+    waiting: dict[str, int] = {}
+    for r in rulesmod.load_rules():
+        by = r.get("proposed_by")
+        if r.get("origin") == "mcp" and r.get("mode") == "report" \
+                and isinstance(by, dict):
+            waiting[by.get("token_id", "")] = \
+                waiting.get(by.get("token_id", ""), 0) + 1
+    return {"tokens": [{**t, "proposals": waiting.get(t["id"], 0)}
+                       for t in assistanttokens.list_for(
+                           tenants.current().id)],
             "access": cfgmod.assistant_access(),
             "levels": list(assistanttokens.AVAILABLE_LEVELS)}
 
@@ -911,6 +922,27 @@ def post_assistant_token(body: AssistantTokenBody):
     return {"token": rec, "secret": secret}
 
 
+class AssistantTokenPatch(BaseModel):
+    daily_cap: StrictInt
+
+
+@app.patch("/api/assistants/tokens/{token_id}")
+def patch_assistant_token(token_id: str, body: AssistantTokenPatch):
+    """Change a token's daily limit (mails it may move per day, 100-10,000);
+    the next plan it applies follows it."""
+    _assistants_gate()
+    try:
+        rec = assistanttokens.set_cap(tenants.current().id, token_id,
+                                      body.daily_cap)
+    except assistanttokens.TokenError as exc:
+        raise HTTPException(
+            404 if str(exc) == assistanttokens.UNKNOWN else 400, str(exc))
+    for account in rec["accounts"]:
+        auditlog.record("assistant_token_cap", account=account,
+                        label=f"{rec['name']}: {rec['daily_cap']}")
+    return {"token": rec}
+
+
 @app.delete("/api/assistants/tokens/{token_id}")
 def delete_assistant_token(token_id: str):
     """Revoke one token: it stops working at once."""
@@ -919,6 +951,7 @@ def delete_assistant_token(token_id: str):
         rec = assistanttokens.revoke(tenants.current().id, token_id)
     except assistanttokens.TokenError as exc:
         raise HTTPException(404, str(exc))
+    assistantplans.drop_token(token_id)
     for account in rec["accounts"]:
         auditlog.record("assistant_token_revoked", account=account,
                         label=rec["name"])
@@ -1477,9 +1510,20 @@ def get_wrapped(year: int | None = Query(None, ge=1970, le=9999),
 
 @app.get("/api/audit")
 def get_audit(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500),
-             account: str | None = Query(None)):
+             account: str | None = Query(None),
+             by: str = Query(
+                 "all", pattern="^(all|user|rules|assistants|token:[0-9a-f]{1,32})$")):
     acc = _acc(account)
-    return auditlog.load(acc.name, offset, limit)
+    if by.startswith("token:"):
+        # one assistant token's steps: only a token of THIS workspace
+        tid = by[6:]
+        tk = next((t for t in assistanttokens.list_for(tenants.current().id)
+                   if t["id"] == tid), None)
+        if tk is None:
+            raise HTTPException(404, assistanttokens.UNKNOWN)
+        return auditlog.load(acc.name, offset, limit, "assistants",
+                             actor=f"mcp:{tk['name']}")
+    return auditlog.load(acc.name, offset, limit, by)
 
 
 @app.get("/api/audit/export")
@@ -1699,7 +1743,8 @@ def post_protect(body: ProtectBody):
 def post_undo(body: UndoBody, account: str | None = Query(None)):
     acc = _acc(account)
     try:
-        return mailops.undo_last(body.index, acc, body.ident)
+        return mailops.undo_last(body.index, acc, body.ident,
+                                 assistant=body.assistant)
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
     except Exception as exc:

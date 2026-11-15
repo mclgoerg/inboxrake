@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test } from "vitest";
-import { assistantActorName, entryText, isRuleActor, whoLine } from "./activity";
+import { assistantActorName, entryText, isRuleActor, monthSummary,
+  whoLine } from "./activity";
 import { setLang } from "./i18n";
 import type { AuditEntry } from "./types";
 
@@ -43,4 +44,41 @@ test("proposals, withdrawals and the alert mail have their own headlines", () =>
 
 test("an entry without a label falls back to the plain action word", () => {
   expect(entryText(e({ label: "" }), []).title).toBe("Rule proposed");
+});
+
+test("the month card splits assistants from you and from rules", () => {
+  const now = new Date(2026, 10, 14, 12);
+  const ts = Math.floor(new Date(2026, 10, 10, 9).getTime() / 1000);
+  const mv = (actor: string, count: number): AuditEntry =>
+    e({ ts, actor, action: "trash", count, label: "x", bytes: count * 10 });
+  const sum = monthSummary([mv("user", 9), mv("rule:r1", 4),
+    mv("mcp:Claude Code · laptop", 120), mv("mcp:Other", 1)], now);
+  expect(sum.mails).toBe(134);
+  expect(sum.byAssistants).toBe(121);
+  expect(sum.byRules).toBe(4);
+  expect(sum.byYou).toBe(9);              // never inflated by assistants
+});
+
+test("what an assistant did besides moving mail has its own headlines", () => {
+  // number and noun are joined by a no-break space: compare as words
+  const words = (x: { title: string; detail: string }) => ({
+    title: x.title.replace(/\s/g, " "), detail: x.detail });
+  const a = (action: string, count: number, label = "") =>
+    words(entryText(e({ action, count, label }), []));
+  expect(a("assistant_protect", 3, "billing@power.example, a@x.example").title)
+    .toBe("Protected 3 senders");
+  expect(a("assistant_protect", 3, "billing@power.example").detail)
+    .toBe("billing@power.example");
+  expect(a("assistant_protect", 1).title).toBe("Protected 1 sender");
+  expect(a("assistant_pin", 2).title).toBe("Pinned 2 mails");
+  expect(a("assistant_scan", 0).title).toBe("Started a rescan");
+  expect(words(entryText(e({ actor: "user", action: "assistant_token_cap",
+    count: 0, label: "Claude Code · laptop: 3000" }), [])).title)
+    .toBe("Set the daily limit of “Claude Code · laptop” to 3,000 mails");
+  // an entry from a newer build without a label: the plain action word
+  expect(a("assistant_token_cap", 0).title).toBe("Daily limit changed");
+  setLang("de");
+  expect(a("assistant_pin", 2).title).toBe("2 Mails angepinnt");
+  expect(a("assistant_scan", 0).title).toBe("Neuen Scan gestartet");
+  expect(a("assistant_protect", 3).title).toBe("3 Absender geschützt");
 });

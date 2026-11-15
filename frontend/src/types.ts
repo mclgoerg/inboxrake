@@ -179,6 +179,10 @@ export interface DeleteState {
   error: string;
   moved: number;
   seq?: number;   // bumped by the backend whenever a new job starts
+  /** Who runs / ran the current job (`user`, `rule:<id>`, `mcp:<token name>`)
+   *  and what it does; absent before a job ran. */
+  actor?: string;
+  action?: string;
 }
 
 export interface AttsState {
@@ -293,6 +297,10 @@ export interface UndoEntry {
   quiet?: boolean;
   label_key?: string;
   label_params?: Record<string, string | number>;
+  /** An AI assistant's step (the `assistant_undo` list): its audit actor
+   *  (`mcp:<token name>`) and token id. */
+  actor?: string;
+  token?: string;
 }
 
 export interface FolderMoveResp {
@@ -387,6 +395,10 @@ export interface AuditEntry {
   undoes?: { id: string; count: number };
 }
 
+/** Who did it, for the Activity filter. */
+export type AuditBy = "all" | "user" | "rules" | "assistants"
+  | `token:${string}`;   // one assistant token's steps (its id)
+
 export interface AuditResp {
   total: number;
   entries: AuditEntry[];
@@ -468,6 +480,8 @@ export interface AppState {
   junk_count?: number | null;
   notice: { key: string; params: Record<string, string | number> } | null;
   undo: UndoEntry[];
+  /** AI assistants' own undo list (never mixed into `undo`). */
+  assistant_undo?: UndoEntry[];
   folders_raw: string[];
   rules: Rule[];
   presets: FilterPreset[];
@@ -991,6 +1005,8 @@ export interface AssistantToken {
   last_used: number | null;
   calls_today: number;
   mails_today: number;
+  /** its proposals still waiting for the user */
+  proposals?: number;
 }
 
 export interface AssistantTokenList {

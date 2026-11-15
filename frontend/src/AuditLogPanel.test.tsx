@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, fireEvent, within } from
+import { act, cleanup, render, screen, waitFor, fireEvent, within } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { setLang } from "./i18n";
@@ -42,7 +42,7 @@ test("one headline per entry, then who did it", async () => {
   expect(screen.getByText("Could not unsubscribe from item 2")).toBeTruthy();
   expect(screen.getByText(/item 1/)).toBeTruthy();
   expect(screen.getAllByText(/by you/).length).toBe(2);
-  expect(audit).toHaveBeenCalledWith(0, 50);
+  expect(audit).toHaveBeenCalledWith(0, 50, "all");
 });
 
 test("a rule run is about the rule; the move it caused names the rule on its " +
@@ -93,7 +93,7 @@ test("no pager for a single page; with more it pages and shows the range",
     expect(prev.compareDocumentPosition(screen.getByText(/item 1/))
       & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     fireEvent.click(screen.getByText(/Next/));
-    await waitFor(() => expect(audit).toHaveBeenCalledWith(50, 50));
+    await waitFor(() => expect(audit).toHaveBeenCalledWith(50, 50, "all"));
     reset();
   });
 
@@ -405,3 +405,86 @@ test("a deleted rule keeps its stored name in the headline",
     await waitFor(() => screen.getByText("Ran rule “Old rule” · 3 mails"));
     reset();
   });
+
+test("an assistant's entry reads 'by <bot> <token>' and the month card has a " +
+  "By assistants line", async () => {
+  audit.mockResolvedValue({ total: 2, entries: [
+    mk({ actor: "mcp:Claude Code · laptop", count: 120, label: "120 selected mails" }),
+    mk({ actor: "user", count: 9 })] });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getAllByText("Moved 120 mails to Trash"));
+  const row = screen.getByText("Moved 120 mails to Trash").closest("li")!;
+  expect(row.textContent).toMatch(/by\s*Claude Code · laptop/);
+  expect(row.querySelector("svg.lucide-bot")).toBeTruthy();
+  const card = screen.getByRole("region", { name: "This month" });
+  expect(within(card).getByText("By assistants").parentElement!.textContent)
+    .toMatch(/120/);
+  expect(within(card).getByText("By you").parentElement!.textContent)
+    .toMatch(/9/);
+});
+
+test("the filter row asks the server for one kind and starts over", async () => {
+  audit.mockResolvedValue({ total: 80, entries });
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await waitFor(() => screen.getByText("Moved 2 mails to Trash"));
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(50, 50, "all"));
+  const filter = screen.getByRole("group", { name: "Filter" });
+  expect(within(filter).getByRole("button", { name: "All" })
+    .getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(within(filter).getByRole("button", { name: "Assistants" }));
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "assistants"));
+  expect(within(filter).getByRole("button", { name: "Assistants" })
+    .getAttribute("aria-pressed")).toBe("true");
+  // nothing of that kind: a short note, the filter stays
+  audit.mockResolvedValue({ total: 0, entries: [] });
+  fireEvent.click(within(filter).getByRole("button", { name: "Rules" }));
+  await screen.findByText("Nothing here yet.");
+  expect(screen.getByRole("group", { name: "Filter" })).toBeTruthy();
+});
+
+test("Activity can open already narrowed to the assistants", async () => {
+  render(<AuditLogPanel rules={[]} onClose={() => {}} initialBy="assistants" />);
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "assistants"));
+});
+
+test("one token's steps get a button of their own, the subtitle follows the " +
+  "filter and leaving the page calls onLeave", async () => {
+  audit.mockResolvedValue({ total: 4, entries });
+  const left = vi.fn();
+  const { unmount } = render(<AuditLogPanel rules={[]} onClose={() => {}}
+    initialBy="token:ab12" byName="Claude Code · laptop" onLeave={left} />);
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "token:ab12"));
+  await waitFor(() => screen.getByText(/what Claude Code · laptop did, newest first/));
+  const filter = screen.getByRole("group", { name: "Filter" });
+  expect(within(filter).getByRole("button", { name: "Claude Code · laptop" })
+    .getAttribute("aria-pressed")).toBe("true");
+  expect(within(filter).getByText("Filter:")).toBeTruthy();
+  fireEvent.click(within(filter).getByRole("button", { name: "You" }));
+  await waitFor(() => screen.getByText(/what you did, newest first/));
+  expect(within(screen.getByRole("group", { name: "Filter" }))
+    .queryByRole("button", { name: "Claude Code · laptop" })).toBeNull();
+  expect(left).not.toHaveBeenCalled();
+  unmount();
+  expect(left).toHaveBeenCalledTimes(1);
+});
+
+test("a slow answer to an earlier filter never replaces the later one", async () => {
+  let slow: (v: unknown) => void = () => {};
+  audit.mockImplementation((_o: number, _l: number, by: string) =>
+    by === "rules" ? new Promise((r) => { slow = r; })
+      : Promise.resolve({ total: 1, entries: [mk({ label: `only ${by}`,
+        action: "assistant_scan", count: 0 })] }));
+  render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+  await screen.findByText(/Started a rescan/);
+  const filter = screen.getByRole("group", { name: "Filter" });
+  fireEvent.click(within(filter).getByRole("button", { name: "Rules" }));
+  fireEvent.click(within(filter).getByRole("button", { name: "You" }));
+  await waitFor(() => expect(audit).toHaveBeenCalledWith(0, 50, "user"));
+  await screen.findByText(/Started a rescan/);
+  // the earlier (rules) answer arrives last
+  await act(async () => slow({ total: 1, entries: [mk({
+    action: "trash", count: 7, label: "STALE" })] }));
+  expect(screen.queryByText("Moved 7 mails to Trash")).toBeNull();
+  expect(screen.getByText(/what you did/)).toBeTruthy();
+});

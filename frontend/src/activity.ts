@@ -2,6 +2,7 @@
  * grouping, computed from the audit entries the page already loaded. */
 
 import { t } from "./i18n";
+import { fmtNum } from "./numfmt";
 import type { AuditEntry, AuditResp, Rule } from "./types";
 
 /** Entry actions that move mails out of the inbox. A rule run is logged as
@@ -22,6 +23,8 @@ export interface MonthSummary {
   /** the split of `mails`: by rules / by you (the rest) */
   byRules: number;
   byYou: number;
+  /** ... and by AI assistants (their own share, never "by you") */
+  byAssistants: number;
   /** senders unsubscribed from this month (the entries that went through) */
   unsubscribed: number;
 }
@@ -72,7 +75,8 @@ export function undoneCounts(entries: AuditEntry[]): Map<string, number> {
 
 /** One entry's share of the cleaning: when, how many mails (what an undo
  *  did not restore) and their size (pro rata). */
-interface Cleaned { ts: number; n: number; bytes: number; rule: boolean }
+interface Cleaned { ts: number; n: number; bytes: number; rule: boolean;
+  assistant: boolean }
 
 /** What counts as cleaning: moves to Trash / archive / elsewhere and rule
  *  runs without a move entry of their own. `count` of an entry is what was
@@ -95,7 +99,8 @@ function cleaning(entries: AuditEntry[], rules: Rule[]): Cleaned[] {
     const back = Math.min(e.count, e.id ? undone.get(e.id) ?? 0 : 0);
     const n = e.count - back;
     out.push({ ts: e.ts, n, bytes: Math.round(e.bytes * n / e.count),
-      rule: isRuleActor(e.actor) });
+      rule: isRuleActor(e.actor),
+      assistant: assistantActorName(e.actor) !== null });
   }
   return out;
 }
@@ -108,6 +113,7 @@ export function monthSummary(entries: AuditEntry[], now: Date,
   let mails = 0;
   let bytes = 0;
   let byRules = 0;
+  let byAssistants = 0;
   for (const c of cleaning(entries, rules)) {
     if (monthKey(new Date(c.ts * 1000)) !== key) continue;
     const day = new Date(c.ts * 1000).getDate();
@@ -115,12 +121,14 @@ export function monthSummary(entries: AuditEntry[], now: Date,
     mails += c.n;
     bytes += c.bytes;
     if (c.rule) byRules += c.n;
+    else if (c.assistant) byAssistants += c.n;
   }
   // An unsubscribe that only found a link (or failed) did not unsubscribe.
   const unsubscribed = entries.filter((e) => e.action === "unsubscribe"
     && (e.outcome === "ok" || e.outcome === "done")
     && monthKey(new Date(e.ts * 1000)) === key).length;
-  return { mails, bytes, weeks, byRules, byYou: mails - byRules, unsubscribed };
+  return { mails, bytes, weeks, byRules, byAssistants,
+    byYou: mails - byRules - byAssistants, unsubscribed };
 }
 
 /** The day ranges of the four weekly bars of `now`'s month: [1, 7], [8, 14],
@@ -315,6 +323,26 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
         : tOr("audit.act", e.action);
       detail = "";
       break;
+    case "assistant_protect": case "assistant_pin":
+      // what was protected / pinned is in the label; the line says how many
+      title = n > 0 ? t(`audit.h.${e.action}`, { n })
+        : tOr("audit.act", e.action);
+      detail = e.action === "assistant_protect" ? label : "";
+      break;
+    case "assistant_scan":
+      title = t("audit.h.assistant_scan");
+      detail = "";
+      break;
+    case "assistant_token_cap": {
+      // the label is "<token name>: <daily limit>"
+      const at = label.lastIndexOf(": ");
+      title = at > 0 ? t("audit.h.assistant_token_cap", {
+        name: label.slice(0, at),
+        n: fmtNum(Number(label.slice(at + 2)) || 0) })
+        : tOr("audit.act", e.action);
+      detail = "";
+      break;
+    }
     case "assistant_token_created": case "assistant_token_revoked":
       title = label ? t(`audit.h.${e.action}`, { name: label })
         : tOr("audit.act", e.action);
