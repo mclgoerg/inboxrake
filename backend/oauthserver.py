@@ -123,13 +123,11 @@ def _b64(data: bytes) -> str:
 
 def _s256(verifier: str) -> str:
     """The PKCE S256 challenge of a verifier (SHA-256 by definition, RFC 7636)."""
-    # codeql[py/weak-sensitive-data-hashing]
     return _b64(hashlib.sha256(verifier.encode()).digest())
 
 
 def _hash(secret: str) -> str:
     # a 256-bit random code: nothing to brute force, so no slow hash is needed
-    # codeql[py/weak-sensitive-data-hashing]
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
@@ -403,6 +401,8 @@ def _form(body: bytes, content_type: str) -> dict | Reply:
     form = dict(pairs)
     if len(form) != len(pairs):
         return _oauth_error("invalid_request", description="repeated field")
+    if any(name == "client_secret" for name, _ in pairs):
+        return _oauth_error("invalid_client")     # only `none` exists
     return form
 
 
@@ -416,15 +416,10 @@ def _gate(body: bytes, content_type: str, authorization: str,
     if wait:
         return Reply(429, {"error": "temporarily_unavailable"},
                      {**_NO_STORE, "Retry-After": str(wait)})
-    form = _form(body, content_type)
-    if isinstance(form, Reply):
-        return form
     if authorization.lower().startswith("basic "):
         return _oauth_error("invalid_client", 401,
                             headers={"WWW-Authenticate": "Basic"})
-    if "client_secret" in form:
-        return _oauth_error("invalid_client")
-    return form        # a client_assertion is ignored: we advertise `none`
+    return _form(body, content_type)        # a client_assertion is ignored: we advertise `none`
 
 
 def token(body: bytes, content_type: str, authorization: str, peer: str,
