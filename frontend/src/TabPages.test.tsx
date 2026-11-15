@@ -391,7 +391,7 @@ test("Insights: When mail arrives widget - the small grid, the legend, the busie
   cleanup(); setLang("de");
   render(<InsightsPage groups={[]} state={state()} onOpen={vi.fn()} />);
   const de = (await screen.findByText("am meisten Di 06:00", { exact: false })).closest("button")!;
-  expect(de.textContent).toContain("30 Tage");
+  expect(de.textContent).toContain("30\u00a0Tage");
   expect(de.textContent).not.toContain("Tagen");
   setLang("en");
 });
