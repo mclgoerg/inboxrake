@@ -804,11 +804,11 @@ def _server(mailbox: dict, **kw) -> FakeIMAP:
 # --- Your addresses ----------------------------------------------------------
 # Mail that arrived on addresses other than the main one, with the receiving
 # headers the scan reads (Delivered-To / X-Original-To / To). Deterministic (no
-# random draws, UIDs from a range of their own), so the rest of the demo stays
+# random draws, UIDs from a range of their own (700,000 up; Subscriptions uses 500,000 up)), so the rest of the demo stays
 # exactly as it was. The aliases live on the invented alias.example, the
 # demo's alias service (scripts/demo.py DemoAliasService) knows them.
 MAIN_ADDR = "demo@example.com"
-_AUID = iter(range(500_000, 600_000))
+_AUID = iter(range(700_000, 800_000))
 ADDRESS_MAILS: list[dict] = []
 
 
