@@ -113,6 +113,10 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); setDemo(false); setLang("en"); });
 
+/** The labels of a radio group's rows (a row's description is not its name). */
+const rowNames = (group: HTMLElement) => within(group).getAllByRole("radio")
+  .map((r) => document.getElementById(r.getAttribute("aria-labelledby")!)!.textContent);
+
 const newTokenButton = () =>
   screen.getAllByRole("button", { name: /New access token/ })[0];
 
@@ -138,8 +142,9 @@ test("no tokens: no badge; the search finds the section by its row labels", asyn
 test("with Read only the admin control is Off / On and On saves read_propose", async () => {
   await show(baseCfg({ ...READ_ONLY, access: "off" }));
   const group = screen.getByRole("radiogroup", { name: "Assistant access" });
-  expect(within(group).getAllByRole("radio").map((r) => r.textContent))
-    .toEqual(["Off", "On"]);
+  expect(rowNames(group)).toEqual(["Off", "On"]);
+  expect(within(group).getByText("Assistants can't connect.")).toBeTruthy();
+  expect(within(group).getByText("Tokens can read your mailbox.")).toBeTruthy();
   expect(screen.getByText(/no assistant can reach this server/)).toBeTruthy();
   // nothing but the control and its explanation while it is off
   expect(screen.queryByText("Connect")).toBeNull();
@@ -179,8 +184,9 @@ test("all three levels: Off / Read and propose / Also act; lowering Act asks", a
   listed = [tok({ level: "act", mails_today: 160 })];
   await show(baseCfg(ALL));
   const group = screen.getByRole("radiogroup", { name: "Assistant access" });
-  expect(within(group).getAllByRole("radio").map((r) => r.textContent))
-    .toEqual(["Off", "Read and propose", "Also act"]);
+  expect(rowNames(group)).toEqual(["Off", "Read and propose", "Also act"]);
+  expect(within(group).getByText(/with Propose they can suggest rules you approve/)).toBeTruthy();
+  expect(within(group).getByText(/also clean up mail, each step undoable/)).toBeTruthy();
   // all three columns + the Never line
   const levels = screen.getByText("What each level allows").closest("div")!
     .parentElement!;
@@ -481,8 +487,8 @@ const PROPOSE = { access: "read_propose" as const,
 test("with Read and Propose the cap control is Off / Read and propose (no Also act)", async () => {
   await show(baseCfg(PROPOSE));
   const group = screen.getByRole("radiogroup", { name: "Assistant access" });
-  expect(within(group).getAllByRole("radio").map((r) => r.textContent))
-    .toEqual(["Off", "Read and propose"]);
+  expect(rowNames(group)).toEqual(["Off", "Read and propose"]);
+  expect(within(group).queryByText(/also clean up mail/)).toBeNull();
   // two columns: Read and Propose, then the Never line
   const levels = screen.getByText("What each level allows").closest("div")!
     .parentElement!;
@@ -860,4 +866,20 @@ test("access turned off while hosted apps are on: the switch stays on with the r
   expect(screen.queryByText(/Hosted apps reach this server/)).toBeNull();
   expect(screen.queryByText("Connect a hosted app")).toBeNull();
   expect(screen.queryByText("Connections")).toBeNull();
+});
+
+test("the access choice is the same radio list at every width, with arrow keys staging a change", async () => {
+  await show(baseCfg({ ...READ_ONLY, access: "off" }));
+  const group = screen.getByRole("radiogroup", { name: "Assistant access" });
+  // no Segmented (a tablist-less radiogroup of pills) any more: rows only
+  expect(group.querySelectorAll("[role=radio]").length).toBe(2);
+  expect(group.querySelector("[class*=bg-segment-on]")).toBeNull();
+  const off = within(group).getByRole("radio", { name: "Off" });
+  off.focus();
+  fireEvent.keyDown(off, { key: "ArrowDown" });
+  expect(within(group).getByRole("radio", { name: "On" })
+    .getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+  // and the hosted-apps switch is its own group, not a row of the radios
+  expect(within(group).queryByRole("switch")).toBeNull();
 });
