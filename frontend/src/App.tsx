@@ -24,6 +24,7 @@ import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
 import { Login } from "./components/Login";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
 import { DuplicatesPanel } from "./components/DuplicatesPanel";
+import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { showReminderToast } from "./subscriptions";
@@ -253,6 +254,9 @@ export default function App() {
   const [subsOpen, setSubsOpen] = useState(false);
   // The Subscriptions page opened from the Overview's Review: only the unused.
   const [subsOnlyUnused, setSubsOnlyUnused] = useState(false);
+  const [addressesOpen, setAddressesOpen] = useState(false);
+  // Addresses that look leaked (the sidebar badge); refreshed after each scan.
+  const [leaked, setLeaked] = useState(0);
   const [statsOpen, setStatsOpen] = useState(false);
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
@@ -279,6 +283,7 @@ export default function App() {
     : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
     : statsOpen ? "stats" : spaceOpen ? "space"
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
+    : addressesOpen ? "addresses"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
   // "Only the unused" is for the visit the Overview's Review started.
@@ -333,6 +338,17 @@ export default function App() {
 
   const fetching = useRef(false);   // one full-state fetch at a time
   const stateRef = useRef<AppState | null>(null);
+
+  // The sidebar badge: addresses that look leaked, read again after each scan
+  // (a failed read leaves the last number).
+  const scannedStamp = state?.status === "done" ? state.groups_rev : -1;
+  useEffect(() => {
+    if (scannedStamp < 0) { setLeaked(0); return; }
+    let alive = true;
+    Promise.resolve().then(() => api.addressesSummary())
+      .then((r) => alive && setLeaked(r.leaked)).catch(() => {});
+    return () => { alive = false; };
+  }, [scannedStamp, account]);
 
   const refresh = useCallback(async () => {
     clearTimeout(timer.current);
@@ -1024,7 +1040,7 @@ export default function App() {
     setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
-    setSubsOpen(false); setAuditOpen(false);
+    setSubsOpen(false); setAddressesOpen(false); setAuditOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1098,7 +1114,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2262,6 +2278,7 @@ export default function App() {
     wrapped: () => setWrappedOpen(true),
     trackers: () => setTrackersOpen(true),
     subscriptions: () => setSubsOpen(true),
+    addresses: () => setAddressesOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
       if (navPage !== "settings") settingsFrom.current = navPage;
@@ -2693,6 +2710,17 @@ export default function App() {
         onDeleted={refresh}
       />
     )}
+    {toolShown("addresses") && (
+      <AddressesPanel key={account} account={account}
+        rev={state?.groups_rev ?? 0}
+        onClose={() => closeTool(() => setAddressesOpen(false))}
+        onChanged={refresh} onLeaked={setLeaked}
+        onOpenAliasSettings={() => {
+          setAddressesOpen(false);
+          settingsFrom.current = navPage;
+          gotoSettings("alias", null, true);
+        }} />
+    )}
     {toolShown("trackers") && (
       <TrackersPanel key={account}
         account={account}
@@ -2809,7 +2837,7 @@ export default function App() {
             .reduce((n, g) => n + g.count, 0) : undefined}
         junkCount={state?.junk_count} trashCount={state?.trash_count}
         proposals={openProposals(state?.rules).length}
-        subscriptions={subs?.totals.count}
+        subscriptions={subs?.totals.count} leaked={leaked}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />

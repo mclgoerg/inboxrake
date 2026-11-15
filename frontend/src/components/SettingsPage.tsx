@@ -1,6 +1,6 @@
 import { Archive, ArrowLeftRight, Bell, Bot, Check, Folder, KeyRound, Mail, Plus,
   RefreshCw, Search, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Star,
-  Tag as TagIcon, TriangleAlert } from "lucide-react";
+  Tag as TagIcon, TriangleAlert, VenetianMask } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState,
   type MutableRefObject, type ReactNode } from "react";
 import { api, downloadFile, fmtUsd } from "../api";
@@ -14,6 +14,7 @@ import { PRESET_LABELS, PRESETS, presetLabel } from "../presets";
 import type { AdminTenantStats, AppState, AssistantAccess, AuthMethod, AuthMode, AutoScanUnit, BodySearchMode, Config,
   DigestSchedule, FoldersResp, ImapAccount, KeepSafeClass, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
+import { AliasServiceSection } from "./AliasServiceSettings";
 import { AssistantsSection, useAssistantTokens } from "./AssistantsSettings";
 import { FolderSettings } from "./FolderSettings";
 import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
@@ -801,6 +802,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       ownCategories ? String(ownCategories) : undefined,
       [t("Custom categories")]),
     filed: sec("filed", <Folder size={16} />, "info", undefined, []),
+    alias: sec("alias", <VenetianMask size={16} />, "info", undefined,
+      [t("alias.service"), t("alias.api_key"), t("alias.connection")]),
     digest: sec("digest", <Mail size={16} />, "attach",
       sched === "off" ? t("digest.off")
         : `${cap(t(`sched.${sched}`))} ${clock}`,
@@ -831,7 +834,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const groups: { key: string; label?: string; ids: SettingsSection[] }[] = [
     { key: "app", label: t("settings.group.app"),
       ids: ["general", "notifications", "protected", "keepsafe", "categories",
-        "filed",
+        "filed", "alias",
         ...(admin ? [] : ["backup" as const])] },
     { key: "automation", label: t("settings.group.automation"),
       ids: ["digest", "autoscan"] },
@@ -1795,7 +1798,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   const bodies: Record<SettingsSection, ReactNode> = {
     account: accountBody, general: generalBody,
     notifications: notificationsBody, protected: protectedBody,
-    keepsafe: keepsafeBody, categories: categoriesBody, filed: filedBody, digest: digestBody,
+    keepsafe: keepsafeBody, categories: categoriesBody, filed: filedBody,
+    alias: <AliasServiceSection />, digest: digestBody,
     autoscan: autoscanBody, ai: aiBody, assistants: assistantsBody,
     signin: signinBody,
     backup: backupBody,

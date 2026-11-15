@@ -11,12 +11,14 @@ const audit = vi.fn();
 const wrapped = vi.fn();
 const rhythm = vi.fn();
 const duplicates = vi.fn();
+const addressesSummary = vi.fn();
 const sum = (o: object) => ({ sets: 0, wasted: 0, versions: 0, possible: 0,
   ...o });
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   api: { duplicatesSummary: () => duplicates(), stats: () => stats(), trackers: () => trackers(),
     wrapped: () => wrapped(), rhythm: (...a: unknown[]) => rhythm(...a),
+    addressesSummary: () => addressesSummary(),
     audit: (...a: unknown[]) => audit(...a) },
 }));
 
@@ -35,7 +37,12 @@ const state = (over: Partial<AppState> = {}) => ({
 }) as unknown as AppState;
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
-beforeEach(() => { duplicates.mockRejectedValue(new Error("x")); wrapped.mockRejectedValue(new Error("x")); rhythm.mockRejectedValue(new Error("x")); });
+beforeEach(() => {
+  duplicates.mockRejectedValue(new Error("x"));
+  wrapped.mockRejectedValue(new Error("x"));
+  rhythm.mockRejectedValue(new Error("x"));
+  addressesSummary.mockResolvedValue({ leaked: 0, total: 3, scanned: true });
+});
 
 const cleanupProps = (over = {}) => ({
   account: "a", groups: [] as Group[], state: state(), deckSize: 0,
@@ -476,3 +483,23 @@ test("Insights: without amounts the widget counts the services; nothing "
   expect(w).not.toContain("/ month");
   expect(w).not.toContain("unused");
 });
+
+test("Insights: Your addresses is a card with the number that look leaked",
+  async () => {
+    stats.mockResolvedValue({ months: [], total: 0 });
+    trackers.mockRejectedValue(new Error("x"));
+    audit.mockResolvedValue({ entries: [], total: 0 });
+    addressesSummary.mockResolvedValue({ leaked: 2, total: 5, scanned: true });
+    const onOpen = vi.fn();
+    render(<InsightsPage groups={[]} state={state()} onOpen={onOpen} />);
+    const card = screen.getByRole("button", { name: /^Your addresses/ });
+    await waitFor(() => expect(card.textContent)
+      .toMatch(/2\u00a0addresses look leaked/));
+    fireEvent.click(card);
+    expect(onOpen).toHaveBeenCalledWith("addresses");
+    cleanup();
+    addressesSummary.mockResolvedValue({ leaked: 0, total: 5, scanned: true });
+    render(<InsightsPage groups={[]} state={state()} onOpen={onOpen} />);
+    await waitFor(() => expect(screen.getByRole("button",
+      { name: /^Your addresses/ }).textContent).toContain("No leaks found"));
+  });

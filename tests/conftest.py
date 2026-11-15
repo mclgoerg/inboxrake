@@ -17,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend import accountcopy              # noqa: E402
 from backend import accounts as accountsmod   # noqa: E402
+from backend import addresses                 # noqa: E402
+from backend import addressstore              # noqa: E402
+from backend import aliasservice              # noqa: E402
 from backend import auditlog as auditlogmod   # noqa: E402
 from backend import assistanttokens          # noqa: E402
 from backend import auth as authmod            # noqa: E402
@@ -91,6 +94,12 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(accountcopy, "THROTTLE_RATIO", 0)
     accountcopy._THREADS.clear()
     accountcopy._STOP.clear()
+    monkeypatch.setattr(addressstore, "ADDRESSES_PATH",
+                        tmp_path / "addresses.json")
+    monkeypatch.setattr(aliasservice, "ALIAS_PATH",
+                        tmp_path / "alias_service.json")
+    addressstore._cache.clear()
+    addresses._cache.clear()
     monkeypatch.setattr(webpush, "PUSH_KEY_PATH", tmp_path / "push_key.pem")
     monkeypatch.setattr(webpush, "PUSH_SUBS_PATH",
                         tmp_path / "push_subscriptions.json")
@@ -150,11 +159,13 @@ def make_msg(uid, frm='"Shop News" <news@shop.example>',
              subject="Big Sale 42", unsub=None, unsub_post=False,
              msgid=None, size=1000, seen=False,
              date=DEFAULT_MAIL_DATE, to=None, cc=None,
-             atts=None, body=None, irt=None, refs=None, html=None):
+             atts=None, body=None, irt=None, refs=None, html=None,
+             delivered_to=None, original_to=None):
     return {"uid": uid, "body": body, "html": html, "irt": irt, "refs": refs, "from": frm, "subject": subject, "unsub": unsub,
             "unsub_post": unsub_post,
             "msgid": msgid or f"<m{uid}@shop.example>",
             "size": size, "seen": seen, "date": date, "to": to, "cc": cc,
+            "delivered_to": delivered_to, "original_to": original_to,
             "atts": atts or []}     # [(filename, size)] for BODYSTRUCTURE
 
 
@@ -379,6 +390,10 @@ class FakeIMAP:
             lines.append(f"To: {m['to']}")
         if m.get("cc"):
             lines.append(f"Cc: {m['cc']}")
+        if m.get("delivered_to"):
+            lines.append(f"Delivered-To: {m['delivered_to']}")
+        if m.get("original_to"):
+            lines.append(f"X-Original-To: {m['original_to']}")
         if m["unsub"]:
             lines.append(f"List-Unsubscribe: {m['unsub']}")
         if m["unsub_post"]:

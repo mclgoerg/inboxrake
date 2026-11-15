@@ -202,7 +202,8 @@ one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
 trackers, subscriptions (what you still pay for, from receipt subjects, with
-reminders and an optional amount read from the latest receipt), space
+reminders and an optional amount read from the latest receipt), "Your
+addresses" (which of your aliases leaked, retire one), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log, multiple strictly separate
 accounts with a copy-to-another-account wizard for a provider switch,

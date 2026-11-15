@@ -726,6 +726,74 @@ export interface IndexInfo {
          error: string; done: number; total: number };
 }
 
+// GET /api/addresses: the Your addresses page (backend/addresses.py).
+export type AddressKind = "main" | "tag" | "alias" | "catchall" | "other";
+export interface AddressStranger {
+  party: string;
+  name: string;
+  addr: string;
+  addrs: string[];     // the sender addresses that wrote to this address
+  addr_total: number;  // all its sender addresses (addrs keeps the 10 most used)
+  to_block: string[];  // of those, the ones a Block still has to cover
+  mails: number;
+  protected: boolean;
+  blocked: boolean;
+}
+export interface AddressLeak {
+  quiet_days: number;  // how long only the first sender wrote
+  quiet_mails: number;
+  first_stranger: { ts: number; party: string; name: string; addr: string };
+  followed: number;    // other strangers within 2 weeks of the first
+  stranger_mails: number;
+  dmarc_failed: number | null;   // null: the scan has no sender-check data
+  strangers: AddressStranger[];
+}
+export interface AddressRow {
+  address: string;
+  kind: AddressKind;
+  tag: string;
+  mails: number;
+  senders: number;
+  first_ts: number;
+  last_ts: number;
+  given_to: { name: string; addr: string; ts: number; subject: string } | null;
+  leak: AddressLeak | null;
+  retired: boolean;
+  retired_ts: number;
+  /** An alias: who manages it (an alias service Inboxrake can talk to, or
+   *  Firefox Relay / iCloud, which it can only recognise). */
+  via?: "service" | "relay" | "icloud";
+  related?: string[];
+  status: "" | "clean" | "leaked" | "last_seen";
+  days_ago?: number | null;
+}
+export interface AliasServiceStatus {
+  service: "simplelogin" | "addy" | "";
+  key_set: boolean;
+  aliases: number | null;    // null: never read
+  synced_ts: number;
+  error: string;             // a coded error of the last check, or ""
+  services: string[];
+}
+export interface AddressReport {
+  scanned: boolean;
+  main: string;
+  mails: number;
+  read: number;              // mails whose receiving address is known
+  total: number;
+  leaked: number;
+  addresses: AddressRow[];
+  service: AliasServiceStatus & { connected: boolean };
+}
+export interface AddressRetired {
+  ok: boolean;
+  address: string;
+  new_alias?: string;
+  new_alias_error?: string;
+  junk?: { queued: number; skipped_protected: number; skipped_pinned: number };
+  junk_error?: string;
+}
+
 // GET /api/trackers: the tracker report built from the body index.
 export interface TrackerSender {
   key: string;

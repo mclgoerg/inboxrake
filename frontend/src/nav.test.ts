@@ -201,3 +201,12 @@ test("scroll: the user scrolling during a restore cancels it", async () => {
   await new Promise((r) => setTimeout(r, 100));
   expect(document.body.scrollTop).toBe(0);
 });
+
+test("Your addresses is a tool page listed on the Insights tab, and Alias service a Settings section", () => {
+  expect(parseHash("#/addresses")).toBe("addresses");
+  expect(isToolPage("addresses")).toBe(true);
+  expect(TOOL_TAB.addresses).toBe("insights");
+  expect(parseSettingsRoute("#/settings/alias"))
+    .toEqual({ section: "alias", account: null });
+  expect(settingsHash("alias")).toBe("#/settings/alias");
+});

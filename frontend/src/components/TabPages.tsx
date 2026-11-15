@@ -1,5 +1,5 @@
-import { BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye, Ghost,
-  History, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
+import { AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
+  Ghost, History, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -36,7 +36,7 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "activity";
+  | "subscriptions" | "addresses" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -328,6 +328,8 @@ export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
     { data: null, failed: false });
   const [wrapped, setWrapped] = useState<WrappedResp | null>(null);
   const [rhythm, setRhythm] = useState<RhythmResp | null>(null);
+  // addresses that look leaked: null until read (the card keeps its height)
+  const [leaked, setLeaked] = useState<number | null>(null);
   const [retrying, setRetrying] = useState(false);
   // Bumped after a retry: the audit list is fetched again (not stats / trackers).
   const [auditTick, setAuditTick] = useState(0);
@@ -346,6 +348,8 @@ export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
     // (a throw before the request - an older API object - is a failure too)
     Promise.resolve().then(() => api.rhythm("30d"))
       .then((d) => alive && setRhythm(d)).catch(() => {});
+    Promise.resolve().then(() => api.addressesSummary())
+      .then((d) => alive && setLeaked(d.leaked)).catch(() => {});
     api.trackers().then((d) => alive && setTrk({ data: d, failed: false }))
       .catch(() => alive && setTrk({ data: null, failed: true }));
     return () => { alive = false; };
@@ -580,6 +584,19 @@ export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
               {t("tab.subs_empty")}
             </span>
           ) : <Skeleton className="h-12" />}
+        </span>
+      </button>
+
+      <button type="button" onClick={() => onOpen("addresses")}
+        className={`${CARD_BTN} mb-3 min-h-20`}>
+        <WidgetTitle icon={<AtSign size={16} />} chevron>
+          {t("addr.menu")}
+        </WidgetTitle>
+        <span className={`mt-2 block type-meta ${leaked
+          ? "font-semibold text-review-fg" : "text-muted"}`}>
+          {leaked == null ? t("tab.addr_sub")
+            : leaked > 0 ? t("tab.addr_leaked", { n: leaked })
+            : t("tab.addr_clean")}
         </span>
       </button>
 

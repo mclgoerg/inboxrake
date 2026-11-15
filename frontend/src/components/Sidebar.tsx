@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
+import { AtSign, BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
   LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
@@ -11,7 +11,7 @@ import { fmtNum } from "../numfmt";
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "activity" | "settings";
+  | "subscriptions" | "addresses" | "activity" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -29,6 +29,8 @@ export interface SidebarProps {
   proposals?: number;
   /** Subscriptions found (a count on Subscriptions; none = no count). */
   subscriptions?: number;
+  /** Addresses that look leaked (a badge on Your addresses). */
+  leaked?: number;
   /** Tools that are disabled today stay disabled with the same rule. */
   disabled: Partial<Record<SidebarTool, boolean>>;
 }
@@ -60,11 +62,24 @@ export function ProposalBadge({ n, quiet = false }: {
   );
 }
 
+/** The count of leaked addresses: a warm disc, with the words for a screen
+ *  reader. */
+export function LeakBadge({ n }: { n?: number }) {
+  return !n ? null : (
+    <span className="ml-auto inline-flex min-w-5 items-center justify-center
+      rounded-full bg-review-bg px-1.5 type-caption font-semibold
+      tabular-nums text-review-fg">
+      <span aria-hidden>{fmtNum(n)}</span>
+      <span className="sr-only">{t("tab.addr_leaked", { n })}</span>
+    </span>
+  );
+}
+
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, proposals, subscriptions, disabled }:
-  SidebarProps) {
+  mailCount, junkCount, trashCount, proposals, subscriptions, leaked,
+  disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
     <a href={hashOf(p)} aria-current={page === p ? "page" : undefined}
@@ -134,6 +149,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("trackers", <Eye size={16} aria-hidden />, t("tracker.menu"))}
       {tool("subscriptions", <Repeat size={16} aria-hidden />, t("sub.menu"),
         subscriptions)}
+      {tool("addresses", <AtSign size={16} aria-hidden />, t("addr.menu"),
+        undefined, <LeakBadge n={leaked} />)}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

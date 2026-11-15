@@ -103,6 +103,8 @@ State files default to names inside `/data` and normally need no change:
 | `PINS_PATH` | `pinned_mails.json` | Pinned mails. |
 | `ACCOUNT_COPY_PATH` | `account_copy.json` | The copy to another account (its progress, and which senders you already told). |
 | `ACCOUNT_COPY_LEDGER_PATH` | `account_copy_ledger.jsonl` | Which mails of that copy are done, so it carries on after a restart without copying twice. |
+| `ADDRESSES_PATH` | `addresses.json` | Your addresses: retired aliases and the "not a leak" marks (per user and account). |
+| `ALIAS_SERVICE_PATH` | `alias_service.json` | The optional alias service (SimpleLogin or addy.io): the service, its API key (encrypted when `INBOXRAKE_SECRET_KEY` is set) and the last alias list (per user; not part of the settings export). |
 | `PUSH_KEY_PATH` | `push_vapid_key.pem` | The instance's signing key for notifications, created on first use (keep it out of backups you share; a new one only means devices must turn notifications on again). |
 | `PUSH_SUBS_PATH` | `push_subscriptions.json` | The devices registered for notifications (per user; not part of the settings export). |
 | `REPLIED_PATH` | `replied.json` | Who you have written to (To/Cc of the Sent folder). |

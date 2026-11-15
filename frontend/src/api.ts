@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest,
-  AccountSummary, AdminTenantStats, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp,
@@ -207,6 +207,13 @@ const ERROR_CODES: Record<string, string> = {
   push_unknown: "ferr.push_unknown",
   push_http: "ferr.push_http",
   push_unreachable: "ferr.push_unreachable",
+  // alias service (backend/aliasservice.py)
+  alias_no_service: "ferr.alias_no_service",
+  alias_key: "ferr.alias_key",
+  alias_unreachable: "ferr.alias_unreachable",
+  alias_http: "ferr.alias_http",
+  alias_not_found: "ferr.alias_not_found",
+  alias_bad_address: "ferr.alias_bad_address",
   // AI assistant access tokens (backend/assistanttokens.py)
   assistants_off: "ferr.assistants_off",
   level_not_available: "ferr.level_not_available",
@@ -646,6 +653,35 @@ export const api = {
       { body_amounts: bodyAmounts }),
   subscriptionAmounts: () =>
     req<{ read: number; found: number }>("/api/subscriptions/amounts", {}),
+  // Your addresses (backend/addresses.py) and the optional alias service
+  addresses: () => req<AddressReport>("/api/addresses"),
+  addressesSummary: () =>
+    req<{ leaked: number; total: number; scanned: boolean }>(
+      "/api/addresses/summary"),
+  retireAddress: (address: string, newAlias: boolean, toJunk: boolean) =>
+    req<AddressRetired>("/api/addresses/retire",
+      { address, new_alias: newAlias, to_junk: toJunk }),
+  restoreAddress: (address: string) =>
+    req<{ ok: boolean }>("/api/addresses/restore", { address }),
+  addressStrangersToJunk: (address: string) =>
+    req<{ ok: boolean; queued: number; skipped_protected: number;
+      skipped_pinned: number }>("/api/addresses/strangers_to_junk",
+      { address }),
+  /** "Not a leak": the strangers belong to the sender. `undo` (the marks
+   *  `previous` returned) restores the earlier marks instead. */
+  addressNotALeak: (address: string, undo?: string[]) =>
+    req<{ ok: boolean; previous: string[] }>("/api/addresses/related",
+      undo ? { address, undo } : { address }),
+  aliasService: () => req<AliasServiceStatus>("/api/alias-service"),
+  aliasServicePut: (service: string, apiKey?: string) =>
+    req<AliasServiceStatus>("/api/alias-service",
+      apiKey ? { service, api_key: apiKey } : { service }, "PUT"),
+  aliasServiceRefresh: () =>
+    req<AliasServiceStatus>("/api/alias-service/refresh", {}),
+  aliasServiceDisconnect: async (): Promise<void> => {
+    const res = await fetch("/api/alias-service", { method: "DELETE" });
+    if (!res.ok) throw new Error(await res.text());
+  },
   indexInfo: (account: string) =>
     req<IndexInfo>(`/api/index?account=${encodeURIComponent(account)}`),
   indexBuild: (account: string, rebuild = false) =>

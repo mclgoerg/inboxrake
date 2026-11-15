@@ -6,11 +6,11 @@ import { afterBackSettles } from "./backStack";
  *  stay modals). */
 export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "trackers"
-  | "subscriptions" | "activity" | "move";
+  | "subscriptions" | "addresses" | "activity" | "move";
 
 export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
   "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
-  "trackers", "subscriptions", "activity", "move"];
+  "trackers", "subscriptions", "addresses", "activity", "move"];
 
 /** Pages of the app shell. `settings` is a page of its own (not a tool): from
  *  1024 px a section column beside the form, below it an iOS-style root list
@@ -31,19 +31,19 @@ export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
   triage: "cleanup", duplicates: "cleanup", attachments: "cleanup",
   rules: "cleanup", junk: "cleanup", trash: "cleanup",
   stats: "insights", space: "insights", trackers: "insights",
-  subscriptions: "insights", activity: "insights",
+  subscriptions: "insights", addresses: "insights", activity: "insights",
 };
 /** The start page for everyone: a fresh load without a route lands here. */
 export const DEFAULT_PAGE: Page = "overview";
 
 /** The sections of the Settings page, in the order of its section column. */
 export type SettingsSection = "account" | "general" | "notifications"
-  | "protected" | "keepsafe" | "categories" | "filed" | "digest" | "autoscan" | "ai"
-  | "assistants" | "signin" | "backup";
+  | "protected" | "keepsafe" | "categories" | "filed" | "alias" | "digest"
+  | "autoscan" | "ai" | "assistants" | "signin" | "backup";
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = ["account",
-  "general", "notifications", "protected", "keepsafe", "categories", "filed", "digest",
-  "autoscan", "ai", "assistants", "signin", "backup"];
+  "general", "notifications", "protected", "keepsafe", "categories", "filed",
+  "alias", "digest", "autoscan", "ai", "assistants", "signin", "backup"];
 
 /** `#/settings/ai` -> { section: "ai" }; `#/settings/account/work` -> the
  *  account section for the account "work" (the name is URI-encoded). A

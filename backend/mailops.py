@@ -31,6 +31,7 @@ import imaplib
 imaplib._MAXLINE = 10_000_000  # bulk FETCH responses exceed the default 1MB
 
 from . import accounts
+from . import addresspick
 from . import auditlog
 from . import bodyindex
 from . import config as cfgmod
@@ -209,6 +210,17 @@ UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)
 NOT_IN_DEMO = "not_in_demo"
+# Alias service (backend/aliasservice.py): none connected, the API key
+# refused, the service not reachable / answering with status=, an alias that
+# is not in its list, an address that is not one of the user's
+ALIAS_NO_SERVICE = "alias_no_service"
+ALIAS_KEY = "alias_key"
+ALIAS_UNREACHABLE = "alias_unreachable"
+ALIAS_HTTP = "alias_http"
+ALIAS_NOT_FOUND = "alias_not_found"
+ALIAS_BAD_ADDRESS = "alias_bad_address"
+ALIAS_CODES = (ALIAS_NO_SERVICE, ALIAS_KEY, ALIAS_UNREACHABLE, ALIAS_HTTP,
+               ALIAS_NOT_FOUND, ALIAS_BAD_ADDRESS)
 # Web Push (backend/webpush.py): a registration that is not valid, a device
 # the server does not know (or the push service dropped), the push service's
 # own refusal (status=), and a push service that cannot be reached
@@ -258,6 +270,7 @@ FOLDER_ERROR_CODES = frozenset({
     COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     COPY_SAME_MAILBOX, COPY_CANNOT_CONFIRM, COPY_FOLDER_RESERVED,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
+    *ALIAS_CODES,
     ASSISTANTS_OFF,
     LEVEL_NOT_AVAILABLE,
     ASSISTANT_TOKEN_NAME,
@@ -1389,17 +1402,20 @@ def has_gmail_ext(conn) -> bool:
 
 
 def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
-                      messages: list, acc, gm: bool = False) -> int:
+                      messages: list, acc, gm: bool = False,
+                      rcpt: addresspick.Context | None = None) -> int:
     """Full header+flags FETCH for one chunk of `chunk` (new UIDs, or a
     UIDVALIDITY-stale folder); appends to `messages`. Returns count of
-    unparseable messages skipped."""
+    unparseable messages skipped. `rcpt` (the main scan only) adds the
+    receiving-address fields and stores the picked address as `to`."""
     skipped = 0
     status, data = conn.uid(
         "FETCH", b",".join(chunk).decode(),
         "(UID FLAGS RFC822.SIZE INTERNALDATE "
         + ("X-GM-MSGID " if gm else "") +
         "BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO "
-        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST)])")
+        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST"
+        + (" " + addresspick.HEADER_FIELDS if rcpt else "") + ")])")
     if status != "OK":
         return skipped
     for item in data or []:
@@ -1422,6 +1438,8 @@ def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
             gmid = _GMID_RE.search(meta) if gm else None
             messages.append({
                 **({"gmid": gmid.group(1).decode()} if gmid else {}),
+                **({"to": addresspick.receiving_address(msg, rcpt)}
+                   if rcpt else {}),
                 "uid": int(m.group(1)), "folder": folder, "addr": addr,
                 "name": decode_mime(name) if name else "",
                 "subject": decode_mime(msg.get("Subject", ""))[:150],
@@ -1490,9 +1508,50 @@ def _refresh_flags_chunk(conn, folder: str, chunk: list[bytes],
         messages.append(old)
 
 
+def _backfill_chunk(conn, chunk: list[bytes], cached: dict, messages: list,
+                    gm: bool, rcpt: addresspick.Context) -> None:
+    """The flags refresh of `_refresh_flags_chunk` plus the receiving-address
+    header fields, for cached mails from before the index kept `to` (one
+    header-only FETCH per chunk, like the Sent folder's `TO CC` pass). A mail
+    the server does not answer for, or whose headers do not parse, is stored
+    with `to: ""` so it is not fetched again on every scan."""
+    status, data = conn.uid(
+        "FETCH", b",".join(chunk).decode(),
+        "(UID FLAGS " + ("X-GM-MSGID " if gm else "")
+        + "BODY.PEEK[HEADER.FIELDS (" + addresspick.HEADER_FIELDS + ")])")
+    if status != "OK":
+        _refresh_flags_chunk(conn, "", chunk, cached, messages, gm)
+        return
+    found: dict[int, dict] = {}
+    for item in data or []:
+        if not isinstance(item, tuple) or len(item) < 2:
+            continue
+        m = _UID_RE.search(item[0])
+        if not m:
+            continue
+        fm = _FLAGS_RE.search(item[0])
+        gm_m = _GMID_RE.search(item[0]) if gm else None
+        upd: dict = {}
+        if fm:
+            upd["seen"] = b"\\Seen" in fm.group(1)
+        if gm_m:
+            upd["gmid"] = gm_m.group(1).decode()
+        try:
+            upd["to"] = addresspick.receiving_address(
+                email.message_from_bytes(item[1]), rcpt)
+        except Exception:
+            upd["to"] = ""
+        found[int(m.group(1))] = upd
+    for u in chunk:
+        old = cached.get(int(u))
+        if old is not None:
+            messages.append({**old, "to": "", **found.get(int(u), {})})
+
+
 def scan_folder(conn, folder: str, messages: list, progress_cb,
                 acc=None, gm: bool = False, index: dict | None = None,
-                uv: dict | None = None) -> int:
+                uv: dict | None = None,
+                rcpt: addresspick.Context | None = None) -> int:
     """Scan one folder into `messages`; returns how many messages had to
     be SKIPPED because their metadata could not be parsed (real-world
     mail contains arbitrarily broken headers - one bad message must
@@ -1508,7 +1567,12 @@ def scan_folder(conn, folder: str, messages: list, progress_cb,
 
     `index` / `uv` name the cache to read and the UIDVALIDITY map to
     update (default: the account's main `index` / `folder_uv`); role views
-    pass their own."""
+    pass their own.
+
+    `rcpt` (the main scan only) also records the address each mail was sent
+    to (`to`, backend/addresspick.py): new mails get it with their headers,
+    cached ones from before that field existed in the same request as the
+    flags refresh - nothing extra once every mail has it."""
     acc = acc or accounts.get()
     index = acc.index if index is None else index
     uv = acc.folder_uv if uv is None else uv
@@ -1543,15 +1607,24 @@ def scan_folder(conn, folder: str, messages: list, progress_cb,
             raise Cancelled()
         chunk = new_uids[start:start + FETCH_CHUNK]
         skipped += _fetch_full_chunk(conn, folder, chunk, messages, acc,
-                                    gm)
+                                    gm, rcpt)
         done += len(chunk)
         progress_cb(folder, done, total)
     for start in range(0, len(existing_uids), FETCH_CHUNK):
         if cancel_requested("scan", acc):
             raise Cancelled()
         chunk = existing_uids[start:start + FETCH_CHUNK]
-        _refresh_flags_chunk(conn, folder, chunk, cached, messages, gm)
-        done += len(chunk)
+        old = [u for u in chunk if rcpt and "to" not in cached[int(u)]]
+        if old:
+            _backfill_chunk(conn, old, cached, messages, gm, rcpt)
+            if len(old) < len(chunk):
+                held = set(old)
+                chunk = [u for u in chunk if u not in held]
+            else:
+                chunk = []
+        if chunk:
+            _refresh_flags_chunk(conn, folder, chunk, cached, messages, gm)
+        done += len(chunk) + len(old)
         progress_cb(folder, done, total)
     return skipped
 
@@ -2616,6 +2689,15 @@ def public_status(acc=None) -> dict:
         return out
 
 
+def _rcpt_context(acc, im: dict) -> addresspick.Context:
+    """What the scan needs to pick each mail's receiving address: the
+    account's own address and the aliases of the connected alias service
+    (from its cached list - the scan never calls the service)."""
+    from . import addresses, aliasservice
+    return addresspick.Context(addresses.main_address(acc, im),
+                               aliasservice.cached_aliases())
+
+
 def run_scan(acc=None, push: bool = False) -> None:
     acc = acc or accounts.get()
     outcome = None          # True / False once the scan ended on its own
@@ -2655,12 +2737,24 @@ def run_scan(acc=None, push: bool = False) -> None:
             messages: list = []
             skipped = 0
             gm = has_gmail_ext(conn)
+            rcpt = _rcpt_context(acc, im)
+            from . import addresses, addressstore, aliasservice
+            # the last scan did not know the account's address: the mails it
+            # read as that address may hide aliases - read them again now
+            if addressstore.picked_main(acc.name) == "" and rcpt.main:
+                addresses.forget_picks(acc, (rcpt.main,))
             for folder in folders:
                 skipped += scan_folder(conn, folder, messages,
-                                       progress_cb, acc, gm)
+                                       progress_cb, acc, gm, rcpt=rcpt)
             copies: list = []
             if gm:
                 messages, copies = dedupe_gmail_labels(messages)
+            # the alias list changed while this scan ran: what it read as the
+            # main address must be read again, not stored as it is
+            if aliasservice.cached_aliases() != rcpt.aliases:
+                for m in (*messages, *copies):
+                    if m.get("to") in (rcpt.main, ""):
+                        m.pop("to", None)
             trash_count = folder_message_count(conn, roles.get("trash"))
             junk_count = folder_message_count(conn, roles.get("junk"))
             replied = load_replied(acc)
@@ -2731,6 +2825,7 @@ def run_scan(acc=None, push: bool = False) -> None:
             statsmod.record_scan(len(messages),
                                  sum(m["size"] for m in messages),
                                  len(groups["sender"]), acc.name, arrived)
+            addressstore.set_picked_main(acc.name, rcpt.main)
             save_snapshot(acc)
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
             outcome = True
