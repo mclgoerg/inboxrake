@@ -1,4 +1,4 @@
-import { Archive, ArrowLeftRight, FolderInput, History, KeyRound, ListChecks, Mail,
+import { Archive, ArrowLeftRight, FolderInput, Globe, History, KeyRound, ListChecks, Mail,
   MailCheck, Pin, RefreshCw, Send, ShieldCheck, Trash2, Undo2, BellOff, VenetianMask,
   type LucideIcon } from "lucide-react";
 
@@ -25,6 +25,8 @@ export const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   alias_created: { icon: VenetianMask, tone: "bg-info-bg text-info-fg" },
   assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
   assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
+  assistant_connected: { icon: Globe, tone: "bg-info-bg text-info-fg" },
+  assistant_disconnected: { icon: Globe, tone: "bg-chip text-chiptext" },
   assistant_token_cap: { icon: KeyRound, tone: "bg-chip text-chiptext" },
   protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },
   assistant_protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },

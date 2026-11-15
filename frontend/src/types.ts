@@ -998,7 +998,13 @@ export interface Config {
     notify?: { email: boolean;
       accounts: Record<string, { to: string; can_send: boolean }> };
     /** Admin only: unexpired tokens of EVERY user per level (numbers only). */
-    token_counts?: Record<AssistantLevel, number> };
+    token_counts?: Record<AssistantLevel, number>;
+    /** Hosted apps (claude.ai, ChatGPT) signing in over OAuth. `available`:
+     *  the preconditions hold; `reason` says which one does not (a code,
+     *  see `OAUTH_REASONS`); `public_url` is for the admin only. Absent from
+     *  a backend without OAuth. */
+    oauth?: { enabled: boolean; available: boolean; reason: string;
+      mcp_url: string; public_url?: string } };
   ai_stats: {
     input_tokens: number;
     output_tokens: number;
@@ -1178,12 +1184,20 @@ export interface AccountSummary {
 export type AssistantAccess = "off" | "read_propose" | "act";
 export type AssistantLevel = "read" | "propose" | "act";
 
-/** One AI-assistant access token as the API lists it (never its secret). */
+/** One AI-assistant access token as the API lists it (never its secret). A
+ *  hosted app's OAuth connection ("grant") is the same record with
+ *  `kind: "oauth"`: it shows the app's host instead of a token prefix. */
 export interface AssistantToken {
   id: string;
   name: string;
-  /** `irk_` + 4 characters: all that is shown of it afterwards. */
-  prefix: string;
+  /** "token" (a static `irk_` token; absent from older backends) or "oauth". */
+  kind?: "token" | "oauth";
+  /** `irk_` + 4 characters: all that is shown of it afterwards (tokens). */
+  prefix?: string;
+  /** OAuth connections: the app's host, its own name for itself, its scopes. */
+  client_host?: string;
+  client_name?: string;
+  scope?: string;
   accounts: string[];
   level: AssistantLevel;
   subjects: boolean;
@@ -1364,4 +1378,30 @@ export interface RestoreState {
   /** mails left alone because their Message-ID belongs to another mail too */
   ambiguous?: number;
   paused?: string[];
+}
+
+/** `GET /api/assistants/connect`: what the consent page shows. */
+export interface ConnectRequest {
+  request_id: string;
+  client: { client_id: string; host: string; name: string;
+    redirect_host: string };
+  /** The highest level the page may offer (the app's ask, cut to the cap). */
+  ceiling: AssistantLevel;
+  accounts: string[];
+  defaults: { level: AssistantLevel; subjects: boolean;
+    expires_days: 30 | 90 | null; daily_cap: number; name: string };
+}
+
+/** The decision answers: where to send the browser next. */
+export interface ConnectRedirect { redirect_url: string }
+
+export interface ConnectDecision {
+  request_id: string;
+  approve: boolean;
+  name?: string;
+  accounts?: string[];
+  level?: AssistantLevel;
+  subjects?: boolean;
+  expires_days?: 30 | 90 | null;
+  daily_cap?: number;
 }

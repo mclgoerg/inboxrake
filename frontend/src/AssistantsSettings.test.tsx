@@ -687,3 +687,177 @@ test("a refused daily limit is worded and the old value stays shown", async () =
     .toBeTruthy());
   expect(document.body.textContent).toMatch(/worded:assistant_token_cap/);
 });
+
+/* ------------------------- hosted apps (OAuth) ------------------------- */
+
+const MCP_URL = "https://mail.example/mcp";
+const oauthOf = (over: Partial<NonNullable<NonNullable<Config["assistants"]>["oauth"]>> = {}) => ({
+  enabled: false, available: true, reason: "", mcp_url: MCP_URL,
+  public_url: "https://mail.example", ...over });
+const grant = (over: Partial<AssistantToken> = {}): AssistantToken => tok({
+  id: "g1", name: "Claude · claude.example", kind: "oauth", prefix: undefined,
+  client_host: "claude.example", client_name: "Claude",
+  scope: "mcp:read mcp:propose", level: "propose", accounts: ["proton"], ...over });
+
+test("a server without OAuth shows no hosted-app control or group", async () => {
+  await show(baseCfg(READ_ONLY));
+  expect(screen.queryByText("Let hosted apps connect")).toBeNull();
+  expect(screen.queryByText("Connections")).toBeNull();
+});
+
+test("the switch names why it cannot be switched on, and stays off", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({
+    available: false, reason: "oauth_needs_public_url", mcp_url: "",
+    public_url: "" }) }));
+  const sw = screen.getByRole("switch", { name: /Let hosted apps connect/ });
+  expect(sw.hasAttribute("disabled")).toBe(true);
+  expect(screen.getByText(/Can't be switched on yet: .*INBOXRAKE_PUBLIC_URL/))
+    .toBeTruthy();
+});
+
+test("with access off, a staged cap above Off already meets the access condition", async () => {
+  await show(baseCfg({ ...READ_ONLY, access: "off", oauth: oauthOf({
+    available: false, reason: "oauth_needs_access" }) }));
+  const sw = screen.getByRole("switch", { name: /Let hosted apps connect/ });
+  expect(sw.hasAttribute("disabled")).toBe(true);
+  expect(screen.getByText(/assistant access is Off/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "On" }));
+  expect(screen.getByRole("switch", { name: /Let hosted apps connect/ })
+    .hasAttribute("disabled")).toBe(false);
+});
+
+test("switching it on is staged with Save and sent as assistants.oauth", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf() }));
+  expect(screen.getByText(/Public address:/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("switch", { name: /Let hosted apps connect/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].assistants).toEqual({ access: "read_propose", oauth: true });
+});
+
+test("a save that leaves the switch alone does not send it", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  fireEvent.click(screen.getByRole("radio", { name: "Off" }));
+  await pressDialog("Turn off");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saveCalls[0].assistants).toEqual({ access: "off" });
+});
+
+test("an enabled switch that lost a precondition says so and can still be turned off", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({
+    enabled: true, available: false, reason: "oauth_needs_login" }) }));
+  const sw = screen.getByRole("switch", { name: /Let hosted apps connect/ });
+  expect(sw.hasAttribute("disabled")).toBe(false);
+  expect(sw.getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByText(/Not active right now: .*no sign-in/)).toBeTruthy();
+  // not available: no connect steps, no permanent notice
+  expect(screen.queryByText("Connect a hosted app")).toBeNull();
+});
+
+test("while on: the notice, the address, steps per app, and the guide", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  expect(screen.getByText(/Hosted apps reach this server from the internet/))
+    .toBeTruthy();
+  const group = screen.getByText("Connect a hosted app").closest("section")
+    ?? screen.getByText("Connect a hosted app").parentElement!.parentElement!;
+  expect(within(group as HTMLElement).getByText(MCP_URL)).toBeTruthy();
+  expect(screen.getByText(/Add custom connector/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "ChatGPT" }));
+  expect(screen.getByText(/turn on developer mode/)).toBeTruthy();
+  expect(screen.queryByText(/Add custom connector/)).toBeNull();
+});
+
+test("connections: host first, tokens and grants in their own lists, none yet is explained", async () => {
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  expect(await screen.findByText("No hosted apps connected")).toBeTruthy();
+  cleanup();
+  listed = [tok(), grant()];
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  const host = await screen.findByText("claude.example");
+  const row = host.closest("li")!;
+  expect(within(row).getByText("Propose")).toBeTruthy();
+  expect(within(row).getByText(/Claude · claude\.example · proton · expires/))
+    .toBeTruthy();
+  expect(within(row).getByText("Used 4m ago · 38 calls today")).toBeTruthy();
+  // the token list holds the token only
+  const tokenRows = screen.getByText("Claude Code · laptop").closest("ul")!;
+  expect(within(tokenRows).queryByText(/claude\.example/)).toBeNull();
+  expect(within(tokenRows).queryByRole("button", { name: /Disconnect/ })).toBeNull();
+  expect(within(tokenRows).getAllByRole("listitem")).toHaveLength(1);
+});
+
+test("Disconnect asks (naming the host), then removes the grant", async () => {
+  listed = [grant()];
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  await screen.findByText("claude.example");
+  fireEvent.click(screen.getByRole("button", {
+    name: "Disconnect Claude · claude.example" }));
+  await screen.findByText("Disconnect “Claude · claude.example”?");
+  expect(screen.getByText(/claude\.example loses access at once/)).toBeTruthy();
+  listed = [];
+  await pressDialog("Disconnect");
+  await waitFor(() => expect(revoked).toEqual(["g1"]));
+  expect(await screen.findByText("No hosted apps connected")).toBeTruthy();
+});
+
+test("a connection's Details are the token detail, with Disconnect", async () => {
+  listed = [grant({ level: "act" })];
+  await show(baseCfg({ ...ALL, oauth: oauthOf({ enabled: true }) }));
+  await screen.findByText("claude.example");
+  fireEvent.click(screen.getAllByRole("button", {
+    name: "Details of Claude · claude.example" })[0]);
+  const dlg = await screen.findByRole("dialog");
+  expect(within(dlg).getByText("Claude · claude.example · today")).toBeTruthy();
+  fireEvent.click(within(dlg).getByRole("button", { name: "Disconnect" }));
+  await pressDialog("Disconnect");
+  await waitFor(() => expect(revoked).toEqual(["g1"]));
+});
+
+test("kept connections stay listed with OAuth switched off, with the reason", async () => {
+  listed = [grant()];
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf() }));
+  expect(await screen.findByText("claude.example")).toBeTruthy();
+  expect(screen.getByText(/can't connect while this is off/)).toBeTruthy();
+  expect(screen.queryByText("Connect a hosted app")).toBeNull();
+});
+
+test("a name already in use is shown at the name field, not as a general error", async () => {
+  createResult = () => Promise.reject(Object.assign(
+    new Error("taken"), { code: "name_taken" }));
+  await show(baseCfg(READ_ONLY));
+  await screen.findByText("No access tokens yet");
+  fireEvent.click(newTokenButton());
+  const dlg = await screen.findByRole("dialog");
+  fireEvent.change(within(dlg).getByLabelText("Name"), { target: { value: "x" } });
+  fireEvent.click(within(dlg).getByRole("button", { name: "Create token" }));
+  expect(await within(dlg).findByText(/This name is already used/)).toBeTruthy();
+  expect(within(dlg).getByLabelText("Name").getAttribute("aria-invalid"))
+    .toBe("true");
+  // typing again clears it
+  fireEvent.change(within(dlg).getByLabelText("Name"), { target: { value: "y" } });
+  expect(within(dlg).queryByText(/This name is already used/)).toBeNull();
+});
+
+test("German: the hosted-app control, steps and Disconnect", async () => {
+  setLang("de");
+  listed = [grant()];
+  await show(baseCfg({ ...READ_ONLY, oauth: oauthOf({ enabled: true }) }));
+  expect(screen.getByRole("switch", { name: /Gehostete Apps verbinden lassen/ }))
+    .toBeTruthy();
+  expect(screen.getByText("Gehostete App verbinden")).toBeTruthy();
+  expect(await screen.findByRole("button", {
+    name: "Claude · claude.example trennen" })).toBeTruthy();
+});
+
+test("access turned off while hosted apps are on: the switch stays on with the reason, nothing shows as active", async () => {
+  listed = [grant()];
+  await show(baseCfg({ ...READ_ONLY, access: "off", oauth: oauthOf({
+    enabled: true, available: false, reason: "oauth_needs_access" }) }));
+  const sw = screen.getByRole("switch", { name: /Let hosted apps connect/ });
+  expect(sw.getAttribute("aria-checked")).toBe("true");
+  expect(sw.hasAttribute("disabled")).toBe(false);
+  expect(screen.getByText(/Not active right now: .*assistant access is Off/)).toBeTruthy();
+  expect(screen.queryByText(/Hosted apps reach this server/)).toBeNull();
+  expect(screen.queryByText("Connect a hosted app")).toBeNull();
+  expect(screen.queryByText("Connections")).toBeNull();
+});

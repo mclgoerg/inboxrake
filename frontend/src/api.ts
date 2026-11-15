@@ -1,6 +1,6 @@
 import { t } from "./i18n";
 import type {
-  AssistantTokenList, AssistantToken, AssistantTokenRequest,
+  AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
   AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
@@ -238,6 +238,30 @@ const ERROR_CODES: Record<string, string> = {
   assistant_token_unknown: "ferr.assistant_token_unknown",
 };
 
+/** Codes of the hosted-app (OAuth) features (backend/oauthserver.py,
+ *  oauthclients.py, assistanttokens.py, config.py). A separate map: they are
+ *  answered by those modules, not the folder-feature set `ERROR_CODES` mirrors
+ *  (tests/test_error_codes.py). */
+const OAUTH_ERROR_CODES: Record<string, string> = {
+  name_taken: "ferr.name_taken",
+  assistant_grant_limit: "ferr.assistant_grant_limit",
+  oauth_needs_login: "ferr.oauth_needs_login",
+  oauth_needs_public_url: "ferr.oauth_needs_public_url",
+  oauth_needs_access: "ferr.oauth_needs_access",
+  connect_request_gone: "ferr.connect_request_gone",
+  connect_request_mismatch: "ferr.connect_request_mismatch",
+  connect_request_invalid: "ferr.connect_request_invalid",
+  connect_redirect_uri: "ferr.connect_redirect_uri",
+  connect_no_accounts: "ferr.connect_no_accounts",
+  connect_level_above_ceiling: "ferr.connect_level_above_ceiling",
+  client_invalid_url: "ferr.client_invalid_url",
+  client_unreachable: "ferr.client_unreachable",
+  client_blocked: "ferr.client_blocked",
+  client_bad_response: "ferr.client_bad_response",
+  client_invalid_document: "ferr.client_invalid_document",
+  client_rate_limited: "ferr.client_rate_limited",
+};
+
 /** The role names a `role=` param stands for (translated). */
 const ROLE_NAMES: Record<string, string> = {
   trash: "Trash", junk: "Junk", archive: "ferr.role_archive",
@@ -252,7 +276,8 @@ export function parseErrorDetail(detail: string):
   if (typeof detail !== "string") return null;   // e.g. a 422's error list
   const i = detail.indexOf(":");
   const code = i < 0 ? detail : detail.slice(0, i);
-  if (!Object.hasOwn(ERROR_CODES, code)) return null;
+  if (!Object.hasOwn(ERROR_CODES, code)
+      && !Object.hasOwn(OAUTH_ERROR_CODES, code)) return null;
   const params: Record<string, string | number> = {};
   if (i >= 0) {
     try {
@@ -282,7 +307,7 @@ export function errorText(detail: string): string {
   if (typeof params.cause === "string") text.cause = errorText(params.cause);
   if (typeof params.role === "string")
     text.folder = t(ROLE_NAMES[params.role] ?? params.role);
-  return t(ERROR_CODES[code], text);
+  return t(ERROR_CODES[code] ?? OAUTH_ERROR_CODES[code], text);
 }
 
 /** The label of an Undo entry in the user's language: the structured label
@@ -435,6 +460,12 @@ export const api = {
     req<{ token: AssistantToken }>(
       `/api/assistants/tokens/${encodeURIComponent(id)}`, { daily_cap },
       "PATCH"),
+  /** Hosted apps over OAuth: the request this browser's sign-in started
+   *  (`/oauth/authorize` sets its cookie) and the user's decision on it. */
+  assistantConnect: () =>
+    req<ConnectRequest | ConnectRedirect>("/api/assistants/connect"),
+  assistantConnectDecide: (body: ConnectDecision) =>
+    req<ConnectRedirect>("/api/assistants/connect", body),
   revokeAssistantToken: (id: string) =>
     req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
       undefined, "DELETE"),
