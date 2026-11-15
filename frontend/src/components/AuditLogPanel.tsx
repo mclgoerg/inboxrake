@@ -1,7 +1,6 @@
-import { Archive, ArrowLeftRight, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
-  CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, KeyRound, ListChecks,
-  Circle, Mail, MailCheck, Pin, RefreshCw, ScrollText, Send, ShieldCheck,
-  Trash2, Undo2, VenetianMask, type LucideIcon }
+import { BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
+  CircleCheck, CircleX, Download, ExternalLink, Hand, History, ListChecks,
+  Circle, ScrollText, type LucideIcon }
   from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { assistantActorName, entryText, groupByMonth, localIso, monthSummary, tOr, undoneCounts,
@@ -9,10 +8,12 @@ import { assistantActorName, entryText, groupByMonth, localIso, monthSummary, tO
 import { nowDate } from "../clock";
 import { api, downloadFile, errorText, fmtSize } from "../api";
 import { getLang, t } from "../i18n";
-import type { AuditBy, AuditEntry, Group, Rule } from "../types";
+import type { AuditBy, AuditEntry, Group, RestoreState, Rule } from "../types";
 import { retryableGroup } from "../unsub";
+import { ACTION_LOOK, FALLBACK_LOOK } from "./actionLook";
+import { TimeMachine } from "./TimeMachine";
 import { Button, EmptyState, Loading, PanelHeader, Modal, SectionLabel,
-  ShortDate, Tag } from "./ui";
+  Segmented, ShortDate, Tag, useMediaQuery } from "./ui";
 
 export { tOr };
 
@@ -31,33 +32,6 @@ export const actorLabel = (actor: string, rules: Rule[]): string => {
   const name = rules.find((r) => r.id === id)?.name;
   return t("audit.by_rule", { name: name || id });
 };
-
-/** Icon + tint of an action's tile in the timeline. */
-const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
-  trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
-  purge: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
-  empty_trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
-  archive: { icon: Archive, tone: "bg-safe-bg text-safe-fg" },
-  move: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
-  move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
-  account_copy: { icon: ArrowLeftRight, tone: "bg-info-bg text-info-fg" },
-  mark_read: { icon: MailCheck, tone: "bg-chip text-chiptext" },
-  rule_execute: { icon: ListChecks, tone: "bg-review-bg text-review-fg" },
-  rule_report: { icon: ListChecks, tone: "bg-chip text-chiptext" },
-  unsubscribe: { icon: BellOff, tone: "bg-info-bg text-info-fg" },
-  undo: { icon: Undo2, tone: "bg-chip text-chiptext" },
-  digest_sent: { icon: Send, tone: "bg-chip text-chiptext" },
-  alias_retired: { icon: VenetianMask, tone: "bg-keep-bg text-keep-fg" },
-  alias_restored: { icon: VenetianMask, tone: "bg-safe-bg text-safe-fg" },
-  alias_created: { icon: VenetianMask, tone: "bg-info-bg text-info-fg" },
-  assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
-  assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
-  assistant_token_cap: { icon: KeyRound, tone: "bg-chip text-chiptext" },
-  assistant_protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },
-  assistant_pin: { icon: Pin, tone: "bg-safe-bg text-safe-fg" },
-  assistant_scan: { icon: RefreshCw, tone: "bg-chip text-chiptext" },
-};
-const FALLBACK_LOOK = { icon: Mail, tone: "bg-chip text-chiptext" };
 
 /** Icon + colour of an entry's status ("Done", "Failed", ...). */
 const STATUS_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
@@ -289,7 +263,7 @@ export function TimelineRow({ e, rules, retry, undone = 0 }: {
  *  cards), then the log as a timeline grouped by month. Paged, newest
  *  first, CSV export. */
 export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetryUnsub,
-  initialBy = "all", byName = "", onLeave }: {
+  initialBy = "all", byName = "", onLeave, restore, onRestoreStarted }: {
   rules: Rule[]; onClose: () => void;
   /** Open with the log narrowed to one kind (Settings > a token's steps). */
   initialBy?: AuditBy;
@@ -306,7 +280,16 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
    *  a failed unsubscribe whose sender can still be retried gets "Retry". */
   groups?: Record<string, Group>;
   onRetryUnsub?: (g: Group) => Promise<void>;
+  /** The Time machine's restore job (from the app state) and its start. */
+  restore?: RestoreState;
+  onRestoreStarted?: () => void;
 }) {
+  // (no matchMedia, e.g. in jsdom: the wide layout)
+  const wide = !useMediaQuery("(max-width: 1023px)");
+  // Log or Time machine (a segmented control from 1024 px, a page of its
+  // own with a back link below)
+  const [view, setView] = useState<"log" | "machine">("log");
+  const machine = view === "machine";
   const [retrying, setRetrying] = useState(false);
   const [offset, setOffset] = useState(0);
   const [by, setBy] = useState<AuditBy>(initialBy);
@@ -380,25 +363,42 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
     () => undoneCounts([...(recent?.entries ?? []), ...(entries ?? [])]),
     [recent, entries]);
 
+  const viewSwitch = wide && (
+    <Segmented<"log" | "machine"> value={view} onChange={setView}
+      label={t("activity.view")}
+      options={[{ value: "log", label: t("activity.view_log") },
+        { value: "machine", label: t("activity.view_tm") }]} />);
   return (
     <Modal onClose={onClose} size="lg"
-      full={!!above || !entries || entries.length > 0}>
+      full={machine || !!above || !entries || entries.length > 0}>
       <PanelHeader
         title={<span className="inline-flex items-center gap-2">
-          <ScrollText size={18} /> {t("nav.activity")}
+          {machine ? <History size={18} /> : <ScrollText size={18} />}
+          {machine && !wide ? t("tm.title") : t("nav.activity")}
         </span>}
-        sub={total == null ? t("loading…") : total === 0 ? ""
+        sub={machine ? t("tm.sub", { days: 30 })
+          : total == null ? t("loading…") : total === 0 ? ""
           : t(by === "all" ? "audit.entries"
             : by.startsWith("token:") ? "audit.entries_token"
             : `audit.entries_${by}`, { n: total, name: byName })}
-        actions={!!total && (
-          <Button variant="secondary" size="icon"
-            label={t("audit.export")}
-            onClick={() => downloadFile(api.auditExportUrl())}>
-            <Download size={18} />
-          </Button>)}
-        onClose={onClose}
+        actions={<>
+          {viewSwitch}
+          {!machine && !!total && (
+            <Button variant="secondary" size="icon"
+              label={t("audit.export")}
+              onClick={() => downloadFile(api.auditExportUrl())}>
+              <Download size={18} />
+            </Button>)}
+        </>}
+        {...(machine && !wide ? {
+          closeLabel: t("nav.activity"), closeIcon: <ChevronLeft size={18} />,
+          onClose: () => setView("log") } : { onClose })}
       />
+      {machine ? (
+        <TimeMachine rules={rules} groups={groups} restore={restore}
+          reloadKey={reloadKey} phone={!wide}
+          onRestoreStarted={onRestoreStarted} />
+      ) : (<>
       <div data-scroll-id="panel" className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
         {/* phones / tablets: the month card on top; from 1024 px the log on
             the left, the card beside it */}
@@ -414,6 +414,23 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           )}
           <div className="flex min-w-0 flex-col gap-4 lg:col-start-1
             lg:row-start-1">
+          {!wide && (
+            <button type="button" onClick={() => setView("machine")}
+              className="flex min-h-14 items-center gap-3 rounded-card border
+                border-line bg-panel px-3 py-2 text-left
+                focus-visible:ring-2 focus-visible:ring-accent">
+              <span aria-hidden className="grid size-9 shrink-0 place-items-center
+                rounded-control bg-review-bg text-review-fg">
+                <History size={18} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block type-body-mobile font-medium">
+                  {t("tm.title")}</span>
+                <span className="block type-meta text-muted">
+                  {t("tm.entry_hint", { days: 30 })}</span>
+              </span>
+              <ChevronRight size={16} aria-hidden className="text-faint" />
+            </button>
+          )}
           {above}
           {error && <div className="p-4 type-body text-danger-fg">{error}</div>}
           {!entries && !error && <Loading />}
@@ -459,6 +476,7 @@ export function AuditLogPanel({ rules, onClose, above, reloadKey, groups, onRetr
           </Button>
         </div>
       )}
+      </>)}
     </Modal>
   );
 }

@@ -580,7 +580,7 @@ def test_large_purge_is_done_in_move_chunk_pieces(monkeypatch):
 
 
 def _undo_entry(items, dest="Trash", label="x"):
-    mailops.UNDO_LOG.append({"ts": 1, "label": label, "action": "trash",
+    mailops.UNDO_LOG.append({"ts": int(time.time()), "label": label, "action": "trash",
                              "count": len(items), "items": items,
                              "in": dest})
 

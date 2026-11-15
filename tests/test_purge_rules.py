@@ -792,10 +792,12 @@ def test_audit_undo_stats_and_digest_count_a_rule_purge_as_a_purge(
     fake = _env(monkeypatch, trash=_mails([3, 4], date=OLD)
                 + [make_msg(5, date=_recent())])
     mailops.UNDO_LOG.append({
-        "ts": 1, "label": "gone", "action": "trash", "count": 1,
+        "ts": int(time.time()) - 5, "label": "gone", "action": "trash",
+        "count": 1,
         "items": [("INBOX", "<m3@shop.example>")], "in": "Trash"})
     mailops.UNDO_LOG.append({
-        "ts": 2, "label": "kept", "action": "trash", "count": 1,
+        "ts": int(time.time()) - 4, "label": "kept", "action": "trash",
+        "count": 1,
         "items": [("INBOX", "<m5@shop.example>")], "in": "Trash"})
     rule = _armed(_rule("trash"))
     assert _run(rule)["acted"] == 2

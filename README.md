@@ -24,9 +24,10 @@ models via Ollama, LM Studio or vLLM) suggests what is safe to delete.
 Overview (light) and Senders on a phone (dark) - the screenshots come from the
 demo below.
 
-**Nothing is deleted without asking.** Moves to Trash normally offer Undo
-(the last 10 actions until restart). If the server cannot identify the moved
-copies safely, restore them manually from Trash. **Permanent deletion** in Trash and Junk
+**Nothing is deleted without asking.** Moves to Trash normally offer Undo,
+and the **Time machine** in Activity takes you back to any point of the last
+30 days. If the server cannot identify the moved copies safely, restore them
+manually from Trash. **Permanent deletion** in Trash and Junk
 cannot be undone:
 the manual "delete permanently" actions confirm with exact counts, and
 opt-in purge rules only act after you have reviewed a report run.
@@ -205,7 +206,8 @@ trackers, subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), "Your
 addresses" (which of your aliases leaked, retire one), space
 map, statistics (including when your mail arrives, by weekday and hour),
-"Your year in mail", audit log, multiple strictly separate
+"Your year in mail", audit log with a Time machine (restore your mailbox to
+an earlier point), multiple strictly separate
 accounts with a copy-to-another-account wizard for a provider switch,
 system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant

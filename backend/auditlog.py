@@ -73,13 +73,16 @@ def record(action: str, actor: str = "user", account: str | None = None,
           count: int = 0, size: int = 0, label: str = "",
           outcome: str = "ok", error: str = "", entry_id: str = "",
           from_role: str = "", undoes: dict | None = None,
-          kept_safe: int = 0) -> None:
+          kept_safe: int = 0,
+          undoes_many: list[dict] | None = None) -> None:
     """Append one entry. Never raises - a logging failure must not break
     the mailbox action it is recording.
 
     Optional, additive fields (absent on older entries): `id` (`entry_id`),
-    `from_role` ("junk" | "trash": mails moved out of that role folder) and `undoes` ({id, count}: this undo entry
-    restored `count` mails of the entry with that `id`) and `kept_safe` (a
+    `from_role` ("junk" | "trash": mails moved out of that role folder),
+    `undoes` ({id, count}: this undo entry restored `count` mails of the
+    entry with that `id`), `undoes_many` (a list of those: a Time machine
+    restore undoes several steps in one entry) and `kept_safe` (a
     rule run left that many mails alone because they look worth keeping)."""
     account = account or accounts.default_name()
     entry = {"ts": int(time.time()), "account": account, "actor": actor,
@@ -94,6 +97,8 @@ def record(action: str, actor: str = "user", account: str | None = None,
         entry["undoes"] = undoes
     if kept_safe:
         entry["kept_safe"] = int(kept_safe)
+    if undoes_many:
+        entry["undoes_many"] = undoes_many
     try:
         with _LOCK:
             path = _path()
@@ -135,9 +140,16 @@ def _load_all(account: str) -> list[dict]:
             "outcome": entry.get("outcome", "ok"),
             "error": entry.get("error", ""),
             # additive fields: only present on entries that carry them
-            **{k: entry[k] for k in ("id", "from_role", "undoes", "kept_safe")
+            **{k: entry[k] for k in ("id", "from_role", "undoes", "kept_safe",
+                                     "undoes_many")
                if entry.get(k)}})
     return out
+
+
+def since(account: str, ts: float) -> list[dict]:
+    """One account's entries from `ts` on, oldest first (the Time machine
+    builds its step list from them)."""
+    return [e for e in _load_all(account) if e["ts"] >= ts]
 
 
 BY_FILTERS = ("all", "user", "rules", "assistants")

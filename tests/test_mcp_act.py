@@ -401,7 +401,8 @@ def test_a_refused_or_failed_apply_gives_the_mails_back(mbox, monkeypatch):
 
 # ------------------------------------------------------- audit and undo
 
-def test_assistant_steps_never_evict_the_users_own_undo_entries(mbox):
+def test_assistant_steps_never_evict_the_users_own_undo_entries(mbox,
+                                                                monkeypatch):
     # the user trashes one mail: one entry in THEIR list
     r = client.post("/api/delete_messages", json={
         "items": [["INBOX", 4]], "action": "trash"})
@@ -412,6 +413,7 @@ def test_assistant_steps_never_evict_the_users_own_undo_entries(mbox):
     assert len(acc().undo_log) == 1
     mine = [dict(u) for u in acc().undo_log]
     meta = {"INBOX": {1: {"msgid": "<m1@shop.example>", "size": 1}}}
+    monkeypatch.setattr(mailops, "ASSISTANT_UNDO_MAX", 10)   # per-token cap
     with acc().lock:
         for i in range(15):
             mailops._record_undo(f"step {i}", meta, "trash", "Trash", acc(),

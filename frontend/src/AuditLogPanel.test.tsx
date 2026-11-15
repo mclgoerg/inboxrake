@@ -14,17 +14,22 @@ const entries: AuditEntry[] = Array.from({ length: 3 }, (_, i) => ({
 }));
 
 const audit = vi.fn().mockResolvedValue({ total: 3, entries });
+const timeMachine = vi.fn();
+const timeMachinePreview = vi.fn();
 const downloadFile = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   api: { audit: (...args: unknown[]) => audit(...args),
+    timeMachine: (...args: unknown[]) => timeMachine(...args),
+    timeMachinePreview: (...args: unknown[]) => timeMachinePreview(...args),
     auditExportUrl: () => "/api/audit/export" },
   downloadFile: (...args: unknown[]) => downloadFile(...args),
   fmtSize: (b: number) => `${b} B`,
 }));
 
 import { AuditLogPanel } from "./components/AuditLogPanel";
+import { DialogProvider, ToastProvider } from "./components/ui";
 
 afterEach(() => { setLang("en"); cleanup(); audit.mockClear(); downloadFile.mockClear(); });
 
@@ -502,4 +507,96 @@ test("a slow answer to an earlier filter never replaces the later one", async ()
     action: "trash", count: 7, label: "STALE" })] }));
   expect(screen.queryByText("Moved 7 mails to Trash")).toBeNull();
   expect(screen.getByText(/what you did/)).toBeTruthy();
+});
+
+// ---------------------------------------------------------- Time machine
+
+const wide = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({
+  get matches() { return !on && q.includes("max-width"); }, media: q,
+  addEventListener: () => {}, removeEventListener: () => {},
+}));
+const TM_STEP = { id: "s1", ts: Math.floor(Date.now() / 1000) - 600,
+  action: "trash", actor: "user", count: 4, bytes: 0, label: "x",
+  outcome: "ok", status: "back", mails: 4, senders: [], senders_total: 0 };
+const TM = { steps: [TM_STEP], sessions: [{ start: TM_STEP.ts, end: TM_STEP.ts,
+  steps: 1, mails: 4, first: "s1", last: "s1" }], now: TM_STEP.ts + 600,
+keep_days: 30, step_cap: 500 };
+const tmPreview = { top: "s1", point: "", point_ts: TM_STEP.ts - 60, steps: 1,
+  newer_sessions: 0, mails: 4, bytes: 4000, senders: [], cant: [], stays: [],
+  skipped: { protected: 0, pinned: 0 }, rules: [],
+  folders: [{ folder: "INBOX", name: "INBOX", mails: 4 }] };
+
+afterEach(() => { vi.unstubAllGlobals(); timeMachine.mockReset();
+  timeMachinePreview.mockReset(); });
+
+test("from 1024 px the header has a Log / Time machine switch; Time machine " +
+  "loads the steps, Log brings the entries back", async () => {
+  reset();
+  wide(true);
+  timeMachine.mockResolvedValue(TM);
+  timeMachinePreview.mockResolvedValue(tmPreview);
+  render(<ToastProvider><DialogProvider>
+    <AuditLogPanel rules={[]} onClose={() => {}} /></DialogProvider></ToastProvider>);
+  await waitFor(() => screen.getByText(/item 1/));
+  const tabs = screen.getByRole("tablist", { name: "View" });
+  expect(within(tabs).getByRole("tab", { name: "Log" })
+    .getAttribute("aria-selected")).toBe("true");
+  expect(timeMachine).not.toHaveBeenCalled();
+  // no phone entry card on a wide screen
+  expect(screen.queryByRole("button", { name: /Go back to any point/ })).toBeNull();
+  fireEvent.click(within(tabs).getByRole("tab", { name: "Time machine" }));
+  await screen.findByRole("slider");
+  expect(screen.getByText(/Everything Inboxrake did · go back to any point of the last 30 days/))
+    .toBeTruthy();
+  expect(screen.queryByText(/item 1/)).toBeNull();
+  fireEvent.click(within(tabs).getByRole("tab", { name: "Log" }));
+  await waitFor(() => screen.getByText(/item 1/));
+});
+
+test("below 1024 px the log has a Time machine card; it opens a page with a " +
+  "back link to Activity", async () => {
+  reset();
+  wide(false);
+  timeMachine.mockResolvedValue(TM);
+  timeMachinePreview.mockResolvedValue(tmPreview);
+  render(<ToastProvider><DialogProvider>
+    <AuditLogPanel rules={[]} onClose={() => {}} /></DialogProvider></ToastProvider>);
+  await waitFor(() => screen.getByText(/item 1/));
+  expect(screen.queryByRole("tablist", { name: "View" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Time machine/ }));
+  await screen.findByRole("slider");
+  // the page's own title, the bottom button, a way back
+  expect(screen.getAllByText("Time machine").length).toBeGreaterThan(0);
+  expect(await screen.findByRole("button", { name: /^Restore\s4\smails to/ }))
+    .toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+  await waitFor(() => screen.getByText(/item 1/));
+});
+
+test("a Time machine restore and a paused rule have headlines in both " +
+  "languages, and the steps the restore undid read as undone", async () => {
+  const moment = Math.floor(Date.now() / 1000) - 7200;
+  const list = [
+    mk({ action: "restore", count: 4, label: String(moment), id: "r1",
+      undoes_many: [{ id: "t1", count: 4 }] }),
+    mk({ action: "rule_paused", count: 0, label: "Sweep old newsletters" }),
+    mk({ action: "trash", count: 4, id: "t1", label: "x" })];
+  for (const [lang, restored, paused] of [
+    ["en", /^Restored 4 mails to today, \d\d:\d\d$/,
+      "Paused the rule “Sweep old newsletters” (Report only)"],
+    ["de", /^4 Mails auf (heute|gestern), \d\d:\d\d Uhr wiederhergestellt$/,
+      "Regel „Sweep old newsletters“ pausiert (nur Bericht)"]] as const) {
+    setLang(lang);
+    audit.mockResolvedValue({ total: 3, entries: list });
+    render(<AuditLogPanel rules={[]} onClose={() => {}} />);
+    await waitFor(() => screen.getByText(paused));
+    expect(screen.getAllByText(
+      (_t, el) => el?.tagName === "SPAN" && restored.test(
+        (el.textContent ?? "").replace(/\u00a0/g, " "))).length).toBeGreaterThan(0);
+    // the trash entry it undid is tagged
+    const row = screen.getByText(/^(Moved|4 Mails in den)/).closest("li")!;
+    expect(within(row).getByText(/undone|rückgängig/i)).toBeTruthy();
+    cleanup();
+  }
+  reset();
 });

@@ -131,6 +131,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The target is the Trash folder itself.',
     'nothing_to_undo':
         'There is nothing to undo any more.',
+    'unknown_point':
+        'That step is not in the list any more - reload the Time machine.',
     'deleted_then_failed': (
         '{cause} ({n} mails were permanently deleted before the failure)',
         '{cause} (1 mail was permanently deleted before the failure)'),

@@ -395,6 +395,8 @@ export interface AuditEntry {
   undoes?: { id: string; count: number };
   /** A rule run: mails it left alone because they look worth keeping. */
   kept_safe?: number;
+  /** On a Time machine restore: the same for every step it undid. */
+  undoes_many?: { id: string; count: number }[];
 }
 
 /** Who did it, for the Activity filter. */
@@ -513,6 +515,8 @@ export interface AppState {
   undo: UndoEntry[];
   /** AI assistants' own undo list (never mixed into `undo`). */
   assistant_undo?: UndoEntry[];
+  /** The Time machine's restore job (absent on an older server). */
+  restore?: RestoreState;
   folders_raw: string[];
   rules: Rule[];
   presets: FilterPreset[];
@@ -1271,4 +1275,86 @@ export interface CopyTell {
   senders: CopyTellSender[];
   newsletters: number;
   newsletter_keys: string[];
+
+/** One step of the Time machine (`/api/timemachine`): an audit entry's
+ *  fields plus what a restore would do with it. `status`: `back` = it has an
+ *  undo step, `cant` = it moved mail that can't be found (`reason`), `undone`
+ *  = an undo put it back, `stays` = nothing to undo. */
+export interface TmStep {
+  id: string;
+  ts: number;
+  action: string;
+  actor: string;
+  count: number;
+  bytes: number;
+  label: string;
+  outcome: string;
+  error?: string;
+  from_role?: "junk" | "trash";
+  status: "back" | "cant" | "undone" | "stays";
+  /** why a `cant` step cannot come back */
+  reason?: "emptied" | "untracked" | "deleted";
+  /** when the Trash was emptied (reason `emptied`) */
+  at?: number;
+  /** on a `back` step: mails it can still bring back, what it lost to an
+   *  emptied Trash, its senders (most mails first) */
+  mails?: number;
+  lost?: number;
+  senders?: { addr: string; n: number }[];
+  senders_total?: number;
+  token?: string;
+}
+
+/** Steps less than 30 minutes apart; `first` / `last` = oldest / newest step. */
+export interface TmSession {
+  start: number;
+  end: number;
+  steps: number;
+  mails: number;
+  first: string;
+  last: string;
+}
+
+export interface TmListing {
+  /** newest first */
+  steps: TmStep[];
+  /** newest first */
+  sessions: TmSession[];
+  now: number;
+  keep_days: number;
+  step_cap: number;
+}
+
+export interface TmPreview {
+  /** the newest step the preview counted */
+  top: string;
+  point: string;
+  point_ts: number;
+  /** undoable steps after the point */
+  steps: number;
+  /** sessions newer than the point's own the restore reaches into */
+  newer_sessions: number;
+  mails: number;
+  bytes: number;
+  folders: { folder: string; name: string; mails: number }[];
+  senders: { addr: string; mails: number; bytes: number }[];
+  cant: { reason: string; mails: number; at: number | null }[];
+  stays: { kind: string; n: number }[];
+  skipped: { protected: number; pinned: number };
+  rules: { id: string; name: string; mails: number }[];
+}
+
+export interface RestoreState {
+  status: "idle" | "running" | "done" | "error";
+  progress: string;
+  error: string;
+  seq: number;
+  steps_done: number;
+  steps_total: number;
+  moved: number;
+  point_ts?: number;
+  skipped_protected?: number;
+  skipped_pinned?: number;
+  cant?: number;
+  paused?: string[];
 }

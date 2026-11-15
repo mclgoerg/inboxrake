@@ -916,9 +916,32 @@ user.
 Every move to Trash ends in a toast ("Moved 618 mails to Trash")
 with an **Undo** button; older deletions can be restored from the Undo list
 in the status line above the list or from the Activity page ("Undo history",
-above the audit log) (destination UID and UIDVALIDITY tracking). If a server
+above the audit log) (destination UID and UIDVALIDITY tracking). Undo steps
+are kept for 30 days, also across restarts. If a server
 cannot identify a moved copy safely, its Undo entry is kept for manual
 recovery from the destination.
+
+### Time machine
+
+<small class="where">Activity › Time machine</small>
+
+Go back to a point, not just one step. Activity has a second view next to the
+log: the last 30 days as **sessions** (steps less than 30 minutes apart; a
+small bar per session) and, for the chosen session, its steps with time,
+what was done, by whom (you, a rule or an assistant token) and which senders.
+Put the **restore point** line between two steps - drag it, move it with
+the arrow keys, or tap a step (the step and everything above it comes back).
+Everything above the line wears **Comes back**; what cannot come back says why
+(emptied from Trash, deleted for good) and what stays (an unsubscribe the
+sender already has) is named too. The card beside the list previews the
+result before anything moves: mails and MB, to which folders, from how many
+senders, and the rules that would move them again on their next run, with
+**Pause** ticked (pausing switches the rule to Report only; it is listed in
+the confirm and in Activity). **Restore…** confirms with verb and count and
+runs as one job with progress; protected senders and pinned mails stay where
+they are. **Pick senders…** brings back only some senders. The restore is one
+step in Activity ("Restored N mails to ...") and can be undone like any other
+step, which also makes the steps it undid undoable again.
 
 ### Protected senders
 
@@ -981,7 +1004,8 @@ freed - browsable in-app and exportable as CSV.
 This month's cleaning (what you restored with Undo is
 subtracted), your undo history as cards, and a timeline of every mailbox
 action grouped by month with an ok / failed status; undone actions are
-marked "undone" and a failed unsubscribe can be retried right there.
+marked "undone" and a failed unsubscribe can be retried right there. The
+header switches between this **Log** and the [Time machine](#time-machine).
 
 </div>
 

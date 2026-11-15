@@ -101,9 +101,12 @@ client ID, if you run one, is `INBOXRAKE_MS_CLIENT_ID` (see
   Trash folder, behind a confirmation (the mail count; a single protected
   group or pinned mail asks "anyway?" naming it instead). UIDVALIDITY is checked before acting on cached UIDs, and scans
   are read-only.
-- **Moves normally offer Undo**, limited to the last 10 actions until a
-  restart. When the server cannot identify the moved copies safely, the
-  entry is kept and recovery must be done manually from the destination.
+- **Moves normally offer Undo**, kept for 30 days (and written to the
+  data volume, so a restart keeps them). When the server cannot identify
+  the moved copies safely, the entry is kept and recovery must be done
+  manually from the destination. The **Time machine** undoes several steps
+  at once, newest first, and never touches protected senders or pinned
+  mails.
   Permanent-delete actions in Trash and Junk cannot be undone. The manual ones confirm with exact counts; an opt-in
   purge rule only acts after you have reviewed a report run, then runs on
   its schedule within its age limit and per-run cap. Rules start in report

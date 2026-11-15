@@ -9,10 +9,21 @@ import type {
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
-  CopyJob, CopyKindId, CopyPlan, CopyTell,
+  CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
+
+/** The body of a Time machine preview / restore: `point` = the id of the
+ *  newest step that STAYS ("" = before every step), `top` = the newest step
+ *  the preview counted (a restore leaves newer steps alone), `senders` = Pick
+ *  senders, `pause` = the rules to switch to Report only. */
+export interface TmRequest {
+  point: string;
+  top?: string;
+  senders?: string[] | null;
+  pause?: string[];
+}
 
 /* Active account: every API call is scoped to exactly one account (strict
  * separation - the backend never mixes them). Set once by App on startup
@@ -126,6 +137,7 @@ const ERROR_CODES: Record<string, string> = {
   unknown_target: "ferr.unknown_target",
   target_is_trash: "ferr.target_is_trash",
   nothing_to_undo: "ferr.nothing_to_undo",
+  unknown_point: "ferr.unknown_point",
   deleted_then_failed: "ferr.deleted_then_failed",
   stranded_then_failed: "ferr.stranded_then_failed",
   moved_then_failed: "ferr.moved_then_failed",
@@ -444,6 +456,13 @@ export const api = {
       forAccount("/api/undo", account),
       { index, ...(ident ? { ident } : {}),
         ...(assistant ? { assistant: true } : {}) }),
+  timeMachine: (account?: string) =>
+    req<TmListing>(forAccount("/api/timemachine", account)),
+  timeMachinePreview: (body: TmRequest, account?: string) =>
+    req<TmPreview>(forAccount("/api/timemachine/preview", account), body),
+  timeMachineRestore: (body: TmRequest, account?: string) =>
+    req<{ started: boolean; steps: number; point_ts: number }>(
+      forAccount("/api/timemachine/restore", account), body),
   emptyTrash: (counted: { uv: number; max_uid: number }) =>
     req<{ deleted: number }>("/api/empty_trash", counted),
   cancel: (target: "scan" | "ai" | "delete" | "atts" | "unsub" | "index") =>

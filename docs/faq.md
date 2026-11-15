@@ -30,10 +30,17 @@ mode.
 </details>
 
 <details class="faq-q">
-<summary><h3 id="how-far-back-does-undo-go">How far back does Undo go?</h3><span class="faq-short">Each account keeps its last 10 undoable actions, in memory only.</span></summary>
+<summary><h3 id="how-far-back-does-undo-go">How far back does Undo go?</h3><span class="faq-short">Each account keeps its undoable actions for 30 days, and the Time machine goes back to any point in that time.</span></summary>
 
-Each account keeps its last 10 undoable actions, in memory only: a restart
-or an image update (e.g. an auto-updated `:latest`) empties the list. An
+Each account keeps its undoable actions for 30 days (at most 500 steps, and
+the mails of at most 100,000 of them; the oldest go first). They are stored
+on the data volume next to the scan snapshots, so a restart or an image
+update (e.g. an auto-updated `:latest`) keeps them; a provider that empties
+Trash earlier (Gmail after 30 days) takes the mails with it, and the step is
+then marked "can't come back". **Activity > Time machine** shows the steps
+as sessions, lets you put a restore point between two of them and restores
+the mailbox to it: every step after the point is undone, newest first, as
+one job that is itself a step you can undo. An
 undo tracks destination UIDs and UIDVALIDITY, using server COPYUID responses
 when available and otherwise identifying newly arrived copies. It never
 restores a pre-existing matching copy. If identity cannot be established

@@ -1,8 +1,10 @@
 /* Pure helpers of the Activity timeline: the month summary and the month
  * grouping, computed from the audit entries the page already loaded. */
 
+import { nowDate } from "./clock";
 import { t } from "./i18n";
 import { fmtNum } from "./numfmt";
+import { whenText } from "./timemachine";
 import type { AuditEntry, AuditResp, Rule } from "./types";
 
 /** Entry actions that move mails out of the inbox. A rule run is logged as
@@ -62,13 +64,16 @@ export function undoneCounts(entries: AuditEntry[]): Map<string, number> {
   const out = new Map<string, number>();
   const seen = new Set<string>();
   for (const e of entries) {
-    if (e.action === "undo" && e.undoes?.id) {
-      if (e.id) {
-        if (seen.has(e.id)) continue;
-        seen.add(e.id);
-      }
-      out.set(e.undoes.id, (out.get(e.undoes.id) ?? 0) + e.undoes.count);
+    // an undo names one entry, a Time machine restore every step it undid
+    const named = e.action === "undo" && e.undoes?.id ? [e.undoes]
+      : e.action === "restore" ? e.undoes_many ?? [] : [];
+    if (!named.length) continue;
+    if (e.id) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
     }
+    for (const u of named)
+      out.set(u.id, (out.get(u.id) ?? 0) + u.count);
   }
   return out;
 }
@@ -317,6 +322,20 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
     }
     case "undo":
       title = counted("undo");
+      break;
+    case "restore": {
+      // the label is the moment it went back to (epoch seconds)
+      const at = Number(label);
+      title = n > 0 && at > 0
+        ? t("audit.h.restore", { n, when: whenText(at, nowDate()) })
+        : tOr("audit.act", e.action);
+      detail = "";
+      break;
+    }
+    case "rule_paused":
+      title = label ? t("audit.h.rule_paused", { name: label })
+        : tOr("audit.act", e.action);
+      detail = "";
       break;
     case "digest_sent":
       title = label ? t("audit.h.digest_sent", { to: label })

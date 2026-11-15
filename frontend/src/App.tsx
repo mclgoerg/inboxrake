@@ -19,6 +19,7 @@ import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
 import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
+import { whenText } from "./timemachine";
 import { DetailPanel } from "./components/DetailPanel";
 import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
 import { Login } from "./components/Login";
@@ -64,7 +65,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
   PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
-import { nowMs } from "./clock";
+import { nowDate, nowMs } from "./clock";
 import { confirmTrash } from "./keepsafe";
 import { demoHint, setDemo, useDemo } from "./demoMode";
 import { fmtNum } from "./numfmt";
@@ -115,12 +116,17 @@ const RESTORE_NOTICES = ["restored", "restored_rescan"];
 // toast is the result, so the banner stays out (the "..._rescan" ones tell
 // the user to act and stay).
 const ROLE_MOVE_NOTICES = ["junk_rescued", "trash_restored"];
+/** The status line's Undo menu lists this many steps per list (the undo
+ *  lists hold 30 days of steps; Activity has them all). */
+const UNDO_MENU_MAX = 8;
+
 const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
   u.id ?? `${u.ts}|${u.count}|${u.label}`;
 
 const actionVerb = (a: string): string =>
   ({ trash: t("Move to Trash"), archive: t("Archive"), move: t("Move"),
-     mark_read: t("Mark as read"), move_contents: t("Move") } as Record<string, string>)[a] ?? a;
+     mark_read: t("Mark as read"), move_contents: t("Move"),
+     restore: t("audit.act.restore") } as Record<string, string>)[a] ?? a;
 
 /** The account generation (bumped by switchAccount): a flow that awaits
  *  compares it before it sends. The one counter lives in accountGuard. */
@@ -743,6 +749,31 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  // A Time machine restore finished (or failed): say so, wherever the user
+  // is, and let the lists catch up.
+  const restoreSeen = useRef<{ status: string; seq: number } | null>(null);
+  useEffect(() => {
+    const r = state?.restore;
+    if (!r) return;
+    const prev = restoreSeen.current;
+    restoreSeen.current = { status: r.status, seq: r.seq };
+    const ended = r.status === "done" || r.status === "error";
+    if (!prev || !ended || (prev.status !== "running" && prev.seq >= r.seq))
+      return;
+    const when = r.point_ts ? whenText(r.point_ts, nowDate()) : "";
+    if (r.status === "error")
+      notify(t("tm.failed", { msg: errorText(r.error) }), "error");
+    else if (r.error)
+      notify(t("tm.done_partial", { n: r.moved, when,
+        msg: errorText(r.error) }), "info");
+    else
+      toast.show(t("tm.done", { n: r.moved, when }), { variant: "success" });
+    setUndoRev((n) => n + 1);
+    void clearRestoreNotice();
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.restore]);
 
   /* Update check: installed PWAs have no service worker here, so an
      already-open tab can only learn a new build is live by asking the
@@ -2681,6 +2712,7 @@ export default function App() {
         above={undoHistory} reloadKey={undoRev} initialBy={activityBy} byName={activityByName}
         onLeave={() => { setActivityBy("all"); setActivityByName(""); }}
         groups={state?.groups.sender}
+        restore={state?.restore} onRestoreStarted={refresh}
         onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
         onClose={() => closeTool(() => {
           setAuditOpen(false);
@@ -3184,7 +3216,7 @@ export default function App() {
                     font-medium text-muted">{t("activity.undo_yours")}</span>
                 )}
                 {[...state!.undo].map((u, i) => ({ u, i })).reverse()
-                  .map(({ u, i }) => (
+                  .slice(0, UNDO_MENU_MAX).map(({ u, i }) => (
                   <button key={i}
                     className="block w-full rounded px-2 py-1.5 text-left
                       hover:bg-panel2"
@@ -3199,7 +3231,8 @@ export default function App() {
                     {t("activity.undo_assistant")}</span>
                 )}
                 {[...(state!.assistant_undo ?? [])]
-                  .map((u, i) => ({ u, i })).reverse().map(({ u, i }) => (
+                  .map((u, i) => ({ u, i })).reverse().slice(0, UNDO_MENU_MAX)
+                  .map(({ u, i }) => (
                   <button key={`a${i}`}
                     className="flex w-full items-center gap-1 rounded px-2
                       py-1.5 text-left hover:bg-panel2"
@@ -3213,6 +3246,14 @@ export default function App() {
                     </span>
                   </button>
                 ))}
+                {(state!.undo.length > UNDO_MENU_MAX
+                  || (state!.assistant_undo?.length ?? 0) > UNDO_MENU_MAX) && (
+                  <button className="block w-full rounded px-2 py-1.5
+                    text-left text-accent hover:bg-panel2"
+                  onClick={() => { setUndoOpen(false); openTool("activity"); }}>
+                    {t("undo.all_in_activity")}
+                  </button>
+                )}
               </span>
             )}
           </span>

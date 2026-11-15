@@ -46,6 +46,10 @@ def _initial_state() -> dict:
                                # when this moves
         "undo": [],            # summaries of undoable move jobs (newest last)
         "assistant_undo": [],  # the same for AI assistants' steps (own list)
+        # the Time machine's restore job (see timemachine.py): one job at a
+        # time per account, progress in steps and mails
+        "restore": {"status": "idle", "progress": "", "error": "",
+                    "steps_done": 0, "steps_total": 0, "moved": 0, "seq": 0},
         "folders_raw": [],     # raw IMAP folder names (targets for move-to)
         "index": {"status": "idle", "progress": "", "error": "",
                   "done": 0, "total": 0},   # local body index job

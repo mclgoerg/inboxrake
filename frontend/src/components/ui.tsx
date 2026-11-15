@@ -2219,6 +2219,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 export type ConfirmOptions = {
   title: string; body?: ReactNode; bullets?: ReactNode[];
+  /** A small muted line after the bullets (what follows from the action,
+   *  e.g. "you can undo it, too"). */
+  footnote?: ReactNode;
   confirmLabel: string; tone?: "danger" | "primary";
   /** Replaces "Cancel" where declining isn't a cancel (e.g. "Only block"). */
   cancelLabel?: string;
@@ -2249,7 +2252,7 @@ export const useArmed = () => {
 };
 
 /** Confirm sheet. Danger dialogs focus Cancel, the safe choice. */
-export function ConfirmDialog({ title, body, bullets, confirmLabel,
+export function ConfirmDialog({ title, body, bullets, footnote, confirmLabel,
   cancelLabel, altLabel, tone = "primary", check, onResult, onAlt }:
   ConfirmOptions & {
     altLabel?: string;
@@ -2262,7 +2265,8 @@ export function ConfirmDialog({ title, body, bullets, confirmLabel,
   const armed = useArmed();
   const titleId = useId();
   const bodyId = useId();
-  const hasBody = body != null || (bullets?.length ?? 0) > 0;
+  const hasBody = body != null || (bullets?.length ?? 0) > 0
+    || footnote != null;
   // Layout effect: the dialog is focused in the same commit that inserts it,
   // so nothing that reacts to its appearance (a fast Enter, findBy*, a
   // MutationObserver) can see another element focused - for a danger dialog
@@ -2284,6 +2288,7 @@ export function ConfirmDialog({ title, body, bullets, confirmLabel,
                 {bullets.map((b, i) => <li key={i}>{b}</li>)}
               </ul>
             )}
+            {footnote != null && <div className="type-meta">{footnote}</div>}
           </div>
         )}
         {check && (
