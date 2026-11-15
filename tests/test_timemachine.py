@@ -285,6 +285,19 @@ def test_undo_steps_survive_a_restart(three, monkeypatch):
     mailops.undo_last(acc=fresh)
 
 
+def test_a_failed_write_never_fails_the_action(monkeypatch):
+    _fake(monkeypatch)
+    acc = _acc()
+    with acc.lock:
+        acc.undo_log[:] = [_entry(NOW - 5, odd={1, 2})]   # JSON cannot hold it
+        mailops._sync_undo(acc)                           # logs, never raises
+    monkeypatch.setattr(undostore, "save", lambda *a: (_ for _ in ()).throw(
+        OSError("disk full")))
+    with acc.lock:
+        mailops._sync_undo(acc)
+    assert len(acc.state["undo"]) == 1
+
+
 def test_the_assistant_list_is_persisted_too(monkeypatch):
     _fake(monkeypatch)
     acc = _acc()

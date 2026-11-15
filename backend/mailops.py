@@ -808,7 +808,7 @@ def _persist_undo(acc) -> None:
     try:
         undostore.save(acc.name, acc.tenant, SNAPSHOT_DIR, acc.undo_log,
                        acc.assistant_undo)
-    except OSError:
+    except Exception:           # a full disk, an entry JSON cannot hold, ...
         log.exception("[%s] could not persist the undo log", acc.name)
 
 
