@@ -59,8 +59,9 @@ test("the id sent for a line is the newest step that stays", () => {
   expect(pointId(steps, 6)).toBe("");                        // before all
 });
 
-test("times are 24 h in both languages", () => {
+test("times are 24 h in both languages, midnight is 00:xx", () => {
   expect(timeOf(at(14, 5))).toBe("14:05");
+  expect(timeOf(at(0, 7))).toBe("00:07");
   setLang("de");
   expect(timeOf(at(9, 7))).toBe("09:07");
 });

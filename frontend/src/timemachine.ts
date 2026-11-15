@@ -14,7 +14,7 @@ const locale = (): string => getLang() === "de" ? "de-DE" : "en-GB";
 /** `14:31`, 24 h in both languages. */
 export const timeOf = (ts: number): string =>
   new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit",
-    hour12: false }).format(new Date(ts * 1000));
+    hourCycle: "h23" }).format(new Date(ts * 1000));
 
 const sameDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
