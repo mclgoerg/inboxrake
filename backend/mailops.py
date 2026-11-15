@@ -39,6 +39,7 @@ from . import demo
 from . import knownsenders
 from . import labelstore
 from . import pinstore
+from . import rhythm
 from . import aisortstore
 from . import knowledgestore
 from . import smartkinds
@@ -5983,11 +5984,14 @@ def parse_mail_query(q: str) -> dict:
 
 
 def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
-               direction: str | None = None, q: str = "", acc=None) -> dict:
+               direction: str | None = None, q: str = "", acc=None,
+               slot: dict | None = None) -> dict:
     """One page of the scanned index as a flat, sorted, filtered list - no
     IMAP traffic. Only (folder, uid) handles the index already exposes;
     `total` is the filtered count for "x of y"; `ignored` lists group-level
-    qualifiers from `q` that do not apply per mail (see parse_mail_query)."""
+    qualifiers from `q` that do not apply per mail (see parse_mail_query).
+    `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
+    a view parameter next to `q`, not a query qualifier."""
     acc = acc or accounts.get()
     if sort not in MAIL_SORTS:
         raise ValueError(f"bad sort {sort!r}")
@@ -6005,8 +6009,13 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
     verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
         cfgmod.load_config().get("protected")))
     with acc.lock:
+        in_slot = rhythm.slot_matcher(
+            slot, acc.state["groups"].get("sender") or {}, time.time()) \
+            if slot else None
         hits = []
         for m in acc.index.values():
+            if in_slot and not in_slot(m):
+                continue
             if f["from_addr"] is not None and m["addr"] != f["from_addr"]:
                 continue
             if f["domain"] is not None \

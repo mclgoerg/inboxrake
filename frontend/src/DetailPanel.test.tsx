@@ -1158,3 +1158,38 @@ describe("DetailPanel unsubscribe links", () => {
     });
   }
 });
+
+describe("DetailPanel: when this sender's mail arrives", () => {
+  beforeEach(() => setLang("en"));
+  afterEach(cleanup);
+  const daily = () => Array.from({ length: 14 }, (_, d) => mkMail(d + 1, {
+    ts: new Date(2026, 0, d + 1, 6, 10).getTime() / 1000 }));
+
+  it("shows the usual hours, the rate and the weekday chips for a sender", async () => {
+    renderPanel(daily());
+    await screen.findByText("Usually 06:00 - 07:00, every day");
+    expect(screen.getByText("1 a day")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /Mails of this sender per hour/ })).toBeTruthy();
+  });
+
+  it("is not shown for a handful of mails, a pool or another grouping", async () => {
+    const { unmount } = renderPanel(daily().slice(0, 3));
+    await screen.findByText("Mail 1");
+    expect(screen.queryByText(/^Usually/)).toBeNull();
+    unmount();
+    renderPanel(daily(), { group: mkGroup({ kind: "company", label: "Shop" }),
+      grouping: "smart" });
+    await screen.findByText("Mail 1");
+    expect(screen.queryByText(/^Usually/)).toBeNull();
+    cleanup();
+    renderPanel(daily(), { grouping: "domain" });
+    await screen.findByText("Mail 1");
+    expect(screen.queryByText(/^Usually/)).toBeNull();
+  });
+
+  it("speaks German", async () => {
+    setLang("de");
+    renderPanel(daily());
+    await screen.findByText("Meist 06:00 - 07:00 Uhr, jeden Tag");
+  });
+});

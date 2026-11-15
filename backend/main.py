@@ -53,6 +53,7 @@ from . import oauthserver
 from . import overview as overviewmod
 from . import pinstore
 from . import presets as presetsmod
+from . import rhythm as rhythmmod
 from . import rules as rulesmod
 from . import secretbox
 from . import stats as statsmod
@@ -1592,6 +1593,19 @@ def get_stats(account: str | None = Query(None)):
             "actions": history["actions"]}
 
 
+@app.get("/api/rhythm")
+def get_rhythm(period: Literal["30d", "12m", "all"] = Query("30d"),
+               tz: str = Query("", max_length=64),
+               tzoff: int = Query(0, ge=-840, le=840),
+               account: str | None = Query(None)):
+    """When mail arrives: a 7 x 24 (Mon first) count per Smart kind for the
+    period, in the caller's time zone (`tz` = IANA name, `tzoff` = minutes
+    east of UTC as the fallback), the top senders per slot and the senders
+    that mail at the same hour nearly every day. Counts and sender labels of
+    this account only."""
+    return rhythmmod.build(_acc(account), period, tz, tzoff)
+
+
 @app.get("/api/overview")
 def get_overview(since: int | None = Query(None, ge=0),
                  account: str | None = Query(None)):
@@ -2215,13 +2229,30 @@ def get_mails(offset: int = Query(0, ge=0),
               sort: Literal["date", "size", "sender"] = Query("date"),
               dir: Literal["asc", "desc"] | None = Query(None),
               q: str = Query(""),
+              slot: str = Query("", max_length=80),
+              slot_kind: str = Query("all"),
+              slot_period: str = Query("all"),
+              slot_days: str = Query("0,1,2,3,4,5,6", max_length=20),
+              tz: str = Query("", max_length=64),
+              tzoff: int = Query(0, ge=-840, le=840),
               account: str | None = Query(None)):
     """Flat "All mails" view: one page of the scan index as
     {total, offset, mails, ignored}. `q` takes plain words plus the
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
     has:pinned; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
-    return mailops.list_mails(offset, limit, sort, dir, q, _acc(account))
+    arrival = None
+    if slot:                    # "<from>-<to>": the arrival-rhythm slot
+        try:
+            lo, hi = (int(x) for x in slot.split("-"))
+            arrival = rhythmmod.clean_slot({
+                "kind": slot_kind, "period": slot_period, "from": lo, "to": hi,
+                "days": [int(d) for d in slot_days.split(",")],
+                "tz": tz, "offset": tzoff})
+        except ValueError:
+            raise HTTPException(400, "bad slot")
+    return mailops.list_mails(offset, limit, sort, dir, q, _acc(account),
+                              slot=arrival)
 
 
 @app.get("/api/export")

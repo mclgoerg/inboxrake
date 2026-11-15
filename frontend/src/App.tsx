@@ -37,6 +37,7 @@ import { Welcome } from "./components/Welcome";
 import { Wizard, WIZARD_RESUME_KEY, type WizardStep } from "./components/Wizard";
 import { SpaceMapPanel } from "./components/SpaceMapPanel";
 import { StatsPanel } from "./components/StatsPanel";
+import type { ArrivalSlot } from "./rhythm";
 import { AiFilterPanel } from "./components/AiFilterPanel";
 import { TriagePanel } from "./components/TriagePanel";
 import { UnsubscribeSheet, openUnsubscribeSheet, useUnsubscribeOpener,
@@ -163,7 +164,12 @@ export default function App() {
   // A query the flat list opens with (from the Overview's "Last week" row);
   // gone as soon as the list is left, so the sidebar's All mail starts clean.
   const [allMailsQuery, setAllMailsQuery] = useState("");
-  useEffect(() => { if (page !== "all") setAllMailsQuery(""); }, [page]);
+  // ... and the slot of "When mail arrives" it opens with (a view parameter
+  // next to the query, see AllMailsView)
+  const [allMailsSlot, setAllMailsSlot] = useState<ArrivalSlot | null>(null);
+  useEffect(() => {
+    if (page !== "all") { setAllMailsQuery(""); setAllMailsSlot(null); }
+  }, [page]);
   const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
@@ -1287,11 +1293,12 @@ export default function App() {
     showSenders();
     setFilter(query);
   };
-  const openAllMailNewest = (query: string) => {
+  const openAllMailNewest = (query: string, slot: ArrivalSlot | null = null) => {
     // newest first, so the top of the list is what just arrived
     localStorage.setItem("pmc_mails_sort", "date");
     localStorage.setItem("pmc_mails_dir", "desc");
     setAllMailsQuery(query);
+    setAllMailsSlot(slot);
     setFlat(true);
   };
 
@@ -2466,6 +2473,10 @@ export default function App() {
           if (!g) return;
           setStatsOpen(false);
           openSender(g);
+        }}
+        onOpenSlot={(slot) => { setStatsOpen(false); openAllMailNewest("", slot); }}
+        onUnsubscribe={(key) => {
+          if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
         }} />
     )}
     {toolShown("space") && state && (
@@ -3056,7 +3067,7 @@ export default function App() {
       ) : flat ? (
         state && (
           <AllMailsView key={state.account} state={state}
-            initialQuery={allMailsQuery}
+            initialQuery={allMailsQuery} initialSlot={allMailsSlot}
             onChanged={refresh} toolbarSlot={toolbarSlot} />
         )
       ) : groups.length > 0 ? (

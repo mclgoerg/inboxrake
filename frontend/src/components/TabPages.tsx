@@ -1,5 +1,5 @@
-import { BarChart3, ChevronRight, ClipboardList, Copy, Eye, History,
-  Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Trash2, Wand2 }
+import { BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye, History,
+  Layers, LayoutGrid, Paperclip, Play, ShieldAlert, Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
@@ -20,6 +20,9 @@ import { ProposalBadge } from "./Sidebar";
 import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
+import { busiest, hh, periodName, slotText, standsOut, type RhythmResp }
+  from "../rhythm";
+import { HeatGrid, HeatLegend } from "./RhythmCard";
 import { Avatar, Button, MiniBars, Ring }
   from "./ui";
 
@@ -316,6 +319,7 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
   const [audit, setAudit] = useState<Load<AuditEntry[]>>(
     { data: null, failed: false });
   const [wrapped, setWrapped] = useState<WrappedResp | null>(null);
+  const [rhythm, setRhythm] = useState<RhythmResp | null>(null);
   const [retrying, setRetrying] = useState(false);
   // Bumped after a retry: the audit list is fetched again (not stats / trackers).
   const [auditTick, setAuditTick] = useState(0);
@@ -331,6 +335,9 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
     api.stats().then((d) => alive && setStats({ data: d, failed: false }))
       .catch(() => alive && setStats({ data: null, failed: true }));
     api.wrapped().then((d) => alive && setWrapped(d)).catch(() => {});
+    // (a throw before the request - an older API object - is a failure too)
+    Promise.resolve().then(() => api.rhythm("30d"))
+      .then((d) => alive && setRhythm(d)).catch(() => {});
     api.trackers().then((d) => alive && setTrk({ data: d, failed: false }))
       .catch(() => alive && setTrk({ data: null, failed: true }));
     return () => { alive = false; };
@@ -415,6 +422,49 @@ export function InsightsPage({ groups, state, onOpen, onRetryUnsub }: {
         ) : <Skeleton className="h-32" />}
         </span>
       </button>
+
+      {rhythm && rhythm.kinds.all.total > 0 && (<>
+        <button type="button" onClick={() => onOpen("stats")} className={CARD_BTN}>
+          <span className="flex items-center gap-2 type-meta font-semibold text-muted">
+            <span aria-hidden className="text-accent"><Clock size={16} /></span>
+            <span className="min-w-0 flex-1 truncate">{t("stats.rhythm")}</span>
+            <span>{periodName("30d")}</span>
+          </span>
+          <span className="mt-3 block">
+            <HeatGrid mini grid={rhythm.kinds.all.grid}
+              label={`${t("stats.rhythm")}. ${periodName("30d")}`} />
+          </span>
+          <span className="mt-2 flex items-center justify-between gap-2 type-caption
+            text-muted">
+            <HeatLegend />
+            {(() => {
+              const b = busiest(rhythm.kinds.all.grid);
+              return b && <span>{t("rhythm.busiest_short",
+                { slot: slotText(b.day, b.hour) })}</span>;
+            })()}
+          </span>
+        </button>
+        {(() => {
+          const first = standsOut(rhythm)[0];
+          const daily = rhythm.daily[0];
+          if (!first) return null;
+          return (
+            <button type="button" onClick={() => onOpen("stats")} className={CARD_BTN}>
+              <span className="flex items-center gap-2 type-meta font-semibold text-muted">
+                <span aria-hidden className="text-accent"><Sparkles size={16} /></span>
+                <span className="min-w-0 flex-1 truncate">{t("rhythm.stands_out")}</span>
+              </span>
+              <span className="mt-2 block type-body font-semibold">{first.title}</span>
+              <span className="mt-0.5 block type-meta text-muted">
+                {daily ? <>{t("rhythm.w_daily", { name: daily.label,
+                  hour: hh(daily.hour).slice(0, 2) })}
+                  {" · "}<span className="text-accent">{t("rhythm.unsub")}</span></>
+                  : first.detail}
+              </span>
+            </button>
+          );
+        })()}
+      </>)}
 
       <div className="grid grid-cols-2 gap-3">
         <button type="button" disabled={!done} onClick={() => onOpen("space")}

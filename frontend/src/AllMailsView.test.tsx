@@ -419,3 +419,20 @@ test("a wide screen keeps the plain filter input and the count line",
     expect(screen.queryByRole("button", { name: "Build a filter" })).toBeNull();
     expect(screen.getByText("1 of 1 mails")).toBeTruthy();
   });
+
+test("a slot of 'When mail arrives' filters the list, shows a chip and can be dropped", async () => {
+  mails.mockResolvedValue(resp([mk(1)]));
+  const slot = { kind: "newsletters" as const, period: "30d" as const,
+    days: [1], from: 6, to: 7 };
+  render(<ToastProvider><DialogProvider>
+    <ReaderHostProvider value={{ selfAddrs: [], account: "proton", folders: [] }}>
+      <AllMailsView state={state} onChanged={onChanged} initialSlot={slot} />
+    </ReaderHostProvider>
+  </DialogProvider></ToastProvider>);
+  await screen.findByText(
+    "Showing mails that arrive Tue, 06:00 - 07:00 · Newsletters · 30 days");
+  expect(mails).toHaveBeenLastCalledWith(expect.objectContaining({ slot }));
+  fireEvent.click(screen.getByRole("button", { name: "Show all mails" }));
+  await waitFor(() => expect(mails.mock.calls.at(-1)![0].slot).toBeUndefined());
+  expect(screen.queryByText(/Showing mails that arrive/)).toBeNull();
+});

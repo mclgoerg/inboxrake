@@ -10,6 +10,8 @@ import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { QueryBuilder } from "./QueryBuilder";
+import { SlotChip } from "./RhythmCard";
+import type { ArrivalSlot } from "../rhythm";
 import { SortControl } from "./SortControl";
 import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
   useMediaQuery, useToast }
@@ -31,10 +33,13 @@ const naturalDir = (k: MailSort): "asc" | "desc" =>
  *  traffic). Rows are the search panel's MailRows; selection drives the
  *  same delete_messages actions (with the same pinned-mail confirm flow) as
  *  the group detail view. */
-export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" }: {
+export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
+  initialSlot = null }: {
   state: AppState;
   /** The filter the list opens with (e.g. `in:7d` from the Overview). */
   initialQuery?: string;
+  /** The arrival slot it opens with (a cell of "When mail arrives"). */
+  initialSlot?: ArrivalSlot | null;
   onChanged: () => void;
   /** Where the filter + sort row is rendered (App's row B, so the toolbar
    *  keeps its place when switching tabs). Inline when omitted; null =
@@ -43,6 +48,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
 }) {
   const [q, setQ] = useState(initialQuery);
   const [dq, setDq] = useState(initialQuery);       // debounced q
+  const [slot, setSlot] = useState<ArrivalSlot | null>(initialSlot);
+  useEffect(() => setSlot(initialSlot), [initialSlot]);
   const [sortK, setSortK] = useState<MailSort>(() => {
     const k = localStorage.getItem("pmc_mails_sort") as MailSort | null;
     return k && SORTS.some((o) => o.k === k) ? k : "date";
@@ -83,14 +90,15 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     if (!sel.size) setMoveDest("");
   }, [sel.size]);
 
-  const fetchKey = `${dq}\u0000${sortK}\u0000${dir}`;
+  const fetchKey = `${dq}\u0000${sortK}\u0000${dir}\u0000${
+    slot ? JSON.stringify(slot) : ""}`;
   useEffect(() => {
     let alive = true;     // a slow response for a previous query is dropped
     const sameQuery = loaded.current.key === fetchKey;
     const limit = sameQuery
       ? Math.min(Math.max(loaded.current.count, PAGE), 1000) : PAGE;
     if (!sameQuery) setLoading(true);
-    api.mails({ offset: 0, limit, sort: sortK, dir, q: dq })
+    api.mails({ offset: 0, limit, sort: sortK, dir, q: dq, ...(slot && { slot }) })
       .then((r) => {
         if (!alive) return;
         loaded.current = { key: fetchKey, count: r.mails.length };
@@ -114,7 +122,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
     setMore(true);
     try {
       const r = await api.mails({ offset: mails.length, limit: PAGE,
-        sort: sortK, dir, q: dq });
+        sort: sortK, dir, q: dq, ...(slot && { slot }) });
       // A newer filter / sort replaced the list meanwhile: this page belongs
       // to the old one.
       if (latestKey.current !== startKey) { setMore(false); return; }
@@ -283,6 +291,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
           )}
         </div>
       )}
+      {slot && <SlotChip slot={slot} onClear={() => setSlot(null)} />}
       {ignored.length > 0 && (
         <p className="mb-2 type-meta text-muted">
           {t("mails.ignored", { list: ignored.join(" ") })}
@@ -309,7 +318,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "" 
       )}
       {!loading && !error && mails.length === 0 && (
         <EmptyState>
-          {dq ? t("mails.none") : t("No scan yet - hit “Scan”.")}
+          {dq || slot ? t("mails.none") : t("No scan yet - hit “Scan”.")}
         </EmptyState>
       )}
       <MailRows mails={mails} sel={sel} onToggle={toggle} onOpen={setView}
