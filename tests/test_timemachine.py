@@ -1177,3 +1177,26 @@ def test_a_sole_lookalike_is_not_moved_for_the_wrong_sender(monkeypatch):
     fake.mailbox["Keep"].append(make_msg(93, frm="z@x.example", msgid=a1["msgid"]))
     r = mailops.undo_last()
     assert r["ambiguous"] == 1 and _where(fake, "z") == {"Keep": 1}
+
+
+def test_a_re_armed_restore_is_strict_about_a_shared_message_id(three):
+    _rearmed_restore(three)
+    a1 = next(m for m in three.mailbox["INBOX"] if m["from"].startswith("a@"))
+    three.mailbox["INBOX"].append(make_msg(94, frm="z@x.example",
+                                           msgid=a1["msgid"]))
+    r = mailops.undo_last()
+    assert r["ambiguous"] >= 1 and _where(three, "z") == {"INBOX": 1}
+
+
+def test_mails_that_did_not_move_back_are_not_re_armed(monkeypatch):
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    _go(s1)                                        # S3 and S2 undone
+    a1 = next(m for m in fake.mailbox["Keep"])
+    fake.mailbox["Keep"].append(make_msg(95, frm="z@x.example",
+                                         msgid=a1["msgid"]))
+    mailops.undo_last()                            # a1 stays (ambiguous)
+    back = [s for s in _steps() if s["action"] == "trash"
+            and s["status"] == "back"]
+    a_mails = sum(s["mails"] for s in back
+                  if any(x["addr"] == "a@x.example" for x in s["senders"]))
+    assert a_mails == 1                            # only a2 was re-armed
