@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: FastAPI backend serving the built bundle
-FROM python:3.15-slim@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 WORKDIR /app
 # The pinned base can lag behind Debian's security fixes (2026-11: zlib1g
 # CVE-2026-76844 / CVE-2026-85091 fixed in trixie-security, not yet in the
