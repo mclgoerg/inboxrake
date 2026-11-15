@@ -1057,3 +1057,72 @@ export interface AssistantTokenRequest {
   expires_days: 30 | 90 | null;
   daily_cap?: number;
 }
+
+/* Copy to another account (backend/accountcopy.py). */
+export type CopyKindId = "replied" | "orders" | "accounts" | "appointments"
+  | "protected" | "pinned" | "newsletter" | "other";
+
+export interface CopyPlan {
+  source: { name: string; address: string; mails: number; size: number };
+  target: { name: string; address: string };
+  /** The default name of the new folder ("From <source>"). */
+  folder: string;
+  kinds: { id: CopyKindId; mails: number; size: number; default: boolean }[];
+  /** Bit of each kind in a combo's `mask`. */
+  bits: Record<CopyKindId, number>;
+  /** Mails + bytes per distinct set of kinds: a mail in two kinds is one
+   *  combo, so any ticked set sums to a de-duplicated figure. */
+  combos: { mask: number; mails: number; size: number }[];
+  scanned: boolean;
+  scanning: boolean;
+}
+
+export type CopyStatus = "running" | "paused" | "done" | "cancelled" | "error";
+
+export interface CopyJob {
+  id: string;
+  source: string;
+  target: string;
+  folder: string;
+  kinds: CopyKindId[];
+  status: CopyStatus;
+  total: number;
+  bytes_total: number;
+  /** Finished mails: copied + already there + over 50 MB + gone. */
+  processed: number;
+  copied: number;
+  skipped: number;
+  checked: number;
+  unchecked: number;
+  too_large: number;
+  missing: number;
+  failed: number;
+  /** Id-less mails whose APPEND was never confirmed and that the target does
+   *  not show: they may not have been copied. */
+  unsure: number;
+  bytes_done: number;
+  started: number;
+  finished: number;
+  /** A coded error (see ERROR_CODES) when `status` is "error". */
+  error: string;
+  active_s: number;
+  eta_s: number | null;
+}
+
+export interface CopyTellSender {
+  addr: string;
+  name: string;
+  mails: number;
+  last: number;
+  done: boolean;
+}
+
+export interface CopyTell {
+  source: { name: string; address: string };
+  target: { name: string; address: string };
+  total: number;
+  done: number;
+  senders: CopyTellSender[];
+  newsletters: number;
+  newsletter_keys: string[];
+}

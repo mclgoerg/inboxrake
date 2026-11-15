@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { restoreScrollOnNext, useScrollPerPage, hashOf, isTabPage, parseHash, parseSettingsRoute, settingsHash, useNav,
+import { restoreScrollOnNext, useScrollPerPage, hashOf, isTabPage, isToolPage, TOOL_TAB, parseHash, parseSettingsRoute, settingsHash, useNav,
   type Page } from "./nav";
 
 beforeEach(() => { window.location.hash = ""; });
@@ -19,6 +19,15 @@ test("parseHash accepts known pages and rejects the rest", () => {
   expect(parseHash("")).toBeNull();
   expect(parseHash("#/nope")).toBeNull();
   expect(hashOf("all")).toBe("#/all");
+});
+
+test("the move page is a tool page of its own, listed on no tab page", () => {
+  expect(parseHash("#/move")).toBe("move");
+  expect(parseHash("#/move?from=gmail")).toBe("move");
+  expect(isToolPage("move")).toBe(true);
+  expect(isTabPage("move")).toBe(false);
+  expect(TOOL_TAB.move).toBeUndefined();
+  expect(hashOf("move")).toBe("#/move");
 });
 
 test("an empty or unknown hash shows the fallback without rewriting the URL", () => {

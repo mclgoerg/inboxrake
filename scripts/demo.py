@@ -67,6 +67,8 @@ os.environ.update(
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),
     DIGEST_PATH=str(DATA / "digest.json"),
+    ACCOUNT_COPY_PATH=str(DATA / "account_copy.json"),
+    ACCOUNT_COPY_LEDGER_PATH=str(DATA / "account_copy_ledger.jsonl"),
     IMAP_CAFILE="", IMAP_USER="demo@example.com", IMAP_PASSWORD="demo",
     LOG_LEVEL="INFO",
     # the local body index (Tools -> Trackers) needs a key

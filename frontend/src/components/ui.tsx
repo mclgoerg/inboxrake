@@ -1770,7 +1770,7 @@ export function Checkbox({ label, className = "", round = false, ...rest }:
           className="size-4.5 shrink-0 cursor-[inherit] accent-accent"
           {...rest} />
       )}
-      {label != null && <span className="min-w-0">{label}</span>}
+      {label != null && <span className="min-w-0 flex-1">{label}</span>}
     </label>
   );
 }

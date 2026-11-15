@@ -1,4 +1,4 @@
-import { Archive, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
+import { Archive, ArrowLeftRight, BellOff, Ban, Bot, ChevronLeft, ChevronRight, CircleAlert,
   CircleCheck, CircleX, Download, ExternalLink, FolderInput, Hand, KeyRound, ListChecks,
   Circle, Mail, MailCheck, Pin, RefreshCw, ScrollText, Send, ShieldCheck,
   Trash2, Undo2, type LucideIcon }
@@ -40,6 +40,7 @@ const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   archive: { icon: Archive, tone: "bg-safe-bg text-safe-fg" },
   move: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
   move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
+  account_copy: { icon: ArrowLeftRight, tone: "bg-info-bg text-info-fg" },
   mark_read: { icon: MailCheck, tone: "bg-chip text-chiptext" },
   rule_execute: { icon: ListChecks, tone: "bg-review-bg text-review-fg" },
   rule_report: { icon: ListChecks, tone: "bg-chip text-chiptext" },
