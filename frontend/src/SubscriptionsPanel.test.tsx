@@ -434,7 +434,7 @@ test("phone: two tiles, a row per service with a use marker, tap opens the pane"
 
 /* --------------------------------- German -------------------------------- */
 
-test("the inline links take their touch area from a pseudo-element, not min-height",
+test("the inline links take their touch area from padding with a negative margin, not min-height",
   async () => {
     show();
     await screen.findByText("€32");
@@ -442,7 +442,7 @@ test("the inline links take their touch area from a pseudo-element, not min-heig
       "Find amounts in the receipt text"]) {
       const cls = screen.getByRole("button", { name }).className;
       expect(cls).not.toContain("min-h-11");
-      expect(cls).toContain("coarse:after:-inset-y-3");
+      expect(cls).toContain("coarse:-my-3");
     }
   });
 

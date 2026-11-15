@@ -93,10 +93,10 @@ export const monthlyText = (tot: SubTotals): string | null =>
   tot.monthly === null || !tot.currency ? null
     : fmtMoney(tot.monthly, tot.currency, { whole: true });
 
-/** An inline link's touch area (44 px on touch) without stretching its line:
- *  the box is drawn by a pseudo-element, not by min-height. */
-export const LINK_TAP = "relative coarse:after:absolute coarse:after:-inset-y-3 "
-  + "coarse:after:inset-x-0 coarse:after:content-['']";
+/** An inline link's touch area (40 px high on touch) without stretching its
+ *  line: the padding is cancelled by an equal negative margin, so the line
+ *  box keeps its own height. */
+export const LINK_TAP = "coarse:py-3 coarse:-my-3";
 
 /** A reminder that fired this long ago is still news (the poll runs more
  *  often than this). */
