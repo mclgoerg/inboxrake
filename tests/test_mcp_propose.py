@@ -19,6 +19,7 @@ from backend import rules as rulesmod
 from backend import smtpout
 from backend.main import app
 
+from conftest import wait_scan_done
 from test_mcp import (M_BODY, M_CAT, M_HOST, M_PASS, M_TAG, M_UNSUB, M_USER,
                       _cap, _token, call, legacy, mbox, ok)  # noqa: F401
 from test_webpush import _decrypt, _wait, device, network  # noqa: F401
@@ -39,6 +40,12 @@ def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(webpush, "PUSH_SUBS_PATH", tmp_path / "subs.json")
     monkeypatch.setattr(webpush, "_key_cache", None)
     monkeypatch.setattr(webpush, "_presence", {})
+    yield
+    # A test that starts a scan must not leave it running: it keeps writing
+    # the config after the test ends and races the next test's writes
+    # (config.tmp FileNotFoundError). start_scan sets "scanning" before it
+    # returns, so this catches every scan a test started.
+    wait_scan_done(timeout=10.0)
 
 
 @pytest.fixture(autouse=True)
