@@ -28,8 +28,8 @@ _BODY = json.dumps({"detail": TOO_LARGE}).encode()
 
 def limit_for(path: str, public: frozenset[str] | set[str]) -> int:
     path = path.rstrip("/") or "/"
-    if path in public:
-        return LIMIT_PUBLIC
+    if path in public or path.startswith(("/oauth/", "/.well-known/")):
+        return LIMIT_PUBLIC           # (the OAuth endpoints answer anyone)
     if path == "/api/import_config":
         return LIMIT_IMPORT
     if path == "/mcp":

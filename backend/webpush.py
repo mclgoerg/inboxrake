@@ -359,16 +359,16 @@ def _post(endpoint: str, headers: dict, body: bytes) -> int:
     SSRF-safe path as the unsubscribe link (resolve once, every address must
     be public, connect to that address, never follow a redirect). The one
     place that touches the network - the tests replace it."""
-    from . import unsub
+    from . import netguard
     parts = urllib.parse.urlsplit(endpoint)
     host, port = parts.hostname or "", parts.port or 443
     try:
-        addrs = unsub._resolve_public(host, port)
+        addrs = netguard.resolve_public(host, port)
     except RuntimeError as exc:
         raise PushError("push_unreachable") from exc
     target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
     for ip in addrs:
-        conn = unsub._PinnedHTTPSConnection(host, port, ip, SEND_TIMEOUT)
+        conn = netguard.PinnedHTTPSConnection(host, port, ip, SEND_TIMEOUT)
         try:
             conn.request("POST", target, body=body, headers=headers)
             resp = conn.getresponse()
@@ -425,6 +425,8 @@ STRINGS = {
         "job_atts": "Attachment analysis", "job_unsub": "Bulk unsubscribe",
         "proposal": "An AI assistant proposes a rule",
         "proposal_body": "Review it in Inboxrake. Nothing has moved yet.",
+        "connection": "New AI connection",
+        "connection_body": "{label}. Not you? Disconnect it in Settings.",
         "test": "Notifications work",
         "test_body": "You'll be told here when a scan or clean-up you started finishes.",
     },
@@ -444,6 +446,9 @@ STRINGS = {
         "proposal": "Ein KI-Assistent schlägt eine Regel vor",
         "proposal_body": "Sieh sie dir in Inboxrake an. Es wurde noch nichts "
                          "verschoben.",
+        "connection": "Neue KI-Verbindung",
+        "connection_body": "{label}. Nicht du? Trenne sie in den "
+                           "Einstellungen.",
         "test": "Benachrichtigungen funktionieren",
         "test_body": "Du bekommst hier Bescheid, wenn ein Scan oder Aufräumen fertig ist.",
     },
@@ -451,8 +456,14 @@ STRINGS = {
 
 
 def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
-             n: int = 0) -> dict:
+             n: int = 0, label: str = "") -> dict:
     t = STRINGS.get(lang) or STRINGS["en"]
+    if kind == "connection":
+        # a hosted AI app was connected over OAuth: its host and level
+        return {"title": t["connection"],
+                "body": t["connection_body"].format(label=label),
+                "tag": f"{account}:connection",
+                "url": "/#/settings/assistants"}
     if kind == "proposal":
         # generic: no name, no filter, no token - only that one is waiting
         return {"title": t["proposal"], "body": t["proposal_body"],
@@ -488,7 +499,8 @@ def send_test(endpoint) -> None:
 
 def job_finished(acc, kind: str, ok: bool, **params) -> None:
     """A job somebody started has ended (kind: scan | delete | ai | atts |
-    unsub, or `proposal`: an AI assistant proposed a rule). Returns at once
+    unsub, `proposal`: an AI assistant proposed a rule, or `connection`: a
+    hosted AI app was connected, `label` says which). Returns at once
     and never raises: the delivery runs on its own thread, and a device
     that is looking at the app is left alone."""
     try:
@@ -512,7 +524,8 @@ def _deliver(acc, kind: str, ok: bool, params: dict) -> None:
                 if _present(sub["endpoint"], tenant):
                     continue
                 payload = _payload(sub["lang"], kind, ok, acc.name, prefix,
-                                   int(params.get("n") or 0))
+                                   int(params.get("n") or 0),
+                                   str(params.get("label") or ""))
                 try:
                     send(sub, payload, tenant)
                 except Exception as exc:

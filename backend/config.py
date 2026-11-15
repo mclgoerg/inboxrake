@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -202,7 +203,7 @@ ASSISTANT_ACCESS = ("off", "read_propose", "act")
 def _default_server() -> dict:
     return {
         "auth": _env_auth(),
-        "assistants": {"access": "off"},
+        "assistants": {"access": "off", "oauth": False},
         # The admin MAY configure one server-side AI key and share it with
         # every tenant; tenants without their own key then use it, capped
         # by default_tenant_budget_usd per tenant and month (0 = no cap).
@@ -240,6 +241,7 @@ def load_server() -> dict:
         server["assistants"].update(saved["assistants"])
     if server["assistants"].get("access") not in ASSISTANT_ACCESS:
         server["assistants"]["access"] = "off"      # a hand-edited file
+    server["assistants"]["oauth"] = server["assistants"].get("oauth") is True
     server["auth"]["oidc"]["client_secret"] = secretbox.unseal(
         server["auth"]["oidc"].get("client_secret"))
     server["shared_ai"]["api_key"] = secretbox.unseal(
@@ -261,6 +263,70 @@ def _write_server(server: dict) -> None:
 def assistant_access() -> str:
     """The admin cap on AI assistant access: off | read_propose | act."""
     return load_server()["assistants"]["access"]
+
+
+# ---- OAuth for hosted AI apps (backend/oauthserver.py)
+#
+# Inboxrake is its own authorization server. Its issuer and the audience of
+# its tokens are the admin's INBOXRAKE_PUBLIC_URL - never derived from request
+# headers, which a client (or a proxy misconfiguration) could shape. The
+# `assistants.oauth` switch is off by default and refused unless the instance
+# can safely be reached by a hosted app; the conditions are checked again on
+# every request, so a later change (login mode, env, access cap) switches
+# OAuth off again without deleting any grant.
+PUBLIC_URL_ENV = "INBOXRAKE_PUBLIC_URL"
+OAUTH_NEEDS_LOGIN = "oauth_needs_login"
+OAUTH_NEEDS_PUBLIC_URL = "oauth_needs_public_url"
+OAUTH_NEEDS_ACCESS = "oauth_needs_access"
+# Dev only: lets an http://127.0.0.1 address count as a public URL, for the
+# SDK interop run (scripts/demo.py sets it in code). There is deliberately no
+# environment switch for it.
+ALLOW_HTTP_LOOPBACK_ISSUER = False
+_PUBLIC_URL = re.compile(r"https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?"
+                         r"(?::(\d{1,5}))?")
+_LOOPBACK_URL = re.compile(r"http://(?:127\.0\.0\.1|localhost)(?::(\d{1,5}))?")
+MCP_PATH = "/mcp"
+
+
+def configured_public_url() -> str:
+    """What INBOXRAKE_PUBLIC_URL holds, trimmed (the admin sees it)."""
+    return os.environ.get(PUBLIC_URL_ENV, "").strip()
+
+
+def public_url() -> str:
+    """The issuer: `https://host[:port]` without path or trailing slash, or
+    "" when the variable is unset or not of that shape."""
+    url = configured_public_url()
+    m = _PUBLIC_URL.fullmatch(url) or (
+        _LOOPBACK_URL.fullmatch(url) if ALLOW_HTTP_LOOPBACK_ISSUER else None)
+    if m is None or (m.group(1) and not 0 < int(m.group(1)) < 65536):
+        return ""
+    return url
+
+
+def mcp_url() -> str:
+    """The canonical MCP resource (the audience of every OAuth token)."""
+    base = public_url()
+    return base + MCP_PATH if base else ""
+
+
+def oauth_reason(server: dict | None = None) -> str:
+    """"" when OAuth could be on; else why not (a stable code)."""
+    server = server or load_server()
+    if server["auth"]["mode"] == "none":
+        return OAUTH_NEEDS_LOGIN
+    if not public_url():
+        return OAUTH_NEEDS_PUBLIC_URL
+    if server["assistants"]["access"] == "off":
+        return OAUTH_NEEDS_ACCESS
+    return ""
+
+
+def oauth_active() -> bool:
+    """Whether hosted apps can use OAuth right now: the admin switched it on
+    AND every precondition still holds."""
+    server = load_server()
+    return server["assistants"]["oauth"] and not oauth_reason(server)
 
 
 def save_server(server: dict) -> None:
@@ -984,6 +1050,12 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
                     raise ValueError("assistants.access must be one of "
                                      + ", ".join(ASSISTANT_ACCESS))
                 server["assistants"]["access"] = access
+            if "oauth" in assistants_in:
+                if not isinstance(assistants_in["oauth"], bool):
+                    raise ValueError("assistants.oauth must be true or false")
+                if assistants_in["oauth"] and oauth_reason(server):
+                    raise ValueError(oauth_reason(server))
+                server["assistants"]["oauth"] = assistants_in["oauth"]
         if shared_in:
             scfg = server["shared_ai"]
             if "enabled" in shared_in:
@@ -1133,8 +1205,13 @@ def masked_config(cfg: dict) -> dict:
     out["assistants"] = {"access": load_server()["assistants"]["access"],
                          "levels": list(assistanttokens.AVAILABLE_LEVELS),
                          "notify": notify_settings(cfg)}
+    out["assistants"]["oauth"] = {
+        "enabled": load_server()["assistants"]["oauth"],
+        "available": not oauth_reason(), "reason": oauth_reason(),
+        "mcp_url": mcp_url()}
     if admin:
         server = load_server()
+        out["assistants"]["oauth"]["public_url"] = configured_public_url()
         out["assistants"]["options"] = list(ASSISTANT_ACCESS)
         out["assistants"]["token_counts"] = assistanttokens.level_counts()
         out["auth"].update({

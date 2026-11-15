@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import email.header
 import http.client
-import ipaddress
 import logging
 import re
 import smtplib
@@ -36,6 +35,7 @@ from . import auditlog
 from . import config as cfgmod
 from . import demo
 from . import mailops
+from . import netguard
 from . import pinstore
 from . import smtpout
 from . import tenants
@@ -90,69 +90,14 @@ def method_of(parts: dict) -> str | None:
     return None
 
 
-def _public_ip(raw: str):
-    """The address as ipaddress object if it is a public unicast address,
-    else None. IPv4-mapped IPv6 is judged by the IPv4 address inside; the
-    list is explicit because `is_global` alone lets multicast through."""
-    ip = ipaddress.ip_address(raw.split("%", 1)[0])
-    if ip.version == 6 and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    if (ip.is_loopback or ip.is_private or ip.is_link_local
-            or (ip.version == 6 and ip.is_site_local)
-            or ip.is_multicast or ip.is_reserved or ip.is_unspecified
-            or not ip.is_global):
-        return None
-    return ip
-
-
-def _resolve_public(host: str, port: int) -> list[str]:
-    """Resolve ONCE and return the addresses to connect to; every one of
-    them must be public, so no answer of a mixed record can win."""
-    if not host:
-        raise RuntimeError(mailops.coded(mailops.UNSUB_BAD_URL))
-    try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError as exc:
-        if demo.denied(exc):
-            raise demo.refusal() from exc
-        raise RuntimeError(mailops.coded(mailops.UNSUB_UNREACHABLE))
-    addrs: list[str] = []
-    for info in infos:
-        raw = info[4][0]
-        if _public_ip(raw) is None:
-            raise RuntimeError(mailops.coded(mailops.UNSUB_BLOCKED))
-        if raw not in addrs:
-            addrs.append(raw)
-    if not addrs:
-        raise RuntimeError(mailops.coded(mailops.UNSUB_UNREACHABLE))
-    return addrs
-
-
-def _ssl_context() -> ssl.SSLContext:
-    return ssl.create_default_context()     # verifies chain + host name
-
-
-class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    """HTTPS to an address we already validated: no second DNS lookup, TLS
-    (SNI + certificate check) still against the original host name."""
-
-    def __init__(self, host: str, port: int, ip: str, timeout: float):
-        super().__init__(host, port, timeout=timeout, context=_ssl_context())
-        self._ip = ip
-
-    def connect(self):
-        sock = socket.create_connection((self._ip, self.port), self.timeout)
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
-
-
 def _post_one_click(url: str) -> None:
     parts = urllib.parse.urlparse(url)
     if parts.scheme.lower() != "https":
         raise RuntimeError(mailops.coded(mailops.UNSUB_BAD_URL))
     host, port = parts.hostname or "", parts.port or 443
     last: Exception | None = None
-    for ip in _resolve_public(host, port):
-        conn = _PinnedHTTPSConnection(host, port, ip, 20)
+    for ip in netguard.resolve_public(host, port):
+        conn = netguard.PinnedHTTPSConnection(host, port, ip, 20)
         try:
             conn.request(
                 "POST", (parts.path or "/")

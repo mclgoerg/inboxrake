@@ -1,6 +1,7 @@
 """Native login: password mode, OIDC mode, sessions, and the default
 (mode none) staying completely open for reverse-proxy setups."""
 
+import os
 import time
 
 from fastapi.testclient import TestClient
@@ -194,6 +195,9 @@ def test_every_api_route_is_locked_without_a_session():
     assert "GET /api/assistants/tokens" in checked
     assert "POST /api/assistants/tokens" in checked
     assert "DELETE /api/assistants/tokens/{token_id}" in checked
+    # the consent API of hosted AI apps is a session route like the rest
+    assert "GET /api/assistants/connect" in checked
+    assert "POST /api/assistants/connect" in checked
 
     # /mcp is outside /api/ and authenticates itself: with the admin cap on
     # it answers 401 + a Bearer challenge to anything but a token - a
@@ -203,6 +207,24 @@ def test_every_api_route_is_locked_without_a_session():
     assert r.status_code == 401
     assert r.headers["www-authenticate"].startswith("Bearer")
     assert c.get("/.well-known/oauth-protected-resource").status_code == 404
+    # ... OAuth for hosted apps is a separate switch (off here), and when it
+    # is on, the metadata and the token endpoint answer without a session
+    assert c.get("/.well-known/oauth-authorization-server").status_code == 404
+    assert c.post("/oauth/token", data={"grant_type": "x"}).status_code == 404
+    os.environ["INBOXRAKE_PUBLIC_URL"] = "https://mail.example.com"
+    try:
+        cfgmod.update_config({"assistants": {"oauth": True}})
+        anon = TestClient(app, base_url="https://mail.example.com")
+        assert anon.get("/.well-known/oauth-protected-resource"
+                        ).status_code == 200
+        assert anon.get("/.well-known/oauth-authorization-server"
+                        ).status_code == 200
+        assert anon.post("/oauth/token", data={"grant_type": "x"}
+                         ).json() == {"error": "unsupported_grant_type"}
+        assert anon.get("/.well-known/openid-configuration"
+                        ).status_code == 404
+    finally:
+        del os.environ["INBOXRAKE_PUBLIC_URL"]
 
     # the public probe leaks nothing but the mode
     assert set(c.get("/api/auth").json()) == {"mode", "authed"}

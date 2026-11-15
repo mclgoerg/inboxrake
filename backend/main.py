@@ -10,7 +10,7 @@ import io
 import json
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 import logging
 import os
@@ -49,6 +49,7 @@ from . import knownsenders
 from . import mailops
 from . import mcpserver
 from . import oauthflow
+from . import oauthserver
 from . import overview as overviewmod
 from . import pinstore
 from . import presets as presetsmod
@@ -529,7 +530,10 @@ def get_oidc_callback(request: Request, code: str = Query(""),
         logging.getLogger("inboxrake.auth").warning(
             "OIDC admin claimed by %s - this identity now owns the "
             "existing workspace and the server settings", sub)
-    resp = RedirectResponse("/")
+    # A hosted AI app's consent request is waiting (the cookie authorize set):
+    # back to the consent page. A fixed target - no `next` parameter exists.
+    resp = RedirectResponse(
+        "/#/connect" if request.cookies.get(oauthserver.COOKIE) else "/")
     resp.delete_cookie(_PKCE_COOKIE)          # one roundtrip, one verifier
     _sync_session_epoch()
     _set_session(resp, request, identity)
@@ -952,9 +956,12 @@ def delete_assistant_token(token_id: str):
     except assistanttokens.TokenError as exc:
         raise HTTPException(404, str(exc))
     assistantplans.drop_token(token_id)
-    for account in rec["accounts"]:
-        auditlog.record("assistant_token_revoked", account=account,
-                        label=rec["name"])
+    if rec.get("kind") == assistanttokens.KIND_OAUTH:
+        oauthserver.disconnected(rec, "user")     # a hosted app's grant
+    else:
+        for account in rec["accounts"]:
+            auditlog.record("assistant_token_revoked", account=account,
+                            label=rec["name"])
     return {"ok": True}
 
 
@@ -976,6 +983,103 @@ async def mcp_endpoint(request: Request):
         return Response(status_code=reply.status, headers=headers)
     return JSONResponse(reply.body, status_code=reply.status,
                         headers=headers)
+
+
+# ------------------------------------------------ OAuth for hosted AI apps
+#
+# backend/oauthserver.py holds the logic; these routes only translate. Every
+# one answers a plain 404 unless the admin switched OAuth on and its
+# preconditions hold. They sit outside /api/ (so `_auth` lets them through
+# and they authenticate themselves) except the consent API, which is a normal
+# session route.
+
+def _oauth_response(reply: oauthserver.Reply) -> Response:
+    if reply.status == 302:
+        resp: Response = RedirectResponse(reply.headers["Location"], 302)
+    else:
+        resp = JSONResponse(reply.body if reply.body is not None else {},
+                            status_code=reply.status,
+                            headers=reply.headers)
+    if reply.cookie:
+        resp.set_cookie(oauthserver.COOKIE, reply.cookie, httponly=True,
+                        samesite="lax", max_age=oauthserver.PENDING_TTL,
+                        secure=cfgmod.public_url().startswith("https://"))
+    elif reply.cookie == "":
+        resp.delete_cookie(oauthserver.COOKIE)
+    return resp
+
+
+def _peer(request: Request) -> str:
+    return request.client.host if request.client else "?"
+
+
+@app.get("/.well-known/oauth-protected-resource/mcp", include_in_schema=False)
+@app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+def get_oauth_protected_resource():
+    return _oauth_response(oauthserver.protected_resource())
+
+
+@app.get("/.well-known/oauth-authorization-server", include_in_schema=False)
+def get_oauth_authorization_server():
+    return _oauth_response(oauthserver.authorization_server())
+
+
+@app.get("/oauth/authorize", include_in_schema=False)
+def get_oauth_authorize(request: Request):
+    try:
+        query = parse_qsl(request.url.query, keep_blank_values=True,
+                          max_num_fields=50)
+    except ValueError:
+        raise HTTPException(400, "bad_request")
+    return _oauth_response(oauthserver.authorize(query, _peer(request)))
+
+
+async def _oauth_form_post(request: Request, handler, *args):
+    try:
+        body = await request.body()
+    except ClientDisconnect:        # a chunked body over the limit
+        return JSONResponse({"detail": bodylimit.TOO_LARGE}, status_code=413)
+    return _oauth_response(await run_in_threadpool(
+        handler, body, request.headers.get("content-type", ""),
+        request.headers.get("authorization", ""), _peer(request), *args))
+
+
+@app.post("/oauth/token", include_in_schema=False)
+async def post_oauth_token(request: Request):
+    return await _oauth_form_post(request, oauthserver.token, _resolve_tenant)
+
+
+@app.post("/oauth/revoke", include_in_schema=False)
+async def post_oauth_revoke(request: Request):
+    return await _oauth_form_post(request, oauthserver.revoke)
+
+
+class AssistantConnectBody(BaseModel):
+    request_id: str = Field(max_length=200)
+    approve: bool
+    name: str = Field("", max_length=200)
+    accounts: list[str] = Field(default_factory=list, max_length=50)
+    level: str = Field("read", max_length=20)
+    subjects: bool = False
+    expires_days: int | None = 90
+    daily_cap: int = assistanttokens.DAILY_CAP_DEFAULT
+
+
+@app.get("/api/assistants/connect")
+def get_assistant_connect(request: Request):
+    """The consent page's data for the hosted app that sent the user here."""
+    return _oauth_response(oauthserver.consent_get(
+        request.cookies.get(oauthserver.COOKIE), tenants.current_subject(),
+        tenants.current().id, accountsmod.names()))
+
+
+@app.post("/api/assistants/connect")
+def post_assistant_connect(body: AssistantConnectBody, request: Request):
+    """The user's decision: where to send the browser next."""
+    return _oauth_response(oauthserver.consent_post(
+        body.model_dump(), request.cookies.get(oauthserver.COOKIE),
+        tenants.current_subject(), tenants.current().id,
+        accountsmod.names()))
 
 
 @app.get("/api/group")
@@ -2451,9 +2555,10 @@ if STATIC_DIR.is_dir():
         # An unknown API path must be a real 404, not the HTML shell with
         # a 200 - clients and probes would otherwise take it for success.
         # The same for /.well-known (MCP clients probe for OAuth metadata
-        # there after a 401) and any stray /mcp path.
-        if path in ("api", "mcp", ".well-known") or path.startswith(
-                ("api/", "mcp/", ".well-known/")):
+        # there after a 401), /oauth (a typo must not look like the app) and
+        # any stray /mcp path.
+        if path in ("api", "mcp", "oauth", ".well-known") or path.startswith(
+                ("api/", "mcp/", "oauth/", ".well-known/")):
             raise HTTPException(404, "not found")
         # Containment check: `path` is percent-decoded and may contain ../ or
         # be absolute (pathlib discards the left side then) - never serve

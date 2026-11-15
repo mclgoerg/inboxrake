@@ -11,6 +11,18 @@ structured content matches its text block, a proposal (withdrawn again), and
 the Act flow on the demo mailbox: preview_action -> apply_action ->
 undo_action.
 
+Then the OAuth leg, as a hosted AI app would connect: the server switches to
+password login and OAuth on, and the SDK's own `OAuthClientProvider` (with a
+client metadata URL, so CIMD) discovers the server from the `/mcp` 401, runs the
+authorization-code flow with PKCE and calls the tools with the access token it
+got. Its redirect handler plays the user's browser (signs in, opens the
+authorize URL, approves on the consent API); then the leg forces a refresh,
+checks the rotation, lists the connection in Settings and revokes it. The
+server is the dev demo server (scripts/demo.py), which seeds the fixture
+client's metadata document and lets an http://127.0.0.1 address count as the
+public URL - dev only, there is no such switch in production. The leg needs
+the server this script starts itself (it is skipped with `--url`).
+
 The SDK is NOT a dependency of Inboxrake: it is pinned with hashes in
 scripts/mcp-interop/requirements.txt, outside the runtime and dev lockfiles.
 
@@ -33,7 +45,9 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from http.cookiejar import CookieJar
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,6 +66,172 @@ def http(url: str, method: str = "GET", body: dict | None = None,
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read() or b"{}")
+
+
+PASSWORD = "interop-password"
+CLIENT_ID = "https://client.example/interop.json"     # seeded by scripts/demo.py
+REDIRECT = "https://client.example/cb"
+
+
+class Browser:
+    """The user's browser for the consent step: a cookie jar and plain HTTP."""
+
+    def __init__(self, base: str):
+        self.base = base
+        self.jar = CookieJar()
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.jar))
+
+    def json(self, path: str, body: dict | None = None,
+             method: str | None = None) -> dict:
+        req = urllib.request.Request(
+            self.base + path, method=method, data=None if body is None
+            else json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        with self.opener.open(req, timeout=20) as r:
+            return json.loads(r.read() or b"{}")
+
+    def consent(self, authorize_url: str) -> dict:
+        """Sign in, open the authorize URL, approve: the query of the URL the
+        authorization server sends the browser back to."""
+        self.json("/api/login", {"password": PASSWORD})
+        try:                       # a 302 to the consent page (the SPA)
+            self.opener.open(authorize_url, timeout=20).read()
+        except urllib.error.HTTPError:
+            pass                   # only the cookie it sets matters here
+        page = self.json("/api/assistants/connect")
+        answer = self.json("/api/assistants/connect", {
+            "request_id": page["request_id"], "approve": True,
+            "name": "Interop connection", "accounts": page["accounts"][:1],
+            "level": "act", "subjects": True, "expires_days": 30,
+            "daily_cap": 2000})
+        return dict(urllib.parse.parse_qsl(
+            urllib.parse.urlsplit(answer["redirect_url"]).query))
+
+
+class Memory:
+    """The SDK's token storage, in memory."""
+
+    def __init__(self):
+        self.tokens = self.client_info = None
+
+    async def get_tokens(self):
+        return self.tokens
+
+    async def set_tokens(self, tokens):
+        self.tokens = tokens
+
+    async def get_client_info(self):
+        return self.client_info
+
+    async def set_client_info(self, info):
+        self.client_info = info
+
+
+def post_form(url: str, data: dict, headers: dict | None = None):
+    req = urllib.request.Request(
+        url, data=urllib.parse.urlencode(data).encode(), method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, dict(r.headers), r.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, dict(exc.headers), exc.read()
+
+
+async def oauth_leg(base: str, bad: Failures) -> None:
+    from mcp import Client
+    from mcp.client.auth import AuthorizationCodeResult, OAuthClientProvider
+    from mcp.client.streamable_http import streamable_http_client
+    from mcp.shared._httpx_utils import create_mcp_http_client
+    from mcp.shared.auth import OAuthClientMetadata
+
+    print("leg oauth")
+    browser, storage = Browser(base), Memory()
+    seen = {"redirects": 0, "answer": None}
+
+    async def redirect_handler(url: str) -> None:
+        seen["redirects"] += 1
+        bad.check(url.startswith(base + "/oauth/authorize?")
+                  and "code_challenge_method=S256" in url
+                  and urllib.parse.quote(base + "/mcp", safe="") in url,
+                  "authorize URL: our endpoint, S256, the resource")
+        seen["answer"] = browser.consent(url)
+
+    async def callback_handler() -> AuthorizationCodeResult:
+        a = seen["answer"]
+        return AuthorizationCodeResult(
+            code=a["code"], state=a.get("state"), iss=a.get("iss"))
+
+    provider = OAuthClientProvider(
+        server_url=base + "/mcp",
+        client_metadata=OAuthClientMetadata(
+            client_name="Interop client", redirect_uris=[REDIRECT],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"], token_endpoint_auth_method="none",
+            scope="mcp:read mcp:propose mcp:act"),
+        storage=storage, redirect_handler=redirect_handler,
+        callback_handler=callback_handler, client_metadata_url=CLIENT_ID)
+    transport = streamable_http_client(
+        base + "/mcp", http_client=create_mcp_http_client(auth=provider))
+    async with Client(transport, mode="2026-07-28") as client:
+        tools = [t.name for t in (await client.list_tools()).tools]
+        bad.check(seen["redirects"] == 1 and storage.tokens is not None,
+                  "discovered from the 401, one authorization, tokens stored")
+        bad.check(set(ACT_TOOLS) <= set(tools) and set(EXPECTED) <= set(tools),
+                  "the tools of the granted level (Act)")
+        tok = storage.tokens
+        bad.check(tok.access_token.startswith("irk_at_")
+                  and tok.refresh_token.startswith("irk_rt_")
+                  and tok.scope == "mcp:read mcp:propose mcp:act",
+                  "access token, refresh token and scope")
+        res = await client.call_tool("list_accounts", {})
+        bad.check(not res.is_error, "a tool call with the access token")
+        info = await client.call_tool("mailbox_overview", {})
+        bad.check(not info.is_error, "mailbox_overview with the access token")
+        # the access token expires: the SDK must refresh, not re-authorize
+        old = tok.refresh_token
+        provider.context.token_expiry_time = time.time() - 1
+        res = await client.call_tool("list_accounts", {})
+        bad.check(not res.is_error and storage.tokens.refresh_token != old
+                  and storage.tokens.access_token != tok.access_token
+                  and seen["redirects"] == 1,
+                  "refresh: new pair, no second authorization")
+    mine = [t for t in browser.json("/api/assistants/tokens")["tokens"]
+            if t.get("kind") == "oauth"]
+    bad.check(len(mine) == 1 and mine[0]["client_host"] == "client.example"
+              and mine[0]["name"] == "Interop connection"
+              and mine[0]["level"] == "act" and mine[0]["last_used"],
+              "the connection is listed in Settings")
+    # revoke (RFC 7009); the access token stops at once
+    access = storage.tokens.access_token
+    status, _, _ = post_form(base + "/oauth/revoke", {
+        "token": storage.tokens.refresh_token, "client_id": CLIENT_ID})
+    bad.check(status == 200, "revoke answers 200")
+    req = urllib.request.Request(
+        base + "/mcp", method="POST", data=b"{}",
+        headers={"Authorization": f"Bearer {access}",
+                 "Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=20)
+        code, challenge = 200, ""
+    except urllib.error.HTTPError as exc:
+        code, challenge = exc.code, exc.headers.get("WWW-Authenticate", "")
+    bad.check(code == 401 and "invalid_token" in challenge
+              and "resource_metadata=" in challenge,
+              "a revoked access token is a 401 with the challenge")
+    bad.check(not [t for t in browser.json("/api/assistants/tokens")[
+        "tokens"] if t.get("kind") == "oauth"], "the connection is gone")
+
+
+async def run_oauth(base: str) -> list[str]:
+    bad = Failures()
+    try:
+        await oauth_leg(base, bad)
+    except Exception as exc:
+        bad.check(False, f"leg oauth raised {type(exc).__name__}: {exc}")
+    return list(bad)
 
 
 def free_port() -> int:
@@ -206,7 +386,8 @@ def main() -> int:
     else:
         port = free_port()
         base = f"http://127.0.0.1:{port}"
-        env = {**os.environ, "DEMO_PORT": str(port)}
+        env = {**os.environ, "DEMO_PORT": str(port),
+               "INBOXRAKE_PUBLIC_URL": base}
         env.pop("INBOXRAKE_DEMO", None)         # not the in-browser demo
         proc = subprocess.Popen([args.server_python,
                                  str(ROOT / "scripts" / "demo.py")],
@@ -220,6 +401,14 @@ def main() -> int:
             "name": "interop", "accounts": accounts[:1], "level": "act",
             "subjects": True, "expires_days": 30})
         failures = asyncio.run(run(base, made["secret"]))
+        if proc is not None:
+            http(base + "/api/config", "POST", {
+                "auth": {"mode": "password", "password": PASSWORD},
+                "assistants": {"access": "act", "oauth": True}})
+            failures += asyncio.run(run_oauth(base))
+        else:
+            print("leg oauth skipped: --url talks to a server we did not "
+                  "start")
     finally:
         if proc is not None:
             proc.terminate()                    # our own child only

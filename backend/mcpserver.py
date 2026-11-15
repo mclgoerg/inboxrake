@@ -12,8 +12,9 @@ side by side, picked per request by how the client opens it:
     `tools/call`. Nothing is remembered between requests, so a client's
     `initialize` is answered but not required before the other calls.
 
-Access is by bearer token only (backend/assistanttokens.py); cookies play no
-part, whatever the login mode. The admin cap (`assistants.access`, default
+Access is by bearer token only (backend/assistanttokens.py): a static token, or
+the access token of an OAuth grant (backend/oauthserver.py) whose audience must
+be this server's own MCP URL. Cookies play no part, whatever the login mode. The admin cap (`assistants.access`, default
 off) switches the whole endpoint off with a 404.
 
 `handle` is a pure function of (method, headers, query string, body) so the
@@ -69,8 +70,8 @@ RATE_WINDOW = 60.0
 _rate: dict[str, collections.deque] = {}
 _rate_lock = threading.Lock()
 
-_RANK = {"read": 1, "propose": 2, "act": 3}
-_CAP_LEVEL = {"read_propose": "propose", "act": "act"}
+RANK = {"read": 1, "propose": 2, "act": 3}
+CAP_LEVEL = {"read_propose": "propose", "act": "act"}
 _QUERY_TOKEN_NAMES = frozenset({"access_token", "token", "api_key", "apikey",
                                 "key", "bearer", "authorization"})
 
@@ -130,10 +131,10 @@ def _unsupported(rid, requested) -> Reply:
 def effective_level(token_level: str) -> str | None:
     """The lower of the token's level and the admin cap; None when the cap
     is off."""
-    cap = _CAP_LEVEL.get(cfgmod.assistant_access())
+    cap = CAP_LEVEL.get(cfgmod.assistant_access())
     if cap is None:
         return None
-    return min((token_level, cap), key=lambda lv: _RANK.get(lv, 0))
+    return min((token_level, cap), key=lambda lv: RANK.get(lv, 0))
 
 
 def _bearer(headers) -> str:
@@ -143,7 +144,16 @@ def _bearer(headers) -> str:
 
 
 def _unauthorized(invalid: bool) -> Reply:
-    challenge = 'Bearer error="invalid_token"' if invalid else "Bearer"
+    """401 with the Bearer challenge. With OAuth on, it points hosted apps at
+    the protected-resource metadata (RFC 9728) and names the scopes up to the
+    admin cap, which is the ceiling the consent page can offer."""
+    params = ['error="invalid_token"'] if invalid else []
+    if cfgmod.oauth_active():
+        params += [
+            f'resource_metadata="{cfgmod.public_url()}'
+            '/.well-known/oauth-protected-resource/mcp"',
+            f'scope="{assistanttokens.scope_of(CAP_LEVEL[cfgmod.assistant_access()])}"']
+    challenge = "Bearer" + (" " + ", ".join(params) if params else "")
     return Reply(401, {"detail": "unauthorized"},
                  {"WWW-Authenticate": challenge})
 
@@ -250,6 +260,9 @@ def handle(method: str, headers, query: str, body: bytes,
     tenant = assistanttokens.tenant_of(rec) if rec else None
     if rec is None or tenant is None or not owner_valid(rec, resolve_tenant):
         return _unauthorized(True)
+    if rec.get("kind") == assistanttokens.KIND_OAUTH and not (
+            cfgmod.oauth_active() and rec.get("resource") == cfgmod.mcp_url()):
+        return _unauthorized(True)     # OAuth is off, or the audience moved
     wait = _rate_wait(rec["id"])
     if wait:
         return _plain(429, "rate_limited", {"Retry-After": str(wait)})

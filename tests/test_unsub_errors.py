@@ -10,7 +10,7 @@ import ssl
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import errortext, mailops, unsub
+from backend import errortext, mailops, netguard, unsub
 from backend.main import app
 from conftest import FakeIMAP, make_msg
 
@@ -87,7 +87,7 @@ def test_blocked_address_and_http_status_and_no_method(monkeypatch):
     monkeypatch.setattr(unsub.socket, "getaddrinfo",
                         lambda host, port=0, *a, **k: [
                             (2, 1, 6, "", ("93.184.216.34", port))])
-    monkeypatch.setattr(unsub, "_PinnedHTTPSConnection", Conn)
+    monkeypatch.setattr(netguard, "PinnedHTTPSConnection", Conn)
     res = unsub.unsubscribe_addr(IM, "a@x.example", ONE_CLICK, True)
     assert res["error"] == "unsub_http:status=503"
 
