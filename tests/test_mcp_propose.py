@@ -19,7 +19,6 @@ from backend import rules as rulesmod
 from backend import smtpout
 from backend.main import app
 
-from conftest import wait_scan_done
 from test_mcp import (M_BODY, M_CAT, M_HOST, M_PASS, M_TAG, M_UNSUB, M_USER,
                       _cap, _token, call, legacy, mbox, ok)  # noqa: F401
 from test_webpush import _decrypt, _wait, device, network  # noqa: F401
@@ -40,12 +39,6 @@ def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(webpush, "PUSH_SUBS_PATH", tmp_path / "subs.json")
     monkeypatch.setattr(webpush, "_key_cache", None)
     monkeypatch.setattr(webpush, "_presence", {})
-    yield
-    # A test that starts a scan must not leave it running: it keeps writing
-    # the config after the test ends and races the next test's writes
-    # (config.tmp FileNotFoundError). start_scan sets "scanning" before it
-    # returns, so this catches every scan a test started.
-    wait_scan_done(timeout=10.0)
 
 
 @pytest.fixture(autouse=True)
@@ -712,9 +705,10 @@ def test_the_switch_off_sends_nothing_even_for_a_held_batch(
 
 def test_an_account_that_cannot_send_is_skipped_silently(
         mbox, mails, clock):
-    cfg = cfgmod.load_config()
-    cfg["accounts"]["default"]["password"] = ""
-    cfgmod._write_tenant_config(cfg)
+    with cfgmod._LOCK:          # the app's own writers hold this lock too
+        cfg = cfgmod.load_config()
+        cfg["accounts"]["default"]["password"] = ""
+        cfgmod._write_tenant_config(cfg)
     out = ok(proposer(), "propose_rule", PROPOSAL)
     assert out["state"] == "waiting" and mails == []
     seen = client.get("/api/config").json()["assistants"]["notify"]
