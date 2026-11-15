@@ -233,11 +233,26 @@ LOGIN_THROTTLED = "login_throttled"
 LOGIN_WRONG_PASSWORD = "login_wrong_password"
 LOGIN_PASSWORD_OFF = "login_password_off"
 LOGIN_SSO_OFF = "login_sso_off"
+# Copy to another account (backend/accountcopy.py)
+COPY_UNKNOWN_ACCOUNT = "copy_unknown_account"
+COPY_SAME_ACCOUNT = "copy_same_account"
+COPY_BUSY = "copy_busy"                  # a copy is running or paused
+COPY_NOTHING = "copy_nothing"            # no kind ticked / no mail in them
+COPY_NOT_SCANNED = "copy_not_scanned"    # the source has no scan yet
+COPY_FOLDER_NAME = "copy_folder_name"    # the new folder's name is unusable
+COPY_CANNOT_CREATE = "copy_cannot_create"    # folder=
+COPY_SOURCE_CHANGED = "copy_source_changed"  # folder=: rescan, then resume
+COPY_APPEND_REFUSED = "copy_append_refused"  # the target refused many mails
+COPY_TARGET_FULL = "copy_target_full"
+COPY_NO_JOB = "copy_no_job"              # nothing to pause / resume / cancel
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
     MAILTO_UNSAFE, MOVE_FOREIGN_DELETED, *UNSUB_CODES, LOGIN_THROTTLED,
     LOGIN_WRONG_PASSWORD, LOGIN_PASSWORD_OFF, LOGIN_SSO_OFF,
+    COPY_UNKNOWN_ACCOUNT, COPY_SAME_ACCOUNT, COPY_BUSY, COPY_NOTHING,
+    COPY_NOT_SCANNED, COPY_FOLDER_NAME, COPY_CANNOT_CREATE,
+    COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     ASSISTANTS_OFF,
     LEVEL_NOT_AVAILABLE,

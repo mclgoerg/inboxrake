@@ -101,6 +101,8 @@ State files default to names inside `/data` and normally need no change:
 | `DIGEST_PATH` | `digest.json` | When each account's activity digest was last sent. |
 | `PRESETS_PATH` | `presets.json` | Saved filter presets. |
 | `PINS_PATH` | `pinned_mails.json` | Pinned mails. |
+| `ACCOUNT_COPY_PATH` | `account_copy.json` | The copy to another account (its progress, and which senders you already told). |
+| `ACCOUNT_COPY_LEDGER_PATH` | `account_copy_ledger.jsonl` | Which mails of that copy are done, so it carries on after a restart without copying twice. |
 | `PUSH_KEY_PATH` | `push_vapid_key.pem` | The instance's signing key for notifications, created on first use (keep it out of backups you share; a new one only means devices must turn notifications on again). |
 | `PUSH_SUBS_PATH` | `push_subscriptions.json` | The devices registered for notifications (per user; not part of the settings export). |
 | `REPLIED_PATH` | `replied.json` | Who you have written to (To/Cc of the Sent folder). |

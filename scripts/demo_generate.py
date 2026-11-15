@@ -20,8 +20,8 @@ import zlib
 from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
-from backend import (accounts, bodyindex, demo, knowledgestore, mailops, rules,
-                     unsubstore, verdictstore)
+from backend import (accounts, bodyindex, demo, knowledgestore, mailops,
+                     pinstore, rules, unsubstore, verdictstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -794,7 +794,9 @@ ICLOUD = _server({
     # a client-made look-alike of the server's Trash (Settings can move it)
     "Gelöschte Elemente": mails('"Cloud Photos" <no-reply@cloudphotos.example>',
                                 ["Storage reminder"], 5, unread=0.5),
-}, flags={"Deleted Messages": "\\Trash", "Junk": "\\Junk"})
+# a QUOTA the copy page reads its "has N free" line from (used / limit in KB)
+}, flags={"Deleted Messages": "\\Trash", "Junk": "\\Junk"},
+    quota=(1_900_000, 15_000_000))
 
 FAKES = {"demo-proton": PROTON, "demo-icloud": ICLOUD}
 
@@ -1099,6 +1101,12 @@ def generate() -> dict:
         st = mailops.public_state(acc)
         print(f"[demo] {name}: {len(st['groups']['sender'])} senders, "
               f"{sum(g['count'] for g in st['groups']['sender'].values())} mails")
+    # A few pinned mails (by Message-ID): the "Pinned mails" row of Move to
+    # another account has something to count.
+    for m in sorted((m for m in accounts.get("proton").index.values()
+                     if m["addr"] == "billing@cloudbox.example"),
+                    key=lambda m: m["uid"])[:3]:
+        pinstore.set_pinned(m["msgid"], True, "proton")
     # Bodies come last: the Proton body index above must not hold them (see
     # fill_bodies).
     for fake in FAKES.values():

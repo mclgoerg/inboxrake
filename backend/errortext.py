@@ -19,6 +19,28 @@ TEXT: dict[str, str | tuple[str, str]] = {
     'login_wrong_password': 'Wrong password. Try again.',
     'login_password_off': 'Password sign-in is not switched on.',
     'login_sso_off': 'SSO sign-in is not switched on.',
+    'copy_unknown_account':
+        'That account does not exist.',
+    'copy_same_account':
+        'Pick two different accounts.',
+    'copy_busy':
+        'A copy is already running - pause or cancel it first.',
+    'copy_nothing':
+        'Nothing to copy - tick at least one kind that has mails.',
+    'copy_not_scanned':
+        'Scan the account you copy from first.',
+    'copy_folder_name':
+        'The name for the new folder is empty or not allowed.',
+    'copy_cannot_create':
+        'Could not create the “{folder}” folder in the other account.',
+    'copy_source_changed':
+        'The “{folder}” folder changed on the server - scan that account again, then resume.',
+    'copy_append_refused':
+        'The other account refused several mails in a row, so the copy stopped. Nothing was deleted.',
+    'copy_target_full':
+        'The other account is full, so the copy stopped. Nothing was deleted.',
+    'copy_no_job':
+        'There is no copy to do that with.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

@@ -275,6 +275,15 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       } else title = counted("move_contents");
       break;
     }
+    case "account_copy": {
+      // the stored label is "<source> → <target>" (account names only)
+      const [from, to] = label.split(" \u2192 ");
+      if (n > 0 && from && to) {
+        title = t("audit.h.account_copy", { n, from, to });
+        detail = "";
+      } else title = tOr("audit.act", e.action);
+      break;
+    }
     case "empty_trash":
       title = counted("empty_trash");
       break;

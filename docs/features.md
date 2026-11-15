@@ -101,6 +101,30 @@ the links to Activity and Settings. Accounts can be renamed (all their data
 follows) and removed in settings, and each has its own folder-discovery
 picker.
 
+### Move to another account
+
+<small class="where">Settings → an account → Move to another account…</small>
+
+Switching providers, or merging two mailboxes: copy what matters from one of
+your accounts into a new folder of another (named `From <account name>` by
+default, editable). Step 1, *What to bring*, lists the Smart kinds with their
+mails and sizes - people you write to, orders, account mail, bookings,
+protected senders and pinned mails are ticked, newsletters and the rest are
+left behind - and sums them up (a mail in two kinds counts once) next to the
+free space of the target when its server reports a quota. Step 2, *Copy*,
+runs on the server like a scan, with progress, Pause / Resume / Cancel, and
+carries on after a restart without copying a mail twice. Every mail keeps its
+date, read / unread, starred and answered flags; a mail already in the
+target (same Message-ID) is skipped, mails over 50 MB are skipped and
+reported, and each batch is checked in the target afterwards. The copy only
+reads the source: nothing is deleted, moved or marked read there - the
+originals stay until you clean up with the usual tools. Step 3, *Tell them*,
+lists the senders that still wrote to the old address in the last 90 days as
+a checklist; newsletters lead to the unsubscribe review of the old account
+instead. Mail only travels between your own servers; both accounts must belong
+to you (the same user), and each copy is recorded in the Activity log (counts
+only).
+
 ### Phone layout
 
 <small class="where">Phones</small>

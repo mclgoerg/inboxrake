@@ -1,4 +1,4 @@
-import { Archive, Bell, Bot, Check, Folder, KeyRound, Mail, Plus,
+import { Archive, ArrowLeftRight, Bell, Bot, Check, Folder, KeyRound, Mail, Plus,
   RefreshCw, Search, Settings as SettingsIcon, Shield, ShieldCheck, Sparkles, Star,
   Tag as TagIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState,
@@ -205,7 +205,7 @@ type SecDef = {
 export function SettingsPage({ cfg, account, section, routeAccount = null,
   onSection, onClose, onAddAccount, onSaved, onAccountsChanged, aiAnswers = 0,
   onKnowledgeChanged = () => {}, scanState = null, controlRef,
-  onShowAssistantSteps }: {
+  onShowAssistantSteps, onMoveAccount }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
   /** The open section (`#/settings/<section>`); null = the phone root list
@@ -235,6 +235,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   scanState?: { account: string; status: AppState["status"];
     scanned_ts: number | null; error: string } | null;
   controlRef?: MutableRefObject<SettingsControl | null>;
+  /** Settings > an account > "Move to another account…" (the copy page). */
+  onMoveAccount?: (account: string) => void;
 }) {
   const wide = useSidebar();
   const toast = useToast();
@@ -1226,6 +1228,14 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           placeholder="/certs/bridge-cert.pem" onChange={set("cafile")} />
       </SettingsRow>
     </SettingsGroup>
+    {onMoveAccount && (
+      <SettingsGroup>
+        <SettingsRow icon={<IconTile tone="accent"><ArrowLeftRight size={16} />
+          </IconTile>} label={t("copy.entry")}
+          sub={multi ? t("copy.entry_sub") : t("copy.entry_need_two")}
+          disabled={!multi} onClick={() => onMoveAccount(editAcct)} />
+      </SettingsGroup>
+    )}
     {multi && (
       <SettingsGroup padded header={t("account.remove_title")}
         footnote={t("account.remove_help")}>
