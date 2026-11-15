@@ -250,6 +250,7 @@ export const EN: Record<string, string> = {
   "ferr.copy_target_full": "The other account is full, so the copy stopped. Nothing was deleted.",
   "ferr.copy_no_job": "There is no copy to do that with.",
   "ferr.copy_same_mailbox": "These two accounts are the same mailbox (same server and login) - pick two different ones.",
+  "ferr.copy_cannot_confirm": "We couldn't confirm that these two accounts are different mailboxes (the server did not answer the check), so nothing was copied. Try again.",
   "ferr.copy_folder_reserved": "\u201c{folder}\u201d is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.",
   "login.title": "Sign in to Inboxrake",
   "login.submit": "Sign in",

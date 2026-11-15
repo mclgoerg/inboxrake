@@ -1843,6 +1843,7 @@ export const DE: Record<string, string> = {
   "ferr.copy_target_full": "Das andere Konto ist voll, deshalb wurde das Kopieren gestoppt. Es wurde nichts gelöscht.",
   "ferr.copy_no_job": "Dazu gibt es keinen Kopiervorgang.",
   "ferr.copy_same_mailbox": "Diese beiden Konten sind dasselbe Postfach (gleicher Server und gleiche Anmeldung) – wähle zwei verschiedene.",
+  "ferr.copy_cannot_confirm": "Wir konnten nicht bestätigen, dass diese beiden Konten verschiedene Postfächer sind (der Server hat die Prüfung nicht beantwortet), deshalb wurde nichts kopiert. Versuche es noch einmal.",
   "ferr.copy_folder_reserved": "„{folder}“ ist ein Ordner, den der Server für etwas anderes nutzt (Posteingang, Papierkorb, Spam, Gesendet, Entwürfe, Archiv) – gib dem neuen Ordner einen anderen Namen.",
   "login.title": "Bei Inboxrake anmelden",
   "login.submit": "Anmelden",

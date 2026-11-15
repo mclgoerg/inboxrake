@@ -198,6 +198,7 @@ const ERROR_CODES: Record<string, string> = {
   copy_target_full: "ferr.copy_target_full",
   copy_no_job: "ferr.copy_no_job",
   copy_same_mailbox: "ferr.copy_same_mailbox",
+  copy_cannot_confirm: "ferr.copy_cannot_confirm",
   copy_folder_reserved: "ferr.copy_folder_reserved",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",

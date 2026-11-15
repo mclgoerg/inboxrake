@@ -433,15 +433,12 @@ def _status(conn, folder: str) -> dict[str, int]:
         r"(MESSAGES|UIDNEXT|UIDVALIDITY) (\d+)", text)}
 
 
-def _recent_ids(conn, uidnext: int) -> set[str]:
-    """Message-IDs of the newest few mails of INBOX (read only)."""
+def _ids_at(conn, uids: list[int]) -> set[str]:
+    """Message-IDs of these UIDs of INBOX (read only)."""
+    ids: set[str] = set()
     st, _ = conn.select(mailops.quote_folder("INBOX"), readonly=True)
     if st != "OK":
-        return set()
-    st, data = conn.uid("SEARCH", None, "UID", f"{max(1, uidnext - 40)}:*")
-    uids = sorted(int(u) for u in (data[0].split() if st == "OK" and data
-                                   and data[0] else []))[-5:]
-    ids: set[str] = set()
+        return ids
     for u in uids:
         st, got = conn.uid("FETCH", str(u),
                            "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
@@ -454,6 +451,16 @@ def _recent_ids(conn, uidnext: int) -> set[str]:
     return ids
 
 
+def _newest_below(conn, top: int) -> list[int]:
+    """The five highest UIDs of INBOX below `top`."""
+    st, _ = conn.select(mailops.quote_folder("INBOX"), readonly=True)
+    if st != "OK" or top <= 1:
+        return []
+    st, data = conn.uid("SEARCH", None, "UID", f"{max(1, top - 40)}:{top - 1}")
+    return sorted(int(u) for u in (data[0].split() if st == "OK" and data
+                                   and data[0] else []) if int(u) < top)[-5:]
+
+
 def _signature(conn) -> dict[str, tuple[int, int]]:
     """{folder: (UIDVALIDITY, mails)} of every folder (at most 60)."""
     out: dict[str, tuple[int, int]] = {}
@@ -463,36 +470,61 @@ def _signature(conn) -> dict[str, tuple[int, int]]:
     return out
 
 
-def same_server_mailbox(a, b) -> bool:
+def same_server_mailbox(a, b) -> bool | None:
     """Whether two open connections reach the SAME mailbox (an alias, a second
     host name, a second login) - read only, before anything is created or
-    written. INBOX with the same UIDVALIDITY, UIDNEXT and mail count whose
-    newest Message-IDs are the same; with an empty INBOX on both sides, every
-    folder's UIDVALIDITY and mail count the same (and some mail in them). A
-    server that cannot answer says "not the same"."""
+    written. True / False, or None when the servers could not answer.
+
+    INBOX with the same UIDVALIDITY whose messages at the SAME fixed UIDs
+    - the five highest below the smaller UIDNEXT - carry the same
+    Message-IDs (UIDs never change, so a mail that arrives between the two
+    looks cannot make one mailbox look like two); with an empty INBOX on both
+    sides, every folder's UIDVALIDITY and mail count the same (and some mail
+    in them). With fewer than three mails to compare the two mailboxes must
+    also agree on UIDNEXT and mail count (one forwarded copy proves nothing)."""
     try:
         x, y = _status(a, "INBOX"), _status(b, "INBOX")
-        if x and y and (x.get("UIDVALIDITY"), x.get("UIDNEXT"),
-                        x.get("MESSAGES")) != (
-                y.get("UIDVALIDITY"), y.get("UIDNEXT"), y.get("MESSAGES")):
-            return False
-        if x and y and x.get("MESSAGES"):
-            ids = _recent_ids(a, x.get("UIDNEXT", 1))
-            return bool(ids) and ids == _recent_ids(b, y.get("UIDNEXT", 1))
+        if x and y:
+            if x.get("UIDVALIDITY") != y.get("UIDVALIDITY"):
+                return False
+            top = min(x.get("UIDNEXT", 1), y.get("UIDNEXT", 1))
+            uids = _newest_below(a, top)
+            if 0 < len(uids) < 3 and (x.get("UIDNEXT"), x.get("MESSAGES")) \
+                    != (y.get("UIDNEXT"), y.get("MESSAGES")):
+                return False             # too few mails to tell by IDs alone
+            if uids:
+                ids = _ids_at(a, uids)
+                return bool(ids) and ids == _ids_at(b, uids)
+            if x.get("MESSAGES") or y.get("MESSAGES"):
+                return False             # mail on one side only: not one box
         sig = _signature(a)
         return any(n for _, n in sig.values()) and sig == _signature(b)
     except (imaplib.IMAP4.error, OSError, ValueError):
-        return False
+        return None
+
+
+def judge_distinct(src_name: str, tgt_name: str, a, b) -> None:
+    """Refuse (copy_same_mailbox) when the two connections reach one mailbox;
+    when the check itself could not be answered, fail closed if the config
+    says the accounts are close (same host), else go on and log it."""
+    same = same_server_mailbox(a, b)
+    if same:
+        raise ValueError(mailops.COPY_SAME_MAILBOX)
+    if same is None:
+        if _identity(src_name)[0] == _identity(tgt_name)[0]:
+            raise ValueError(mailops.COPY_CANNOT_CONFIRM)
+        log.warning("could not confirm that %r and %r are different "
+                    "mailboxes (different hosts: going on)", src_name,
+                    tgt_name)
 
 
 def ensure_distinct(src, tgt) -> None:
-    """Refuse (copy_same_mailbox) when the two accounts reach one mailbox."""
+    """The identity check on fresh connections (see `judge_distinct`)."""
     a = _connect(src)
     try:
         b = _connect(tgt)
         try:
-            if same_server_mailbox(a, b):
-                raise ValueError(mailops.COPY_SAME_MAILBOX)
+            judge_distinct(src.name, tgt.name, a, b)
         finally:
             try:
                 b.logout()
@@ -841,8 +873,7 @@ class _Run:
                                  self.tgt.name)
         self.sel = None
         # before any CREATE or APPEND, on every (re)connect - a Resume too
-        if same_server_mailbox(self.s, self.t):
-            raise ValueError(mailops.COPY_SAME_MAILBOX)
+        judge_distinct(self.src.name, self.tgt.name, self.s, self.t)
         self._ensure_folder()
         self.top, ids, weak = self._read_dest()
         with self.tgt.lock:

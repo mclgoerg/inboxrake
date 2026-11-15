@@ -43,6 +43,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'There is no copy to do that with.',
     'copy_same_mailbox':
         'These two accounts are the same mailbox (same server and login) - pick two different ones.',
+    'copy_cannot_confirm':
+        "We couldn't confirm that these two accounts are different mailboxes (the server did not answer the check), so nothing was copied. Try again.",
     'copy_folder_reserved':
         '“{folder}” is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.',
     'busy_action':

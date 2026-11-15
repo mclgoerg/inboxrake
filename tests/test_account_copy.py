@@ -1111,7 +1111,88 @@ def test_two_empty_inboxes_are_compared_by_every_folders_mail_count():
 def test_a_server_that_cannot_answer_is_not_called_the_same():
     a, b = _two(["<s1@x>"], ["<s1@x>"])
     a.status = lambda *x: (_ for _ in ()).throw(OSError("no"))
+    assert accountcopy.same_server_mailbox(a, b) is None
+
+
+def _arrival_after_first_status(fake):
+    """A mail arrives in the (shared) mailbox between the two STATUS calls."""
+    real = fake.status
+    state = {"n": 0}
+
+    def status(q, what):
+        answer = real(q, what)
+        state["n"] += 1
+        if state["n"] == 1:
+            fake.mailbox["INBOX"].append(make_msg(
+                99, msgid="<late@x>", subject="arrived meanwhile"))
+        return answer
+    fake.status = status
+
+
+def test_a_mail_arriving_between_the_two_looks_does_not_hide_an_alias(env):
+    _alias(env)
+    _arrival_after_first_status(env["host-g"])
+    r = _start()                                          # start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_same_mailbox")
+    assert _no_writes(env)
+    # ... and connect() of a run
+    env["host-g"].mailbox["INBOX"] = [m for m in env["host-g"].mailbox["INBOX"]
+                                      if m["uid"] != 99]
+    _arrival_after_first_status(env["host-g"])
+    accountcopy._write({"job": _record(), "tell": {}})
+    accountcopy._ledger_reset("x")
+    accountcopy.resume_all()
+    job = _wait()
+    assert job["status"] == "error" and job["error"] == "copy_same_mailbox"
+    assert _no_writes(env)
+
+
+def test_the_same_uids_are_compared_not_the_newest_mail():
+    ids = [f"<s{i}@x>" for i in range(1, 6)]
+    a, b = _two(ids, ids)
+    b.mailbox["INBOX"].append(make_msg(6, msgid="<new@x>"))   # arrived in b
+    assert accountcopy.same_server_mailbox(a, b) is True
+    c, d = _two([f"<a{i}@x>" for i in range(1, 6)],
+                [f"<b{i}@x>" for i in range(1, 6)])
+    d.mailbox["INBOX"].append(make_msg(6, msgid="<new@x>"))
+    assert accountcopy.same_server_mailbox(c, d) is False
+
+
+def test_one_shared_message_id_in_a_tiny_mailbox_is_not_an_alias():
+    """A forwarded copy at the same UID: too little to call it one mailbox."""
+    a, b = _two(["<s1@x>"], ["<s1@x>"])
+    b.mailbox["INBOX"].append(make_msg(2, msgid="<other@x>"))
     assert accountcopy.same_server_mailbox(a, b) is False
+
+
+def test_a_check_that_cannot_be_answered_fails_closed_on_one_host(env):
+    """Same host, other login: the config says "close", the check cannot be
+    answered - refuse instead of risking a write into the source."""
+    _config(env, host="host-g", user="somebody.else@gmail.example")
+    fakes = {"host-g": env["host-g"]}
+    mailops.connect = lambda im, name=None: fakes[im["host"]]
+    env["host-g"].status = lambda *x: (_ for _ in ()).throw(OSError("no"))
+    r = _start()
+    assert (r.status_code, r.json()["detail"]) == (400, "copy_cannot_confirm")
+    assert _no_writes(env)
+    # a run that connects meets it as well
+    accountcopy._write({"job": _record(), "tell": {}})
+    accountcopy._ledger_reset("x")
+    accountcopy.resume_all()
+    job = _wait()
+    assert job["status"] == "error" and job["error"] == "copy_cannot_confirm"
+    assert _no_writes(env)
+
+
+def test_a_check_that_cannot_be_answered_goes_on_across_two_hosts(env, caplog):
+    for f in env.values():
+        f.status = lambda *x: (_ for _ in ()).throw(OSError("no"))
+    with caplog.at_level("WARNING", logger="inboxrake.accountcopy"):
+        r = _start()
+        assert r.status_code == 200
+        job = _wait()
+    assert job["status"] == "done" and job["copied"] == 7
+    assert "could not confirm" in caplog.text
 
 
 def test_google_workspace_logins_keep_their_dots_and_tags(env):
