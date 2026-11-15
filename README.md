@@ -205,7 +205,8 @@ trackers, subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log, multiple strictly separate
-accounts, system/light/dark appearance, phone layout, English and
+accounts with a copy-to-another-account wizard for a provider switch,
+system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant
 ask questions about the mailbox and propose rules for you to approve
 ([how](https://inboxrake.com/docs/assistants/)).

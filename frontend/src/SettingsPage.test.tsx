@@ -322,6 +322,31 @@ test("rename sends rename_account for the edited account", async () => {
     [{ rename_account: { from: "default", to: "bridge" } }]));
 });
 
+test("Move to another account… opens the copy page for the edited account",
+  () => {
+    const onMove = vi.fn();
+    render(<Settings cfg={cfg} account="default" onMoveAccount={onMove} />);
+    const row = screen.getByRole("button", { name: /Move to another account…/ });
+    expect(row.textContent).toContain("Copy what matters into another account");
+    expect((row as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(row);
+    expect(onMove).toHaveBeenCalledWith("default");
+  });
+
+test("Move to another account… needs a second account (and German exists)",
+  () => {
+    const one = { ...cfg, accounts: { default: cfg.accounts.default } };
+    render(<Settings cfg={one} account="default" onMoveAccount={() => {}} />);
+    const row = screen.getByRole("button", { name: /Move to another account…/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.textContent).toContain("Add a second account first.");
+    cleanup();
+    setLang("de");
+    render(<Settings cfg={cfg} account="default" onMoveAccount={() => {}} />);
+    expect(screen.getByRole("button",
+      { name: /Auf ein anderes Konto umziehen…/ })).toBeTruthy();
+  });
+
 test("rename validates: empty and duplicate names are refused", async () => {
   saveCalls.length = 0;
   renderWithDialogs();

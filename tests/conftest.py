@@ -15,6 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend import accountcopy              # noqa: E402
 from backend import accounts as accountsmod   # noqa: E402
 from backend import auditlog as auditlogmod   # noqa: E402
 from backend import assistanttokens          # noqa: E402
@@ -83,6 +84,13 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(dupstore, "DUPS_PATH",
                         tmp_path / "duplicates_kept.json")
     monkeypatch.setattr(substore, "SUBS_PATH", tmp_path / "subscriptions.json")
+    monkeypatch.setattr(accountcopy, "ACCOUNT_COPY_PATH",
+                        tmp_path / "account_copy.json")
+    monkeypatch.setattr(accountcopy, "LEDGER_PATH",
+                        tmp_path / "account_copy_ledger.jsonl")
+    monkeypatch.setattr(accountcopy, "THROTTLE_RATIO", 0)
+    accountcopy._THREADS.clear()
+    accountcopy._STOP.clear()
     monkeypatch.setattr(webpush, "PUSH_KEY_PATH", tmp_path / "push_key.pem")
     monkeypatch.setattr(webpush, "PUSH_SUBS_PATH",
                         tmp_path / "push_subscriptions.json")
@@ -104,11 +112,12 @@ def isolate(tmp_path, monkeypatch):
     # write the old test's records into the next test's fresh store.
     import time
     end = time.time() + 5
-    while time.time() < end and any(
+    while time.time() < end and (any(
+            t.is_alive() for t in list(accountcopy._THREADS.values())) or any(
             a.state["status"] == "scanning"
             or a.state["index"]["status"] == "running"
             or a.state["unsub"]["status"] == "running"
-            for a in accountsmod.all_instantiated()):
+            for a in accountsmod.all_instantiated())):
         time.sleep(0.01)
     verdictstore._mails_cache.clear()
     unsubstore._cache.clear()
@@ -200,6 +209,16 @@ class FakeIMAP:
     STORE applies the flags to exactly the given set and EXPUNGE removes
     only \\Deleted mail, like a real server.
 
+    `quota=(used_kb, limit_kb)` advertises QUOTA and answers GETQUOTAROOT
+    with one STORAGE resource (none: the server has no QUOTA). APPEND adds
+    a mail to an existing folder (NO [TRYCREATE] otherwise); `append_hook(mailbox, flags, date_time, message)` may answer
+    ("NO", [text]) or raise to simulate a refusing / failing server.
+    `namespace="INBOX."` makes the server announce that personal namespace
+    (NAMESPACE) and refuse to CREATE a folder anywhere else, like Courier /
+    Cyrus setups do.
+    `commands` records every call that selects, searches, fetches or
+    changes anything, as (name, args...) - tests assert what was NOT sent.
+
     `gmail=True` gives Gmail label semantics: the server advertises
     X-GM-EXT-1 and answers X-GM-MSGID. A message under several labels is
     one dict per folder (own UID each) sharing the same `gmid` key (see
@@ -212,7 +231,9 @@ class FakeIMAP:
                  list_order: list[str] | None = None,
                  renumber: bool = False, copyuid: bool = False,
                  noselect: dict[str, str] | None = None,
-                 date_header: bool = False):
+                 date_header: bool = False,
+                 quota: tuple[int, int] | None = None,
+                 namespace: str | None = None):
         # `date_header`: also serve each mail's date as an RFC 2822 `Date:`
         # header (the demo's viewer shows it); off, mails carry none, as
         # the suite has always had them.
@@ -237,7 +258,13 @@ class FakeIMAP:
         self.capabilities = ("IMAP4REV1",) \
             + (("UIDPLUS",) if uidplus else ()) \
             + (("MOVE",) if move else ()) \
-            + (("X-GM-EXT-1",) if gmail else ())
+            + (("X-GM-EXT-1",) if gmail else ()) \
+            + (("QUOTA",) if quota else ()) \
+            + (("NAMESPACE",) if namespace else ())
+        self.quota = quota
+        self.namespace_prefix = namespace
+        self.commands: list[tuple] = []
+        self.append_hook = None
         self.gm_fetches: list[str] = []      # FETCH specs asking X-GM-MSGID
         self.uv = {f: 1 for f in mailbox}
         self._high: dict[str, int] = {}      # highest UID a folder ever held
@@ -281,8 +308,17 @@ class FakeIMAP:
             out.append(f'({fl}) {delim} "{f}"'.encode())
         return "OK", out
 
+    # Instances pickled into an older demo seed lack these attributes.
+    quota = None
+    append_hook = None
+    namespace_prefix = None
+
+    def _log(self, *entry) -> None:
+        self.__dict__.setdefault("commands", []).append(entry)
+
     def select(self, qname, readonly=False):
         name = qname.strip('"')
+        self._log("SELECT", name, readonly)
         if name not in self.mailbox:
             return "NO", [b"no such folder"]
         if name in self.noselect:
@@ -321,7 +357,10 @@ class FakeIMAP:
         name = qname.strip('"')
         if name not in self.mailbox:
             return "NO", [b""]
-        return "OK", [f'"{name}" (MESSAGES {len(self.mailbox[name])})'.encode()]
+        held = self.mailbox[name]
+        nxt = max([self._high.get(name, 0)] + [m["uid"] for m in held]) + 1
+        return "OK", [f'"{name}" (MESSAGES {len(held)} UIDNEXT {nxt} '
+                      f'UIDVALIDITY {self.uv.get(name, 1)})'.encode()]
 
     # -- data ------------------------------------------------------------
     def _header_blob(self, m) -> bytes:
@@ -384,7 +423,15 @@ class FakeIMAP:
             return ""
         return f" X-GM-MSGID {m['gmid']}"
 
+    @staticmethod
+    def _flags_text(m) -> str:
+        return " ".join(f for f, key in (("\\Seen", "seen"),
+                                         ("\\Flagged", "flagged"),
+                                         ("\\Answered", "answered"))
+                        if m.get(key))
+
     def uid(self, cmd, *args):
+        self._log("UID", cmd, *args)
         msgs = self.mailbox[self.selected]
         if cmd == "SEARCH" and args[-1] == "BODY":
             term = (self.literal or b"").decode("utf-8", "replace")
@@ -405,6 +452,12 @@ class FakeIMAP:
                 hits = msgs
             elif args[-1] == "DELETED":
                 hits = [m for m in msgs if m.get("deleted")]
+            elif "UID" in args and "HEADER" not in args:
+                # `UID n:*` answers the newest mail even below n, as a real
+                # server does (a range "to *" always holds the last one)
+                top = max((m["uid"] for m in msgs), default=0)
+                want = self._span(args[-1], top) if msgs else set()
+                hits = [m for m in msgs if m["uid"] in want]
             elif "HEADER" in args:
                 # `HEADER Message-ID <id>` (id as literal or quoted string),
                 # also OR-chained: OR HEADER Message-ID a OR HEADER ... z
@@ -451,8 +504,16 @@ class FakeIMAP:
                 data = []
                 for i, m in enumerate(msgs):
                     if m["uid"] in wanted:
-                        body = self._header_blob(m) + self._payload(m)
-                        data += [(f"{i+1} (UID {m['uid']} BODY[] "
+                        body = m.get("raw") or (self._header_blob(m)
+                                                + self._payload(m))
+                        # FLAGS / INTERNALDATE only when asked for, as a
+                        # real server answers them
+                        extra = ""
+                        if "FLAGS" in args[1]:
+                            extra += f" FLAGS ({self._flags_text(m)})"
+                        if "INTERNALDATE" in args[1]:
+                            extra += f' INTERNALDATE "{m["date"]}"'
+                        data += [(f"{i+1} (UID {m['uid']}{extra} BODY[] "
                                   f"{{{len(body)}}}".encode(), body), b")"]
                 return "OK", data or [None]
             if "X-GM-MSGID" in args[1]:
@@ -464,7 +525,7 @@ class FakeIMAP:
                 for i, m in enumerate(msgs):
                     if m["uid"] not in wanted:
                         continue
-                    flags = "\\Seen" if m["seen"] else ""
+                    flags = self._flags_text(m)
                     data.append(f"{i+1} (UID {m['uid']}"
                                 f"{self._gm(m) if 'GM' in args[1] else ''} "
                                 f"FLAGS ({flags}))".encode())
@@ -474,7 +535,7 @@ class FakeIMAP:
                 if m["uid"] not in wanted:
                     continue
                 hdr = self._header_blob(m)
-                flags = "\\Seen" if m["seen"] else ""
+                flags = self._flags_text(m)
                 gm = self._gm(m) if "X-GM-MSGID" in args[1] else ""
                 meta = (f"{i+1} (UID {m['uid']}{gm} FLAGS ({flags}) "
                         f"RFC822.SIZE {m['size']} "
@@ -556,6 +617,7 @@ class FakeIMAP:
 
     def store(self, span, op, flags):
         """Sequence-number STORE (`1:*` = every message in the folder)."""
+        self._log("STORE", span, op, flags)
         msgs = self.mailbox[self.selected]
         seqs = self._span(span, len(msgs))
         self._store(msgs, {m["uid"] for i, m in enumerate(msgs, 1)
@@ -563,9 +625,75 @@ class FakeIMAP:
         return "OK", [b""]
 
     def expunge(self):
+        self._log("EXPUNGE")
         self.mailbox[self.selected] = [
             m for m in self.mailbox[self.selected] if not m.get("deleted")]
         return "OK", [b""]
+
+    # -- writing into a mailbox (the copy to another account) -----------
+    def create(self, qname):
+        name = qname.strip('"')
+        self._log("CREATE", name)
+        if self.namespace_prefix and not name.startswith(
+                self.namespace_prefix):
+            return "NO", [b"[CANNOT] Invalid mailbox name: must be under "
+                          + self.namespace_prefix.encode()]
+        if name in self.mailbox:
+            return "NO", [b"[ALREADYEXISTS] Mailbox exists"]
+        self.mailbox[name] = []
+        self.uv[name] = 1
+        return "OK", [b"Create completed"]
+
+    def namespace(self):
+        self._log("NAMESPACE")
+        if not self.namespace_prefix:
+            raise imaplib.IMAP4.error("NAMESPACE command error")
+        d = self.delimiter or "NIL"
+        return "OK", [f'(("{self.namespace_prefix}" "{d}")) NIL NIL'.encode()]
+
+    def subscribe(self, qname):
+        self._log("SUBSCRIBE", qname.strip('"'))
+        return "OK", [b"Subscribe completed"]
+
+    def append(self, qname, flags, date_time, message):
+        """APPEND: the mail lands in the folder with a fresh UID, its
+        INTERNALDATE (`date_time` as sent, quoted) and the flags it came
+        with. The folder must exist (NO [TRYCREATE] otherwise)."""
+        name = qname.strip('"')
+        self._log("APPEND", name, flags, date_time, len(message))
+        if self.append_hook is not None:
+            answer = self.append_hook(name, flags, date_time, message)
+            if answer is not None:
+                return answer
+        if name not in self.mailbox:
+            return "NO", [b"[TRYCREATE] no such folder"]
+        held = self.mailbox[name]
+        top = max([self._high.get(name, 0)] + [m["uid"] for m in held])
+        self._high[name] = top + 1
+        parsed = email.message_from_bytes(message)
+        names = {f.lstrip("\\").lower()
+                 for f in (flags or "").strip("()").split() if f}
+        held.append({
+            "uid": top + 1, "from": parsed.get("From", ""),
+            "subject": parsed.get("Subject", ""),
+            "msgid": (parsed.get("Message-ID") or "").strip(),
+            "to": parsed.get("To"), "cc": parsed.get("Cc"),
+            "unsub": parsed.get("List-Unsubscribe"), "unsub_post": False,
+            "body": None, "html": None, "irt": None, "refs": None,
+            "size": len(message), "atts": [], "raw": bytes(message),
+            "seen": "seen" in names, "flagged": "flagged" in names,
+            "answered": "answered" in names, "deleted": "deleted" in names,
+            "date": (date_time or "").strip('"')
+            or time.strftime("%d-%b-%Y %H:%M:%S +0000", time.gmtime())})
+        return "OK", [b"[APPENDUID 1 %d] Append completed" % (top + 1)]
+
+    def getquotaroot(self, qname):
+        self._log("GETQUOTAROOT", qname.strip('"'))
+        if not self.quota:
+            raise imaplib.IMAP4.error("GETQUOTAROOT command error")
+        used, limit = self.quota
+        return "OK", [[b'INBOX ""'],
+                      [f'"" (STORAGE {used} {limit})'.encode()]]
 
 
 def gmail_copy(m: dict, uid: int, gmid: str = "1001") -> dict:

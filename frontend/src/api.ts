@@ -9,6 +9,7 @@ import type {
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
+  CopyJob, CopyKindId, CopyPlan, CopyTell,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -185,6 +186,20 @@ const ERROR_CODES: Record<string, string> = {
   login_wrong_password: "ferr.login_wrong_password",
   login_password_off: "ferr.login_password_off",
   login_sso_off: "ferr.login_sso_off",
+  copy_unknown_account: "ferr.copy_unknown_account",
+  copy_same_account: "ferr.copy_same_account",
+  copy_busy: "ferr.copy_busy",
+  copy_nothing: "ferr.copy_nothing",
+  copy_not_scanned: "ferr.copy_not_scanned",
+  copy_folder_name: "ferr.copy_folder_name",
+  copy_cannot_create: "ferr.copy_cannot_create",
+  copy_source_changed: "ferr.copy_source_changed",
+  copy_append_refused: "ferr.copy_append_refused",
+  copy_target_full: "ferr.copy_target_full",
+  copy_no_job: "ferr.copy_no_job",
+  copy_same_mailbox: "ferr.copy_same_mailbox",
+  copy_cannot_confirm: "ferr.copy_cannot_confirm",
+  copy_folder_reserved: "ferr.copy_folder_reserved",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -585,6 +600,30 @@ export const api = {
   oauthDisconnect: (account: string) =>
     req<{ ok: boolean }>(
       `/api/oauth/imap/disconnect?account=${encodeURIComponent(account)}`, {}),
+  // Copy to another account: explicit source / target, never the active one
+  copyPlan: (source: string, target: string) =>
+    req<CopyPlan>(`/api/account_copy/plan?source=${encodeURIComponent(source)}`
+      + `&target=${encodeURIComponent(target)}`),
+  /** The target's free space (null: no quota) and, for a folder name,
+   *  whether it exists (the mails are added) or is reserved (refused). */
+  copySpace: (target: string, folder = "") =>
+    req<{ free: number | null; exists: boolean; reserved: boolean }>(
+      `/api/account_copy/space?target=${encodeURIComponent(target)}`
+      + (folder ? `&folder=${encodeURIComponent(folder)}` : "")),
+  copyStatus: () => req<{ job: CopyJob | null }>("/api/account_copy/status"),
+  copyStart: (source: string, target: string, kinds: CopyKindId[],
+              folder: string) =>
+    req<{ job: CopyJob }>("/api/account_copy/start",
+      { source, target, kinds, folder }),
+  copyPause: () => req<{ job: CopyJob }>("/api/account_copy/pause", {}),
+  copyResume: () => req<{ job: CopyJob }>("/api/account_copy/resume", {}),
+  copyCancel: () => req<{ job: CopyJob }>("/api/account_copy/cancel", {}),
+  copyDismiss: () => req<{ job: null }>("/api/account_copy/dismiss", {}),
+  copyTell: (source: string, target: string) =>
+    req<CopyTell>(`/api/account_copy/tell?source=${encodeURIComponent(source)}`
+      + `&target=${encodeURIComponent(target)}`),
+  copySetTold: (source: string, target: string, addr: string, done: boolean) =>
+    req<CopyTell>("/api/account_copy/tell", { source, target, addr, done }),
   trackers: () => req<TrackerReport>("/api/trackers"),
   subscriptions: () => req<SubscriptionsResp>("/api/subscriptions"),
   subscriptionReminders: () =>

@@ -24,7 +24,10 @@ sys.path.insert(0, sys.argv[1] + "/scripts")
 import demo_glue
 marks = demo_glue.boot(sys.argv[2])
 import os
-from backend import mailops
+from backend import mailops, pinstore
+# what the seed itself carries (the demo has a few pinned mails of its own)
+seeded = (os.path.exists(os.environ["PINS_PATH"]),
+          sorted(pinstore.load_account("proton")))
 refused = ""
 try:
     mailops.connect({"host": "imap.other.example"})
@@ -47,7 +50,7 @@ async def label():
 labelled = asyncio.run(label())
 mailops._SENT_CACHE[("stale",)] = (time.time(), [])
 demo_glue.boot(sys.argv[2])                           # "Reset demo"
-from backend import labelstore, pinstore
+from backend import labelstore
 left = (os.path.exists(os.environ["PINS_PATH"]),
         sorted(pinstore.load_account("proton")))
 labels_left = labelstore.load_account("proton")
@@ -70,6 +73,7 @@ async def go():
 out = asyncio.run(go())
 out["marks"] = sorted(marks)
 out["refused"], out["pinned"], out["left"] = refused, pinned, left
+out["seeded"] = seeded
 out["labelled"], out["labels_left"] = labelled, labels_left
 out["sent_cache"] = len(mailops._SENT_CACHE)
 out["clock"] = time.time()
@@ -102,7 +106,8 @@ def test_boot_serves_the_seed_and_trash_and_undo_work(seed):
     assert "not_in_demo" in out["refused"]        # not a raw KeyError
     assert out["pinned"][:2] == [200, True]       # in the demo's own data dir
     assert not out["pinned"][2].startswith("/data")
-    assert out["left"] == [False, []]             # a reset forgets the pin
+    # a reset forgets the visitor's pin and keeps the seed's own
+    assert out["left"] == out["seeded"] and out["seeded"][0] is True
     assert out["labelled"] == 200
     assert out["labels_left"] == {}               # ... and the labels, memory too
     assert out["sent_cache"] == 0                 # and the Sent lookup cache

@@ -26,6 +26,7 @@ from starlette.requests import ClientDisconnect
 from pydantic import BaseModel, Field, StrictInt
 
 from . import FORMER_ENV
+from . import accountcopy
 from . import accounts as accountsmod
 from . import aifilter
 from . import aihelper
@@ -205,6 +206,7 @@ async def _lifespan(app: FastAPI):
         with tenants.use(tenant):
             for name in accountsmod.names():
                 mailops.load_snapshot(accountsmod.get(name))
+    accountcopy.resume_all()
     rulesmod.start_scheduler()
     presetsmod.publish()
     digestmod.start_scheduler()
@@ -2238,6 +2240,91 @@ def post_cancel(body: CancelBody, account: str | None = Query(None)):
     return {"ok": True}
 
 
+# ------------------------------------------------- copy to another account
+
+class CopyStartBody(BaseModel):
+    source: str = Field(max_length=100)
+    target: str = Field(max_length=100)
+    kinds: list[str] = Field(max_length=20)
+    folder: str = Field("", max_length=200)
+
+
+class CopyTellBody(BaseModel):
+    source: str = Field(max_length=100)
+    target: str = Field(max_length=100)
+    addr: str = Field(max_length=254)
+    done: bool = True
+
+
+def _copy(fn, *args):
+    """One accountcopy call: its refusals are coded details (400 for what the
+    caller asked wrongly, 409 for a state that stops it)."""
+    try:
+        return fn(*args)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@app.get("/api/account_copy/plan")
+def get_copy_plan(source: str = Query(..., max_length=100),
+                  target: str = Query(..., max_length=100)):
+    return _copy(accountcopy.plan, source, target)
+
+
+@app.get("/api/account_copy/space")
+def get_copy_space(target: str = Query(..., max_length=100),
+                   folder: str = Query("", max_length=200)):
+    """The target's free space and, for the new folder's name, whether the
+    folder exists (the mails are added to it) or is one the server uses for
+    something else."""
+    return _copy(accountcopy.target_info, target, folder)
+
+
+@app.get("/api/account_copy/status")
+def get_copy_status():
+    return accountcopy.status()
+
+
+@app.post("/api/account_copy/start")
+def post_copy_start(body: CopyStartBody):
+    return _copy(accountcopy.start, body.source, body.target, body.kinds,
+                 body.folder)
+
+
+@app.post("/api/account_copy/pause")
+def post_copy_pause():
+    return _copy(accountcopy.pause)
+
+
+@app.post("/api/account_copy/resume")
+def post_copy_resume():
+    return _copy(accountcopy.resume)
+
+
+@app.post("/api/account_copy/cancel")
+def post_copy_cancel():
+    return _copy(accountcopy.cancel)
+
+
+@app.post("/api/account_copy/dismiss")
+def post_copy_dismiss():
+    return _copy(accountcopy.dismiss)
+
+
+@app.get("/api/account_copy/tell")
+def get_copy_tell(source: str = Query(..., max_length=100),
+                  target: str = Query(..., max_length=100)):
+    return _copy(accountcopy.tell, source, target)
+
+
+@app.post("/api/account_copy/tell")
+def post_copy_tell(body: CopyTellBody):
+    return _copy(accountcopy.set_told, body.source, body.target, body.addr,
+                 body.done)
+
+
 @app.post("/api/notice/clear")
 def post_notice_clear(body: NoticeClearBody = NoticeClearBody(),
                       account: str | None = Query(None)):
@@ -2691,6 +2778,7 @@ def post_config(body: dict, request: Request, response: Response):
                                      str(body["delete_account"]))
         rulesmod.drop_account(str(body["delete_account"]))
         autoscanmod.drop_account(str(body["delete_account"]))
+        accountcopy.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
         # The config rename succeeded - carry every per-account artifact
         # (runtime state, verdicts, unsubscribes, replied cache, stats,
@@ -2715,6 +2803,7 @@ def post_config(body: dict, request: Request, response: Response):
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)
+            accountcopy.rename_account(old, new)
             auditlog.rename_account(old, new)
             assistanttokens.rename_account(tenants.current().id, old, new)
             logging.getLogger("inboxrake.mail").info(

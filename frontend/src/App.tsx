@@ -29,6 +29,7 @@ import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { showReminderToast } from "./subscriptions";
 
 const VISIBLE_KEY = "pmc_visible_at";
+import { AccountCopyPanel } from "./components/AccountCopy";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
@@ -593,6 +594,18 @@ export default function App() {
   // unsubscribe. `sheetRun` = the bulk run it is following, whose end it
   // shows itself (no toast).
   const [unsubSheet, setUnsubSheet] = useState<UnsubRequest | null>(null);
+  // "Move to another account": the account it was opened from, and the
+  // newsletter review it hands over to (opened once that account is loaded).
+  const [moveFrom, setMoveFrom] = useState("");
+  const [pendingUnsub, setPendingUnsub] =
+    useState<{ account: string; keys: string[] } | null>(null);
+  useEffect(() => {
+    if (!pendingUnsub || state?.account !== pendingUnsub.account
+        || account !== pendingUnsub.account) return;
+    setUnsubSheet({ kind: "bulk", grouping: "sender",
+      keys: pendingUnsub.keys, pooled: 0 });
+    setPendingUnsub(null);
+  }, [pendingUnsub, state?.account, account]);
   const sheetRun = useRef<number | null>(null);
   useUnsubscribeOpener(setUnsubSheet);
   // The account generation the open sheet was rendered in (see its onTrash).
@@ -2257,6 +2270,25 @@ export default function App() {
   })[tool]();
   /** Esc / Back from Settings: where it was opened from. */
   const closeSettings = () => goPage(settingsFrom.current ?? DEFAULT_PAGE, true);
+  /** Settings > an account > "Move to another account…". */
+  const openMove = (from: string) => { setMoveFrom(from); goPage("move"); };
+  /** Back from the move page: that account's settings. */
+  const closeMove = () => {
+    const from = moveFrom || account;
+    goPage("settings", true);
+    gotoSettings("account", from);
+  };
+  /** "Review N unsubscribes" of the Tell-them step: the unsubscribe review
+   *  for these senders of the old account (which becomes the active one). */
+  const reviewCopyUnsubs = (acct: string, keys: string[]) => {
+    const request: UnsubRequest = { kind: "bulk", grouping: "sender", keys,
+      pooled: 0 };
+    if (acct === account && state?.account === acct) setUnsubSheet(request);
+    else {
+      setPendingUnsub({ account: acct, keys });
+      if (acct !== account) switchAccount(acct);
+    }
+  };
   const openSettingsSection = (s: Parameters<typeof gotoSettings>[0],
     acct?: string | null, push = false) => {
     if (s === null && settingsPushed.current) {
@@ -2292,6 +2324,7 @@ export default function App() {
   // does: a tool route goes to the tab page that lists it (Overview for
   // Search), a tool opened as a modal drops back to the page underneath.
   const backTarget = t(((): string => {
+    if (routeTool === "move") return "Settings";
     const to = routeTool ? TOOL_TAB[routeTool] ?? DEFAULT_PAGE : page;
     return to === "cleanup" ? "tools.group_cleanup"
       : to === "insights" ? "tools.group_insights"
@@ -2621,6 +2654,10 @@ export default function App() {
       <TriagePanel key={account} groups={groups} grouping={mode} onApply={applyTriage}
         onClose={() => closeTool(() => { setTriageOpen(false); refresh(); },
           "senders")} />
+    )}
+    {toolShown("move") && cfg && (
+      <AccountCopyPanel from={moveFrom || account} cfg={cfg}
+        onClose={closeMove} onReviewUnsubs={reviewCopyUnsubs} />
     )}
     {toolShown("activity") && (
       <AuditLogPanel key={account} rules={state?.rules ?? []}
@@ -3349,6 +3386,7 @@ export default function App() {
           section={settingsRoute.section}
           routeAccount={settingsRoute.account}
           onSection={openSettingsSection}
+          onMoveAccount={openMove}
           controlRef={settingsCtl}
           onClose={closeSettings}
           onAddAccount={() => setWizard({ mode: "add", previous: account })}
