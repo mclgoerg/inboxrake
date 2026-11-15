@@ -40,10 +40,16 @@ export interface RecipeCount {
  *  out unless the action only marks as read). */
 export function countRecipe(r: Recipe, groups: Group[]): RecipeCount {
   const f = parseFilter(r.query);
-  const hits = groups.filter((g) => matchGroup(g, f) && !g.protected);
+  const matched = groups.filter((g) => matchGroup(g, f) && !g.protected);
   const pinned = (g: Group) => r.action === "mark_read" ? 0 : g.pinned ?? 0;
+  // "except the newest N" leaves N mails of every sender where it is
+  const acts = (g: Group) => {
+    const n = g.count - pinned(g);
+    return r.keep_latest ? n - Math.min(n, r.keep_latest) : n;
+  };
+  const hits = r.keep_latest ? matched.filter((g) => acts(g) > 0) : matched;
   return {
-    mails: hits.reduce((n, g) => n + g.count - pinned(g), 0),
+    mails: hits.reduce((n, g) => n + acts(g), 0),
     senders: hits.length,
     size: hits.reduce((n, g) => n + g.att_size, 0),
   };
@@ -70,10 +76,25 @@ export function rankRecipes(groups: Group[]):
 export function recipeFolder(r: Recipe, folders: string[], raw: string[]):
   string {
   if (!r.folder) return "";
-  const want = r.folder.toLowerCase();
+  // the English name or the one in the user's language
+  const want = [r.folder, recipeFolderName(r)].map((n) => n.toLowerCase());
   const i = folders.findIndex((n) =>
-    n.toLowerCase().split(/[/.]/).pop() === want);
+    want.includes(n.toLowerCase().split(/[/.]/).pop() ?? ""));
   return i >= 0 ? raw[i] ?? "" : "";
+}
+
+/** The folder a recipe files into, named in the user's language. */
+export const recipeFolderName = (r: Recipe): string =>
+  r.folder ? t(`recipe.${r.id}.folder`) : "";
+
+/** Whether an ordinary rule with this recipe's definition already exists
+ *  (same grouping, filter, action, folder and retention). */
+export function recipeAdded(r: Recipe, rules: Rule[], dest: string): boolean {
+  return rules.some((x) => (x.scope ?? "mail") === "mail"
+    && x.grouping === "sender" && x.query.trim() === r.query
+    && x.action === r.action && (r.action === "move" ? x.dest === dest : true)
+    && (x.keep_latest ?? null) === (r.keep_latest ?? null)
+    && (x.older_than_days ?? null) === (r.older_than_days ?? null));
 }
 
 /** The body `api.createRule` takes - what the editor's Create would send. */
@@ -88,8 +109,8 @@ export function recipeBody(r: Recipe, dest: string): Partial<Rule> {
 }
 
 /** "move to Trash if older than 30 days" - the action in the app's words. */
-export function recipeAction(r: Recipe, folder: string): string {
-  const act = t(`rule.act_${r.action}`, { folder: folder || r.folder || "" });
+export function recipeAction(r: Recipe): string {
+  const act = t(`rule.act_${r.action}`, { folder: recipeFolderName(r) });
   const ret = r.keep_latest != null
     ? t("rule.ret_keep", { n: r.keep_latest })
     : r.older_than_days != null

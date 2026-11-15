@@ -1,12 +1,12 @@
-import { Archive, BellOff, ChevronLeft, ChevronRight, Hourglass, Info, Layers,
+import { Archive, BellOff, Check, ChevronLeft, ChevronRight, Hourglass, Info, Layers,
   MailOpen, MessageCircle, Newspaper, Paperclip, Plus, Receipt, ScanSearch,
   Truck, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { fmtSize } from "../api";
 import { t } from "../i18n";
 import { rankRecipes, type Recipe, type RecipeCount, type RecipeGroup,
-  recipeAction, recipeFolder, RECIPES } from "../recipes";
-import type { AppState, Group } from "../types";
+  recipeAction, recipeAdded, recipeFolder, RECIPES } from "../recipes";
+import type { AppState, Group, Rule } from "../types";
 import { Button, Modal, Notice, Segmented, Spinner, useMediaQuery } from "./ui";
 
 /** The three ways into a new rule. */
@@ -29,10 +29,14 @@ export function useRankedRecipes(state: AppState) {
 
 /** Blank / From a recipe / Describe it… - the same switch in the dialog and
  *  in the blank editor. */
-export function NewRuleModes({ value, onChange, short = false }: {
+export function NewRuleModes({ value, onChange, short = false, ai }: {
   value: NewRuleMode; onChange: (m: NewRuleMode) => void; short?: boolean;
+  /** Describe it… needs an AI provider: absent = AI is off (no such way in),
+   *  `disabled` = the demo (shown, with its hint). */
+  ai?: RuleAi;
 }) {
   return (
+    <div className="min-w-0 max-sm:w-full">
     <Segmented value={value} onChange={onChange} label={t("rule.f_new_mode")}
       equal={short} role="radio"
       className={short ? "w-full" : ""}
@@ -40,10 +44,18 @@ export function NewRuleModes({ value, onChange, short = false }: {
         { value: "blank", label: t("rule.mode_blank") },
         { value: "recipe", label: t(short ? "rule.mode_recipe_short"
           : "rule.mode_recipe") },
-        { value: "describe", label: t(short ? "rule.mode_describe_short"
-          : "rule.mode_describe") }]} />
+        ...(ai ? [{ value: "describe" as const, disabled: ai.disabled,
+          describedBy: ai.hint ? "new-rule-ai-hint" : undefined,
+          label: t(short ? "rule.mode_describe_short"
+            : "rule.mode_describe") }] : [])]} />
+    {ai?.disabled && ai.hint && (
+      <div id="new-rule-ai-hint" className="mt-1 type-meta text-muted">
+        {ai.hint}</div>)}
+    </div>
   );
 }
+
+export interface RuleAi { disabled: boolean; hint?: string }
 
 const icon = (r: Recipe) => (
   <span aria-hidden className={`flex size-9 shrink-0 items-center
@@ -67,12 +79,11 @@ interface Row { recipe: Recipe; count: RecipeCount | null; empty: boolean }
 
 /** One recipe as a card: what it is for, the filter and action in the app's
  *  words, what it would catch now, Add. */
-function RecipeCard({ row, state, busy, error, onAdd, lead }: {
-  row: Row; state: AppState; busy: boolean; error?: string;
+function RecipeCard({ row, added, busy, error, onAdd, lead }: {
+  row: Row; added: boolean; busy: boolean; error?: string;
   onAdd: () => void; lead?: boolean;
 }) {
   const r = row.recipe;
-  const folder = recipeFolder(r, state.folders, state.folders_raw);
   const now = nowText(r, row.count);
   return (
     <div data-recipe={r.id} data-empty={row.empty || undefined}
@@ -88,18 +99,22 @@ function RecipeCard({ row, state, busy, error, onAdd, lead }: {
       <p className="type-meta text-muted">
         <code className="rounded-control bg-chip px-1.5 py-0.5 text-chiptext
           break-words">{r.query}</code>
-        {" → "}{recipeAction(r, folder)}{" · "}{t(`sched.${r.schedule}`)}
+        {" → "}{recipeAction(r)}{" · "}{t(`sched.${r.schedule}`)}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-1">
         {now && <span className="inline-flex min-w-0 flex-1 items-center gap-1.5
           type-meta text-muted">
           <ScanSearch size={14} aria-hidden className="shrink-0" />
           <span className="min-w-0">{now}</span></span>}
-        <Button variant={lead ? "primary" : "secondary"} size="sm"
-          className="ml-auto shrink-0" disabled={busy}
-          aria-label={t("recipe.add_named", { name: t(`recipe.${r.id}.title`) })}
+        <Button variant={lead && !added ? "primary" : "secondary"} size="sm"
+          className="ml-auto shrink-0" disabled={busy || added}
+          aria-label={t(added ? "recipe.added_named" : "recipe.add_named",
+            { name: t(`recipe.${r.id}.title`) })}
           onClick={onAdd}>
-          {busy ? <Spinner /> : <>
+          {busy ? <Spinner /> : added ? <>
+            <Check size={14} aria-hidden
+              className="mr-1 inline align-text-bottom" />{t("recipe.added_btn")}</>
+            : <>
             <Plus size={14} aria-hidden
               className="mr-1 inline align-text-bottom" />{t("recipe.add")}</>}
         </Button>
@@ -115,8 +130,9 @@ const FILTERS: (RecipeGroup | "all")[] = ["all", "tidy", "short", "protect"];
 /** New rule > From a recipe: the nine recipes sorted by what they would
  *  catch now. Add creates an ordinary rule (report mode, report run once);
  *  the caller does that and returns an error text, or nothing. */
-export function RecipeDialog({ state, onClose, onMode, onAdd }: {
+export function RecipeDialog({ state, ai, onClose, onMode, onAdd }: {
   state: AppState;
+  ai?: RuleAi;
   onClose: () => void;
   onMode: (m: NewRuleMode) => void;
   onAdd: (r: Recipe) => Promise<string | void>;
@@ -137,8 +153,11 @@ export function RecipeDialog({ state, onClose, onMode, onAdd }: {
     setBusy("");
     if (text) setErr({ id: r.id, text });
   };
+  const addedAlready = (r: Recipe) => recipeAdded(r, state.rules ?? [],
+    recipeFolder(r, state.folders, state.folders_raw));
   const card = (row: Row, i = -1) => (
-    <RecipeCard key={row.recipe.id} row={row} state={state}
+    <RecipeCard key={row.recipe.id} row={row}
+      added={addedAlready(row.recipe)}
       lead={i === 0 && !row.empty && filter === "all"}
       busy={busy === row.recipe.id}
       error={err?.id === row.recipe.id ? err.text : undefined}
@@ -150,7 +169,7 @@ export function RecipeDialog({ state, onClose, onMode, onAdd }: {
       {t("recipe.every_report")}</p>);
 
   if (phone) return (
-    <Modal onClose={onClose} label={t("rule.new_title")}>
+    <Modal onClose={onClose} size="sm" label={t("rule.new_title")}>
       <div className="flex items-center gap-3 px-4 py-3">
         {opened
           ? <button type="button" onClick={() => setOpen(null)}
@@ -161,8 +180,8 @@ export function RecipeDialog({ state, onClose, onMode, onAdd }: {
         <h2 className="flex-1 pr-12 text-center type-heading">
           {t("rule.new_title")}</h2>
       </div>
-      <div className="space-y-3 px-4 pb-4">
-        <NewRuleModes value="recipe" onChange={onMode} short />
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
+        <NewRuleModes value="recipe" onChange={onMode} short ai={ai} />
         {opened ? card(opened) : <>
           <ul className="divide-y divide-line rounded-card bg-panel2">
             {ranked.map((row) => (
@@ -193,7 +212,7 @@ export function RecipeDialog({ state, onClose, onMode, onAdd }: {
     <Modal onClose={onClose} size="xl" label={t("rule.new_title")}>
       <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
         <h2 className="flex-1 type-heading">{t("rule.new_title")}</h2>
-        <NewRuleModes value="recipe" onChange={onMode} />
+        <NewRuleModes value="recipe" onChange={onMode} ai={ai} />
         <Button variant="secondary" size="icon" label={t("Close")}
           onClick={onClose}><X size={18} /></Button>
       </div>

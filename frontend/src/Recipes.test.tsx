@@ -58,8 +58,9 @@ const withGroups = (extra: Record<string, Group> = {}): AppState => ({
     "b@shop.example": grp("b@shop.example", { count: 7, tags: ["shopping"] }),
     ...extra } } });
 
-const renderRules = (state: AppState) => render(<DialogProvider>
-  <RulesModal state={state} onClose={() => {}} onChanged={() => {}} />
+const renderRules = (state: AppState, ai: { disabled: boolean;
+  hint?: string } | null = { disabled: false }) => render(<DialogProvider>
+  <RulesModal state={state} ai={ai ?? undefined} onClose={() => {}} onChanged={() => {}} />
 </DialogProvider>);
 const openNew = () =>
   fireEvent.click(screen.getByRole("button", { name: "New rule" }));
@@ -123,7 +124,14 @@ test("the receipts recipe finds an existing folder by name, never invents one", 
   expect(recipeFolder(r, ["INBOX", "Work/receipts"], ["INBOX", "Work/receipts"]))
     .toBe("Work/receipts");
   expect(recipeFolder(r, ["INBOX"], ["INBOX"])).toBe("");
-  expect(recipeAction(r, "Receipts")).toBe("move to Receipts");
+  expect(recipeAction(r)).toBe("move to Receipts");
+  setLang("de");
+  // the localized name is found too, and shown
+  expect(recipeFolder(r, ["INBOX", "Belege"], ["INBOX", "Belege"]))
+    .toBe("Belege");
+  expect(recipeFolder(r, ["INBOX", "Receipts"], ["INBOX", "Receipts"]))
+    .toBe("Receipts");
+  expect(recipeAction(r)).toBe("in Belege verschieben");
 });
 
 test("New rule opens the recipe view: nine cards sorted by their live count", () => {
@@ -328,4 +336,66 @@ test("the size recipe is ranked by its mails, not by its bytes", () => {
   // bytes must never outrank a bigger mail count
   expect(rankRecipes(groups)[0].recipe.id).toBe("newsletters");
   expect(big.count).not.toBeNull();
+});
+
+test("Describe it… is hidden without AI and disabled with its hint in the demo", () => {
+  renderRules(withGroups(), null);
+  openNew();
+  expect(screen.queryByRole("radio", { name: "Describe it…" })).toBeNull();
+  cleanup();
+  renderRules(withGroups(), { disabled: true, hint: "Not in the demo" });
+  openNew();
+  const d = screen.getByRole("radio", { name: "Describe it…" });
+  expect((d as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText("Not in the demo")).toBeTruthy();
+  fireEvent.click(d);
+  expect(screen.queryByRole("dialog", { name: EN["aif.title"] })).toBeNull();
+});
+
+test("Keep the latest 5 counts only what is beyond the newest 5 of each sender", () => {
+  const r = RECIPES.find((x) => x.id === "keep5")!;
+  const groups = Object.values(withGroups({
+    "s@small.example": grp("s@small.example", { count: 3, tags: ["newsletter"] }),
+  }).groups.sender);
+  // 40 -> 35 acted on; the sender with 3 mails keeps all of them
+  expect(countRecipe(r, groups)).toMatchObject({ mails: 35, senders: 1 });
+});
+
+test("a recipe already added as a rule shows Added, disabled", () => {
+  const existing = { id: "x", name: "mine", scope: "mail" as const,
+    grouping: "sender" as const, query: "is:unsub", action: "trash",
+    dest: "", schedule: "daily" as const, mode: "report" as const,
+    keep_latest: null, older_than_days: 30, origin: "manual" as const,
+    report_runs: 0, created: 0, last_run: null };
+  renderRules({ ...withGroups(), rules: [existing] });
+  openNew();
+  const card = cards().find((c) => c.dataset.recipe === "newsletters")!;
+  const btn = within(card).getByRole("button") as HTMLButtonElement;
+  expect(btn.disabled).toBe(true);
+  expect(btn.textContent).toContain("Added");
+  const other = cards().find((c) => c.dataset.recipe === "social")!;
+  expect((within(other).getByRole("button") as HTMLButtonElement).disabled)
+    .toBe(false);
+});
+
+test("the folder fallback keeps From a recipe selected in the editor header", () => {
+  const state = { ...withGroups({
+    "f@bank.example": grp("f@bank.example", { count: 12, tags: ["finance"] }) }),
+    folders: ["INBOX"], folders_raw: ["INBOX"] };
+  renderRules(state);
+  openNew();
+  fireEvent.click(within(cards().find((c) => c.dataset.recipe === "receipts")!)
+    .getByRole("button", { name: /^Add/ }));
+  expect(screen.getByRole("radio", { name: "Recipe" })
+    .getAttribute("aria-checked")).toBe("true");
+});
+
+test("the phone recipe view is a sheet with a grabber", () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: true, media: q,
+    addEventListener() {}, removeEventListener() {} }));
+  renderRules(withGroups());
+  openNew();
+  const dlg = screen.getByRole("dialog", { name: "New rule" });
+  expect(dlg.getAttribute("data-size")).toBe("sm");
+  expect(dlg.querySelector("[data-sheet-grabber]")).not.toBeNull();
 });

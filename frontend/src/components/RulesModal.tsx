@@ -8,10 +8,11 @@ import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
 import type { AppState, Grouping, Rule, RuleScope } from "../types";
-import { type Recipe, recipeBody, recipeFolder } from "../recipes";
+import { type Recipe, recipeBody, recipeFolder,
+  recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
 import { QueryBuilder } from "./QueryBuilder";
-import { NewRuleModes, type NewRuleMode, RecipeDialog,
+import { NewRuleModes, type NewRuleMode, RecipeDialog, type RuleAi,
   RecipeStarters } from "./RecipePicker";
 import { Avatar, Button, checkDialog, confirmDialog, EmptyState, Input,
   LINK_ACCENT, Menu, MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented,
@@ -458,8 +459,12 @@ function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
   );
 }
 
-export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
+export function RulesModal({ state, onClose, onChanged, initialQuery = "",
+  ai }: {
   state: AppState;
+  /** Describe it… (AI is on: enabled; the demo: disabled with its hint);
+   *  absent when there is no AI provider. */
+  ai?: RuleAi;
   onClose: () => void;
   onChanged: () => void;
   /** Starts the new-rule form with this filter (e.g. one the AI wrote). */
@@ -477,6 +482,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
   // rules added from a recipe in this session (their card says so)
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [starterBusy, setStarterBusy] = useState("");
+  // the blank editor was reached from a recipe (the folder fallback)
+  const [fromRecipe, setFromRecipe] = useState(false);
   const onPage = useIsPage();
   const [busyId, setBusyId] = useState("");
   const [msg, setMsg] = useState("");      // a refused save, in the editor
@@ -534,17 +541,18 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
 
   const closeEditor = () => {
     setEditing(false); setEditId(null); setForm({ ...EMPTY });
+    setFromRecipe(false);
     // the side panel unmounts with its focus: give it back to the opener
     const back = opener.current as HTMLElement | null;
     if (onPage && back?.isConnected) back.focus();
   };
   const openNew = () => {
     opener.current = document.activeElement;
-    setEditId(null); setForm({ ...EMPTY }); setMsg("");
+    setEditId(null); setForm({ ...EMPTY }); setMsg(""); setFromRecipe(false);
     setEditing(false); setCreating("recipe");
   };
   const newMode = (m: NewRuleMode) => {
-    setMsg("");
+    setMsg(""); setFromRecipe(false);
     if (m === "blank") {
       setCreating(null);
       if (!editing) { setEditId(null); setForm({ ...EMPTY }); setEditing(true); }
@@ -563,7 +571,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
       setCreating(null); setEditId(null);
       setForm({ ...EMPTY, name: t(`recipe.${r.id}.title`), query: r.query,
         action: r.action, schedule: r.schedule });
-      setMsg(t("recipe.pick_folder", { folder: r.folder ?? "" }));
+      setMsg(t("recipe.pick_folder", { folder: recipeFolderName(r) }));
+      setFromRecipe(true);
       setEditing(true);
       return;
     }
@@ -895,7 +904,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
         <h2 className="min-w-0 flex-1 truncate type-heading">
           {editId ? t("rule.edit_title") : t("rule.new_title")}
         </h2>
-        {!editId && <NewRuleModes value="blank" onChange={newMode} short />}
+        {!editId && <NewRuleModes value={fromRecipe ? "recipe" : "blank"}
+          onChange={newMode} short ai={ai} />}
         <Button variant="secondary" size="icon" label={t("Close")}
           onClick={closeEditor}><X size={18} /></Button>
       </div>
@@ -1058,7 +1068,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "" }: {
           onClose={() => setReportId(null)} />
       )}
       {creating === "recipe" && (
-        <RecipeDialog state={state} onClose={() => setCreating(null)}
+        <RecipeDialog state={state} ai={ai} onClose={() => setCreating(null)}
           onMode={newMode} onAdd={addRecipe} />
       )}
       {creating === "describe" && (
