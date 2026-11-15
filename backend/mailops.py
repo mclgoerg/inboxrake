@@ -761,6 +761,12 @@ def _undo_ident(entry: dict) -> dict:
             **({"id": entry["id"]} if entry.get("id") else {})}
 
 
+# /api/state (and every SSE tick) carries the newest steps of each list only:
+# the lists hold 30 days of steps, the Activity page and the Time machine
+# have all of them.
+UNDO_SUMMARY_MAX = 100
+
+
 def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
@@ -774,7 +780,8 @@ def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
              # an assistant's step: who did it (the token's name)
              **({"actor": u["actor"], "token": u["token"]}
                 if u.get("token") else {})}
-            for u in (acc.undo_log if entries is None else entries)]
+            for u in (acc.undo_log if entries is None else entries)
+            [-UNDO_SUMMARY_MAX:]]
 
 
 def _undo_mails(entry: dict) -> int:
@@ -802,28 +809,54 @@ def _trim_undo_list(entries: list[dict], now: float) -> None:
         total -= _undo_mails(entries.pop(0))
 
 
-def _persist_undo(acc) -> None:
-    """Write both undo lists to disk (acc.lock held). Never raises: a failed
-    write must not fail the action that was just done."""
-    try:
-        undostore.save(acc.name, acc.tenant, SNAPSHOT_DIR, acc.undo_log,
-                       acc.assistant_undo)
-    except Exception:           # a full disk, an entry JSON cannot hold, ...
-        log.exception("[%s] could not persist the undo log", acc.name)
-
-
-def _sync_undo(acc, persist: bool = True) -> None:
-    """Apply the retention to both undo lists, refresh their public
-    summaries and write them to disk (acc.lock held). A Time machine restore
-    takes many steps off and puts rests back: it writes once at its end
-    (`persist` off in between)."""
+def _sync_undo(acc) -> None:
+    """Apply the retention to both undo lists and refresh their public
+    summaries (acc.lock held). The lists are written to disk by
+    `flush_undo`, which the caller runs once the lock is released."""
     now = time.time()
     _trim_undo_list(acc.undo_log, now)
     _trim_undo_list(acc.assistant_undo, now)
     acc.state["undo"] = _undo_summaries(acc)
     acc.state["assistant_undo"] = _undo_summaries(acc, acc.assistant_undo)
-    if persist:
-        _persist_undo(acc)
+    acc.undo_dirty = True
+
+
+def flush_undo(acc) -> None:
+    """Write the undo lists to disk if they changed - without holding the
+    account lock (a list at its cap is tens of MB of JSON). Never raises: a
+    failed write must not fail the action that was just done. Steps are not
+    changed in place once listed (a popped step is not in the list), so the
+    snapshot of the two lists is safe to serialise unlocked; an older
+    snapshot never overwrites a newer one."""
+    if not acc.undo_dirty:
+        return
+    with acc.lock:
+        if not acc.undo_dirty:
+            return
+        acc.undo_dirty = False
+        acc.undo_seq += 1
+        seq = acc.undo_seq
+        user, bots = list(acc.undo_log), list(acc.assistant_undo)
+    with acc.undo_write:
+        if seq < acc.undo_written:
+            return
+        acc.undo_written = seq
+        try:
+            undostore.save(acc.name, acc.tenant, SNAPSHOT_DIR, user, bots)
+        except Exception:       # a full disk, an entry JSON cannot hold, ...
+            log.exception("[%s] could not persist the undo log", acc.name)
+
+
+def expire_undo(acc) -> None:
+    """Drop steps older than the retention (an idle account records nothing
+    that would): the Time machine calls this before it lists them."""
+    with acc.lock:
+        before = len(acc.undo_log) + len(acc.assistant_undo)
+        _trim_undo_list(acc.undo_log, time.time())
+        _trim_undo_list(acc.assistant_undo, time.time())
+        if len(acc.undo_log) + len(acc.assistant_undo) != before:
+            _sync_undo(acc)
+    flush_undo(acc)
 
 
 def load_undo(acc) -> None:
@@ -836,6 +869,7 @@ def load_undo(acc) -> None:
         acc.undo_log[:] = user
         acc.assistant_undo[:] = assistant
         _sync_undo(acc)
+    flush_undo(acc)
 
 
 def rename_undo(old: str, new: str) -> None:
@@ -2750,7 +2784,8 @@ def public_status(acc=None) -> dict:
             {k: v for k, v in acc.state.items() if k != "groups"}))
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
-        return out
+    flush_undo(acc)          # a safety net: whatever was left unwritten
+    return out
 
 
 def _rcpt_context(acc, im: dict) -> addresspick.Context:
@@ -3421,6 +3456,7 @@ def _delete_worker(acc) -> None:
             with acc.lock:
                 apply_partial()
                 acc.state["delete"]["error"] = error
+        flush_undo(acc)
         if action != "mark_read" and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
         auditlog.record(
@@ -4502,7 +4538,7 @@ def _present_in_targets(conn, items) -> set[tuple[str, str]]:
     return present
 
 
-def _reinsert_undo(acc, entry: dict, pos: int, persist: bool = True) -> None:
+def _reinsert_undo(acc, entry: dict, pos: int) -> None:
     """Put a taken-off undo entry back (acc.lock held). The list may have
     changed while the IMAP work ran (new entries, front-trimming, pruning),
     so `pos` is only a hint: the entry goes into its timestamp slot, at
@@ -4512,7 +4548,7 @@ def _reinsert_undo(acc, entry: dict, pos: int, persist: bool = True) -> None:
     lo = sum(1 for e in log_ if e["ts"] < entry["ts"])
     hi = sum(1 for e in log_ if e["ts"] <= entry["ts"])
     log_.insert(min(max(pos, lo), hi), entry)
-    _sync_undo(acc, persist)
+    _sync_undo(acc)
 
 
 def undo_mails(entry: dict) -> list[dict]:
@@ -4574,8 +4610,7 @@ def _split_entry(entry: dict, skip) -> tuple[dict, dict | None]:
 
 def pop_undo(acc, index: int = -1, ident: dict | None = None,
              assistant: bool = False, token: str | None = None,
-             busy_check: bool = True,
-             persist: bool = True) -> tuple[dict, int]:
+             busy_check: bool = True) -> tuple[dict, int]:
     """Take one step off its list (the checks of an undo request): `(entry,
     its position)`. Raises NOTHING_TO_UNDO / BUSY_ACTION (`busy_check` off:
     the Time machine's own job, which is what makes the account busy)."""
@@ -4602,7 +4637,7 @@ def pop_undo(acc, index: int = -1, ident: dict | None = None,
             raise RuntimeError(BUSY_ACTION)
         pos = index if index >= 0 else len(lst) + index
         entry = lst.pop(index)
-        _sync_undo(acc, persist)
+        _sync_undo(acc)
     return entry, pos
 
 
@@ -4772,7 +4807,7 @@ def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
                 "label": entry["label"]}, run)
 
 
-def _reinstate_steps(acc, entry: dict, persist: bool = True) -> None:
+def _reinstate_steps(acc, entry: dict) -> None:
     """After a restore was undone: the steps it had undone are undoable again
     (found by Message-ID, as their exact copies are gone)."""
     for part in entry["parts"]:
@@ -4785,12 +4820,10 @@ def _reinstate_steps(acc, entry: dict, persist: bool = True) -> None:
                 **head, "count": len(part["mails"]),
                 "items": [(m[0], m[1]) for m in part["mails"]],
                 "who": [[m[2], m[3]] for m in part["mails"]],
-                "bytes": sum(m[3] for m in part["mails"])}, len(lst),
-                persist)
+                "bytes": sum(m[3] for m in part["mails"])}, len(lst))
 
 
-def run_undo(acc, entry: dict, pos: int, only=None,
-             persist: bool = True) -> dict:
+def run_undo(acc, entry: dict, pos: int, only=None) -> dict:
     """Do the IMAP side of one taken-off step. `only` (a `skip(addr, msgid)`
     predicate) leaves the mails it matches where they are: they stay in the
     list as the rest of the step. Never raises for an IMAP failure: the step
@@ -4818,7 +4851,7 @@ def run_undo(acc, entry: dict, pos: int, only=None,
         # do the bookkeeping for whatever did move before the failure.
         run["failed"] = exc
         with acc.lock:
-            _reinsert_undo(acc, entry, pos, persist)
+            _reinsert_undo(acc, entry, pos)
     finally:
         try:
             if conn is not None:
@@ -4828,9 +4861,9 @@ def run_undo(acc, entry: dict, pos: int, only=None,
     if run["failed"] is None:
         if keep is not None:
             with acc.lock:
-                _reinsert_undo(acc, keep, pos, persist)
+                _reinsert_undo(acc, keep, pos)
         if entry.get("parts") is not None:
-            _reinstate_steps(acc, take, persist)
+            _reinstate_steps(acc, take)
     return run
 
 
@@ -4873,7 +4906,11 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
     so it can neither see nor undo another's. `actor` is the audit actor."""
     acc = acc or accounts.get()
     entry, pos = pop_undo(acc, index, ident, assistant, token)
-    run = run_undo(acc, entry, pos)
+    # undoing a restore never moves protected senders' or pinned mail either
+    run = run_undo(acc, entry, pos,
+                   only=undo_skipper(acc) if entry.get("parts") is not None
+                   else None)
+    flush_undo(acc)
     restored, failed = run["restored"], run["failed"]
     log.info("undo: restored %d/%d mails (%s)", restored, entry["count"],
              entry["label"])
@@ -5196,6 +5233,7 @@ def role_move(role: str, action: str, uids: list[int], uv: int = 0,
                 acc.state[key] = max(0, acc.state[key] - len(moved))
             if action == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += len(moved)
+        flush_undo(acc)
         statsmod.record_action(move_action, len(moved), size, acc.name)
         save_snapshot(acc)
     auditlog.record(
@@ -5432,6 +5470,7 @@ def move_lookalike(folder: str, uv: int, max_uid: int, acc=None) -> dict:
                 undo = _undo_ident(acc.undo_log[-1])
             if role == "trash" and acc.state["trash_count"] is not None:
                 acc.state["trash_count"] += moved
+        flush_undo(acc)
         log.info("moved %d mails from a look-alike %s folder", moved, role)
         auditlog.record("move_contents", account=acc.name, count=moved,
                         label=f"{label} \u2192 {decode_mutf7(target)}",
@@ -5478,6 +5517,7 @@ def _prune_undo(acc, trash: str, purged: set[str], uids: set[int] | None = None)
         acc.assistant_undo[:] = _pruned_undo(acc.assistant_undo, trash,
                                              purged, uids)
         _sync_undo(acc)
+    flush_undo(acc)
 
 
 def _pruned_undo(entries: list[dict], trash: str, purged: set[str],
@@ -6174,6 +6214,7 @@ def _purge_run(role: str, wanted: list[int], uv: int, folder: str,
             last = acc.undo_log[-1] if acc.undo_log else None
             if last and last["label"] == stranded_label:
                 res["undo"] = _undo_ident(last)
+    flush_undo(acc)
     if led.deleted:
         statsmod.record_action("purge", led.deleted, led.freed, acc.name)
     if stranded:

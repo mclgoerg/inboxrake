@@ -176,14 +176,13 @@ function SessionBars({ sessions, active, onPick, now }: {
 function notesOf(p: TmPreview): { key: string; node: ReactNode;
   icon?: ReactNode }[] {
   const out: { key: string; node: ReactNode; icon?: ReactNode }[] = [];
-  const cant = p.cant.reduce((a, c) => a + c.mails, 0);
-  if (cant > 0) {
-    const first = p.cant[0];
-    const why = first.reason === "emptied" && first.at
-      ? t("tm.note_cant_emptied", { time: timeOf(first.at) })
-      : t(`tm.note_cant_${first.reason}`);
-    out.push({ key: "cant", icon: <Ban size={16} aria-hidden />,
-      node: <><b>{t("tm.note_cant_head", { n: cant })}</b> - {why}</> });
+  // one line per reason: how many can't come back and why
+  for (const c of p.cant) {
+    const why = c.reason === "emptied" && c.at
+      ? t("tm.note_cant_emptied", { time: timeOf(c.at) })
+      : t(`tm.note_cant_${c.reason}`);
+    out.push({ key: `cant-${c.reason}`, icon: <Ban size={16} aria-hidden />,
+      node: <><b>{t("tm.note_cant_head", { n: c.mails })}</b> - {why}</> });
   }
   const unsub = p.stays.find((s) => s.kind === "unsubscribe");
   if (unsub) out.push({ key: "unsub", icon: <BellOff size={16} aria-hidden />,

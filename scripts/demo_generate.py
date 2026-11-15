@@ -1004,6 +1004,9 @@ def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
 
     # today: marked read, a rule's sweep, six unsubscribes, an archive, a
     # trashing the Trash lost 12 mails of to Empty Trash, and that emptying
+    rows.append(("proton", "protect", mins(101), 3, "ok", "user",
+                 "anna.weber@mailfox.example, praxis@dr-meier.example, "
+                 "@paybank.example", {}))
     rows.append(("proton", "mark_read", mins(98), 220, "ok", "user", "", {}))
     step("Trash", "newsletter@bergsport-huber.example", 22, mins(92), "trash",
          "Bergsport Huber", actor=f"rule:{sweep_id}")
@@ -1346,4 +1349,5 @@ def generate() -> dict:
         proton.undo_log[:] = sorted(_tm_user, key=lambda e: e["ts"])
         proton.assistant_undo[:] = sorted(_tm_bots, key=lambda e: e["ts"])
         mailops._sync_undo(proton)
+    mailops.flush_undo(proton)
     return FAKES

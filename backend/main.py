@@ -2117,7 +2117,8 @@ class ProtectBody(BaseModel):
 
 
 @app.post("/api/protect")
-def post_protect(body: ProtectBody):
+def post_protect(body: ProtectBody, account: str | None = Query(None)):
+    acc = _acc(account)
     entries = body.entries if body.entries is not None else [body.entry]
     if len(entries) > 5000:
         raise HTTPException(400, "too many entries")
@@ -2129,6 +2130,10 @@ def post_protect(body: ProtectBody):
         "protected list %s %d entr%s (%d entries)",
         "add" if body.on else "remove", len(entries),
         "y" if len(entries) == 1 else "ies", len(protected))
+    if body.on and entries:
+        # the Time machine lists it ("Protected 3 senders"); additive
+        auditlog.record("protect", account=acc.name, count=len(entries),
+                        label=", ".join(str(e) for e in entries))
     # Smart rows keep a protected sender in the protected bucket: re-derive.
     mailops.rebuild_smart_all()
     return {"protected": protected}

@@ -276,6 +276,7 @@ export default function App() {
   // Bumped after a restore: the Activity page reloads its audit log.
   const [undoRev, setUndoRev] = useState(0);
   const [undoAll, setUndoAll] = useState(false);
+  const [undoAllBots, setUndoAllBots] = useState(false);
   // "Show all" only means something while there is more than the first three
   const undoCount = state?.undo.length ?? 0;
   useEffect(() => { if (undoCount <= 3) setUndoAll(false); }, [undoCount]);
@@ -2650,7 +2651,16 @@ export default function App() {
             {t("activity.undo_assistant_hint")}</span>
         </SectionLabel>
         {[...theirs].map((u, i) => ({ u, i })).reverse()
+          .slice(0, undoAllBots ? undefined : 3)
           .map(({ u, i }) => undoCard(u, i, true))}
+        {theirs.length > 3 && (
+          <Button variant="quiet" size="sm" className="self-start"
+            aria-expanded={undoAllBots}
+            onClick={() => setUndoAllBots((v) => !v)}>
+            {undoAllBots ? t("activity.undo_fewer")
+              : t("activity.undo_all", { n: theirs.length })}
+          </Button>
+        )}
       </>)}
     </section>
   ) : null;

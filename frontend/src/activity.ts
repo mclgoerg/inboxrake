@@ -354,11 +354,12 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
         : tOr("audit.act", e.action);
       detail = "";
       break;
-    case "assistant_protect": case "assistant_pin":
+    case "protect": case "assistant_protect": case "assistant_pin":
       // what was protected / pinned is in the label; the line says how many
       title = n > 0 ? t(`audit.h.${e.action}`, { n })
         : tOr("audit.act", e.action);
-      detail = e.action === "assistant_protect" ? label : "";
+      detail = e.action === "pin" || e.action === "assistant_pin" ? ""
+        : label;
       break;
     case "assistant_scan":
       title = t("audit.h.assistant_scan");

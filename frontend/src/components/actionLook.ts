@@ -26,6 +26,7 @@ export const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   assistant_token_created: { icon: KeyRound, tone: "bg-info-bg text-info-fg" },
   assistant_token_revoked: { icon: KeyRound, tone: "bg-chip text-chiptext" },
   assistant_token_cap: { icon: KeyRound, tone: "bg-chip text-chiptext" },
+  protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },
   assistant_protect: { icon: ShieldCheck, tone: "bg-safe-bg text-safe-fg" },
   assistant_pin: { icon: Pin, tone: "bg-safe-bg text-safe-fg" },
   assistant_scan: { icon: RefreshCw, tone: "bg-chip text-chiptext" },

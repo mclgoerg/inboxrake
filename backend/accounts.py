@@ -92,6 +92,12 @@ class AccountState:
         # Steps of AI assistants (MCP): never mixed into `undo_log`, so an
         # assistant cannot push the user's own steps out of it.
         self.assistant_undo: list[dict] = []
+        # the undo lists changed and are not on disk yet (see
+        # mailops.flush_undo: written after the lock is released)
+        self.undo_dirty = False
+        self.undo_seq = 0
+        self.undo_written = 0
+        self.undo_write = threading.Lock()
         self.replied: set[str] = set()
         self.replied_loaded = False
         self.cancel = {"scan": False, "ai": False, "delete": False,
