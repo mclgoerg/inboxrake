@@ -454,6 +454,28 @@ test("Activity: assistant steps are their own group, undone from the " +
     expect.anything(), true));
 });
 
+test("Activity: many assistant steps show 3 and a Show all, like your steps; " +
+  "the status line menu stops at 8 and links to Activity", async () => {
+  mount();
+  const bots = Array.from({ length: 5 }, (_, i) => ({ action: "trash",
+    count: i + 1, label: `${i + 1} selected mails`, ts: i + 10, id: `a${i}`,
+    actor: "mcp:Claude Code · laptop", token: "tk" }));
+  const mine = Array.from({ length: 12 }, (_, i) => ({ action: "archive",
+    count: i + 1, label: `L${i}`, ts: i + 100, id: `u${i}` }));
+  state = { ...state, undo: mine, assistant_undo: bots };
+  fireEvent.click(await screen.findByRole("button", { name: /^Undo/ }));
+  const menu = screen.getAllByRole("button", { name: /^Archive: / });
+  expect(menu).toHaveLength(8);                  // newest 8 of 12
+  expect(screen.getAllByRole("button", { name: /Move to Trash: / })).toHaveLength(5);
+  fireEvent.click(screen.getByRole("button", { name: "All steps in Activity…" }));
+  const region = await screen.findByRole("region", { name: "Undo history" });
+  expect(within(region).getAllByRole("button", { name: "Undo" }).length).toBe(6);
+  fireEvent.click(within(region).getAllByRole("button", { name: /^Show all 5$/ })[0]);
+  expect(within(region).getAllByRole("button", { name: "Undo" }).length).toBe(8);
+  fireEvent.click(within(region).getAllByRole("button", { name: "Show all 12" })[0]);
+  expect(within(region).getAllByRole("button", { name: "Undo" }).length).toBe(17);
+});
+
 test("the back link of a tool modal names the page it returns to", async () => {
   mount(false);
   goto("#/overview");

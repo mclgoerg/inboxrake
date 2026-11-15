@@ -358,8 +358,7 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       // what was protected / pinned is in the label; the line says how many
       title = n > 0 ? t(`audit.h.${e.action}`, { n })
         : tOr("audit.act", e.action);
-      detail = e.action === "pin" || e.action === "assistant_pin" ? ""
-        : label;
+      detail = e.action === "assistant_pin" ? "" : label;
       break;
     case "assistant_scan":
       title = t("audit.h.assistant_scan");

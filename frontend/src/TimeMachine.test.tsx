@@ -374,6 +374,20 @@ test("sessions: one bar each; choosing an older one shows its steps and puts " +
   expect(screen.getByRole("slider").getAttribute("aria-valuenow")).toBe("1");
 });
 
+test("each reason a mail can't come back gets its own line", async () => {
+  preview.mockImplementation((body: { point: string }) => Promise.resolve(
+    { ...PREVIEW, point: body.point, cant: [
+      { reason: "emptied", mails: 12, at: at(14, 31) },
+      { reason: "left_trash", mails: 3, at: null },
+      { reason: "folder_gone", mails: 2, at: null }] }));
+  mount();
+  await settled();
+  const text = plain(document.body.textContent);
+  expect(text).toContain("12 mails can't come back - you emptied Trash at 14:31.");
+  expect(text).toContain("3 mails can't come back - they are no longer in Trash.");
+  expect(text).toContain("2 mails can't come back - the folder they came from is gone.");
+});
+
 test("nothing recorded yet: an empty state, no restore", async () => {
   listing.mockResolvedValue({ ...LISTING, steps: [], sessions: [] });
   mount();
