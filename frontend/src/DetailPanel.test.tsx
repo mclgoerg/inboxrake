@@ -6,6 +6,7 @@ import { noteAccountSwitch } from "./accountGuard";
 import { setDemo } from "./demoMode";
 import { setLang } from "./i18n";
 import { findPicker, pickFolder } from "./folderPickerTestUtil";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import { popupItem, popupPick } from "./toolTestUtils";
 import type { Group, Mail } from "./types";
 
@@ -16,6 +17,8 @@ const pin = vi.fn().mockResolvedValue({ ok: true, pinned: true });
 const pinGroup = vi.fn();
 const thread = vi.fn();
 const unsubscribe = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
@@ -27,6 +30,8 @@ vi.mock("./api", async (importOriginal) => {
       aiGroup: (...args: unknown[]) => aiGroup(...args),
       pin: (...args: unknown[]) => pin(...args),
       pinGroup: (...args: unknown[]) => pinGroup(...args),
+      keepSafeCheck: (...args: unknown[]) => keepSafeCheck(...args),
+      keepSafePin: (...args: unknown[]) => keepSafePin(...args),
       unsubscribe: (...args: unknown[]) => unsubscribe(...args),
       folders: () => Promise.resolve({ folders: [], mail_counts: {} }),
       unsubscribeAck: vi.fn(),
@@ -1191,5 +1196,72 @@ describe("DetailPanel: when this sender's mail arrives", () => {
     setLang("de");
     renderPanel(daily());
     await screen.findByText("Meist 06:00 - 07:00 Uhr, jeden Tag");
+describe("DetailPanel keep-safe", () => {
+  beforeEach(() => {
+    setLang("en");
+    deleteMessages.mockClear();
+    keepSafeCheck.mockReset();
+    keepSafePin.mockReset();
+  });
+  afterEach(cleanup);
+
+  const tickAll = () => {
+    for (const b of document.querySelectorAll('input[type="checkbox"]'))
+      if (!(b as HTMLInputElement).checked) fireEvent.click(b);
+  };
+
+  it("Trash selected of 25 mails shows the box; the protected mails stay "
+    + "listed, shown as protected, and are not sent", async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    keepSafePin.mockResolvedValue({ pinned: 2,
+      items: [["INBOX", 1], ["INBOX", 2]] });
+    renderPanel(Array.from({ length: 25 }, (_, i) => mkMail(i + 1)),
+      { group: mkGroup({ count: 25 }) });
+    await waitFor(() => screen.getByText("Mail 1"));
+    tickAll();
+    fireEvent.click(await screen.findByText(/Trash selected/));
+    const dlg = await findDialog();
+    expectKeepBox(dlg);
+    expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(25);
+    await pressDialog("Move to Trash (21)");               // 25 - 4 kept safe
+    await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+    const [sent, action] = deleteMessages.mock.calls[0];
+    expect(action).toBe("trash");
+    expect(sent).toHaveLength(23);
+    expect(sent).not.toContainEqual(["INBOX", 1]);
+    await waitFor(() => expect(screen.queryByText("Mail 3")).toBeNull());
+    expect(screen.getByText("Mail 1")).toBeTruthy();        // protected: stays
+  });
+
+  it("everything kept safe: nothing is sent and the panel says so",
+    async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    // the answer protects every mail of the selection
+    keepSafePin.mockImplementation(async () => ({ pinned: 25,
+      items: Array.from({ length: 25 }, (_, i) => ["INBOX", i + 1]) }));
+    renderPanel(Array.from({ length: 25 }, (_, i) => mkMail(i + 1)),
+      { group: mkGroup({ count: 25 }) });
+    await waitFor(() => screen.getByText("Mail 1"));
+    tickAll();
+    fireEvent.click(await screen.findByText(/Trash selected/));
+    await findDialog();
+    await pressDialog("Move to Trash (21)");
+    expect(await screen.findByText(/All selected mails are protected/))
+      .toBeTruthy();
+    expect(deleteMessages).not.toHaveBeenCalled();
+  });
+
+  it("a pin that fails moves nothing and says so", async () => {
+    keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+    keepSafePin.mockRejectedValue(new Error("could not protect"));
+    renderPanel(Array.from({ length: 25 }, (_, i) => mkMail(i + 1)),
+      { group: mkGroup({ count: 25 }) });
+    await waitFor(() => screen.getByText("Mail 1"));
+    tickAll();
+    fireEvent.click(await screen.findByText(/Trash selected/));
+    await findDialog();
+    await pressDialog("Move to Trash (21)");
+    expect(await screen.findByText(/could not protect/)).toBeTruthy();
+    expect(deleteMessages).not.toHaveBeenCalled();
   });
 });

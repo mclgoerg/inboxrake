@@ -10,6 +10,8 @@ const protectMany = vi.fn().mockResolvedValue({ protected: [] });
 const unsubscribeBulk = vi.fn().mockResolvedValue(
   { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0, run: 1 });
 const deleteGroups = vi.fn().mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 const calls: string[] = [];
 
 vi.mock("./api", () => ({
@@ -23,6 +25,8 @@ vi.mock("./api", () => ({
     protectMany: (...a: unknown[]) => { calls.push("protect"); return protectMany(...a); },
     unsubscribeBulk: (...a: unknown[]) => { calls.push("unsub"); return unsubscribeBulk(...a); },
     deleteGroups: (...a: unknown[]) => { calls.push("trash"); return deleteGroups(...a); },
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => { calls.push("pin"); return keepSafePin(...a); },
   },
   downloadFile: () => Promise.resolve(),
   setAccount: () => {},
@@ -37,6 +41,7 @@ import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { openTab, openTool } from "./toolTestUtils";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 import type { AppState, Config, Group } from "./types";
 
 const cfg = {
@@ -104,7 +109,12 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   setLang("en");
-  for (const m of [protectMany, unsubscribeBulk, deleteGroups]) m.mockClear();
+  for (const m of [protectMany, unsubscribeBulk, deleteGroups, keepSafeCheck,
+    keepSafePin]) m.mockReset();
+  deleteGroups.mockResolvedValue({ ok: true, queued: 1, skipped: 0 });
+  protectMany.mockResolvedValue({ protected: [] });
+  unsubscribeBulk.mockResolvedValue(
+    { queued: 1, skipped_protected: 0, skipped_done: 0, capped: 0, run: 1 });
   calls.length = 0;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -530,4 +540,39 @@ test("header button, tally chips, round-button labels and hints follow the card"
   expect(btn(dlg, "Apply 1\u00a0decision")).toBeTruthy();
   fireEvent.click(btn(dlg, /Protect/));
   await waitFor(() => expect(btn(dlg, "Apply 2\u00a0decisions")).toBeTruthy());
+});
+
+test("keep-safe: Apply's one confirm carries the box for the trash step; the "
+  + "ticked groups are protected before anything runs", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 4, items: [] });
+  const dlg = await open();
+  fireEvent.click(btn(dlg, /Unsubscribe/));     // News A
+  fireEvent.click(btn(dlg, /Trash/));           // Shop B (40 mails)
+  fireEvent.click(btn(dlg, /Keep/));
+  fireEvent.click(btn(dlg, /Keep/));
+  fireEvent.click(btn(dlg, /Protect/));
+  await within(dlg).findByRole("button", { name: "Apply" });
+  fireEvent.click(btn(dlg, "Apply"));
+  const c = await findDialog();
+  expectKeepBox(c);
+  expect(c.textContent).toContain("Move 40\u00a0mails from 1\u00a0group to Trash");
+  expect(keepSafeCheck.mock.calls[0][0]).toEqual({ grouping: "sender",
+    keys: ["b@shop.example"] });
+  await pressDialog("Apply");
+  await waitFor(() => expect(deleteGroups).toHaveBeenCalledOnce());
+  // pinned first, then the existing steps in their order
+  expect(calls).toEqual(["pin", "protect", "unsub", "trash"]);
+});
+
+test("keep-safe: Cancel in Apply's confirm pins nothing", async () => {
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  const dlg = await open();
+  fireEvent.click(btn(dlg, /Trash/));
+  await toSummary(dlg);
+  fireEvent.click(btn(dlg, "Apply"));
+  await findDialog();
+  await cancelDialog();
+  await expectNoDialog();
+  expect(calls).toEqual([]);
 });

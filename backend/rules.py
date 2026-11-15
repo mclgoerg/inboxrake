@@ -40,6 +40,7 @@ from . import accounts
 from . import auditlog
 from . import config as cfgmod
 from . import demo
+from . import keepsafe
 from . import mailops
 from . import pinstore
 from . import tenants
@@ -866,6 +867,7 @@ def _record_run(rule_id: str, result: dict) -> None:
         count=(result.get("acted", 0) if result.get("mode") == "execute"
                else result.get("mails", 0)),
         label=rule.get("name", ""),
+        kept_safe=sum((result.get("kept_safe") or {}).values()),
         outcome="error" if result.get("error") else "ok",
         error=result.get("error", ""))
 
@@ -896,8 +898,8 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
     try:
         result = {"ts": int(time.time()), "mode": rule["mode"],
                   "groups": 0, "mails": 0, "acted": 0, "capped": 0,
-                  "skipped_protected": 0, "skipped_pinned": 0, "preview": [],
-                  "error": ""}
+                  "skipped_protected": 0, "skipped_pinned": 0,
+                  "kept_safe": {}, "preview": [], "error": ""}
         if rule.get("scope", "mail") != "mail":
             _run_purge(rule, acc, result)
             return _finish_run(rule_id, result)
@@ -936,17 +938,33 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
         # non-destructive and therefore exempt, like in delete_groups).
         pinned = (pinstore.load_account(acc.name)
                   if rule["action"] != "mark_read" else set())
+        # Keep-safe (Settings > Keep-safe > "Check rule runs too"): a Trash
+        # run leaves invoices, bookings, ... alone WITHOUT pinning them and
+        # reports how many. A Block rule is the user's explicit "never
+        # again from this sender" and is not softened.
+        keep_on = (rule["action"] == "trash"
+                   and rule.get("origin") != "block"
+                   and keepsafe.settings().get("rules"))
+        enabled = keepsafe.enabled_classes() if keep_on else []
+        exempt: set[str] = set()
         with acc.lock:
             recs = acc.state["groups"][rule["grouping"]]
             counts = {}
             for g in acted_on:
                 if g["key"] in recs:
                     rec = recs[g["key"]]
-                    counts[g["key"]] = mailops.group_act_count(
+                    base = mailops.group_act_count(
                         rec, acc, keep_latest, older_than_days, pinned)
                     result["skipped_pinned"] += mailops.group_act_count(
-                        rec, acc, keep_latest, older_than_days) \
-                        - counts[g["key"]]
+                        rec, acc, keep_latest, older_than_days) - base
+                    kept, ids = keepsafe.rule_kept(
+                        rec, acc, keep_latest, older_than_days, pinned,
+                        enabled) if enabled else ({}, set())
+                    exempt |= ids
+                    for cls, n in kept.items():
+                        result["kept_safe"][cls] = \
+                            result["kept_safe"].get(cls, 0) + n
+                    counts[g["key"]] = base - sum(kept.values())
         result["mails"] = sum(counts.values())
 
         # Cap: take groups (largest first) while they fit into RULE_CAP.
@@ -973,7 +991,8 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                 rule["grouping"], [g["key"] for g in picked],
                 rule["action"], rule["dest"], keep_latest=keep_latest,
                 older_than_days=older_than_days, acc=acc,
-                actor=f"rule:{rule_id}", completion=completion)
+                actor=f"rule:{rule_id}", completion=completion,
+                exempt=exempt)
             if demo.enabled():
                 result["queued"] = r["queued"]
                 result["pending"] = True

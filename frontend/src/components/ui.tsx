@@ -2242,7 +2242,7 @@ export type PromptOptions = {
  *  nobody double-taps with a keyboard, and typing a name then Enter must
  *  not be swallowed. */
 export const DIALOG_ARM_MS = 500;
-const useArmed = () => {
+export const useArmed = () => {
   const openedAt = useRef(Date.now());
   return (viaKeyboard = false) =>
     viaKeyboard || Date.now() - openedAt.current >= DIALOG_ARM_MS;
@@ -2372,7 +2372,9 @@ type DialogRequest = { id?: number } & (
   | { kind: "choice"; opts: ChoiceOptions;
       resolve: (v: "confirm" | "alt" | null) => void }
   | { kind: "prompt"; opts: PromptOptions;
-      resolve: (v: string | null) => void });
+      resolve: (v: string | null) => void }
+  | { kind: "custom"; render: (done: (v: unknown) => void) => ReactNode;
+      resolve: (v: unknown) => void });
 
 // The mounted DialogProvider's queue push; the functions below are plain
 // module exports so non-component code (mailActions, handlers) can await them.
@@ -2410,10 +2412,21 @@ export const promptDialog = (opts: PromptOptions): Promise<string | null> =>
     ? new Promise((resolve) => pushDialog!({ kind: "prompt", opts, resolve }))
     : needProvider();
 
+/** A dialog with a body of its own (the keep-safe confirm): `render` gets
+ *  `done` and returns the dialog (a `Modal size="sm"`); it queues, restores
+ *  focus and settles as null on unmount like the other dialogs. */
+export const customDialog = <T,>(
+  render: (done: (v: T | null) => void) => ReactNode): Promise<T | null> =>
+  pushDialog
+    ? new Promise((resolve) => pushDialog!({ kind: "custom",
+      render: render as (done: (v: unknown) => void) => ReactNode,
+      resolve: resolve as (v: unknown) => void }))
+    : needProvider();
+
 const cancelRequest = (r: DialogRequest) =>
   r.kind === "confirm" ? r.resolve(false)
   : r.kind === "check" ? r.resolve({ ok: false, checked: false })
-  : r.resolve(null);   // choice, prompt: null
+  : r.resolve(null);   // choice, prompt, custom: null
 
 /** Mount once at the app root (main.tsx). Dialogs queue if several are
  *  requested; pending ones settle as cancelled on unmount, and focus goes
@@ -2470,6 +2483,11 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {cur?.kind === "prompt" && (
         <PromptDialog key={cur.id} {...cur.opts}
           onResult={(v) => done(cur, () => cur.resolve(v))} />
+      )}
+      {cur?.kind === "custom" && (
+        <Fragment key={cur.id}>
+          {cur.render((v) => done(cur, () => cur.resolve(v)))}
+        </Fragment>
       )}
     </>
   );

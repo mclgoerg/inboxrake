@@ -4,7 +4,7 @@ import { accountGuard } from "../accountGuard";
 import { api, mailKey } from "../api";
 import { fmtAgo, fmtSize } from "../lib";
 import { t } from "../i18n";
-import { confirmTrashMails, itemsOf } from "../mailActions";
+import { confirmTrashItems, confirmTrashMails, itemsOf } from "../mailActions";
 import type { DupKind, DupSet, DupSummary, Mail } from "../types";
 import { DuplicateCompare, gapLabel } from "./DuplicateCompare";
 import { MessageView } from "./MailList";
@@ -191,6 +191,8 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   const trashItems = async (items: [string, number][],
       switched: () => boolean) => {
     if (switched()) return;
+    // everything left was kept safe (protected): nothing to move
+    if (!items.length) { setNote(t("toast.all_pinned")); return; }
     try {
       await api.deleteMessages(items, "trash");
       setWorking(true);
@@ -208,9 +210,13 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
     busy.current = true;
     const switched = accountGuard();
     try {
-      if (!await confirmTrashMails(chosen.length,
-        chosen.length === 1 ? chosen[0].subject ?? "" : undefined)) return;
-      await trashItems(itemsOf(chosen), switched);
+      // a big move carries the keep-safe box (the mails kept safe stay)
+      const items = await confirmTrashItems(itemsOf(chosen),
+        chosen.length === 1 ? chosen[0].subject ?? "" : undefined);
+      if (!items) return;
+      await trashItems(items, switched);
+    } catch (e: any) {
+      setNote(t("err.generic", { msg: e.message ?? e }));
     } finally { busy.current = false; }
   };
 
@@ -236,9 +242,12 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
         return;
       }
       if (now.items.length === 0) { setNote(t("dups.gone")); return; }
-      if (!await confirmTrashMails(now.items.length,
-        now.items.length === 1 ? now.items[0].subject ?? "" : undefined)) return;
-      await trashItems(itemsOf(now.items), switched);
+      const items = await confirmTrashItems(itemsOf(now.items),
+        now.items.length === 1 ? now.items[0].subject ?? "" : undefined);
+      if (!items) return;
+      await trashItems(items, switched);
+    } catch (e: any) {
+      setNote(t("err.generic", { msg: e.message ?? e }));
     } finally { busy.current = false; }
   };
 
@@ -257,9 +266,15 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
   const trashOlder = async (s: DupSet) => {
     if (working) return;
     const switched = accountGuard();
-    const items = itemsOf(s.mails.slice(1));
-    if (!await confirmTrashMails(items.length,
-      items.length === 1 ? s.mails[1].subject ?? "" : undefined)) return;
+    let items: [string, number][] | null;
+    try {
+      items = await confirmTrashItems(itemsOf(s.mails.slice(1)),
+        s.mails.length === 2 ? s.mails[1].subject ?? "" : undefined);
+    } catch (e: any) {
+      setNote(t("err.generic", { msg: e.message ?? e }));
+      return;
+    }
+    if (!items) return;
     setCompare(null);
     await trashItems(items, switched);
   };

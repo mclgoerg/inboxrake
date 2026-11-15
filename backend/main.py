@@ -45,6 +45,7 @@ from . import knowledge as knowledgemod
 from . import labels as labelsmod
 from . import labelstore
 from . import knowledgestore
+from . import keepsafe as keepsafemod
 from . import knownsenders
 from . import mailops
 from . import mcpserver
@@ -1266,6 +1267,53 @@ def post_pin_group(body: PinGroupBody, account: str | None = Query(None)):
         raise _internal_error(exc, acc)
 
 
+class KeepSafeBody(BaseModel):
+    """The mails a Trash move would act on: a selection (`items`) or groups
+    (`grouping` + `keys` and the move's retention / sender limits)."""
+    items: list[tuple[str, int]] | None = Field(None, max_length=keepsafemod.MAX_ITEMS)
+    grouping: str = "sender"
+    keys: list[str] = []
+    keep_latest: int | None = Field(None, ge=1)
+    older_than_days: int | None = Field(None, ge=1)
+    only_addrs: list[str] | None = None
+    classes: list[str] = []          # /api/keepsafe/pin: the ticked groups
+
+    def scope(self) -> dict:
+        if self.items is not None:
+            return {"items": [list(i) for i in self.items]}
+        return {"grouping": self.grouping, "keys": self.keys,
+                "keep_latest": self.keep_latest,
+                "older_than_days": self.older_than_days,
+                "only_addrs": self.only_addrs}
+
+
+@app.post("/api/keepsafe/check")
+def post_keepsafe_check(body: KeepSafeBody, account: str | None = Query(None)):
+    """Which of the mails a Trash move would act on look worth keeping
+    (invoices, bookings, contracts, job applications): the confirm's green
+    box. Metadata only; read-only."""
+    if body.items is None:
+        _check_grouping(body.grouping)
+    acc = _acc(account)
+    try:
+        return keepsafemod.check(body.scope(), acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.post("/api/keepsafe/pin")
+def post_keepsafe_pin(body: KeepSafeBody, account: str | None = Query(None)):
+    """Pin the keep-safe mails of the ticked classes before the move, so the
+    move skips them (the existing pinned-mail mechanism)."""
+    if body.items is None:
+        _check_grouping(body.grouping)
+    acc = _acc(account)
+    try:
+        return keepsafemod.pin(body.scope(), body.classes, acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
 @app.post("/api/ai")
 def post_ai(body: GroupingBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
@@ -2299,6 +2347,7 @@ def get_export_config():
                          for n, b in cfg["accounts"].items()},
             "protected": cfgmod.normalize_protected(cfg.get("protected")),
             "categories": cfg.get("categories") or {},
+            "keep_safe": cfgmod.keep_safe_of(cfg),
             "ai": cfgmod.strip_ai_secrets(cfg["ai"]),
         },
         "rules": rulesmod.load_rules(),
@@ -2323,8 +2372,8 @@ def post_import_config(body: dict):
     """Apply an exported backup (v2 shape). Secrets are never importable;
     imported rules are forced back to report mode (safety floor)."""
     c = body.get("config") or {}
-    update = {k: c[k] for k in ("accounts", "protected", "categories", "ai")
-              if k in c}
+    update = {k: c[k] for k in ("accounts", "protected", "categories", "keep_safe",
+                         "ai") if k in c}
     if isinstance(update.get("accounts"), dict):
         update["accounts"] = {
             n: cfgmod.strip_account_secrets(b) if isinstance(b, dict) else b

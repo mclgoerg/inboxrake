@@ -1574,3 +1574,68 @@ test("the Categories badge counts only your own categories, not built-in overrid
   const rowBtn = screen.getByRole("button", { name: /^Categories/ });
   expect(rowBtn.textContent).toBe("Categories1");
 });
+
+/* ------------------------------- Keep-safe ------------------------------- */
+
+const KEEP: Config["keep_safe"] = { invoices: true, bookings: true,
+  contracts: true, jobs: true, accounts: false, rules: true };
+const keepCfg: Config = { ...cfg, keep_safe: KEEP };
+const sw = (name: string | RegExp) =>
+  screen.getByRole("switch", { name }) as HTMLButtonElement;
+
+test("Settings > Keep-safe lists the five classes and 'Check rule runs too' "
+  + "with the defaults: account & security off", () => {
+  render(<Settings cfg={keepCfg} account="default" section="keepsafe" />);
+  for (const [name, on] of [["Invoices & receipts", true],
+    ["Bookings & tickets", true], ["Contracts & policy notices", true],
+    ["Job applications", true], ["Account & security mails", false],
+    ["Check rule runs too", true]] as const)
+    expect(sw(name).getAttribute("aria-checked")).toBe(String(on));
+  expect(screen.getByText("Taxes, warranty, returns")).toBeTruthy();
+  expect(screen.getByText("Sign-in codes go stale - off by default"))
+    .toBeTruthy();
+  expect(screen.getByText("A rule skips these mails and lists them in its report."))
+    .toBeTruthy();
+});
+
+test("the switches are staged with the Save bar and saved as keep_safe",
+  async () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={keepCfg} account="default" section="keepsafe" />);
+  fireEvent.click(sw("Account & security mails"));
+  fireEvent.click(sw("Job applications"));
+  fireEvent.click(sw("Check rule runs too"));
+  expect(saveCalls).toHaveLength(0);                   // staged, not saved yet
+  expect(screen.getByText("Keep-safe changed")).toBeTruthy();
+  fireEvent.click(screen.getByText("Save"));
+  expect(saveCalls[0].keep_safe).toEqual({ invoices: true, bookings: true,
+    contracts: true, jobs: false, accounts: true, rules: false });
+});
+
+test("a server without keep-safe is not sent the key", () => {
+  saveCalls.length = 0;
+  render(<Settings cfg={cfg} account="default" section="keepsafe" />);
+  fireEvent.click(sw("Job applications"));
+  fireEvent.click(screen.getByText("Save"));
+  expect("keep_safe" in saveCalls[0]).toBe(false);
+});
+
+test("Keep-safe is in the root list of Settings (phone) and found by search",
+  () => {
+  render(<Settings cfg={keepCfg} account="default" section={null} />);
+  expect(screen.getByRole("button", { name: /^Keep-safe/ })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Search settings"),
+    { target: { value: "rule runs" } });
+  expect(screen.getByRole("button", { name: /^Keep-safe/ })).toBeTruthy();
+});
+
+test("Keep-safe in German", () => {
+  setLang("de");
+  render(<Settings cfg={keepCfg} account="default" section="keepsafe" />);
+  for (const name of ["Rechnungen & Belege", "Buchungen & Tickets",
+    "Verträge & Vertragsänderungen", "Bewerbungen", "Konto- & Sicherheitsmails",
+    "Auch Regel-Läufe prüfen"])
+    expect(sw(name)).toBeTruthy();
+  expect(screen.getByText("Anmeldecodes veralten – standardmäßig aus"))
+    .toBeTruthy();
+});

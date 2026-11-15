@@ -59,6 +59,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
 import { nowMs } from "./clock";
+import { confirmTrash } from "./keepsafe";
 import { demoHint, setDemo, useDemo } from "./demoMode";
 import { fmtNum } from "./numfmt";
 import { getLang, t } from "./i18n";
@@ -1408,10 +1409,23 @@ export default function App() {
     if (action === "trash") bullets.push(t("confirm.b_space"));
     // `confirmed`: the caller's own dialog already named these counts
     // (Triage's one summary confirm) - everything above still applies.
-    if (!force && !confirmed && !await confirmDialog({ title: verb, bullets,
-      tone: action === "mark_read" ? "primary" : "danger",
-      confirmLabel: t("confirm.btn_n", { verb, n }) }))
-      return false;
+    if (!force && !confirmed) {
+      try {
+        // A big move to Trash carries the keep-safe box (invoices, bookings,
+        // ...): the ticked ones are protected first, so the move skips them.
+        const answer = await confirmTrash({ title: verb, bullets,
+          tone: action === "mark_read" ? "primary" : "danger",
+          label: (k) => t("confirm.btn_n", { verb, n: k }), n,
+          scope: action === "trash" ? { grouping, keys: effective,
+            keep_latest: keepLatest, older_than_days: olderThanDays,
+            only_addrs: onlyAddrs } : null,
+          account: stateRef.current?.account });
+        if (!answer.ok) return false;
+      } catch (e: any) {
+        fail(e);
+        return false;
+      }
+    }
     try {
       if (generation !== accountGeneration.current) return false;
       const only: [string[]?] = onlyAddrs ? [onlyAddrs] : [];
@@ -1583,9 +1597,19 @@ export default function App() {
     // during the confirm or between the steps stops the rest (each step is
     // sent to whichever account is active when it starts).
     const generation = accountGeneration.current;
-    if (!await confirmDialog({ title: t("triage.confirm_title"), bullets,
-      tone: moves ? "danger" : "primary",
-      confirmLabel: t("triage.apply_btn") })) return false;
+    // The trash step is a big move like any other: the keep-safe box rides in
+    // this one confirm (its ticked mails are protected before anything runs).
+    try {
+      const answer = await confirmTrash({ title: t("triage.confirm_title"),
+        bullets, tone: moves ? "danger" : "primary",
+        label: () => t("triage.apply_btn"), n: mails,
+        scope: moves ? { grouping: mode, keys: trash } : null,
+        account: stateRef.current?.account });
+      if (!answer.ok) return false;
+    } catch (e: any) {
+      fail(e);
+      return false;
+    }
     if (generation !== accountGeneration.current) return false;
     // Once a step has run, a later failure still ends the deck (the error
     // is toasted): a second Apply must not resend what already happened.

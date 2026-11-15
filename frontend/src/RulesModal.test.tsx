@@ -1041,3 +1041,42 @@ test("the disabled Active option points at its reason; one timestamp in the " +
   const dlg = screen.getByRole("dialog", { name: "Last report" });
   expect(dlg.textContent!.match(/Last run/g)).toHaveLength(1);
 });
+
+test("keep-safe: the last-run line says how many were kept safe and which "
+  + "kinds; no such part when none were", () => {
+  renderCards([runOf({ kept_safe: { invoices: 2, bookings: 1 } })]);
+  expect(lineOf(/Last run/)).toContain("3 kept safe · invoices, bookings");
+  cleanup();
+  renderCards([runOf({ kept_safe: {} })]);
+  expect(lineOf(/Last run/)).not.toContain("kept safe");
+  cleanup();
+  renderCards([runOf({})]);                       // an older run: no field
+  expect(lineOf(/Last run/)).not.toContain("kept safe");
+  cleanup();
+  setLang("de");
+  renderCards([runOf({ kept_safe: { jobs: 1 } })]);
+  expect(lineOf(/Letzter Lauf/)).toContain("1 sicher behalten · Bewerbungen");
+});
+
+test("keep-safe: the report sheet shows moved / skipped / kept safe side by "
+  + "side", () => {
+  renderCards([runOf({ acted: 147, mails: 147, skipped_protected: 1,
+    skipped_pinned: 2, kept_safe: { invoices: 2 } })]);
+  fireEvent.click(screen.getByRole("button", { name: /Last report/ }));
+  const sheet = screen.getAllByRole("dialog").at(-1)!;
+  expect(sheet.textContent).toContain("147moved to Trash");
+  expect(sheet.textContent).toContain("3protected, skipped");
+  expect(sheet.textContent).toContain("2kept safe · invoices");
+  cleanup();
+  // a report run says "would move"; nothing kept safe: no stat row
+  renderCards([runOf({ mode: "report", acted: 0, mails: 147,
+    kept_safe: { jobs: 4 } })]);
+  fireEvent.click(screen.getByRole("button", { name: /Last report/ }));
+  expect(screen.getAllByRole("dialog").at(-1)!.textContent)
+    .toContain("would move to Trash");
+  cleanup();
+  renderCards([runOf({})]);
+  fireEvent.click(screen.getByRole("button", { name: /Last report/ }));
+  expect(screen.getAllByRole("dialog").at(-1)!.textContent)
+    .not.toContain("kept safe");
+});

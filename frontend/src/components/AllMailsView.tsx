@@ -180,8 +180,19 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       toast.show(t("toast.all_pinned"));
       return false;
     }
-    const { acting, force } = plan;
+    if (plan.kind === "error") {
+      toast.show(t("err.generic", { msg: (plan.error as Error)?.message
+        ?? String(plan.error) }), { variant: "error" });
+      return false;
+    }
+    const { acting, force, protectedNow } = plan;
     const keys = new Set(acting.map(mailKey));
+    // mails the keep-safe box just protected stay, now shown as protected
+    if (protectedNow.length) {
+      const kept = new Set(protectedNow.map(mailKey));
+      setMails((cur) => cur.map((m) =>
+        kept.has(mailKey(m)) ? { ...m, pinned: true } : m));
+    }
     setBusy(true);
     try {
       await api.deleteMessages(itemsOf(acting), action, dest, force);

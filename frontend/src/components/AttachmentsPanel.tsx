@@ -6,7 +6,7 @@ import { accountGuard } from "../accountGuard";
 import { api, fmtSize, mailKey } from "../api";
 import { nowMs } from "../clock";
 import { t } from "../i18n";
-import { confirmTrashMails } from "../mailActions";
+import { confirmTrashItems } from "../mailActions";
 import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
@@ -189,15 +189,20 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
       Promise<boolean> => {
     if (!mails || go.length === 0) return false;
     const switched = accountGuard();
-    if (!await confirmTrashMails(go.length,
-      subject ?? (go.length === 1 ? go[0].subject ?? "" : undefined)))
-      return false;
-    // the confirm can outlive this page: mail ids belong to one account
-    if (switched()) return false;
     try {
-      const items = go.map((m) => [m.folder, m.uid] as [string, number]);
+      // a big move carries the keep-safe box: the mails kept safe are
+      // protected and stay
+      const items = await confirmTrashItems(
+        go.map((m) => [m.folder, m.uid] as [string, number]),
+        subject ?? (go.length === 1 ? go[0].subject ?? "" : undefined));
+      if (!items) return false;
+      // the confirm can outlive this page: mail ids belong to one account
+      if (switched()) return false;
+      if (!items.length) { setNote(t("toast.all_pinned")); return false; }
       await api.deleteMessages(items, "trash");
-      const gone = new Set(go.map(mailKey));
+      const moved = new Set(items.map(([folder, uid]) =>
+        mailKey({ folder, uid })));
+      const gone = new Set(go.map(mailKey).filter((k) => moved.has(k)));
       setMails(mails.filter((m) => !gone.has(mailKey(m))));
       setSel((cur) => new Set([...cur].filter((k) => !gone.has(k))));
       setNote(t("note.background", { verb: t("Move to Trash") }));

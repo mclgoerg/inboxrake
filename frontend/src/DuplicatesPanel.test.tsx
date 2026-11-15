@@ -12,6 +12,7 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { cancelDialog, expectNoDialog, findDialog, pressDialog } from "./dialogTestUtils";
 import { setLang } from "./i18n";
+import { expectKeepBox, KEEP_FOUND } from "./keepSafeTestUtil";
 
 const duplicates = vi.fn();
 const possibleDuplicates = vi.fn();
@@ -21,6 +22,8 @@ const deleteMessages = vi.fn();
 const dismissDuplicates = vi.fn();
 const restoreDuplicates = vi.fn();
 const jobState = vi.fn();
+const keepSafeCheck = vi.fn();
+const keepSafePin = vi.fn();
 
 vi.mock("./api", async (orig) => ({
   ...(await orig<typeof import("./api")>()),
@@ -31,6 +34,8 @@ vi.mock("./api", async (orig) => ({
     duplicatesSummary: () => duplicatesSummary(),
     dismissDuplicates: (...a: unknown[]) => dismissDuplicates(...a),
     restoreDuplicates: (...a: unknown[]) => restoreDuplicates(...a),
+    keepSafeCheck: (...a: unknown[]) => keepSafeCheck(...a),
+    keepSafePin: (...a: unknown[]) => keepSafePin(...a),
     deleteMessages: (...a: unknown[]) => deleteMessages(...a) },
 }));
 
@@ -88,7 +93,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   [duplicates, possibleDuplicates, duplicateVersions, duplicatesSummary,
-    deleteMessages, dismissDuplicates, restoreDuplicates, jobState]
+    deleteMessages, dismissDuplicates, restoreDuplicates, jobState,
+    keepSafeCheck, keepSafePin]
     .forEach((f) => f.mockReset());
   setLang("en");
 });
@@ -805,4 +811,61 @@ test("review mode on a tab with nothing to tick shows no empty toolbar strip",
   expect(container.ownerDocument.querySelector(".border-b.border-line.flex-wrap")).toBeNull();
   fireEvent.click(screen.getAllByRole("checkbox", { name: /Offer/ })[0]);
   expect(screen.getByRole("button", { name: "Trash selected (1)" })).toBeTruthy();
+});
+
+// eleven sets of three identical mails: Remove 22 copies
+const bigWorld = () => {
+  duplicates.mockResolvedValue(Array.from({ length: 11 }, (_, i) =>
+    dset(`<k${i}@x.example>`, [mk(300 + 3 * i, "INBOX", { msgid: `<k${i}@x.example>` }),
+      mk(301 + 3 * i, "Archive", { msgid: `<k${i}@x.example>` }),
+      mk(302 + 3 * i, "INBOX", { msgid: `<k${i}@x.example>` })])));
+  duplicatesSummary.mockResolvedValue(summaryOf({ sets: 11, wasted: 45056 }));
+};
+
+test("keep-safe: Remove 22 copies shows the box; the copies kept safe are "
+  + "protected and left out of the move", async () => {
+  bigWorld();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockResolvedValue({ pinned: 2,
+    items: [["Archive", 301], ["INBOX", 302]] });
+  deleteMessages.mockResolvedValue({ ok: true, queued: 20 });
+  show();
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Remove 22\u00a0copies" }));
+  const dlg = await findDialog();
+  expectKeepBox(dlg);
+  expect(keepSafeCheck.mock.calls[0][0].items).toHaveLength(22);
+  await pressDialog(/^Move to Trash \(18\)$/);            // 22 - 4 kept safe
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
+  const sent = deleteMessages.mock.calls[0][0] as [string, number][];
+  expect(sent).toHaveLength(20);
+  expect(sent).not.toContainEqual(["Archive", 301]);
+  expect(keepSafePin.mock.invocationCallOrder[0])
+    .toBeLessThan(deleteMessages.mock.invocationCallOrder[0]);
+});
+
+test("keep-safe: Cancel on the box moves and pins nothing", async () => {
+  bigWorld();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  show();
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Remove 22\u00a0copies" }));
+  await findDialog();
+  await cancelDialog();
+  await expectNoDialog();
+  expect(keepSafePin).not.toHaveBeenCalled();
+  expect(deleteMessages).not.toHaveBeenCalled();
+});
+
+test("keep-safe: a pin that fails moves nothing and says so", async () => {
+  bigWorld();
+  keepSafeCheck.mockResolvedValue(KEEP_FOUND);
+  keepSafePin.mockRejectedValue(new Error("could not protect"));
+  show();
+  fireEvent.click(await screen.findByRole("button",
+    { name: "Remove 22\u00a0copies" }));
+  await findDialog();
+  await pressDialog(/^Move to Trash \(18\)$/);
+  expect(await screen.findByText(/could not protect/)).toBeTruthy();
+  expect(deleteMessages).not.toHaveBeenCalled();
 });

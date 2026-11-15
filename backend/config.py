@@ -397,6 +397,10 @@ DEFAULT_CONFIG = {
     # An email when an AI assistant proposes a rule (backend/proposalmail.py);
     # on by default, switched off in Settings > AI assistants.
     "assistants_notify": {"email": True},
+    # Keep-safe (backend/keepsafe.py): which kinds of mail a big cleanup
+    # offers to keep, and whether rule runs skip them too.
+    "keep_safe": {"invoices": True, "bookings": True, "contracts": True,
+                  "jobs": True, "accounts": False, "rules": True},
     "ai": {
         # anthropic | foundry | openai | ollama (any OpenAI-compatible
         # endpoint works via "ollama" + base URL, e.g. LM Studio, vLLM).
@@ -625,6 +629,10 @@ def load_config() -> dict:
         if isinstance(saved.get("assistants_notify"), dict):
             cfg["assistants_notify"]["email"] = \
                 saved["assistants_notify"].get("email") is not False
+        if isinstance(saved.get("keep_safe"), dict):
+            for key in cfg["keep_safe"]:
+                if isinstance(saved["keep_safe"].get(key), bool):
+                    cfg["keep_safe"][key] = saved["keep_safe"][key]
     except (OSError, json.JSONDecodeError):
         pass
     for block in cfg["accounts"].values():
@@ -997,6 +1005,11 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
         notify_in = body.get("assistants_notify")
         if isinstance(notify_in, dict) and "email" in notify_in:
             cfg["assistants_notify"]["email"] = bool(notify_in["email"])
+        keep_in = body.get("keep_safe")
+        if isinstance(keep_in, dict):
+            for key in cfg["keep_safe"]:
+                if key in keep_in:
+                    cfg["keep_safe"][key] = bool(keep_in[key])
         auth_in = body.get("auth") or {}
         shared_in = body.get("shared_ai") or {}
         assistants_in = body.get("assistants") or {}
@@ -1156,6 +1169,11 @@ def effective_ai(cfg: dict) -> tuple[dict, str | None]:
     return own, None
 
 
+def keep_safe_of(cfg: dict) -> dict:
+    """The keep-safe switches of a config (defaults for any that is missing)."""
+    return {**DEFAULT_CONFIG["keep_safe"], **(cfg.get("keep_safe") or {})}
+
+
 def masked_config(cfg: dict) -> dict:
     admin = is_admin()
     ai_eff, ai_source = effective_ai(cfg)
@@ -1179,6 +1197,7 @@ def masked_config(cfg: dict) -> dict:
         "builtin_categories": {n: list(k) for n, k in mailops.CATEGORY_RULES},
         "new_sender_window_days": cfg.get("new_sender_window_days",
                                           knownsenders.NEW_SENDER_WINDOW_DAYS),
+        "keep_safe": keep_safe_of(cfg),
         # Non-admins get the mode (their UI needs it) but none of the
         # server-side login details - the allow-list alone would leak
         # every other tenant's address.

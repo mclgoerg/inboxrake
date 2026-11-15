@@ -1,13 +1,14 @@
 import { Archive, Bot, CalendarClock, Check, ClipboardList, FileText, FolderInput,
   Info, MailOpen, MoreHorizontal, Pencil, Pin, Play, Plus, RefreshCw, Shield,
-  Trash2, TriangleAlert, WandSparkles, X } from "lucide-react";
+  ShieldCheck, Trash2, TriangleAlert, WandSparkles, X } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
-import type { AppState, Grouping, Rule, RuleScope } from "../types";
+import type { AppState, Grouping, KeepSafeClass, Rule, RuleRun, RuleScope }
+  from "../types";
 import { type Recipe, recipeBody, recipeFolder,
   recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
@@ -40,6 +41,15 @@ const PURGE_DEFAULTS = {
 
 const isPurge = (scope: RuleScope | undefined) =>
   scope === "junk" || scope === "trash";
+
+/** Mails a run left alone because they look worth keeping (Keep-safe). */
+const keptSafeTotal = (r: RuleRun) =>
+  Object.values(r.kept_safe ?? {}).reduce((a, n) => a + (n ?? 0), 0);
+/** ... and which kinds ("invoices, bookings"), largest first. */
+const keptSafeWhat = (r: RuleRun) => (Object.entries(r.kept_safe ?? {}) as
+  [KeepSafeClass, number][]).filter(([, n]) => n > 0)
+  .sort((a, b) => b[1] - a[1])
+  .map(([c]) => t(`keepsafe.short.${c}`)).join(", ");
 
 function RunSummary({ rule, preview = true }: {
   rule: Rule; preview?: boolean;
@@ -82,6 +92,12 @@ function RunSummary({ rule, preview = true }: {
       facts.push(<span key="pin" className="inline-flex items-center gap-1">
         <Pin size={14} aria-hidden />
         {t("rule.pinned_skipped", { n: r.skipped_pinned })}</span>);
+    if (keptSafeTotal(r) > 0)
+      facts.push(<span key="kept" className="inline-flex items-center gap-1
+        text-safe-fg">
+        <ShieldCheck size={14} aria-hidden />
+        {t("keepsafe.rule_kept", { n: keptSafeTotal(r),
+          what: keptSafeWhat(r) })}</span>);
   }
   return (
     <>
@@ -160,6 +176,30 @@ function ReportSheet({ rule, onClose }: { rule: Rule; onClose: () => void }) {
         </div>
         <div className="type-body"><RunSummary rule={rule} preview={false} />
         </div>
+        {!r.error && keptSafeTotal(r) > 0 && (
+          // the board's report card: moved / skipped / kept safe, side by side
+          <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-card bg-panel2
+            px-3 py-2.5">
+            <div>
+              <b className="type-title2 tabular-nums">{fmtNum(
+                r.mode === "execute" ? r.acted : r.mails)}</b>
+              <div className="type-meta text-muted">{t(r.mode === "execute"
+                ? "rule.stat_moved" : "rule.stat_would")}</div>
+            </div>
+            <div>
+              <b className="type-title2 tabular-nums">{fmtNum(
+                r.skipped_protected + r.skipped_pinned)}</b>
+              <div className="type-meta text-muted">
+                {t("rule.stat_skipped")}</div>
+            </div>
+            <div>
+              <b className="type-title2 tabular-nums text-safe-fg">
+                {fmtNum(keptSafeTotal(r))}</b>
+              <div className="type-meta text-muted">{t("rule.stat_kept",
+                { what: keptSafeWhat(r) })}</div>
+            </div>
+          </div>
+        )}
         {r.preview.length > 0 && (
           <div>
             <div className="mb-1 type-meta text-muted">
