@@ -618,6 +618,25 @@ capped at 500 mails, skips protected senders, and uses the normal
 Trash/undo pipeline - the scheduler is a background loop inside the
 container, no cron needed.
 
+### Rule recipes
+
+<small class="where">Clean up → Rules → New rule → From a recipe</small>
+
+**New rule** opens with three ways in: **Blank** (the editor), **From a
+recipe** and **Describe it…** (the plain-words filter writer). Nine recipes
+cover the common cleanups - newsletters that expire after 30 days, only the
+newest shipping update, social pings after 14 days, receipts into their own
+folder, quiet senders to the archive, shop mail marked as read, mail from
+senders that kept writing after you unsubscribed, big old attachments, the
+latest 5 of every newsletter. Each card shows what it would catch on your
+mailbox right now; the list is sorted by that number and recipes that catch
+nothing come last. **Add** creates an ordinary rule - it starts in **Report
+only** and its report runs once - which you then edit, activate or delete
+like any other. A new install with no rules sees the top three right on the
+Rules page. A recipe that files mail needs its folder to exist (Inboxrake
+does not create folders): if there is none, the editor opens so you can pick
+one.
+
 ### Retention actions
 
 <small class="where">Selection bar → More → Limit to… · Rules</small>

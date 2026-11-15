@@ -17,7 +17,10 @@ export const AI_FILTER_MAX = 300;
  *  it, saves it as a preset or as a rule. Nothing is selected or acted on
  *  here; only the sentence and the filter syntax go to the AI provider. */
 export function AiFilterPanel({ groups, members, onClose, onApply,
-  onSavePreset, onSaveRule }: {
+  onSavePreset, onSaveRule, ruleOnly = false }: {
+  /** Opened from New rule > Describe it…: the filter only goes into the rule
+   *  (no Apply / Save as preset). */
+  ruleOnly?: boolean;
   /** The loaded groups of the current grouping (the preview runs on them). */
   groups: Group[];
   members?: SmartMembers;
@@ -144,14 +147,17 @@ export function AiFilterPanel({ groups, members, onClose, onApply,
               {result.cost > 0 && <> {t("aif.cost", { cost: fmtUsd(result.cost) })}</>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => onApply(query.trim())} disabled={!ready}>
-                {t("aif.apply")}
-              </Button>
-              <Button variant="secondary" disabled={!ready}
-                onClick={() => onSavePreset(query.trim())}>
-                {t("aif.save_preset")}
-              </Button>
-              <Button variant="secondary" disabled={!ready}
+              {!ruleOnly && <>
+                <Button onClick={() => onApply(query.trim())} disabled={!ready}>
+                  {t("aif.apply")}
+                </Button>
+                <Button variant="secondary" disabled={!ready}
+                  onClick={() => onSavePreset(query.trim())}>
+                  {t("aif.save_preset")}
+                </Button>
+              </>}
+              <Button variant={ruleOnly ? "primary" : "secondary"}
+                disabled={!ready}
                 onClick={() => onSaveRule(query.trim())}>
                 {t("aif.save_rule")}
               </Button>

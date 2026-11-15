@@ -281,6 +281,7 @@ test("a modal opened below 1024 becomes its page when the window widens, "
   fireEvent.click(await screen.findByRole("link", { name: "Clean up" }));
   fireEvent.click(await screen.findByRole("button", { name: /^Rules/ }));
   fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+  fireEvent.click(await screen.findByRole("radio", { name: "Blank" }));
   const name = await screen.findByPlaceholderText("Rule name") as HTMLInputElement;
   fireEvent.change(name, { target: { value: "Draft rule" } });
   expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);

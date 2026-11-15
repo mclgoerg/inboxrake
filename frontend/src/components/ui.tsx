@@ -1434,7 +1434,7 @@ const trapStops = (dialog: HTMLElement): HTMLElement[] => {
 };
 
 const MODAL_WIDTH = { sm: "sm:max-w-md", md: "sm:max-w-2xl",
-  lg: "sm:max-w-3xl" };   // 448 / 672 / 768 px
+  lg: "sm:max-w-3xl", xl: "sm:max-w-5xl" };   // 448 / 672 / 768 / 1024 px
 
 /** Hand focus back to what opened a dialog. Not to a <select> on a touch
  *  device: there, focusing a select opens its picker (iOS), so the bulk
@@ -1574,7 +1574,7 @@ export function Modal({ children, onClose, full = false, fit = false,
   backLayer = true }: {
   children: ReactNode; onClose: () => void; full?: boolean; fit?: boolean;
   bare?: boolean;
-  size?: "sm" | "md" | "lg"; label?: string;
+  size?: "sm" | "md" | "lg" | "xl"; label?: string;
   labelledBy?: string; describedBy?: string;
   /** The open modal owns a history entry, so Back closes it (`useLayer`;
    *  not a tool page, which is a route). False for one that is not opened by
