@@ -14,7 +14,7 @@ There are three levels. **Read** lets the assistant read scan metadata (senders,
 It is **off until an admin switches it on**, and every assistant needs its own access token.
 
 > [!NOTE]
-> OpenAI's apps (custom connectors) and the claude.ai web connectors are **not supported**. They need OAuth and a server on the public internet; Inboxrake only offers bearer tokens, meant for assistants that run on your own machine or network.
+> Assistants that run on your own machine or network (Claude Code, Cursor, VS Code, ...) use a **bearer token**. Hosted apps in the cloud, [claude.ai and ChatGPT](#connect-claudeai-or-chatgpt-oauth), can connect over **OAuth** instead, but only if your Inboxrake is already on the public internet behind a login. If yours is private, stay with tokens.
 
 ## Switch it on
 
@@ -140,6 +140,108 @@ The address, plus the header `Authorization: Bearer irk_…`. Cookies are never 
 
 Then ask, for example: "Which senders fill my mailbox the most?"
 
+## Connect claude.ai or ChatGPT (OAuth)
+
+Hosted apps cannot send a static `Authorization` header. They find Inboxrake's sign-in on their own, send **you** to an approval page in your Inboxrake, and then receive short-lived tokens. Nothing you paste into the app is a secret: the address `https://mail.home.example/mcp` is all they ask for.
+
+> [!WARNING]
+> **This is for instances that are already public and have a login.** claude.ai and ChatGPT call Inboxrake from their own servers, so the address must be reachable from the internet. That is a real exposure of a mailbox tool. If your Inboxrake is private (home network, VPN, `localhost`), do not open it for this: keep using [bearer tokens](#create-an-access-token) with a client on your own machine. OAuth is **off by default**, and everything in this section answers 404 while it is off.
+
+### Before you start
+
+All four must hold; the switch refuses to turn on (and OAuth stops working again later) if one stops holding:
+
+1. **A login**: Settings → Sign-in & users is set to a password or SSO. With no login, a public Inboxrake would be an open mailbox, so OAuth is refused.
+2. **A public https address**: set the environment variable `INBOXRAKE_PUBLIC_URL` to `https://mail.home.example` (scheme and host, optionally a port; no path, no trailing slash, no `http://`). See [Configuration](configuration.md). Restart after setting it.
+3. **Assistant access is on**: Settings → AI assistants → **Assistant access** is not **Off**. Its setting is also the most any connection can ever do (see [Levels](#levels)).
+4. **The admin switch**: Settings → AI assistants → **On this server** → **Let hosted apps connect**, then save. Admin only. If it cannot be switched on, the page says why ("Can't be switched on yet: …").
+
+Your reverse proxy must let the apps reach Inboxrake: see [Behind a reverse proxy](#behind-a-reverse-proxy). Without that, the connection fails before you ever see an approval page.
+
+With the switch on, **Settings → AI assistants → Connect a hosted app** shows the address to paste and short steps. A permanent note there says that hosted apps reach this server from the internet.
+
+### claude.ai and Claude Desktop
+
+Custom connectors are one feature across claude.ai and Claude Desktop: add it once and both have it. On a Team or Enterprise plan only an organisation owner (or a role with the right permission) can add it, and each member then connects for themselves.
+
+1. In claude.ai open **Settings → Connectors** and choose **Add custom connector**. (Anthropic's current help page words this as Customize → Connectors → **+ Add** → Add custom connector; the menu names move around.)
+2. Name it ("Inboxrake") and enter `https://mail.home.example/mcp`. Leave any OAuth client ID and secret fields **empty**: Inboxrake needs neither.
+3. Choose **Connect** (or **Add**, then **Connect**). Your browser opens your Inboxrake. Sign in if asked.
+4. Read the [approval page](#the-approval-page), pick what to allow, and choose **Allow**.
+5. Back in Claude, enable the connector in a chat and ask, for example, "Which senders fill my mailbox the most?"
+
+The port must be the standard 443 for Claude, so `INBOXRAKE_PUBLIC_URL` should not carry a port. Anthropic's own page for this: [Get started with custom connectors using remote MCP](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
+### ChatGPT
+
+OpenAI's connector screens have changed names more than once (developer mode, apps, plugins), so follow your account's current screen; the parts that matter to Inboxrake do not change:
+
+1. In ChatGPT, turn on **developer mode** (where your plan offers it) and create a new app or custom connector with an MCP server.
+2. Enter `https://mail.home.example/mcp` as the server address and choose **OAuth** as the sign-in. If it asks how the app registers itself, pick the option that uses **client ID metadata** (or leave the automatic choice): Inboxrake supports that and nothing else, and does not offer dynamic registration.
+3. Create it and connect. Your browser opens your Inboxrake: sign in, read the approval page, and choose **Allow**.
+
+> [!NOTE]
+> These ChatGPT steps are written from OpenAI's [MCP documentation](https://developers.openai.com/api/docs/mcp) and its [authentication guide](https://developers.openai.com/plugins/build/auth), not from a run-through of your plan's screens. The exact menu names and which plans can add a custom MCP server are not checked here. Check OpenAI's current help if a step does not match.
+
+### The approval page
+
+After sign-in your Inboxrake shows a full page without the usual menus. **Read it before you choose.** It is the only moment you decide who gets in.
+
+- **The big line is the app's address**, for example **claude.ai**, followed by "wants to access your Inboxrake". **Check that host.** Under it, "It calls itself “Claude”. That is its own claim." is just a name the app chose for itself; a look-alike can use any name, but not someone else's host.
+- "After you decide, you go back to **claude.ai**." is where your browser is sent next. It is always the same host as the app's address.
+- "**Only continue if you started connecting this app yourself, just now.**" This is the check that matters. If you did not just press Connect in your own claude.ai or ChatGPT, someone may have sent you the link: choose **Deny**.
+- **Name**: how the connection appears in your list. Pre-filled with the app's name and host.
+- **Accounts**: which mail accounts the app may see (at least one).
+- **What it may do**: **Read**, **Read and propose rules** or **Read, propose and act**. The page never offers more than the app asked for or your admin's **Assistant access** allows; a level above that is greyed out ("More than this app asked for, or your admin allows."). See [Levels](#levels).
+- **Daily limit**: only for the Act level, 2,000 mails a day by default.
+- **Include subject lines**: off by default, as for tokens.
+- **Expires**: 30 days, 90 days (the default) or never. See [How long a connection lasts](#how-long-a-connection-lasts).
+- **Deny** and **Allow**. Neither is pre-selected, so a stray Enter does nothing.
+
+Deny, or any error, sends your browser back to the app with a refusal and nothing is shared. If the address of the app cannot be checked, or it asked to return to a place it never registered, the page shows an error and does **not** redirect you ("This connection can't be set up. Nothing was shared. Go back to the app and start again.").
+
+The request waits 10 minutes for you, belongs to the browser session that started it, and can be answered once. If you wait too long, start again in the app.
+
+### Managing connections
+
+**Settings → AI assistants → Connections** lists every hosted app: its host first, the level, the name, the accounts, when the approval expires, when it was last used and how many calls it made today. Act connections also show the daily limit. Beside each:
+
+- **Details** opens the same detail as for a token: today's calls, mails moved, last call, a way to change the daily limit and a link to its steps in Activity.
+- **Disconnect** (with a confirmation) ends it at once: the app loses access and has to ask you again. An expired connection shows **Remove** instead.
+
+Up to **20 connections** per user, counted apart from the 20 access tokens. Like tokens, connections are not part of a backup and a restore never brings one back.
+
+You also get told: **every new connection raises an alert** ("New AI connection: claude.ai (Read)"), as an in-app toast, a browser notification, a short generic Web Push and, if **Notify me about proposals** is on, an email, with the same limits as for [proposals](#be-told-about-a-new-proposal). Activity records "Connected the hosted app “…”" and "Disconnected the hosted app “…”". If you get an alert for a connection you did not make, **Disconnect** it and look at who can sign in to your Inboxrake.
+
+Turning the switch off (or access off, or removing `INBOXRAKE_PUBLIC_URL`, or leaving login mode) stops every hosted app at once with a 401, but **keeps** the connections in the list: turn it back on and they work again. Static access tokens are unaffected.
+
+### How long a connection lasts
+
+| What | Lasts | In plain words |
+|---|---|---|
+| The approval code | 60 seconds, once | The one-time ticket between the approval page and the app. |
+| Access token | 1 hour | What the app sends with each call. It is renewed in the background. |
+| Refresh token | 30 days without use | Lets the app get a new access token. It is replaced on every use, so an old copy is worthless. An app that goes unused for 30 days has to ask you again. |
+| The connection | Your choice: 30 days, 90 days or never | The hard end. Whatever the refresh token says, the connection stops then. |
+
+If an app presents an old refresh token again after it has been replaced (the sign of a copied token), Inboxrake ends the whole connection and records it in Activity. An app that merely retries after a lost answer, within a minute, is not punished. Tokens are stored only as hashes.
+
+### If something goes wrong
+
+| You see | It means | What to do |
+|---|---|---|
+| The app says it cannot connect, and `https://mail.home.example/.well-known/oauth-protected-resource` is a **404** | The switch is off, or one of the four conditions no longer holds (the setting shows "Not active right now: …"). Inboxrake then answers 404 on every OAuth address on purpose. | Fix the reason shown in Settings: "this server has no sign-in", "the environment variable INBOXRAKE_PUBLIC_URL is not set to this server's public https:// address" or "assistant access is Off". |
+| The same address is a **401 or a login page** from your proxy, or the app gets HTML | A forward-auth in front of Inboxrake blocks the app. | Exempt `/mcp`, `/oauth/*` and `/.well-known/oauth-*`: [Behind a reverse proxy](#behind-a-reverse-proxy). |
+| The approval page says "This request has expired or was already answered" | Over 10 minutes, a second tab, or a restart of Inboxrake (pending requests live in memory). | Press Connect in the app again. |
+| "This request does not belong to this browser session" | The approval was started in another browser. | Start it again in the browser you are signed in with. |
+| "The app asked to return to an address it has not registered, so Inboxrake will not send you there." | A redirect mismatch: the app's published description does not list the address it asked to return to. Inboxrake only sends you to an address on the app's own host that its description lists. | Do not work around it. Update the app, or if it is a client you do not recognise, leave it. claude.ai and ChatGPT publish theirs and match. |
+| "Inboxrake could not reach the app to check who it is." / "The app's description is not valid" / "The app's address points somewhere Inboxrake does not connect to." | Inboxrake fetches the app's description from its address (only after you signed in) and refuses anything that is not a public https address on port 443, is large, redirects, or lacks the right fields. | Try again in a minute for the first. The others mean the app is not one Inboxrake can accept. Your server needs outbound internet access to fetch it. |
+| "Add a mail account first" | You have no account to show the app. | Add one in Settings. |
+| "There are already 20 hosted app connections" | The limit. | Disconnect one. |
+| The connection worked, then every call fails with 401 | It expired, was disconnected, or **`INBOXRAKE_PUBLIC_URL` changed**. The address is part of every token, so old connections stop working. | Remove the old row under Connections and connect again from the app (remove and re-add the connector there too). |
+| **429** when starting an approval or on token requests | Too many requests from one address (20 approval starts per 10 minutes, 60 token calls a minute). | Wait. If it happens at once and often, your proxy is hiding client addresses: set `FORWARDED_ALLOW_IPS`. |
+| Everything is fine but the tools are missing | The level is lower than you expected. The tools shown are those of the connection's level, cut to your admin's cap. | Check the level on the row and your **Assistant access** setting. |
+
 ## Levels
 
 | Level | The assistant can | Changes mail? |
@@ -253,7 +355,7 @@ Act is off unless **both** the admin has set the cap to **Also act** and the tok
 
 ## Security
 
-- **Bearer tokens only.** A token is `irk_` plus 256 random bits. Only its SHA-256 is stored, in a file readable by the Inboxrake user only. Cookies and login sessions play no part at `/mcp`; a token is required in every login mode, including "none".
+- **Bearer tokens only at `/mcp`.** Either a static access token or, with [OAuth](#connect-claudeai-or-chatgpt-oauth) on, the short-lived access token of a hosted app. A static token is `irk_` plus 256 random bits. Only its SHA-256 is stored, in a file readable by the Inboxrake user only. Cookies and login sessions play no part at `/mcp`; a token is required in every login mode, including "none".
 - **A token stops working** when you revoke it, when it expires, when its owner can no longer sign in (removed from the SSO allow-list, the login mode changed) and when an admin switches access off. The check runs on every request.
 - **Scoped:** a token sees only the accounts you ticked, and in SSO mode only its owner's own mailboxes.
 - **Rate limit:** 120 requests per minute per token (429 beyond that).
@@ -267,19 +369,50 @@ More in [Security & privacy](security.md#ai-assistants-mcp).
 
 ## Behind a reverse proxy
 
+For a client on your own machine with a bearer token:
+
 - Pass the `Authorization` header through (most proxies do by default).
 - **Keep `/mcp` out of forward authentication** (Authelia, Authentik, tinyauth, an `oauth2-proxy` in front, basic auth ...): an assistant cannot do a browser login, and the token is the authentication. Protect the rest of Inboxrake as before; give `/mcp` a path rule that skips the auth middleware.
 - Answers are plain JSON, no streaming, so no SSE or buffering settings are needed.
 - If you add your own `Origin` rules, leave requests without an `Origin` header alone.
 - Leave the proxy's TLS in place: the token travels in a header, so use `https://` unless client and server share a trusted network.
 
+### For claude.ai and ChatGPT (OAuth)
+
+The hosted apps reach Inboxrake from **their** servers, with no browser and no cookies, and your browser takes part in the approval. Both halves must get through:
+
+| Path | Who calls it | Rule |
+|---|---|---|
+| `/mcp` | The app's servers | Pass to Inboxrake. **No forward-auth.** |
+| `/oauth/token`, `/oauth/revoke` | The app's servers | Pass to Inboxrake. **No forward-auth.** Can be limited to the vendors' addresses (below). |
+| `/.well-known/oauth-protected-resource` (also `/mcp` appended) and `/.well-known/oauth-authorization-server` | The app's servers (discovery) | Pass to Inboxrake. **No forward-auth.** |
+| `/oauth/authorize`, `/#/connect` and `/api/...` | **Your browser** | Must be reachable by you. It may sit behind your forward-auth, since you can sign in there, but it must not be blocked, and `/oauth/authorize` must redirect to `/#/connect` of the same host unchanged. |
+
+A forward-auth that answers a vendor's server with a login redirect is the usual reason a connection "just fails". Test from outside your network:
+
+```sh
+curl -si https://mail.home.example/.well-known/oauth-protected-resource | head -n 1   # HTTP/2 200
+curl -si https://mail.home.example/mcp -d '{}' | head -n 3                            # 401 with a WWW-Authenticate header
+```
+
+A 404 on the first means OAuth is off or a condition is not met; a redirect or a login page means the proxy is in the way. `/mcp` needs the standard port 443, and the `Host` your proxy forwards does not matter to OAuth: Inboxrake builds its addresses from `INBOXRAKE_PUBLIC_URL` only, never from `Host` or `X-Forwarded-*`.
+
+**Per-visitor limits.** Inboxrake limits approval starts and token calls per client address. Set `FORWARDED_ALLOW_IPS` to your proxy's address (see [Security & privacy](security.md#password-login-throttling) for how, and why never `*`), or every request shares the proxy's address and the limits count everyone together.
+
+**Optional: only the vendors on the token endpoints.** `/oauth/token` and `/oauth/revoke` are called by the vendors' servers, never by a browser, so you can let only their published addresses reach them and answer everything else 403 at the proxy. This is a second lock, not a replacement for the first: the tokens and PKCE are what protect you. Do **not** put `/mcp` behind such an allowlist if you also use local clients (Claude Code, Cursor ...) with bearer tokens, and do not put `/oauth/authorize` there: that one is your browser.
+
+- **Anthropic** publishes its outbound addresses on [its IP address page](https://platform.claude.com/docs/en/api/ip-addresses) (section "Outbound IP addresses", which names MCP tool calls). When this page was checked (2026-11-15) they were `160.79.104.0/21` and `153.61.208.0/20`; read the page, because they can change.
+- **OpenAI** publishes the ranges for connectors as a JSON file, [`https://openai.com/chatgpt-connectors.json`](https://openai.com/chatgpt-connectors.json), described on [its IP egress ranges page](https://developers.openai.com/api/docs/guides/ip-addresses). OpenAI says the ranges change and advises refreshing the file regularly, so generate the allowlist from the file with a scheduled job instead of copying values by hand. The same page notes ChatGPT can also present a client certificate (mTLS) to MCP servers; Inboxrake does not check it.
+
+An allowlist that goes stale locks the vendor out and the connection breaks with a 403, so keep the refresh job running or skip this step.
+
 ## Troubleshooting
 
 | You see | It means | What to do |
 |---|---|---|
-| **401** | The token is missing, wrong, expired or revoked, or its owner can no longer sign in. | Check the header is exactly `Authorization: Bearer irk_…`. Look at the token list in Settings; if it is gone or expired, create a new one. A proxy that strips the header or asks for its own login also causes this. |
+| **401** | The token is missing, wrong, expired or revoked, or its owner can no longer sign in. For a hosted app also: OAuth was switched off, or `INBOXRAKE_PUBLIC_URL` changed. | Check the header is exactly `Authorization: Bearer irk_…`. Look at the token list in Settings; if it is gone or expired, create a new one. A proxy that strips the header or asks for its own login also causes this. |
 | **403** | A foreign `Origin`, a host that Inboxrake in login mode "none" does not accept (`INBOXRAKE_ALLOWED_HOSTS`), or the token's accounts no longer exist. | Use the client as a program, not a web page; open Inboxrake under an allowed host; create a token for an existing account. |
-| **404** | Assistant access is off (or the address is wrong: only `/mcp` exists). | An admin sets Settings → AI assistants → Assistant access to On. Check the address ends in `/mcp` with no trailing path. |
+| **404** | Assistant access is off (or the address is wrong: only `/mcp` exists). Hosted-app addresses (`/oauth/...`, `/.well-known/oauth-...`) answer 404 as long as OAuth is off or not available. | An admin sets Settings → AI assistants → Assistant access to On. Check the address ends in `/mcp` with no trailing path. |
 | **405** | The client sent a `GET`. | Use a client that supports the streamable HTTP transport, not SSE. |
 | **400** | A token in the URL, or a malformed MCP request. | Move the token into the header. |
 | **413** | The request body is over 64 KB. | Rare; ask for fewer things in one call. |

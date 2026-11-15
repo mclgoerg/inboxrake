@@ -136,7 +136,7 @@ up and consent in the UI.
 
 The optional [MCP endpoint](assistants.md) lets an assistant you run read your
 mailbox metadata. It is off by default (an admin switches it on), changes no
-mail unless you also give a token the opt-in Act level, and authenticated by per-user bearer tokens only: stored as SHA-256, limited
+mail unless you also give a token the opt-in Act level, and authenticated by per-user bearer tokens (or, if you switch it on, [OAuth connections of claude.ai or ChatGPT](#hosted-apps-over-oauth-claudeai-chatgpt) with the same limits): stored as SHA-256, limited
 to chosen accounts, optionally with subject lines, expiring, revocable, and
 dead the moment their owner can no longer sign in. It returns no mail bodies,
 no attachments, no unsubscribe links and none of your own tags or category
@@ -155,6 +155,42 @@ same chat (web fetch, mail sending) could be: do not combine them. With Act, a
 fooled assistant can still move mail to Trash up to its daily limit (you can
 undo it): use Act only with an assistant you watch. Details,
 limits and proxy advice are on the [assistants page](assistants.md#privacy).
+
+### Hosted apps over OAuth (claude.ai, ChatGPT)
+
+Optional and **off by default**. With the admin switch on, Inboxrake is its
+own OAuth server for hosted AI apps, so that claude.ai or ChatGPT can ask
+*you* for approval instead of using a token you paste. It is meant for an
+instance that is already public with a login; it is refused without a login,
+without an https `INBOXRAKE_PUBLIC_URL` and with assistant access Off, and it
+stops working again if one of those changes. The
+[setup is on the assistants page](assistants.md#connect-claudeai-or-chatgpt-oauth).
+What a connection can do is exactly what a token can do (same levels, caps,
+limits and undo), and Activity and an alert record each new one.
+
+What could go wrong, and what stands in the way:
+
+| What could go wrong | What stops it |
+|---|---|
+| **Inboxrake fetches a hostile address.** An app is identified by a web address Inboxrake has to read. | It only fetches after you have signed in, never for an anonymous visitor. Only public https on port 443, every resolved address must be public, the connection is pinned to it, no redirects, 5 KiB and 5 seconds at most, rate limited. The app's logo is never loaded. |
+| **A look-alike app asks for approval.** | The approval page leads with the app's real host, not its self-chosen name. It also shows where you go back to, which must be on the same host. Without your clicking Allow nothing is connected. |
+| **Someone sends you their own connect link** (consent phishing). | The page says to continue only if you just started it yourself. The attacker's link can still look right, so the other layers matter: the level can never exceed your admin's cap, the approval code lives 60 seconds, every new connection raises an alert and an Activity entry, and **Disconnect** works at once. |
+| **A redirect sends you or a code somewhere else.** | There is no "return to" parameter. The return address must exactly match one the app published, on its own host. Errors found before that is known are shown in the page and never redirected. |
+| **A stolen authorization code.** | PKCE (S256) is required, the code works once within 60 seconds, and reusing it ends the connection it made. |
+| **Another site makes you approve** (cross-site request, framing). | Approval needs your signed-in session, an anti-forgery check, and a request bound to your browser through an HttpOnly cookie; the page cannot be embedded in another site. |
+| **A stolen refresh token.** | Every use replaces it, so a copy is worthless once the real app has used it; a replay ends the whole connection and is recorded. Idle for 30 days it dies, and the expiry you chose is a hard end. The owner is checked again on every refresh. |
+| **Mix-up between servers.** | Every answer carries Inboxrake's address as issuer, and there is only one. |
+| **A token meant for another server, or the reverse.** | A token names Inboxrake's `/mcp` address as its audience, checked when it is issued and on every call; the tokens are opaque and only valid here. Inboxrake makes no calls on the app's behalf. Changing `INBOXRAKE_PUBLIC_URL` ends them all. |
+| **Registration spam.** | There is no self-registration. Pending requests are capped, limited per address, and a connection exists only after you approve (at most 20 per user). |
+| **You forget it is public.** | Off by default; refused without a login; a permanent note in Settings while on; an alert on each connection. The admin's access cap still limits every connection. |
+| **A token in a log or URL.** | A token in a URL is refused, token answers are never cached, tokens are never logged, and an access token lasts one hour. |
+
+What it does not protect against: an assistant that is fooled by text in your
+mail (see above), and the vendor itself. What the app reads goes to that
+vendor, so choose levels with that in mind. On the network side, nothing in
+front of `/mcp`, `/oauth/*` and `/.well-known/oauth-*` may demand a login of
+its own, but you can limit the token endpoints to the vendors' addresses (see
+[the proxy notes](assistants.md#for-claudeai-and-chatgpt-oauth)).
 
 ## Alias service (optional)
 

@@ -51,3 +51,7 @@ anonaddy.com              # addy.io shared alias domain (former name)
 anonaddy.me               # addy.io shared alias domain (former name)
 mailer.me                 # addy.io shared alias domain
 mozmail.com               # Firefox Relay alias domain (detection only, backend/addresspick.py; no API is called)
+support.claude.com   # docs/assistants.md: Anthropic's help page for adding a custom connector
+platform.claude.com   # docs/assistants.md: Anthropic's page listing its outbound IP addresses
+openai.com   # docs/assistants.md: OpenAI's published egress ranges for ChatGPT connectors (chatgpt-connectors.json)
+developers.openai.com   # docs/assistants.md: OpenAI's MCP, authentication and IP egress documentation
