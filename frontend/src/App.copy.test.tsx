@@ -169,7 +169,7 @@ test("Review N unsubscribes opens the review of the OLD account", async () => {
   copyJob = { id: "j", source: "icloud", target: "proton",
     folder: "From icloud", kinds: ["orders"], status: "done", total: 4,
     bytes_total: 4, processed: 4, copied: 4, skipped: 0, checked: 4,
-    unchecked: 0, too_large: 0, missing: 0, failed: 0, bytes_done: 4,
+    unchecked: 0, too_large: 0, missing: 0, failed: 0, unsure: 0, bytes_done: 4,
     started: 1, finished: 2, error: "", active_s: 1, eta_s: null };
   window.location.hash = "#/move";
   mount(true);                                  // the active account: proton
