@@ -837,15 +837,17 @@ def test_undoing_a_restore_keeps_the_chain_for_the_next_restore(monkeypatch):
     assert _where(fake, "a") == {"INBOX": 2} and _where(fake, "b") == {"INBOX": 2}
 
 
-def test_a_step_that_moved_less_than_counted_is_kept_not_dropped(monkeypatch):
+def test_a_step_that_moved_less_than_counted_keeps_only_the_rest(monkeypatch):
     fake = _fake(monkeypatch)
     _trash("a")
     acc = _acc()
+    fake.mailbox["Trash"].pop()                     # one mail is gone
     entry, pos = mailops.pop_undo(acc)
-    run = mailops.run_undo(acc, entry, pos, expected=5)   # counted 5, found 2
-    assert run["restored"] == 2 and run["short"] == 3 and run["failed"] is None
-    assert [e["id"] for e in acc.undo_log] == [entry["id"]]
-    assert all(c.get("restored") for c in entry["copies"])  # marked, not redone
+    run = mailops.run_undo(acc, entry, pos, expected=2)
+    assert run["restored"] == 1 and run["short"] == 1 and run["failed"] is None
+    (rest,) = acc.undo_log                           # same step, what is left
+    assert rest["id"] == entry["id"] and rest["count"] == 1
+    assert not any(c.get("restored") for c in rest["copies"])
 
 
 def test_undoing_a_restore_leaves_protected_and_pinned_mail_alone(three):
@@ -945,3 +947,105 @@ def test_protecting_senders_is_a_step_that_stays(three):
     assert entry["label"] == "x@y.example, @z.example"
     p = timemachine.preview(_acc(), "")
     assert {"kind": "protect", "n": 2} in p["stays"]
+
+
+# ------------------------------------------------ re-review round
+
+def test_a_short_restore_does_not_lose_what_it_moved_when_it_is_undone(three,
+                                                                       monkeypatch):
+    """One of c's two mails leaves Trash between the look and the move: the
+    restore moves 1. Undoing the restore must put THAT mail back in a step."""
+    acc = _acc()
+    real = timemachine._live
+
+    def live_then_vanish(a, entries):
+        out = real(a, entries)
+        gone = next(m for m in three.mailbox["Trash"]
+                    if m["from"].startswith("c@"))
+        three.mailbox["Trash"].remove(gone)
+        return out
+    monkeypatch.setattr(timemachine, "_live", live_then_vanish)
+    steps = _steps()
+    timemachine.start(acc, steps[1]["id"], None, None, [])
+    assert _wait_restore()["moved"] == 1
+    assert _where(three, "c") == {"INBOX": 1}
+    monkeypatch.setattr(timemachine, "_live", real)
+    mailops.undo_last()                                  # the restore
+    assert _where(three, "c") == {"Trash": 1}
+    p = timemachine.preview(acc, steps[1]["id"])
+    assert p["mails"] == 1                               # not stuck in Trash
+    _go(steps[1]["id"])
+    assert _where(three, "c") == {"INBOX": 1}
+
+
+def test_a_skipped_chain_rebase_leaves_the_rest_undoable(monkeypatch):
+    """Duplicate Message-IDs make the rebase skip a mail: the older step is a
+    short rest, the newer step's mails still come back after an undo."""
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    real = mailops._rebase_chain
+    monkeypatch.setattr(mailops, "_rebase_chain", lambda *a, **k: None)
+    _go("")                                  # S3, S2 undone; S1 cannot find a
+    assert _where(fake, "a") == {"Keep": 2} and _where(fake, "b") == {"INBOX": 2}
+    mailops.undo_last()                      # the restore
+    assert _where(fake, "a") == {"Trash": 2} and _where(fake, "b") == {"Trash": 2}
+    acc = _acc()
+    listed = [s for s in _steps() if s["action"] == "trash"]
+    assert sum(s["mails"] for s in listed if s["status"] == "back") >= 4
+    monkeypatch.setattr(mailops, "_rebase_chain", real)
+    _go("")
+    assert _where(fake, "a") == {"INBOX": 2} and _where(fake, "b") == {"INBOX": 2}
+
+
+def test_a_restore_a_later_restore_cancelled_reads_as_undone(monkeypatch):
+    fake, (s1, s2, s3) = _chain(monkeypatch)
+    _go(s1)
+    first = next(s for s in _steps() if s["action"] == "restore")
+    _go("")
+    shown = {s["id"]: s for s in _steps()}[first["id"]]
+    assert shown["status"] == "undone"
+
+
+def test_the_undo_file_is_not_written_while_a_step_is_off_its_list(three,
+                                                                    monkeypatch):
+    acc = _acc()
+    writes = []
+    real = undostore.save
+    monkeypatch.setattr(undostore, "save", lambda *a: (writes.append(1), real(*a))[1])
+    entry, pos = mailops.pop_undo(acc)
+    mailops.flush_undo(acc)                  # e.g. a status tick mid-undo
+    assert writes == []
+    run = mailops.run_undo(acc, entry, pos)
+    assert run["restored"] == 2
+    mailops.flush_undo(acc)
+    assert writes == [1]
+    assert len(undostore.load(acc.name, acc.tenant,
+                              mailops.SNAPSHOT_DIR)[0]) == 2   # a and b left
+
+
+def test_a_failed_write_is_tried_again(three, monkeypatch):
+    acc = _acc()
+    real = undostore.save
+    calls = []
+
+    def flaky(*a):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("disk full")
+        return real(*a)
+    monkeypatch.setattr(undostore, "save", flaky)
+    with acc.lock:
+        mailops._sync_undo(acc)
+    mailops.flush_undo(acc)
+    assert acc.undo_dirty is True
+    mailops.flush_undo(acc)
+    assert len(calls) == 2 and acc.undo_dirty is False
+
+
+def test_the_state_says_how_many_steps_there_really_are(monkeypatch):
+    _fake(monkeypatch)
+    acc = _acc()
+    with acc.lock:
+        acc.undo_log[:] = [_entry(NOW - 1000 + i) for i in range(150)]
+        mailops._sync_undo(acc)
+    assert len(acc.state["undo"]) == 100 and acc.state["undo_total"] == 150
+    assert acc.state["assistant_undo_total"] == 0

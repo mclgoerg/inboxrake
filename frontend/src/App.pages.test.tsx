@@ -462,7 +462,8 @@ test("Activity: many assistant steps show 3 and a Show all, like your steps; " +
     actor: "mcp:Claude Code · laptop", token: "tk" }));
   const mine = Array.from({ length: 12 }, (_, i) => ({ action: "archive",
     count: i + 1, label: `L${i}`, ts: i + 100, id: `u${i}` }));
-  state = { ...state, undo: mine, assistant_undo: bots };
+  state = { ...state, undo: mine, assistant_undo: bots, undo_total: 340,
+    assistant_undo_total: 5 };
   fireEvent.click(await screen.findByRole("button", { name: /^Undo/ }));
   const menu = screen.getAllByRole("button", { name: /^Archive: / });
   expect(menu).toHaveLength(8);                  // newest 8 of 12
@@ -470,6 +471,8 @@ test("Activity: many assistant steps show 3 and a Show all, like your steps; " +
   fireEvent.click(screen.getByRole("button", { name: "All steps in Activity…" }));
   const region = await screen.findByRole("region", { name: "Undo history" });
   expect(within(region).getAllByRole("button", { name: "Undo" }).length).toBe(6);
+  expect(within(region).getByText("Showing the newest 12 of 340 steps - the Time machine has them all.")).toBeTruthy();
+  expect(within(region).getAllByText(/^Showing the newest/)).toHaveLength(1);
   fireEvent.click(within(region).getAllByRole("button", { name: /^Show all 5$/ })[0]);
   expect(within(region).getAllByRole("button", { name: "Undo" }).length).toBe(8);
   fireEvent.click(within(region).getAllByRole("button", { name: "Show all 12" })[0]);

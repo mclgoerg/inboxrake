@@ -2643,6 +2643,11 @@ export default function App() {
               : t("activity.undo_all", { n: mine.length })}
           </Button>
         )}
+        {(state?.undo_total ?? 0) > mine.length && (
+          <p className="px-1 type-meta text-muted">
+            {t("activity.undo_capped", { shown: mine.length,
+              total: state!.undo_total! })}</p>
+        )}
       </>)}
       {theirs.length > 0 && (<>
         <SectionLabel className="flex flex-wrap justify-between gap-x-2 px-1">
@@ -2660,6 +2665,11 @@ export default function App() {
             {undoAllBots ? t("activity.undo_fewer")
               : t("activity.undo_all", { n: theirs.length })}
           </Button>
+        )}
+        {(state?.assistant_undo_total ?? 0) > theirs.length && (
+          <p className="px-1 type-meta text-muted">
+            {t("activity.undo_capped", { shown: theirs.length,
+              total: state!.assistant_undo_total! })}</p>
         )}
       </>)}
     </section>

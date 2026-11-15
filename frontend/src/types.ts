@@ -515,6 +515,10 @@ export interface AppState {
   undo: UndoEntry[];
   /** AI assistants' own undo list (never mixed into `undo`). */
   assistant_undo?: UndoEntry[];
+  /** How many steps the lists hold: `undo` / `assistant_undo` carry the
+   *  newest 100 of them. */
+  undo_total?: number;
+  assistant_undo_total?: number;
   /** The Time machine's restore job (absent on an older server). */
   restore?: RestoreState;
   folders_raw: string[];

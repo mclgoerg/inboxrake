@@ -904,6 +904,7 @@ export const EN: Record<string, string> = {
   "activity.unsubscribed": "Unsubscribed",
   "activity.undo_all": "Show all {n}",
   "activity.undo_fewer": "Show fewer",
+  "activity.undo_capped": "Showing the newest {shown} of {total} steps - the Time machine has them all.",
   "activity.undo": "Undo history",
   "activity.undone": "undone",
   "activity.undone_n": "{n} undone",

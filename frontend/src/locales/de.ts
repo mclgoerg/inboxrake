@@ -3008,6 +3008,7 @@ export const DE: Record<string, string> = {
   "activity.unsubscribed": "Abbestellt",
   "activity.undo_all": "Alle {n} zeigen",
   "activity.undo_fewer": "Weniger zeigen",
+  "activity.undo_capped": "Die neuesten {shown} von {total} Schritten - die Zeitmaschine kennt alle.",
   "activity.undo": "Rückgängig-Verlauf",
   "activity.undone": "rückgängig gemacht",
   "activity.undone_n": "{n} rückgängig gemacht",
