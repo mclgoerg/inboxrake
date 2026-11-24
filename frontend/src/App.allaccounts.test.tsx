@@ -21,7 +21,9 @@ vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
   // the account the call is pinned to (what the real app sends as ?account=)
   const at = () => /account=([^&]*)/.exec(actual.withAccount("/x"))?.[1];
-  return { ...actual, api: {
+  // a call this file does not care about (Settings, a tool) answers empty
+  // instead of throwing after the test that made it is over
+  const known = {
     authProbe: () => Promise.resolve({ mode: "none", authed: true }),
     getConfig: () => Promise.resolve(cfg),
     state: () => Promise.resolve({ ...state, account: at() ?? state.account }),
@@ -33,9 +35,12 @@ vi.mock("./api", async (importOriginal) => {
     audit: () => Promise.resolve({ total: 0, entries: [] }),
     rules: (...a: unknown[]) => rules(...a),
     unsubscribePreview: (...a: unknown[]) => preview(...a),
+    folders: () => Promise.resolve({ folders: [], wildcards: [] }),
     group: () => Promise.resolve([]),
     mails: () => Promise.resolve({ total: 0, mails: [], ignored: [] }),
-  } };
+  } as Record<string, (...a: unknown[]) => unknown>;
+  return { ...actual, api: new Proxy(known, {
+    get: (t, k: string) => t[k] ?? (() => Promise.resolve({})) }) };
 });
 
 import App from "./App";
