@@ -82,8 +82,10 @@ function Tile({ icon, tone, label, value, sub, disabled, onClick }: {
 
 /** The Clean up tab: Ready to clean, Triage and the tool tiles. */
 export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
-  aiShown, aiDisabled, demoHint, onOpen, onReviewAi }: {
+  aiShown, aiDisabled, demoHint, habits = 0, onOpen, onReviewAi }: {
   account: string;
+  /** Suggestions from what the user does by hand (a count on Rules). */
+  habits?: number;
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
@@ -257,9 +259,11 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<ClipboardList size={18} aria-hidden />}
             tone="bg-new-bg text-new-fg" label={t("Rules")}
-            value={waiting ? <ProposalBadge n={waiting} quiet />
+            value={waiting || habits ? <ProposalBadge n={waiting}
+              extra={habits} quiet />
               : t("n.rules", { n: rules.length })}
             sub={waiting ? t("proposal.badge", { n: waiting })
+              : habits ? t("habit.sub_count", { n: habits })
               : ago ? t("tab.rules_last", { ago }) : t("tab.rules_none")}
             onClick={() => onOpen("rules")} />
         </li>

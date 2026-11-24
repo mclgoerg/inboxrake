@@ -841,6 +841,60 @@ export const DE: Record<string, string> = {
   "rules.empty_sub": "Regeln räumen nach Plan für dich auf. Fang mit einer davon an:",
   "rules.waiting": "{n}\u00a0Vorschläge warten auf dich",
   "rules.waiting_one": "1\u00a0Vorschlag wartet auf dich",
+  "habit.title": "Das machst du immer wieder",
+  "habit.sub":
+    "Gefunden in deiner Aktivität der letzten 60\u00a0Tage für {account} · nur was "
+    + "du von Hand gemacht hast, mindestens 3\u00a0Mal",
+  "habit.sub_count": "{n}\u00a0Vorschläge aus dem, was du tust",
+  "habit.sub_count_one": "1\u00a0Vorschlag aus dem, was du tust",
+  "habit.your_rules": "Deine Regeln",
+  "habit.why": "Warum diese?",
+  "habit.why_sub": "Die Schritte, auf denen jeder Vorschlag beruht",
+  "habit.why_sender": "Warum \u201e{sender}\u201c?",
+  "habit.why_age":
+    "Das Alter ist die jüngste Mail, die du jeweils verschoben hast, abgerundet.",
+  "habit.why_rest":
+    "Rückgängig gemachte Schritte zählen nicht. Für eine Regel, die du schon "
+    + "angelegt hast, oder einen Absender, bei dem du \u201eNicht diesen\u201c "
+    + "gewählt hast, kommt nie wieder ein Vorschlag.",
+  "habit.all_unread": "alle ungelesen",
+  "habit.step_trash": "{n} in den Papierkorb verschoben",
+  "habit.step_archive": "{n} archiviert",
+  "habit.step_move": "{n} nach {folder} verschoben",
+  "habit.step_mark_read": "{n} als gelesen markiert",
+  "habit.did_trash":
+    "Du hast {sender} {n}\u00a0Mal in den Papierkorb gelegt, seit {date}",
+  "habit.did_archive": "Du hast {sender} {n}\u00a0Mal archiviert, seit {date}",
+  "habit.did_move":
+    "Du hast {sender} {n}\u00a0Mal nach {folder} verschoben, seit {date}",
+  "habit.did_mark_read":
+    "Du hast {sender} {n}\u00a0Mal als gelesen markiert, seit {date}",
+  "habit.always_unread": "Immer ungelesen",
+  "habit.each": "{min} bis {max} Mails pro Mal",
+  "habit.each_same": "{n} Mails pro Mal",
+  "habit.each_same_one": "1 Mail pro Mal",
+  "habit.when": "Wenn",
+  "habit.catch_full":
+    "Würde jetzt {n}\u00a0Mails erfassen · startet im Berichtsmodus",
+  "habit.catch_full_one":
+    "Würde jetzt 1\u00a0Mail erfassen · startet im Berichtsmodus",
+  "habit.catch_none": "Startet im Berichtsmodus",
+  "habit.not_this": "Nicht diesen",
+  "habit.make": "Als Regel anlegen",
+  "habit.made":
+    "Regel \u201e{name}\u201c angelegt. Neue Regeln starten im Berichtsmodus - "
+    + "nichts wird verschoben, bis du auf Aktiv stellst.",
+  "habit.hidden":
+    "{sender} wird nicht mehr vorgeschlagen. Du kannst es unter "
+    + "Einstellungen › Allgemein zurückholen.",
+  "habit.rule_trash": "{sender} in den Papierkorb",
+  "habit.rule_archive": "{sender} archivieren",
+  "habit.rule_move": "{sender} nach {folder} verschieben",
+  "habit.rule_mark_read": "{sender} als gelesen markieren",
+  "habit.next_title": "{n} Aufräum-Schritte, die du immer wieder von Hand machst",
+  "habit.next_title_one": "1 Aufräum-Schritt, den du immer wieder von Hand machst",
+  "habit.toast_sub": "Das war das {nth} Mal seit {date}.",
+  "habit.automate": "Automatisieren…",
   "proposal.tag": "Vorschlag · wartet auf dich",
   "proposal.by": "{name} · vorgeschlagen {when}",
   "proposal.report": "Bericht",
@@ -2370,6 +2424,16 @@ export const DE: Record<string, string> = {
   "settings.for_account": "Für das Konto \u201e{name}\u201c",
   "settings.senders": "Absender",
   "settings.new_badge": "\u201eNeu\u201c-Markierung bleibt",
+  "habit.set.header": "Vorschläge",
+  "habit.set.row": "Regeln aus dem vorschlagen, was ich tue",
+  "habit.set.sub":
+    "Schaut nur in deine eigene Aktivität, auf diesem Server. Keine KI.",
+  "habit.set.hidden": "Ausgeblendete Vorschläge",
+  "habit.set.hidden_n": "{n} Absender",
+  "habit.set.hidden_n_one": "1 Absender",
+  "habit.set.none": "Keine",
+  "habit.set.show": "Anzeigen",
+  "habit.set.shown": "Ausgeblendete Vorschläge werden wieder angezeigt.",
   "decimal.invalid": "Gib in den Preis- und Budgetfeldern eine Zahl ein (zum Beispiel 0,5).",
   "numfmt.label": "Zahlenformat",
   "numfmt.help": "Wie Zahlen geschrieben werden. Automatisch folgt der Sprache.",
