@@ -26,7 +26,8 @@ from conftest import FakeIMAP, make_msg, wait_delete_done
 client = TestClient(app)
 
 DAY = 86400
-DHL = "noreply@dhl.example"
+CARRIER = "noreply@dhl.example"   # the shared conftest fixture sender
+CARRIER_LABEL = "DHL Paket"
 NEWS = "news@shop.example"
 
 
@@ -95,10 +96,10 @@ def test_step_facts_zero_is_a_fact_and_nothing_to_say_is_empty():
 
 def test_manual_trash_records_keys_unread_and_youngest_age(bridge):
     scan(bridge)
-    mailops.delete_groups("sender", [DHL])
+    mailops.delete_groups("sender", [CARRIER])
     wait_delete_done()
     e = [x for x in entries() if x["action"] == "trash"][-1]
-    assert e["keys"] == [DHL]
+    assert e["keys"] == [CARRIER]
     assert e["unread"] == 1                 # uid 1 unread, 2 and 10 read
     assert e["youngest_days"] == 3
     assert "per" not in e and "dest" not in e
@@ -131,7 +132,7 @@ def test_a_selection_of_mails_names_every_sender(bridge):
 
 def test_rule_and_assistant_steps_carry_no_habit_facts(bridge):
     scan(bridge)
-    mailops.delete_groups("sender", [DHL], actor="rule:abc12345")
+    mailops.delete_groups("sender", [CARRIER], actor="rule:abc12345")
     wait_delete_done()
     scan(bridge)
     mailops.delete_groups("sender", [NEWS], "archive", actor="mcp:Helper")
@@ -148,7 +149,7 @@ def test_a_failed_step_carries_no_habit_facts(bridge, monkeypatch):
     def boom(*a, **kw):
         raise RuntimeError("server exploded")
     monkeypatch.setattr(mailops, "_move_uids", boom)
-    mailops.delete_groups("sender", [DHL])
+    mailops.delete_groups("sender", [CARRIER])
     wait_delete_done()
     e = entries()[-1]
     assert e["outcome"] == "error" and "keys" not in e
@@ -332,7 +333,7 @@ def put(rows, account="default"):
             f.write(json.dumps({**r, "account": account}) + "\n")
 
 
-def real_steps(key=DHL, **kw):
+def real_steps(key=CARRIER, **kw):
     now = time.time()
     return [{**step(d, key=key, **kw), "ts": int(now - d * DAY)}
             for d in (30, 20, 10)]
@@ -344,11 +345,11 @@ def test_suggestions_carry_the_rule_and_what_it_would_catch(bridge):
     got = habits.suggestions(accountsmod.get("default"))
     assert got["enabled"] is True and got["hidden"] == 0
     (s,) = got["suggestions"]
-    assert s["key"] == DHL and s["label"] == "DHL Paket"
-    assert s["rule"] == {"grouping": "sender", "query": f"from:{DHL}",
+    assert s["key"] == CARRIER and s["label"] == CARRIER_LABEL
+    assert s["rule"] == {"grouping": "sender", "query": f"from:{CARRIER}",
                          "action": "trash", "dest": "", "schedule": "weekly",
                          "older_than_days": 7}
-    # 3 DHL mails: two 3 days old, one from 2025; only the old one is > 7 days
+    # 3 carrier mails: two 3 days old, one from 2025; only the old one is > 7 days
     assert s["catch"] == 1
 
 
@@ -370,7 +371,7 @@ def test_no_catch_number_without_a_scan():
 def test_protected_senders_are_never_suggested(bridge):
     scan(bridge)
     put(real_steps())
-    cfgmod.update_config({"protected": [DHL]})
+    cfgmod.update_config({"protected": [CARRIER]})
     assert habits.suggestions(accountsmod.get("default"))["suggestions"] == []
     cfgmod.update_config({"protected": ["@dhl.example"]})
     assert habits.suggestions(accountsmod.get("default"))["suggestions"] == []
@@ -381,7 +382,7 @@ def test_a_sender_an_existing_rule_covers_is_skipped(bridge):
     put(real_steps())
     acc = accountsmod.get("default")
     assert len(habits.suggestions(acc)["suggestions"]) == 1
-    rule = rulesmod.create_rule({"name": "DHL", "query": f"from:{DHL}",
+    rule = rulesmod.create_rule({"name": "Carrier", "query": f"from:{CARRIER}",
                                  "action": "archive"})
     assert habits.suggestions(acc)["suggestions"] == []
     rulesmod.delete_rule(rule["id"])
@@ -398,30 +399,44 @@ def test_a_rule_of_another_account_does_not_cover(bridge, monkeypatch):
     scan(bridge)
     put(real_steps())
     cfgmod.update_config({"add_account": "other"})
-    rulesmod.create_rule({"name": "DHL", "query": f"from:{DHL}",
+    rulesmod.create_rule({"name": "Carrier", "query": f"from:{CARRIER}",
                           "action": "trash", "account": "other"})
     assert len(habits.suggestions(
         accountsmod.get("default"))["suggestions"]) == 1
+
+
+def test_a_rule_saved_without_an_account_covers_the_default_account(bridge):
+    # older rules carry no "account" field; they run on the default account
+    scan(bridge)
+    put(real_steps())
+    rule = rulesmod.create_rule({"name": "Carrier", "query": f"from:{CARRIER}",
+                                 "action": "trash"})
+    stored = rulesmod.load_rules()
+    for r in stored:
+        if r["id"] == rule["id"]:
+            r.pop("account", None)
+    rulesmod._save(stored)
+    assert habits.suggestions(accountsmod.get("default"))["suggestions"] == []
 
 
 def test_hidden_senders_are_skipped_per_account_and_tenant(bridge):
     scan(bridge)
     put(real_steps())
     acc = accountsmod.get("default")
-    habitstore.hide(DHL, "default")
+    habitstore.hide(CARRIER, "default")
     got = habits.suggestions(acc)
     assert got["suggestions"] == [] and got["hidden"] == 1
     # another account's dismissal does not hide it here
     habitstore.show_all("default")
-    habitstore.hide(DHL, "other")
+    habitstore.hide(CARRIER, "other")
     assert len(habits.suggestions(acc)["suggestions"]) == 1
     # nor does another tenant's
-    habitstore.hide(DHL, "default")
+    habitstore.hide(CARRIER, "default")
     bob = tenants.for_subject("bob@y.example")
     with tenants.use(bob):
         assert habitstore.hidden("default") == set()
         habitstore.hide("x@y.example", "default")
-    assert habitstore.hidden("default") == {DHL}
+    assert habitstore.hidden("default") == {CARRIER}
     assert (bob.root / "habit_hidden.json").is_file()
 
 
@@ -466,7 +481,7 @@ def test_habits_endpoint_dismiss_and_show(bridge):
     put(real_steps())
     got = client.get("/api/habits").json()
     assert got["enabled"] is True and len(got["suggestions"]) == 1
-    assert client.post("/api/habits/dismiss", json={"key": DHL}).status_code \
+    assert client.post("/api/habits/dismiss", json={"key": CARRIER}).status_code \
         == 200
     got = client.get("/api/habits").json()
     assert got["suggestions"] == [] and got["hidden"] == 1
@@ -483,19 +498,19 @@ def test_making_the_suggested_rule_gives_a_report_mode_rule(bridge):
     scan(bridge)
     put(real_steps(young=7))
     (s,) = client.get("/api/habits").json()["suggestions"]
-    r = client.post("/api/rules", json={"name": "Trash DHL Paket", **s["rule"]})
+    r = client.post("/api/rules", json={"name": "Trash carrier", **s["rule"]})
     assert r.status_code == 200
     rule = r.json()
     assert rule["mode"] == "report" and rule["report_runs"] == 0
-    assert rule["query"] == f"from:{DHL}" and rule["older_than_days"] == 7
+    assert rule["query"] == f"from:{CARRIER}" and rule["older_than_days"] == 7
     assert rule["schedule"] == "weekly"
     run = client.post(f"/api/rules/{rule['id']}/run").json()
     assert run["mode"] == "report" and run["error"] == ""
     # the habit is covered now: it disappears
     assert client.get("/api/habits").json()["suggestions"] == []
     # nothing was moved
-    assert len(mailops.STATE["groups"]["sender"][DHL]["folders"]) >= 1
-    assert mailops.STATE["groups"]["sender"][DHL]["count"] == 3
+    assert len(mailops.STATE["groups"]["sender"][CARRIER]["folders"]) >= 1
+    assert mailops.STATE["groups"]["sender"][CARRIER]["count"] == 3
 
 
 def test_a_made_rule_cannot_start_active_even_when_asked(bridge):

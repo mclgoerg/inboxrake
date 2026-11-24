@@ -67,15 +67,21 @@ export const habitRuleName = (h: Habit): string =>
   t(`habit.rule_${h.action}`, { sender: h.label, folder: h.dest_name })
     .slice(0, 80);
 
+/** How recent a suggestion's newest step must be for a toast to credit it
+ *  to the step that just finished (seconds). An older one that only came
+ *  back (e.g. its rule was deleted) is not offered. */
+const FRESH_STEP_S = 600;
+
 /** The habit a step just made appear: asks the server again (at most
  *  `waitMs`; slower = none) and returns the first suggestion `known` did not
- *  have. A toast uses it to offer Automate…. */
+ *  have whose newest step is recent. A toast uses it to offer Automate…. */
 export async function newHabit(
     reload: () => Promise<HabitsResp | null>, known: Set<string>,
-    waitMs = 400): Promise<Habit | undefined> {
+    waitMs = 400, now = Date.now() / 1000): Promise<Habit | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const slow = new Promise<null>((r) => { timer = setTimeout(() => r(null), waitMs); });
   const got = await Promise.race([reload(), slow]);
   clearTimeout(timer);
-  return habitList(got).find((h) => !known.has(h.id));
+  return habitList(got).find(
+    (h) => !known.has(h.id) && h.last >= now - FRESH_STEP_S);
 }

@@ -32,8 +32,16 @@ test("nothing is listed while the setting is off or nothing was loaded", () => {
 
 test("newHabit: only a suggestion the baseline did not have", async () => {
   const reload = vi.fn().mockResolvedValue(habitsResp([deals, bank]));
-  expect(await newHabit(reload, new Set([deals.id]))).toBe(bank);
-  expect(await newHabit(reload, new Set([deals.id, bank.id]))).toBeUndefined();
+  const now = bank.last + 5;
+  expect(await newHabit(reload, new Set([deals.id]), 400, now)).toBe(bank);
+  expect(await newHabit(reload, new Set([deals.id, bank.id]), 400, now))
+    .toBeUndefined();
+});
+
+test("newHabit: a suggestion whose newest step is old is not credited to this step", async () => {
+  const reload = vi.fn().mockResolvedValue(habitsResp([bank]));
+  expect(await newHabit(reload, new Set(), 400, bank.last + 601)).toBeUndefined();
+  expect(await newHabit(reload, new Set(), 400, bank.last + 599)).toBe(bank);
 });
 
 test("newHabit: a slow or failed answer is no answer", async () => {

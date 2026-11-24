@@ -148,7 +148,7 @@ def _covered(acc, keys: list[str]) -> set[str]:
     any mode and action, on the sender or its domain)."""
     mine_ = [r for r in rulesmod.load_rules()
              if r.get("scope", "mail") == "mail"
-             and r.get("account") == acc.name
+             and (r.get("account") or accounts.default_name()) == acc.name
              and r.get("grouping") in ("sender", "domain")]
     if not mine_ or not keys:
         return set()

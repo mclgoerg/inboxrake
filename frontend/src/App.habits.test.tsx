@@ -127,7 +127,9 @@ const finishTrash = () => {
 test("a step that made a habit appear: the toast says which time it was and "
   + "offers Automate…, which opens that card on Rules", async () => {
   await mount({ ...baseState });
-  habits.mockResolvedValue(habitsResp([deals]));
+  // the step just made it appear: its newest step is now
+  habits.mockResolvedValue(habitsResp([
+    { ...deals, last: Math.floor(Date.now() / 1000) }]));
   finishTrash();
   const msg = await screen.findByText("Moved 12 mails to Trash");
   const bar = msg.closest("[data-variant]") as HTMLElement;

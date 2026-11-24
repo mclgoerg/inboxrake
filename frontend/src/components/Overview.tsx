@@ -266,7 +266,8 @@ export function Overview(p: OverviewProps) {
     <div className="pb-6">
       {/* From 1280 two columns that stack on their own (so a short card
           leaves no gap under it); below, one column in the order Balance,
-          Last week, Next steps, Kinds (the wrappers vanish, `order` sorts). */}
+          Last week, Next steps, Kinds (the wrappers vanish, `order` sorts); the
+          phone-only habit widget goes first, under the title (board 110). */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4
         xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-start">
         <div className="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
@@ -277,7 +278,7 @@ export function Overview(p: OverviewProps) {
           {p.onOpenHabit && (
             <HabitWidget habits={habitList} onOpen={p.onOpenHabit}
               onChanged={p.onHabitsChanged ?? (() => {})}
-              className="max-xl:order-1" />
+              className="-order-1" />
           )}
           {hasNext && (
             <div className="max-xl:order-2">
