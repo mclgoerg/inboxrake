@@ -217,7 +217,7 @@ export interface ParsedFilter {
   inSeconds: number | null;
 }
 
-const GRADE_VALUE = /^(<=|>=)?[a-f]$/;
+const GRADE_VALUE = /^(<=|>=)?[a-df]$/;   // A B C D F - there is no E
 
 /** The grade letters, best first (parity: backend/grades.py LETTERS). */
 export const GRADE_LETTERS: readonly GradeLetter[] = ["A", "B", "C", "D", "F"];

@@ -40,7 +40,7 @@ domain or subject), its label, or its sub-label. `shop` finds
 | `has:tracker` | A checked mail carries a tracking pixel or click tracking (needs the local body index). | |
 | `in:<N>(min\|h\|d)` | A time window of N minutes, hours or days back from now, only valid next to `is:new`, `is:still-mailing` or `ai:` (see below). | `is:new in:7d` |
 | `eng:low\|medium\|high` | How much you engage with the sender: scores up to 33 are low, 34-66 medium, 67 and up high. | `eng:low` |
-| `grade:<letter>` / `grade:<=<letter>` / `grade:>=<letter>` | The sender's grade, A (best) to F (worst): `grade:d` is exactly D, `grade:<=c` is C or worse, `grade:>=b` is B or better. Sender rows only; see [Sender grade](features.md#sender-grade). | `grade:<=d` |
+| `grade:<letter>` / `grade:<=<letter>` / `grade:>=<letter>` | The sender's grade, A (best), B, C, D or F (worst; there is no E): `grade:d` is exactly D, `grade:<=c` is C or worse, `grade:>=b` is B or better. Sender rows only; see [Sender grade](features.md#sender-grade). | `grade:<=d` |
 | `from:<address>` | Exactly this sender address (sender grouping only). | `from:news@shop.example` |
 | `domain:<domain>` | Exactly this domain (domain grouping). | `domain:shop.example` |
 

@@ -657,7 +657,7 @@ describe("grade: filter", () => {
     expect(parseFilter("grade:>=b").grade).toEqual({ op: ">=", letter: "B" });
     expect(parseFilter("").grade).toBeNull();
     for (const bad of ["grade:g", "grade:", "grade:=c", "grade:<c",
-      "grade:cc", "grade:<=", "grade:>=z"]) {
+      "grade:cc", "grade:<=", "grade:>=z", "grade:e", "grade:<=e", "grade:>=e"]) {
       const f = parseFilter(bad);
       expect(f.grade).toBeNull();
       expect(f.text).toEqual([bad]);

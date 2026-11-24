@@ -298,7 +298,8 @@ def test_grade_filter_never_matches_a_row_without_a_grade():
 
 
 @pytest.mark.parametrize("bad", ["grade:g", "grade:", "grade:=c", "grade:<c",
-                                 "grade:cc", "grade:<=", "grade:>=z"])
+                                 "grade:cc", "grade:<=", "grade:>=z",
+                                 "grade:e", "grade:<=e", "grade:>=e"])
 def test_a_bad_grade_value_is_a_free_word(bad):
     f = rulesmod.parse_filter(bad)
     assert f["grade"] is None and f["text"] == [bad]

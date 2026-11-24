@@ -9,7 +9,7 @@ Six checks, each "ok" (+1), "bad" (-1) or "neutral" (0, also "not checked"
 when the data is not there). A sender that keeps mailing after a successful
 unsubscribe counts -2. Fixed weights, on purpose: no per-user switches. The
 same table is shown to the user on "How grades work"
-(frontend/src/components/GradeHelp.tsx).
+(GradeHelp in frontend/src/components/GradeUi.tsx).
 
 | check        | ok                      | bad                         |
 |--------------|-------------------------|-----------------------------|

@@ -93,7 +93,7 @@ _RUN_LOCK = threading.Lock()      # one rule run at a time
 
 _QUAL_RE = re.compile(
     r"^(tag|ai|age|unread|is|has|eng|grade|att|from|domain|in):(.*)$")
-_GRADE_RE = re.compile(r"^(<=|>=)?([a-f])$")
+_GRADE_RE = re.compile(r"^(<=|>=)?([a-df])$")   # A B C D F - there is no E
 _AGE_RE = re.compile(r"^>?(\d+)(m|y)$")
 _UNREAD_RE = re.compile(r"^>?(\d+)$")
 _ATT_RE = re.compile(r"^>?(\d+)(k|m|g)?$")
