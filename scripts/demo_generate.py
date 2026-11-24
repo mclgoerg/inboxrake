@@ -367,7 +367,8 @@ def _arrival(days_ago: float, profile: str) -> float:
 def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
           span_days=700.0, unread=0.7, size=(9000, 60000), unsub=False,
           atts=None, att_n=3, html=None, chain: list | None = None,
-          me: str = ME, at: str | None = None) -> list[dict]:
+          me: str = ME, at: str | None = None,
+          one_click: bool = False) -> list[dict]:
     out = []
     profile = at or ("work" if chain is not None
                      else "newsletter" if unsub else "mixed")
@@ -382,6 +383,7 @@ def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
         out.append(make_msg(
             next(_UID), frm=frm, subject=subj,
             unsub="<https://unsub.example/u>" if unsub else None,
+            unsub_post=unsub and one_click,       # List-Unsubscribe-Post
             msgid=f"<demo-{next(_UID)}@demo.example>",
             size=random.randint(*size),
             seen=random.random() > unread,
@@ -450,10 +452,10 @@ PROTON_INBOX = WANDER + (
     + mails('"TechDigest" <digest@techdigest.example>',
             ["Issue #{n}: Rust vs. the world", "Weekly: self-hosting corner",
              "Issue #{n}: the terminal renaissance"], 88, unsub=True,
-          html=newsletter_html(click=CLICK_HOST))
+          one_click=True, html=newsletter_html(click=CLICK_HOST))
     + mails('"Streamly" <info@streamly.example>',
             ["New this week on Streamly", "Your watchlist just got better"],
-            64, unsub=True, unread=0.8,
+            64, unsub=True, unread=0.8, one_click=True,
             html=newsletter_html("track.streamly-demo.example"))
     + mails('"Bergsport Huber" <newsletter@bergsport-huber.example>',
             ["Neu eingetroffen: Tourenski 2026", "Wochenend-Angebote",
@@ -529,14 +531,29 @@ PROTON_INBOX = WANDER + (
 # (some days two), mostly unread. The shared random stream is restored so the
 # data after it stays unchanged.
 _rs = random.getstate()
+# (Sender grade: it is the loud, tracking sender with a one-click unsubscribe.)
 PROTON_INBOX += (
     mails('"Deals Daily" <deals@dealsdaily.example>',
           ["Today's top deals", "Only today: flash prices",
            "Your daily picks"], 75, newest_days=0.2, unread=0.98, unsub=True,
-          at="daily")
+          at="daily", one_click=True,
+          html=newsletter_html(PIXEL_HOST, CLICK_HOST))
     + mails('"Deals Daily" <deals@dealsdaily.example>',
             ["Deal ends at midnight"], 18, newest_days=0.4, span_days=75,
-            unread=0.98, unsub=True, at="daily"))
+            unread=0.98, unsub=True, at="daily", one_click=True,
+            html=newsletter_html(PIXEL_HOST, CLICK_HOST)))
+random.setstate(_rs)
+
+# A sender that earns an F in the grades: a mail a day for two weeks, never
+# opened, heavy, tracking, and no way to unsubscribe. Own random stream.
+_rs = random.getstate()
+random.seed(115)
+PROTON_INBOX += mails('"Bonus Blast" <hi@bonusblast.example>',
+                      ["You may have won!", "Claim your bonus now",
+                       "Last reminder: an unclaimed reward"], 17,
+                      newest_days=0.6, unread=1.0, at="daily",
+                      size=(1200000, 1800000),
+                      html=newsletter_html(PIXEL_HOST, CLICK_HOST))
 random.setstate(_rs)
 
 # A "ghost" sender for Your year in mail: plenty of mail, never opened. The
