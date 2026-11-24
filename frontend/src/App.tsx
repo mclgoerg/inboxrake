@@ -3404,7 +3404,7 @@ export default function App() {
       {/* 2 px strip overlaid on the gap under the toolbar while a job runs
           (takes no space, so it never shifts the layout). */}
       <div className="relative h-0">
-        {(job || pending) && (
+        {!allMode && (job || pending) && (
           <div className="absolute inset-x-0 -top-1">
             <ProgressBar thin label={job?.label ?? pending}
               value={progress?.done ?? 0} max={progress?.total ?? 0}
