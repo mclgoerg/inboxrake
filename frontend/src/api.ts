@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
-  AccountSummary, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AllAccountsResp, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp,
@@ -32,6 +32,18 @@ let ACCOUNT = "";
 
 export function setAccount(name: string) {
   ACCOUNT = name;
+}
+
+/** Run the calls `fn` STARTS (before its first await) against one account
+ *  instead of the active one - the multi-account confirm runs one step per
+ *  account through the ordinary per-account calls. Only the synchronous part
+ *  of `fn` is scoped (`req` reads the account when it builds the URL), so
+ *  every call of a step is wrapped on its own: `inAccount(a, () =>
+ *  api.unsubscribe(...))`, never a block with an await between two calls. */
+export function inAccount<T>(name: string, fn: () => T): T {
+  const previous = ACCOUNT;
+  ACCOUNT = name;
+  try { return fn(); } finally { ACCOUNT = previous; }
 }
 
 /** Pin a call to one account (the one being edited in Settings, which is
@@ -449,6 +461,13 @@ export const api = {
   /** Per account: what its last scan holds (the account switcher's cards). */
   accountsSummary: () => req<Record<string, AccountSummary>>(
     "/api/accounts/summary"),
+  /** All accounts: every mailbox's card and the senders that write to
+   *  several of them. `since` = per account the epoch seconds its "+N new"
+   *  counts from (the remembered visit). Read-only, no mail server. */
+  accountsOverview: (since: Record<string, number> = {}) => req<AllAccountsResp>(
+    Object.keys(since).length
+      ? `/api/accounts/overview?since=${encodeURIComponent(JSON.stringify(since))}`
+      : "/api/accounts/overview"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
   /** AI assistants (MCP): this workspace's access tokens. */
   assistantTokens: () => req<AssistantTokenList>("/api/assistants/tokens"),

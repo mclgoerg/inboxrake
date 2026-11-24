@@ -14,6 +14,8 @@ import { Sidebar, type SidebarTool } from "./components/Sidebar";
 import { openProposals } from "./proposals";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
+import { canScopeAll, loadAllScope, saveAllScope } from "./allAccounts";
+import { useAllAccounts } from "./useAllAccounts";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useConnectRoute, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -55,6 +57,9 @@ import { UnsubscribeSheet, openUnsubscribeSheet, useUnsubscribeOpener,
   from "./components/UnsubscribeSheet";
 import { WrappedStory } from "./components/WrappedStory";
 import { AccountSwitcher } from "./components/AccountSwitcher";
+import { AccountChips, AllAccountsOverview } from "./components/AllAccountsOverview";
+import { PickAccountList, PickAccountTool } from "./components/PickAccount";
+import { UnsubscribeAcross } from "./components/UnsubscribeAcross";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterMenu";
 import { SelectMatches } from "./components/SelectMatches";
@@ -62,7 +67,7 @@ import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
 import { focusSpecialFolders } from "./components/FolderSettings";
 import { FoldersPanel } from "./components/FoldersPanel";
-import { AccountAvatar, BarButton, BulkBar, Button,
+import { AccountAvatar, AccountStack, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuItem, Meta, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
@@ -86,6 +91,7 @@ import { DECK_MAX, protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
+  SameSenderRow,
   KnowledgeStored,
   StatusMsg, SubscriptionsResp, TrashResp, FolderRole, UndoIdent, UndoEntry,
   AuditBy } from "./types";
@@ -131,6 +137,14 @@ const UNDO_MENU_MAX = 8;
 const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
   u.id ?? `${u.ts}|${u.count}|${u.label}`;
 
+/** The sum of per-account counts that may be unknown (null / undefined):
+ *  undefined while none of them is known (no count shown). */
+const sumCounts = (xs: (number | null | undefined)[] | undefined):
+    number | undefined => {
+  const known = (xs ?? []).filter((x): x is number => x != null);
+  return known.length ? known.reduce((a, b) => a + b, 0) : undefined;
+};
+
 const actionVerb = (a: string): string =>
   ({ trash: t("Move to Trash"), archive: t("Archive"), move: t("Move"),
      mark_read: t("Mark as read"), move_contents: t("Move"),
@@ -150,6 +164,10 @@ export default function App() {
   // Active account: every view shows EXACTLY one account, never a mix.
   const [account, setAccountState] = useState(
     () => localStorage.getItem("pmc_account") || "");
+  // "All accounts" (the switcher's first item) reads the user's accounts side
+  // by side; `account` stays the last single account (what Settings and the
+  // per-account pages fall back to).
+  const [scopeAll, setScopeAll] = useState(loadAllScope);
   const [mode, setMode] = useState<Grouping>("sender");
   // The flat "All mails" view sits beside the grouping tabs; the choice
   // survives reloads like the sort settings.
@@ -158,6 +176,12 @@ export default function App() {
   const wide = useSidebar();
   const compactSelect = useMediaQuery("(width < 80rem)");
   const phone = useMediaQuery("(width < 48rem)");
+  const accountNames = useMemo(
+    () => (cfg ? Object.keys(cfg.accounts) : []), [cfg]);
+  // All accounts needs two mailboxes: with fewer the choice is not in effect.
+  const allScope = scopeAll && canScopeAll(accountNames);
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
   // Settings with unsaved edits asks before the page is left (sidebar, tab
   // bar, browser Back): the page registers itself here while it is open.
   const settingsCtl = useRef<SettingsControl | null>(null);
@@ -194,6 +218,9 @@ export default function App() {
     if (page !== "all") { setAllMailsQuery(""); setAllMailsSlot(null); }
   }, [page]);
   const overview = page === "overview";
+  // The Overview of all accounts: its numbers (also the sidebar's counts while
+  // All accounts is selected) and Scan all.
+  const all = useAllAccounts(allScope, allScope && overview, accountNames);
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
   const pageByApp = useRef(false);
@@ -277,6 +304,11 @@ export default function App() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
+  // All accounts: Your year in mail works on one account - ask which.
+  const [pickWrapped, setPickWrapped] = useState(false);
+  // All accounts: the same sender that writes to several accounts, open in the
+  // multi-account unsubscribe confirm.
+  const [acrossRow, setAcrossRow] = useState<SameSenderRow | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
   // Activity opened narrowed to one kind (Settings > a token's steps)
   const [activityBy, setActivityBy] = useState<AuditBy>("all");
@@ -313,7 +345,10 @@ export default function App() {
   // Pages that replace the sender list / toolbar.
   // Settings is a page of its own (every width): it replaces the sender list.
   const settingsPage = navPage === "settings";
-  const bare = toolPage || routed || settingsPage;
+  // All accounts: every page but Settings shows the Overview across the
+  // accounts - or, for what works on ONE account, "Pick an account".
+  const allMode = allScope && !settingsPage;
+  const bare = toolPage || routed || settingsPage || allMode;
   // The content column is one full-height page (tool pages, Settings >= 1024).
   const fullPage = routed || (settingsPage && wide);
   const [undoOpen, setUndoOpen] = useState(false);
@@ -405,16 +440,17 @@ export default function App() {
   // Drop a stale saved account (e.g. deleted meanwhile) once cfg is known.
   useEffect(() => {
     if (cfg && (!account || !cfg.accounts[account])) {
-      switchAccount(cfg.default_account);
+      switchAccount(cfg.default_account, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg]);
 
-  const switchAccount = (name: string) => {
+  const switchAccount = (name: string, keepScope = false) => {
     noteAccountSwitch();
     fetching.current = false;
     clearTimeout(timer.current);
     localStorage.setItem("pmc_account", name);
+    if (!keepScope) { setScopeAll(false); saveAllScope(false); }
     apiSetAccount(name);
     // Switching swaps the ENTIRE view: no state may leak across accounts.
     stateRef.current = null;
@@ -428,6 +464,20 @@ export default function App() {
     setFilter("");
     setFocusIdx(-1);
     setAccountState(name);   // effect below reconnects SSE for this account
+  };
+
+  // "All accounts": the view changes, the single account keeps loading in the
+  // background (Settings and the pages that need one account use it).
+  const selectAll = () => {
+    if (allScope) return;
+    noteAccountSwitch();
+    setScopeAll(true);
+    saveAllScope(true);
+    setSelected(new Set());
+    setSelectMode(false);
+    setDetail(null);
+    setUnsubSheet(null);
+    setFocusIdx(-1);
   };
 
   useEffect(() => {
@@ -1226,6 +1276,22 @@ export default function App() {
     try { await api.scan(); refresh(); }
     catch (e: any) { fail(e); }
     setPending("");
+  };
+
+  // All accounts: scan every mailbox, one after the other (useAllAccounts).
+  const scanAllNow = async () => {
+    const r = await all.scanAll(accountNames);
+    if (r.busy.length) {
+      notify(t("all.scan_busy", { names: r.busy.join(", ") }));
+    }
+    if (r.failed.length) {
+      notify(t("all.scan_done_failed", { ok: r.scanned.length,
+        n: accountNames.length, failed: r.failed.length,
+        names: r.failed.join(", ") }), "error");
+    } else if (r.scanned.length) {
+      notify(t("all.scan_done", { n: r.scanned.length }), "success");
+    }
+    refresh();
   };
 
   // No `keys` = every unrated group in the current grouping (today's
@@ -2366,7 +2432,7 @@ export default function App() {
     trash: () => setFoldersOpen("trash"),
     stats: () => setStatsOpen(true),
     space: () => setSpaceOpen(true),
-    wrapped: () => setWrappedOpen(true),
+    wrapped: () => allMode ? setPickWrapped(true) : setWrappedOpen(true),
     trackers: () => setTrackersOpen(true),
     subscriptions: () => setSubsOpen(true),
     addresses: () => setAddressesOpen(true),
@@ -2429,6 +2495,30 @@ export default function App() {
     if (routeTool) goPage(TOOL_TAB[routeTool] ?? to, true);
   };
   const toolShown = (id: ToolPage) => shownTool === id;
+  // All accounts: what works on ONE account asks which. A tool's name for the
+  // text, closing it, and picking: the same page / tool then opens for it.
+  const toolName = (id: ToolPage): string => ({
+    search: t("Search all mails"), triage: t("triage.menu"),
+    duplicates: t("Duplicates"), attachments: t("Attachments"),
+    rules: t("Rules"), junk: t("role.junk"), trash: t("role.trash"),
+    stats: t("Statistics"), space: t("space.title"),
+    trackers: t("tracker.menu"), subscriptions: t("sub.menu"),
+    addresses: t("addr.menu"), activity: t("nav.activity"),
+    move: t("Settings") } as Record<string, string>)[id] ?? id;
+  const clearToolFlags = () => {
+    setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
+    setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
+    setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
+    setSubsOpen(false); setAddressesOpen(false); setAuditOpen(false);
+  };
+  const pickAccount = (name: string) => {
+    const space = spaceOpen;    // an account switch closes the Space map
+    switchAccount(name);
+    if (space) setSpaceOpen(true);
+  };
+  const pagePickName = t(page === "cleanup" ? "tools.group_cleanup"
+    : page === "insights" ? "tools.group_insights"
+    : flat ? "nav.all_mail" : "nav.senders");
   // The page a tool's back link (below 1024) returns to - what `closeTool`
   // does: a tool route goes to the tab page that lists it (Overview for
   // Search), a tool opened as a modal drops back to the page underneath.
@@ -2449,6 +2539,7 @@ export default function App() {
       summary={acctSummary} appearance={appearance}
       onAppearance={setAppearance}
       onSwitch={(n) => { close(); switchAccount(n); }}
+      scopeAll={allScope} onAll={() => { close(); selectAll(); }}
       onFix={(n) => { close(); void fixAccount(n); }}
       onAdd={() => { close(); setWizard({ mode: "add", previous: account }); }}
       onSettings={() => { close(); openTool("settings"); }}
@@ -2466,19 +2557,26 @@ export default function App() {
         : buildId ? t("menu.version",
           { version: __APP_VERSION__, id: buildId }) : undefined} />
   );
-  const accountLabel = account ? t("menu.account_switch", { name: account })
+  const accountLabel = allScope
+    ? t("all.switch_label", { n: accountNames.length })
+    : account ? t("menu.account_switch", { name: account })
     : t("menu.profile");
   const profileMenu = wide ? (
     <Menu label={accountLabel} variant="quiet" align="left" className="w-full"
       triggerClass="w-full justify-start"
       trigger={
         <span className="flex w-full min-w-0 items-center gap-2.5 text-left">
-          <AccountAvatar name={account || "?"} className="shrink-0" />
+          {allScope ? <AccountStack names={accountNames} />
+            : <AccountAvatar name={account || "?"} className="shrink-0" />}
           <span className="min-w-0 flex-1">
             <span className="block truncate type-body font-medium">
-              {account || t("menu.profile")}
+              {allScope ? t("all.title") : account || t("menu.profile")}
             </span>
-            {!!acct?.user && (
+            {allScope ? (
+              <span className="block truncate type-meta text-muted">
+                {t("all.mailboxes", { n: accountNames.length })}
+              </span>
+            ) : !!acct?.user && (
               <span className="block truncate type-meta text-muted">
                 {acct.user}
               </span>
@@ -2499,7 +2597,9 @@ export default function App() {
         {/* Just the avatar (a person icon before an account name exists), so
             it never widens the bar. */}
         <span className="inline-flex items-center gap-0.5">
-          {account ? <AccountAvatar name={account} size="md" />
+          {allScope ? <AccountStack names={accountNames.slice(0, 2)}
+            ring="surface" />
+            : account ? <AccountAvatar name={account} size="md" />
             : <User size={18} />}
           {auth.is_admin && auth.mode === "oidc"
             && <Star size={14} aria-hidden />}
@@ -2532,6 +2632,12 @@ export default function App() {
   const tokenLabel = activeFilterLabel(filter, state?.presets ?? [],
     presetFilterQuery, { new: newCount, still: stillCount });
   const scannedAgo = fmtAgo(state?.scanned_ts);
+  // All accounts: the Overview's subtitle (or what Scan all is doing).
+  const allSub = all.run ? t("all.scanning", { account: all.run.account,
+    done: all.run.done + 1, total: all.run.total })
+    : all.data ? t("all.page_sub", {
+      boxes: t("all.mailboxes", { n: all.data.accounts.length }),
+      mails: t("n.mails", { n: all.data.totals.mails }) }) : undefined;
   // The Scan button's own busy rule - the top bar button and a pull to scan
   // (phones) both start `startScan` only when it holds.
   const scanBusy = scanning || aiRunning || deleting || attsRunning
@@ -2954,11 +3060,16 @@ export default function App() {
     {wide && (
       <Sidebar page={page} onPage={goPage} onOpen={openTool}
         account={profileMenu}
-        senderCount={state?.scanned_ts ? allGroups.length : undefined}
-        mailCount={state?.scanned_ts
+        senderCount={allMode ? all.data?.totals.senders
+          : state?.scanned_ts ? allGroups.length : undefined}
+        mailCount={allMode ? all.data?.totals.mails
+          : state?.scanned_ts
           ? Object.values(state.groups.sender ?? {})
             .reduce((n, g) => n + g.count, 0) : undefined}
-        junkCount={state?.junk_count} trashCount={state?.trash_count}
+        junkCount={allMode ? sumCounts(all.data?.accounts.map((a) => a.junk))
+          : state?.junk_count}
+        trashCount={allMode ? sumCounts(all.data?.accounts.map((a) => a.trash))
+          : state?.trash_count}
         proposals={openProposals(state?.rules).length}
         habits={habits.length}
         subscriptions={subs?.totals.count} leaked={leaked}
@@ -2969,6 +3080,17 @@ export default function App() {
     {/* From 1024 px: the page header (the same one every tool page and
         Settings use) - title, when it was scanned, the grouping segments
         (Senders) and Scan. Below it the top bar below carries all of this. */}
+    {wide && allMode && !routed && (
+      <PageHeader contain="mx-auto max-w-6xl xl:max-w-360"
+        title={overview ? t("nav.overview") : pagePickName}
+        sub={overview ? allSub : undefined}
+        actions={overview ? (
+          <Button variant="secondary" onClick={scanAllNow}
+            aria-label={t("all.scan_all")} disabled={!!all.run}>
+            {all.run ? <Spinner /> : t("all.scan_all")}
+          </Button>
+        ) : undefined} />
+    )}
     {wide && !bare && (
       <PageHeader contain="mx-auto max-w-6xl xl:max-w-360"
         title={t(overview ? "nav.overview" : flat ? "nav.all_mail"
@@ -3009,7 +3131,10 @@ export default function App() {
               : overview ? "nav.overview"
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
-          {!toolPage && !scrolled && (scanning || !!scannedAgo) && (
+          {allMode && overview && !scrolled && !!allSub && (
+            <div className="truncate type-meta text-muted">{allSub}</div>
+          )}
+          {!allMode && !toolPage && !scrolled && (scanning || !!scannedAgo) && (
             <div className="truncate type-meta text-muted"
               title={scanning && scanFolder ? scanFolder : undefined}>
               {scanning ? scanLine : t("scan.age", { ago: scannedAgo })}
@@ -3019,11 +3144,14 @@ export default function App() {
         <Button variant="quiet" size="icon" label={t("Search all mails")}
           className="coarse:size-11"
           onClick={() => setSearchOpen(true)}><Search size={18} /></Button>
-        {!toolPage && !cfg?.setup_needed && (
-          <Button variant="quiet" size="icon" label={t("Scan")}
-            className="coarse:size-11" onClick={startScan}
-            disabled={scanBusy}>
-            {scanning ? <Spinner /> : <RefreshCw size={18} />}
+        {(allMode ? overview : !toolPage) && !cfg?.setup_needed && (
+          <Button variant="quiet" size="icon"
+            label={allMode ? t("all.scan_all") : t("Scan")}
+            className="coarse:size-11"
+            onClick={allMode ? scanAllNow : startScan}
+            disabled={allMode ? !!all.run : scanBusy}>
+            {allMode ? (all.run ? <Spinner /> : <RefreshCw size={18} />)
+              : scanning ? <Spinner /> : <RefreshCw size={18} />}
           </Button>
         )}
         {profileMenu}
@@ -3351,7 +3479,7 @@ export default function App() {
           </span>
         )}
       </div>}
-      {state?.notice && state.notice.key !== "cached_verdicts"
+      {!allMode && state?.notice && state.notice.key !== "cached_verdicts"
         && !RESTORE_NOTICES.includes(state.notice.key)
         && !ROLE_MOVE_NOTICES.includes(state.notice.key) && (
         <Notice className={routed ? "mx-3 mt-3" : "mb-2"} icon={<Info size={14} />}
@@ -3369,7 +3497,7 @@ export default function App() {
       )}
 
       {/* The Clean up / Insights tab pages (below 1024): today's panels. */}
-      {toolPage && (page === "cleanup" ? (
+      {toolPage && !allMode && (page === "cleanup" ? (
         <CleanupPage account={account} groups={senderGroups} state={state}
           deckSize={Math.min(DECK_MAX, groups.length)}
           triageDisabled={triageDisabled} aiShown={aiEnabled || demo}
@@ -3386,8 +3514,25 @@ export default function App() {
           }} />
       ))}
 
+      {allMode && !shownTool && cfg && (overview ? (
+        <AllAccountsOverview data={all.data} failed={all.failed}
+          phone={phone} onRetry={() => { void all.reload(); }}
+          chips={phone && (
+            <AccountChips names={accountNames} selected={null}
+              onSelect={(n) => n ? switchAccount(n) : undefined} />)}
+          onOpenAccount={(n) => switchAccount(n)}
+          onUnsubscribe={setAcrossRow} />
+      ) : (
+        <PickAccountList cfg={cfg} page={pagePickName}
+          onPick={pickAccount} onOverview={() => goPage("overview")} />
+      ))}
+
       {bare ? null : overview ? (
-        state && (
+        state && (<>
+          {phone && canScopeAll(accountNames) && (
+            <AccountChips names={accountNames} selected={account}
+              onSelect={(n) => n ? switchAccount(n) : selectAll()} />
+          )}
           <Overview phase={overviewPhase} groups={senderGroups}
             account={account} accountLine={accountLine}
             unverifiedName={acct?.user || account}
@@ -3416,7 +3561,7 @@ export default function App() {
               setSubsOnlyUnused(true);
               openTool("subscriptions");
             }} />
-        )
+        </>)
       ) : flat ? (
         state && (
           <AllMailsView key={state.account} state={state}
@@ -3500,7 +3645,11 @@ export default function App() {
       {/* A routed tool below 1024 (deep link, resize) has its route entry as its
           history entry; a tool opened from a tab page / menu pushes its own. */}
       <PageSlot page={wide} parent={shownTool ? backTarget : undefined}
-        entry={!routeTool}>{toolPanels}</PageSlot>
+        entry={!routeTool}>{allMode ? (shownTool && cfg && (
+          <PickAccountTool cfg={cfg} page={toolName(shownTool)}
+            onPick={pickAccount}
+            onClose={() => closeTool(clearToolFlags)} />
+        )) : toolPanels}</PageSlot>
       {/* A real dialog over whatever page is open - not a page of the slot. */}
       {unsubSheet && state && (
         <UnsubscribeSheet key={account} request={unsubSheet}
@@ -3522,6 +3671,19 @@ export default function App() {
           onClose={() => setUnsubSheet(null)} />
       )}
       {wrappedOpen && <WrappedStory onClose={() => setWrappedOpen(false)} />}
+      {pickWrapped && cfg && (
+        <PickAccountTool cfg={cfg} page={t("wrapped.menu")}
+          onPick={(n) => { setPickWrapped(false); switchAccount(n);
+            setWrappedOpen(true); }}
+          onClose={() => setPickWrapped(false)} />
+      )}
+      {acrossRow && (
+        <UnsubscribeAcross row={acrossRow} demo={demo}
+          exists={(a) => !!cfgRef.current?.accounts[a]}
+          onOpenActivity={(a) => { switchAccount(a); openTool("activity"); }}
+          onChanged={() => { void all.reload(); }}
+          onClose={() => setAcrossRow(null)} />
+      )}
       {aiFilterOpen && (
         <AiFilterPanel
           groups={allGroups} members={members}

@@ -154,7 +154,12 @@ The Pyodide version is pinned in one place,
 - **Safety invariants are non-negotiable.** Deletions must remain
   reversible IMAP moves to the trash role, UIDVALIDITY must be checked
   before acting on cached UIDs, UID bookkeeping stays server-side, and
-  accounts stay strictly separated (never aggregate across accounts).
+  accounts stay strictly separated: the server never merges their state
+  and never acts on two accounts in one call. The "All accounts" views may
+  *read* across the signed-in user's own accounts (`backend/allaccounts.py`:
+  the snapshots already in memory, one account at a time, no mail server); an
+  action over several accounts is one ordinary per-account call per account,
+  each with its own Undo and audit entry (the multi-account confirm).
   The optional AI review may only ever receive mail *metadata* - if you
   add a field to an AI payload, update the consent texts
   (`ai.disclaimer` / `ai.data_note`) in the same PR.

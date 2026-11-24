@@ -116,8 +116,11 @@ client ID, if you run one, is `INBOXRAKE_MS_CLIENT_ID` (see
   mail, to Trash asks for an extra confirmation. Individual-message moves
   refuse protected senders until they are unprotected in their group. **Empty Trash empties
   everything in Trash**, protected or not.
-- **Accounts stay strictly separate** - nothing is aggregated across
-  accounts, and with SSO nothing is shared between users.
+- **Accounts stay strictly separate** - their state is never merged and no
+  action touches two accounts in one call; the read-only "All accounts"
+  Overview only looks across the accounts of the signed-in user, and an action
+  over several of them runs one ordinary step per account, each with its own
+  Undo and Activity entry. With SSO nothing is shared between users.
 
 ## What the optional AI review sends
 
