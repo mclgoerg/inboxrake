@@ -397,6 +397,53 @@ export interface AuditEntry {
   kept_safe?: number;
   /** On a Time machine restore: the same for every step it undid. */
   undoes_many?: { id: string; count: number }[];
+  /** A manual step: the sender groups it covered (what "You keep doing this"
+   *  reads); newer entries only. */
+  keys?: string[];
+}
+
+/** One manual step a suggestion is based on (the "Why these?" evidence). */
+export interface HabitStep {
+  id: string;
+  ts: number;
+  /** Mails the step covered for this sender. */
+  n: number;
+  unread: number;
+  /** Age of the youngest mail it moved (days); null = not known. */
+  youngest_days: number | null;
+}
+
+/** "You keep doing this": the same cleanup done by hand again and again, as
+ *  the ordinary rule it would become (`rule`; the client adds its name). */
+export interface Habit {
+  id: string;
+  key: string;
+  label: string;
+  action: "trash" | "archive" | "move" | "mark_read";
+  dest: string;
+  dest_name: string;
+  times: number;
+  days: number;
+  since: number;
+  last: number;
+  steps: HabitStep[];
+  min_n: number;
+  max_n: number;
+  always_unread: boolean;
+  older_than_days: number | null;
+  schedule: "daily" | "weekly";
+  /** What the rule would act on in the current scan; null = no scan. */
+  catch: number | null;
+  rule: { grouping: Grouping; query: string; action: string; dest: string;
+    schedule: "daily" | "weekly"; older_than_days: number | null };
+}
+
+export interface HabitsResp {
+  /** False: switched off in Settings (nothing is mined). */
+  enabled: boolean;
+  suggestions: Habit[];
+  /** Senders the user said "Not this one" to. */
+  hidden: number;
 }
 
 /** Who did it, for the Activity filter. */
@@ -971,6 +1018,8 @@ export interface Config {
   /** Keep-safe switches (per class, plus "Check rule runs too"). Absent from
    *  older backends. */
   keep_safe?: KeepSafeSettings;
+  /** "Suggest rules from what I do" (absent from older backends). */
+  habits?: { suggest: boolean };
   ai: {
     provider: "anthropic" | "foundry" | "openai" | "ollama";
     model: string;

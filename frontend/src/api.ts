@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
-  AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp,
@@ -547,6 +547,13 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
   runRule: (id: string) => req<RuleRun>(`/api/rules/${id}/run`, {}),
+  /** "You keep doing this": the habits mined from the account's Activity. */
+  habits: (account?: string) =>
+    req<HabitsResp>(forAccount("/api/habits", account)),
+  habitDismiss: (key: string, account?: string) =>
+    req<{ ok: boolean }>(forAccount("/api/habits/dismiss", account), { key }),
+  habitsShow: (account?: string) =>
+    req<{ shown: number }>(forAccount("/api/habits/show", account), {}),
   createPreset: (name: string, query: string) =>
     req<FilterPreset>("/api/presets", { name, query }),
   updatePreset: (id: string, name: string, query: string) =>

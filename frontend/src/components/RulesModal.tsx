@@ -7,18 +7,19 @@ import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
-import type { AppState, Grouping, KeepSafeClass, Rule, RuleRun, RuleScope }
-  from "../types";
+import type { AppState, Grouping, Habit, KeepSafeClass, Rule, RuleRun,
+  RuleScope } from "../types";
 import { type Recipe, recipeBody, recipeFolder,
   recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
+import { HabitSection } from "./HabitCards";
 import { QueryBuilder } from "./QueryBuilder";
 import { NewRuleModes, type NewRuleMode, RecipeDialog, type RuleAi,
   RecipeStarters } from "./RecipePicker";
 import { Avatar, Button, checkDialog, confirmDialog, EmptyState, Input,
-  LINK_ACCENT, Menu, MenuItem, Modal, Notice, PanelHeader, PopupSelect, Segmented,
-  SettingsGroup, SettingsRow, Spinner, Tag, useIsPage, useMediaQuery,
-  useOptionalToast } from "./ui";
+  LINK_ACCENT, Menu, MenuItem, Modal, Notice, PanelHeader, PopupSelect,
+  SectionLabel, Segmented, SettingsGroup, SettingsRow, Spinner, Tag, useIsPage,
+  useMediaQuery, useOptionalToast } from "./ui";
 
 /** The rules section of the docs (cap, report mode, protected senders). */
 const RULES_DOCS_URL = "https://inboxrake.com/docs/features/#rules-and-scheduler";
@@ -500,8 +501,14 @@ function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
 }
 
 export function RulesModal({ state, onClose, onChanged, initialQuery = "",
-  initialRecipe, ai }: {
+  initialRecipe, ai, habits = [], habitFocus, onHabitsChanged }: {
   state: AppState;
+  /** "You keep doing this": the suggestions to show above the rules, the one
+   *  to bring into view (the toast's Automate…), and what to call after one
+   *  was made or hidden (the list is fetched again). */
+  habits?: Habit[];
+  habitFocus?: string;
+  onHabitsChanged?: () => void;
   /** Describe it… (AI is on: enabled; the demo: disabled with its hint);
    *  absent when there is no AI provider. */
   ai?: RuleAi;
@@ -1067,7 +1074,10 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
       </span>} onClose={onClose}
         sub={waiting
           ? `${t("n.rules", { n: rules.length })} · ${t("rules.waiting", { n: waiting })}`
-          : rules.length ? t("rules.sub", { n: rules.length }) : undefined}
+          : habits.length
+            ? `${t("n.rules", { n: rules.length })} · ${t("habit.sub_count",
+              { n: habits.length })}`
+            : rules.length ? t("rules.sub", { n: rules.length }) : undefined}
         actions={<Button size="sm" onClick={openNew}>
           <Plus size={16} aria-hidden className="mr-1 inline align-text-bottom" />
           {t("rule.new_btn")}
@@ -1084,6 +1094,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
               className={`col-start-2 shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
               {t("rules.how")}</a>
           </p>
+          <HabitSection habits={habits} account={state.account}
+            focusId={habitFocus}
+            onChanged={() => { onChanged(); onHabitsChanged?.(); }} />
+          {habits.length > 0 && rules.length > 0 && (
+            <SectionLabel className="pt-2">{t("habit.your_rules")}</SectionLabel>
+          )}
           {rules.map((rule) => isProposal(rule) ? (
             <ProposalCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
