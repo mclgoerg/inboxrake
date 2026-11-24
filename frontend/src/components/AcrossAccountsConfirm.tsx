@@ -30,7 +30,7 @@ export interface ConfirmLine {
   extraCount?: number;
 }
 
-export interface MultiAccountConfirmProps {
+export interface AcrossAccountsConfirmProps {
   title: string;
   lines: ConfirmLine[];
   /** The gray note under the list. */
@@ -64,9 +64,9 @@ type Phase = "review" | "running" | "result";
 const TONE = { done: "safe", link: "review", failed: "keep",
   skipped: "neutral" } as const;
 
-export function MultiAccountConfirm({ title, lines, note, extra, confirmLabel,
+export function AcrossAccountsConfirm({ title, lines, note, extra, confirmLabel,
   run, resultTitle, outcomeExtra, problem, loading, onFinished, onClose }:
-  MultiAccountConfirmProps) {
+  AcrossAccountsConfirmProps) {
   const [ticked, setTicked] = useState<Set<string>>(
     () => new Set(lines.filter((l) => !l.blocked).map((l) => l.account)));
   const [alsoExtra, setAlsoExtra] = useState(false);

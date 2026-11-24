@@ -1,6 +1,6 @@
 /* "Unsubscribe in N…" on the Overview of all accounts: the same sender writes
  * to several of the user's accounts, and this confirm unsubscribes in the
- * ticked ones. It is `MultiAccountConfirm` plus what a step does here:
+ * ticked ones. It is `AcrossAccountsConfirm` plus what a step does here:
  *
  *   per ticked account, pinned to it (`inAccount`) and one after the other:
  *   1. the account's own unsubscribe of ITS address for that sender
@@ -21,8 +21,8 @@ import { t } from "../i18n";
 import { confirmTrash, KEEP_SAFE_MIN } from "../keepsafe";
 import type { SameSenderRow, UnsubPreview, UnsubVia } from "../types";
 import { openUnsubPage } from "../unsub";
-import { MultiAccountConfirm, type ConfirmLine }
-  from "./MultiAccountConfirm";
+import { AcrossAccountsConfirm, type ConfirmLine }
+  from "./AcrossAccountsConfirm";
 import { Button } from "./ui";
 
 const VIA_TEXT: Record<Exclude<UnsubVia, null>, string> = {
@@ -183,7 +183,7 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
   };
 
   return (
-    <MultiAccountConfirm
+    <AcrossAccountsConfirm
       title={t("allc.title", { name: row.name, n: row.accounts.length })}
       lines={lines} loading={!previews}
       note={t("allc.note")}

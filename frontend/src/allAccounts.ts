@@ -7,7 +7,7 @@
  * ticked account, each through the ordinary per-account call pinned to that
  * account (`inAccount`), each with its own Undo and Activity entry on the
  * server. A step that fails does not stop the others. The multi-account
- * confirm (components/MultiAccountConfirm.tsx) is the one place that asks
+ * confirm (components/AcrossAccountsConfirm.tsx) is the one place that asks
  * and runs it. */
 
 import { nowMs } from "./clock";
