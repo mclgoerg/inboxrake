@@ -86,7 +86,7 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
         return [a.account, p] as const;
       } catch (e: any) {
         return [a.account, t("allc.preview_failed",
-          { account: a.account, msg: e.message ?? String(e) })] as const;
+          { account: a.account, msg: errorText(e.message ?? String(e)) })] as const;
       }
     })).then((rows) => { if (live) setPreviews(Object.fromEntries(rows)); });
     return () => { live = false; };
@@ -107,6 +107,8 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
       if (p.skipped_done) {
         return { ...base, sub: a.addr, blocked: t("allc.done_already") };
       }
+      // no link any more, or the group is gone: nothing to send here
+      return { ...base, sub: a.addr, blocked: t("allc.no_method") };
     }
     const via = p?.senders[0]?.via;
     return { ...base,
@@ -202,7 +204,8 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
   return (
     <AcrossAccountsConfirm
       title={t("allc.title", { name: row.name,
-        n: unsubscribable(row).length })}
+        n: previews ? lines.filter((l) => !l.blocked).length
+          : unsubscribable(row).length })}
       lines={lines} problem={problem} loading={!previews}
       note={t("allc.note")}
       extra={{ label: (n) => t("allc.also_trash", { n }),

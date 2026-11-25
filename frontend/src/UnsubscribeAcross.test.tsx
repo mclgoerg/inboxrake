@@ -165,6 +165,9 @@ describe("review", () => {
         : prev(keys[0], "one_click", 10));
     mount();
     await screen.findByText("protected sender - left alone");
+    // the title follows what the preview blocked, like the button
+    expect(screen.getByText(/Unsubscribe from Deals Daily in 2\saccounts\?/))
+      .toBeTruthy();
     const proton = screen.getByRole("checkbox",
       { name: "Unsubscribe in proton" }) as HTMLInputElement;
     expect([proton.disabled, proton.checked]).toEqual([true, false]);
@@ -176,6 +179,20 @@ describe("review", () => {
     expect(calls.map((c) => c.account)).toEqual(["gmail", "gmx"]);
     // the step itself asks the server to refuse a protected sender too
     expect(unsub.mock.calls.map((c) => c[2])).toEqual([true, true]);
+  });
+
+  it("a preview with nothing to send (link gone, group gone) blocks that " +
+    "account instead of leaving it ticked", async () => {
+    preview.mockReset().mockImplementation(async (_g, keys: string[]) =>
+      calls.at(-1)?.account === "gmx"
+        ? { ...prev(keys[0], "http", 0), senders: [] }
+        : prev(keys[0], "one_click", 10));
+    mount();
+    await screen.findByText(/Unsubscribe from Deals Daily in 2\saccounts\?/);
+    const gmx = screen.getByRole("checkbox",
+      { name: "Unsubscribe in gmx" }) as HTMLInputElement;
+    expect([gmx.disabled, gmx.checked]).toEqual([true, false]);
+    expect(confirmBtn(/^Unsubscribe in 2$/)).toBeTruthy();
   });
 
   it("a sender protected while the dialog is open: the server refuses, " +
