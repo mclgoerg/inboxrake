@@ -8,12 +8,13 @@ import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
 import { fmtNum, fmtPct } from "../numfmt";
+import { GradeBadge } from "./GradeUi";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
   isModalOpen, Meta, type SwipeAction, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
-  | "engagement";
+  | "engagement" | "grade";
 
 const PAGE_SIZES = [25, 50, 100, 200];
 const ALL = 1_000_000;
@@ -229,6 +230,8 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
   const allChecked =
     slice.length > 0 && slice.every((g) => selected.has(g.key));
   const showChecks = !!cards || !!selectMode || selected.size > 0;
+  // Sender rows carry a grade: a column of its own, sortable.
+  const showGrade = grouping === "sender";
   // Hidden checkboxes stay in the layout (no shift): the mouse reveals them
   // on hover / focus; on touch they are inert until select mode.
   const hiddenCls = `opacity-0 coarse:pointer-events-none
@@ -267,6 +270,11 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
             {sortBtn("label", groupLabel)}
           </th>
           {!compact && <th className={`${th} w-44`} />}
+          {showGrade && (
+            <th className={`${th} w-16`} aria-sort={ariaSort("grade")}>
+              {sortBtn("grade", t("Grade"))}
+            </th>
+          )}
           <th className={`${th} w-32 text-right`}
             aria-sort={ariaSort(sortK === "size" ? "size" : "count")}>
             {/* Stacked like the cells below: Mails over Size. */}
@@ -280,7 +288,8 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
       </thead>
       <tbody>
         {banner && (
-          <tr><td colSpan={compact ? 5 : 6} className="p-0">{banner}</td></tr>
+          <tr><td colSpan={(compact ? 5 : 6) + (showGrade ? 1 : 0)}
+            className="p-0">{banner}</td></tr>
         )}
         {slice.map((g, i) => {
           const on = g.key === openKey || selected.has(g.key);
@@ -327,6 +336,11 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
             </td>
             {!compact && (
               <td className={`px-2 py-2.5 text-right ${td}`}>{pill}</td>
+            )}
+            {showGrade && (
+              <td className={`px-2 py-2.5 ${td}`}>
+                {g.grade && <GradeBadge letter={g.grade.letter} />}
+              </td>
             )}
             <td className={`whitespace-nowrap px-2 py-2.5 text-right
               tabular-nums ${td}`}>
@@ -446,6 +460,9 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                     {pill}
                   </div>
                 </div>
+                {grouping === "sender" && g.grade && (
+                  <GradeBadge letter={g.grade.letter} />
+                )}
                 <div className="shrink-0 whitespace-nowrap text-right
                   tabular-nums">
                   <div className="font-semibold">{fmtNum(g.count)}</div>

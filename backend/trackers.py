@@ -285,9 +285,10 @@ class GroupMemo:
 
 
 def group_trackers(rec: dict, tmap: dict, acc) -> dict | None:
-    """A group's tracker summary {checked, pixel, click, hosts[top 3]}, or
+    """A group's tracker summary {checked, pixel, click, any, hosts[top 3]}
+    (`any` = checked mails with a pixel or a click-tracking link), or
     None when none of its mails was checked (lock held)."""
-    checked = pixel = click = 0
+    checked = pixel = click = flagged = 0
     hosts: Counter = Counter()
     for folder, uids in rec["folders"].items():
         uv = acc.folder_uv.get(folder, 0)
@@ -298,11 +299,13 @@ def group_trackers(rec: dict, tmap: dict, acc) -> dict | None:
             checked += 1
             pixel += row[0]
             click += row[1]
+            flagged += bool(row[0] or row[1])
             hosts.update(row[2])
     if not checked:
         return None
     top = sorted(hosts.items(), key=lambda kv: (-kv[1], kv[0]))
     return {"checked": checked, "pixel": pixel, "click": click,
+            "any": flagged,
             "hosts": [h for h, _ in top[:TOP_HOSTS_PER_GROUP]]}
 
 
