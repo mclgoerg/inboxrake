@@ -65,8 +65,9 @@ function AccountChipsOf({ row }: { row: SameSenderRow }) {
         <span key={a.account} className="inline-flex items-center gap-1.5
           rounded-full bg-chip py-0.5 pl-1 pr-2.5 type-meta tabular-nums">
           <Avatar name={a.account} />
-          <span className="sr-only">{a.account}: </span>
-          {fmtNum(a.mails)}
+          <span className="sr-only">{t("all.chip",
+            { account: a.account, n: a.mails })}</span>
+          <span aria-hidden>{fmtNum(a.mails)}</span>
         </span>
       ))}
     </span>
@@ -133,7 +134,7 @@ function SameSenderCard({ rows, onUnsubscribe, expanded, onExpand }: {
                 <div className="type-body font-semibold tabular-nums">
                   {fmtNum(row.mails)}</div>
                 <div className="type-meta text-muted">
-                  {t("n.mails", { n: row.mails }).replace(/^[\d.,\s ]+/, "")}
+                  {t("all.mails_label", { n: row.mails })}
                 </div>
               </div>
               <UnsubButton row={row} onOpen={onUnsubscribe}

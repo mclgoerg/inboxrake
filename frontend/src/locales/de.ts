@@ -2656,7 +2656,6 @@ export const DE: Record<string, string> = {
   "all.mailboxes": "{n}\u00a0Postfächer",
   "all.mailboxes_one": "1\u00a0Postfach",
   "all.switch_label": "Alle Konten, {n}\u00a0Postfächer",
-  "all.stack_label": "Konten: {names}",
   "all.page_sub": "Alle Konten · {boxes} · {mails}",
   "all.scan_all": "Alle scannen",
   "all.scanning": "{account} wird gescannt… ({done} von {total})",
@@ -2668,7 +2667,6 @@ export const DE: Record<string, string> = {
   "all.new_week": "+{n} neu diese Woche",
   "all.failed_ago": "vor {ago} · fehlgeschlagen",
   "all.failed": "Scan fehlgeschlagen",
-  "all.junk_trash": "Spam {junk} · Papierkorb {trash}",
   "all.space_title": "Wo deine {size} liegen",
   "all.by_account": "nach Konto",
   "all.space_bar": "Speicher nach Konto: {parts}",
@@ -2677,7 +2675,6 @@ export const DE: Record<string, string> = {
   "all.same_hint": "Du hast {pct}\u00a0% geöffnet · in {n}\u00a0Konten",
   "all.same_row": "{name}: {n}\u00a0Konten, {mails}\u00a0Mails",
   "all.same_none": "Kein Absender schreibt an mehr als eines deiner Konten.",
-  "all.same_open": "{name} öffnen",
   "all.all_n": "Alle {n}",
   "all.fewer": "Weniger",
   "all.unsub_in": "In {n}\u00a0Konten abbestellen…",
@@ -2686,6 +2683,7 @@ export const DE: Record<string, string> = {
   "all.mails_label": "Mails",
   "all.mails_label_one": "Mail",
   "all.chip": "{account}: {n}\u00a0Mails",
+  "all.chip_one": "{account}: 1\u00a0Mail",
   "all.chips_label": "Ein Konto oder alle zeigen",
   "all.chip_all": "Alle",
   "all.phone_same": "{name} schreibt an {n} davon",
@@ -2699,6 +2697,7 @@ export const DE: Record<string, string> = {
   "allc.via_mailto": "sendet eine Mail",
   "allc.via_http": "öffnet eine Seite",
   "allc.no_method": "hier kein Abmelde-Link",
+  "allc.protected": "geschützter Absender - bleibt unangetastet",
   "allc.done_already": "schon abbestellt",
   "allc.also_trash": "Auch die {n}\u00a0Mails in den Papierkorb legen",
   "allc.also_trash_one": "Auch die 1\u00a0Mail in den Papierkorb legen",
@@ -2735,7 +2734,6 @@ export const DE: Record<string, string> = {
   "allc.trash_failed": "das Verschieben in den Papierkorb ist fehlgeschlagen",
   "allc.undo_hint": "Rückgängig machen kannst du es in der Aktivität dieses Kontos.",
   "allc.open_activity": "Aktivität öffnen",
-  "allc.open_account": "{account} öffnen",
   "pick.title": "Konto auswählen",
   "pick.text":
     "„{page}“ arbeitet immer mit einem Konto. Wähle eins, um es zu öffnen.",
@@ -3990,6 +3988,8 @@ export const DE: Record<string, string> = {
     "Die Abbestell-Mail konnte nicht gesendet werden - prüfe die Versand-Einstellungen (SMTP) des Kontos.",
   "ferr.unsub_pooled":
     "Eine zusammengefasste Zeile hat keinen einzelnen Absender zum Abbestellen - öffne einen ihrer Absender.",
+  "ferr.unsub_protected":
+    "Dieser Absender ist geschützt und wurde deshalb nicht abbestellt.",
   "ferr.unsub_unknown_group":
     "Diese Gruppe gibt es nicht mehr - scanne neu und versuche es erneut.",
   "ferr.unsub_failed":

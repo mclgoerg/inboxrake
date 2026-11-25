@@ -198,6 +198,7 @@ const ERROR_CODES: Record<string, string> = {
   unsub_no_method: "ferr.unsub_no_method",
   unsub_mail_failed: "ferr.unsub_mail_failed",
   unsub_pooled: "ferr.unsub_pooled",
+  unsub_protected: "ferr.unsub_protected",
   unsub_unknown_group: "ferr.unsub_unknown_group",
   unsub_failed: "ferr.unsub_failed",
   // plain words -> filter (backend/aifilter.py)
@@ -488,8 +489,10 @@ export const api = {
   revokeAssistantToken: (id: string) =>
     req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
       undefined, "DELETE"),
-  unsubscribe: (grouping: Grouping, key: string) =>
-    req<UnsubResult>("/api/unsubscribe", { grouping, key }),
+  /** `skipProtected`: refuse a protected sender (the multi-account confirm). */
+  unsubscribe: (grouping: Grouping, key: string, skipProtected = false) =>
+    req<UnsubResult>("/api/unsubscribe", skipProtected
+      ? { grouping, key, skip_protected: true } : { grouping, key }),
   unsubscribeBulk: (grouping: Grouping, keys: string[]) =>
     req<UnsubBulkResult>("/api/unsubscribe_bulk", { grouping, keys }),
   unsubscribePreview: (grouping: Grouping, keys: string[], single = false) =>

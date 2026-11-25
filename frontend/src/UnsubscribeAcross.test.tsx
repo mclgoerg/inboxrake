@@ -124,8 +124,9 @@ describe("review", () => {
     expect(unsub).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();
     // the address of THAT account is asked about, as one single sender
+    // (bulk preview: it also reports what is protected right now)
     expect(preview.mock.calls[2]).toEqual(
-      ["sender", ["promo@dealsdaily.example"], true]);
+      ["sender", ["promo@dealsdaily.example"]]);
   });
 
   it("an account with no link, or already unsubscribed, is listed but " +
@@ -145,6 +146,53 @@ describe("review", () => {
     expect(confirmBtn(/^Unsubscribe in 1$/)).toBeTruthy();
     expect(calls.filter((c) => c.fn === "preview")
       .map((c) => c.account)).toEqual(["gmail"]);
+  });
+
+  it("the title counts the accounts the button can still reach", async () => {
+    mount({ row: row("dealsdaily.example", "Deals Daily", [
+      ["gmail", 210], ["proton", 96, { state: "done" }],
+      ["gmx", 44, { unsub: false }]]) });
+    await screen.findByText(/Unsubscribe from Deals Daily in 1\saccount\?/);
+    expect(confirmBtn(/^Unsubscribe in 1$/)).toBeTruthy();
+  });
+
+  it("a sender protected after the Overview was drawn is listed, unticked " +
+    "and disabled - and never unsubscribed", async () => {
+    preview.mockReset().mockImplementation(async (_g, keys: string[]) =>
+      calls.at(-1)?.account === "proton"
+        ? { ...prev(keys[0], "one_click", 0), senders: [],
+          skipped_protected: 1 }
+        : prev(keys[0], "one_click", 10));
+    mount();
+    await screen.findByText("protected sender - left alone");
+    const proton = screen.getByRole("checkbox",
+      { name: "Unsubscribe in proton" }) as HTMLInputElement;
+    expect([proton.disabled, proton.checked]).toEqual([true, false]);
+    expect(txt(screen.getAllByRole("listitem")[1])).toContain("proton");
+    expect(confirmBtn(/^Unsubscribe in 2$/)).toBeTruthy();
+    calls.length = 0;
+    press(confirmBtn(/^Unsubscribe in 2$/));
+    await screen.findByText("1 done · 1 needs you");
+    expect(calls.map((c) => c.account)).toEqual(["gmail", "gmx"]);
+    // the step itself asks the server to refuse a protected sender too
+    expect(unsub.mock.calls.map((c) => c[2])).toEqual([true, true]);
+  });
+
+  it("a sender protected while the dialog is open: the server refuses, " +
+    "the account is reported, the others run", async () => {
+    mount();
+    await screen.findByRole("checkbox", { name: "Unsubscribe in gmail" });
+    unsub.mockImplementation(async (_g, key: string) => {
+      if (calls.at(-1)?.account === "proton") {
+        throw new Error("unsub_protected");
+      }
+      return { action: "done", method: "x", detail: "", addr: key,
+        via: "one_click" };
+    });
+    press(confirmBtn(/^Unsubscribe in 3$/));
+    await screen.findByText("2 done · 1 failed");
+    expect(txt(screen.getAllByRole("listitem")[1])).toContain(
+      "This sender is protected, so it was not unsubscribed.");
   });
 
   it("a preview that fails blocks only that account", async () => {
@@ -300,6 +348,56 @@ describe("running", () => {
     await screen.findByText(/done/);
     expect(confirmTrash.mock.calls.map((c) => c[0].account))
       .toEqual(["gmail", "gmail", "proton"]);
+  });
+
+  it("a keep-safe check that throws goes back to the review with the " +
+    "problem - nothing ran, no result is listed", async () => {
+    preview.mockReset().mockImplementation(async (_g, keys: string[]) =>
+      prev(keys[0], "one_click", 150));
+    await ready();
+    calls.length = 0;
+    confirmTrash.mockRejectedValue(new Error("connection lost"));
+    fireEvent.click(screen.getByRole("checkbox",
+      { name: /Also move the .*\smails to Trash/ }));
+    press(screen.getByRole("button", { name: /Unsubscribe in 3 and move/ }));
+    const alert = await screen.findByRole("alert");
+    expect(txt(alert)).toContain("Couldn't check gmail:");
+    expect(unsub).not.toHaveBeenCalled();
+    expect(calls.filter((c) => c.fn !== "preview")).toEqual([]);
+    expect(screen.getByRole("button", { name: /Unsubscribe in 3 and move/ }))
+      .toBeTruthy();
+    expect(screen.queryByText(/not run/)).toBeNull();
+    // the next try starts from a clean slate
+    confirmTrash.mockResolvedValue({ ok: true, pinned: [] });
+    press(screen.getByRole("button", { name: /Unsubscribe in 3 and move/ }));
+    await screen.findByText(/done/);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("Esc and the backdrop do nothing while it runs: every account's " +
+    "outcome still ends up in the result", async () => {
+    const p = await ready();
+    let release: () => void = () => {};
+    unsub.mockImplementation((_g, key: string) => new Promise((res) => {
+      release = () => res({ action: "done", method: "x", detail: "",
+        addr: key, via: "one_click" });
+    }));
+    press(confirmBtn(/^Unsubscribe in 3$/));
+    await screen.findByText(/Working on gmail/);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(p.onClose).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
+      .disabled).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      await waitFor(() => expect(unsub).toHaveBeenCalledTimes(i + 1));
+      release();
+    }
+    await screen.findByText("3 done");
+    expect(p.onClose).not.toHaveBeenCalled();
+    // finished: Esc closes it again
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(p.onClose).toHaveBeenCalled();
   });
 
   it("an account that disappears while the confirm is open is skipped, " +

@@ -11,7 +11,10 @@
  *      addresses: protected senders and pinned mails stay, one Undo step in
  *      that account, behind the keep-safe check of big moves).
  *
- * Nothing here is new server behaviour; unticked accounts are never called. */
+ * Protection is asked again when the confirm opens (the preview) and by the
+ * step itself (`skip_protected`): a sender protected after the Overview was
+ * drawn is listed as protected, unticked, and never unsubscribed. Unticked
+ * accounts are never called. */
 
 import { useEffect, useRef, useState } from "react";
 import { accountGuard } from "../accountGuard";
@@ -67,17 +70,19 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const moved = useRef<Record<string, number>>({});
   const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
   const [switched] = useState(() => accountGuard());
 
   // What each account would do, before anything is sent (local, no mail
-  // server): the method per address and what the Trash step would move.
+  // server): the method per address and what the Trash step would move. Asked
+  // as a bulk preview (`single` off) so it also says what is protected NOW.
   useEffect(() => {
     let live = true;
     const open = row.accounts.filter((a) => a.unsub && a.state !== "done");
     Promise.all(open.map(async (a) => {
       try {
         const p = await inAccount(a.account, () =>
-          api.unsubscribePreview("sender", [a.addr], true));
+          api.unsubscribePreview("sender", [a.addr]));
         return [a.account, p] as const;
       } catch (e: any) {
         return [a.account, t("allc.preview_failed",
@@ -95,6 +100,14 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
     }
     const p = previews?.[a.account];
     if (typeof p === "string") return { ...base, sub: a.addr, blocked: p };
+    if (p && !p.senders.length) {
+      if (p.skipped_protected) {
+        return { ...base, sub: a.addr, blocked: t("allc.protected") };
+      }
+      if (p.skipped_done) {
+        return { ...base, sub: a.addr, blocked: t("allc.done_already") };
+      }
+    }
     const via = p?.senders[0]?.via;
     return { ...base,
       sub: `${a.addr} · ${via ? t(VIA_TEXT[via]) : t("allc.no_method")}`,
@@ -111,6 +124,7 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
     };
     // A big move to Trash: the keep-safe check, per account (the sheet's
     // rule). Declined = nothing runs.
+    setProblem("");
     if (trashing) {
       for (const account of accounts) {
         const p = prev(account);
@@ -127,8 +141,11 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
               only_addrs: [...new Set(p.trash.groups.flatMap((g) => g.addrs))] } });
           if (!answer.ok) return null;
         } catch (e: any) {
-          return [{ account, status: "failed",
-            text: t("allc.out_failed", { msg: e.message ?? String(e) }) }];
+          // Nothing ran: back to the review with the problem, as the single
+          // sheet does.
+          setProblem(t("allc.preview_failed", { account,
+            msg: errorText(e.message ?? String(e)) }));
+          return null;
         }
       }
     }
@@ -136,7 +153,7 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
     const outcomes = await runPerAccount(accounts, async (account) => {
       const a = by[account];
       const r = await inAccount(account, () =>
-        api.unsubscribe("sender", a.addr));
+        api.unsubscribe("sender", a.addr, true));
       const out: StepOutcome = r.action === "link"
         ? { account, status: "link", text: t("allc.out_page"), link: r.detail }
         : { account, status: "done", text: t(r.via === "mailto"
@@ -184,8 +201,9 @@ export function UnsubscribeAcross({ row, exists, demo, onOpenActivity,
 
   return (
     <AcrossAccountsConfirm
-      title={t("allc.title", { name: row.name, n: row.accounts.length })}
-      lines={lines} loading={!previews}
+      title={t("allc.title", { name: row.name,
+        n: unsubscribable(row).length })}
+      lines={lines} problem={problem} loading={!previews}
       note={t("allc.note")}
       extra={{ label: (n) => t("allc.also_trash", { n }),
         note: t("allc.trash_note") }}

@@ -19,7 +19,8 @@ Two parts:
 - `same_sender`: the senders (newsletters, shops) that write to more than one
   of the accounts - matched by exact sender address, then by the company
   domain (smartkinds.company_id: never freemail, never a shared platform
-  host). One row per sender with a count per account.
+  host). One row per sender with a count per account; a sender with fewer
+  than SAME_SENDER_MIN_MAILS mails in total is no pattern worth a row.
 """
 
 from __future__ import annotations
@@ -34,6 +35,9 @@ from . import unsubstore
 # Rows of "Same sender, several accounts" the answer carries (the UI shows the
 # first few and "All N").
 SAME_SENDER_MAX = 200
+# A sender is listed once it has at least this many mails across the accounts
+# (a one-off mail in two accounts is not "the same newsletter twice").
+SAME_SENDER_MIN_MAILS = 4
 # "+N new" without a remembered visit counts the last week.
 NEW_WINDOW_S = 7 * 86400
 
@@ -94,7 +98,8 @@ def same_sender(cands: list[dict]) -> list[dict]:
     """The join over every account's candidates. A sender whose domain names
     a company (smartkinds.company_id) is matched by it - the same address in
     two accounts included; one on a freemail / shared-platform domain only by
-    its exact address. A match needs at least two ACCOUNTS."""
+    its exact address. A match needs at least two ACCOUNTS and
+    SAME_SENDER_MIN_MAILS mails in total."""
     by_key: dict[str, dict[str, list[dict]]] = {}
     for c in cands:
         domain = c["addr"].rsplit("@", 1)[-1]
@@ -106,6 +111,8 @@ def same_sender(cands: list[dict]) -> list[dict]:
             continue
         chosen = [_primary(es) for es in per.values()]
         total = sum(e["count"] for e in chosen)
+        if total < SAME_SENDER_MIN_MAILS:
+            continue
         unread = sum(e["unread"] for e in chosen)
         biggest = max(chosen, key=lambda e: (e["count"], e["addr"]))
         rows.append({

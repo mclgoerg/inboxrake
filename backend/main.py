@@ -725,6 +725,11 @@ class AiGroupBody(BaseModel):
     uids: list[tuple[str, int]] | None = None
 
 
+class UnsubOneBody(AiGroupBody):
+    # a bulk path (the multi-account confirm) leaves a protected sender alone
+    skip_protected: bool = False
+
+
 class UnsubBulkBody(BaseModel):
     grouping: str = "sender"
     keys: list[str] = Field(min_length=1)
@@ -1713,11 +1718,12 @@ def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
 
 
 @app.post("/api/unsubscribe")
-def post_unsubscribe(body: AiGroupBody, account: str | None = Query(None)):
+def post_unsubscribe(body: UnsubOneBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
     acc = _acc(account)
     try:
-        return unsub.unsubscribe(body.grouping, body.key, acc)
+        return unsub.unsubscribe(body.grouping, body.key, acc,
+                                 skip_protected=body.skip_protected)
     except Exception as exc:
         # a failed unsubscribe is a handled outcome: the code is the detail
         # (the UI words it); never raw exception text

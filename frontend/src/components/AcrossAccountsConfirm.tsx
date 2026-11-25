@@ -109,8 +109,12 @@ export function AcrossAccountsConfirm({ title, lines, note, extra, confirmLabel,
   };
 
   const result = phase === "result";
+  // While the steps run, Esc / the backdrop / Back / a swipe do nothing (the
+  // Cancel button is off, too): the run is not abandoned halfway - it ends in
+  // the result list, where each account's outcome and Undo are shown.
+  const close = () => { if (phase !== "running") onClose(); };
   return (
-    <Modal size="sm" labelledBy={titleId} onClose={onClose}>
+    <Modal size="sm" labelledBy={titleId} onClose={close}>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
         <h2 id={titleId} className="type-heading">
           {result ? resultTitle(outcomes) : title}

@@ -196,6 +196,25 @@ test("German: the words and the plural forms", () => {
   expect(screen.getByRole("button", { name: /^In 3.Konten abbestellen…$/ })).toBeTruthy();
 });
 
+test("the unit under a row's count is the translated word, singular " +
+  "included, and each chip reads as account + count", () => {
+  show({ data: { ...DATA, same_sender: [
+    row("tiny.example", "Tiny", [["gmail", 1], ["proton", 1]], { mails: 1 }),
+    ...SAME.slice(0, 1)] } });
+  const items = screen.getAllByRole("listitem")
+    .filter((li) => li.getAttribute("aria-label")?.includes("accounts,"));
+  expect(txt(items[0].querySelector(".w-16")!)).toMatch(/^1mail$/);
+  expect(txt(items[1].querySelector(".w-16")!)).toMatch(/^350mails$/);
+  expect(txt(items[0])).toContain(sp("gmail: 1 mail"));
+  cleanup();
+  setLang("de");
+  show();
+  const de = screen.getAllByRole("listitem")
+    .find((li) => li.getAttribute("aria-label")?.includes("Konten,"))!;
+  expect(txt(de.querySelector(".w-16")!)).toMatch(/^350Mails$/);
+  expect(txt(de)).toContain(sp("gmail: 210 Mails"));
+});
+
 test("SAME is five senders (the fixture the list tests rely on)", () => {
   expect(SAME).toHaveLength(5);
 });

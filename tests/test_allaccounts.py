@@ -16,6 +16,7 @@ from backend import auth as authmod
 from backend import config as cfgmod
 from backend import mailops
 from backend import unsub
+from backend import unsubstore
 from backend.main import app
 from conftest import FakeIMAP, make_msg, wait_delete_done
 
@@ -46,9 +47,9 @@ def three(monkeypatch):
     fakes = {
         "host-one": FakeIMAP({
             "INBOX": _mails(DEALS, 5, 1, **UNSUB)
-            + _mails('"Free" <letter@gmail.com>', 2, 20, **UNSUB)
+            + _mails('"Free" <letter@gmail.com>', 3, 20, **UNSUB)
             + _mails('"Boss" <keep@boss.example>', 2, 30, **UNSUB)
-            + _mails('"Pal" <pal@pal.example>', 2, 40, **UNSUB)
+            + _mails('"Pal" <pal@pal.example>', 1, 40, **UNSUB)
             + [make_msg(50, frm='"Solo" <solo@solo.example>')],
             "Sent": [make_msg(90, frm="one@mine.example", subject="re",
                               to="pal@pal.example")],
@@ -174,6 +175,27 @@ def test_protected_replied_and_single_account_senders_are_left_out(three):
     assert "boss.example" not in keys and "keep@boss.example" not in keys
     assert "pal.example" not in keys and "pal@pal.example" not in keys
     assert "solo.example" not in keys
+
+
+def test_a_sender_needs_at_least_four_mails_across_the_accounts():
+    def cand(account, addr, count):
+        return {"account": account, "addr": addr, "name": "S", "count": count,
+                "size": 1, "unread": 0, "unsub": True, "state": None}
+    # 2 + 1 = 3 mails in two accounts: no pattern yet; one more makes it a row
+    assert allaccounts.same_sender([cand("one", "a@shop.example", 2),
+                                    cand("two", "a@shop.example", 1)]) == []
+    (row,) = allaccounts.same_sender([cand("one", "a@shop.example", 2),
+                                      cand("two", "a@shop.example", 2)])
+    assert row["mails"] == allaccounts.SAME_SENDER_MIN_MAILS == 4
+
+
+def test_the_boundary_sender_is_in_the_overview(three):
+    # letter@gmail.com has 3 + 1 = 4 mails across two accounts: exactly the
+    # minimum, so it is listed (and the count "All N" follows the list)
+    body = _overview()
+    assert _row(body, "letter@gmail.com")["mails"] == 4
+    assert all(r["mails"] >= allaccounts.SAME_SENDER_MIN_MAILS
+               for r in body["same_sender"])
 
 
 def test_a_sender_in_one_account_only_is_no_row(three):
@@ -306,6 +328,36 @@ def test_each_account_runs_its_own_step_with_its_own_undo_and_audit(
     mailops.undo_last(acc=accountsmod.get("one"))
     assert len(accountsmod.get("two").undo_log) == 1
     assert len(three["host-two"].mailbox["Trash"]) == 3
+
+
+def _protect(addr):
+    cfg = json.loads(cfgmod.CONFIG_PATH.read_text())
+    cfg["protected"] = [*cfg["protected"], addr]
+    cfgmod.CONFIG_PATH.write_text(json.dumps(cfg))
+
+
+def test_a_sender_protected_after_the_list_was_drawn_is_refused(three,
+                                                                monkeypatch):
+    posted = []
+    monkeypatch.setattr(unsub, "_post_one_click", lambda u: posted.append(u))
+    body = {"grouping": "sender", "key": "deals@dealsdaily.example"}
+    _protect("deals@dealsdaily.example")
+    # the bulk preview the confirm asks on open says so ...
+    p = client.post("/api/unsubscribe/preview?account=one", json={
+        "grouping": "sender", "keys": [body["key"]]}).json()
+    assert p["senders"] == [] and p["skipped_protected"] == 1
+    assert p["trash"]["groups"] == []
+    # ... and the step with skip_protected is refused: nothing sent, nothing
+    # recorded, no audit entry
+    r = client.post("/api/unsubscribe?account=one",
+                    json={**body, "skip_protected": True})
+    assert r.status_code == 400 and r.json()["detail"] == "unsub_protected"
+    assert posted == []
+    assert "unsubscribe" not in _audited("one")
+    assert unsubstore.load_account("one") == {}
+    # a deliberate single unsubscribe from the detail view is unchanged
+    ok = client.post("/api/unsubscribe?account=one", json=body)
+    assert ok.status_code == 200 and len(posted) == 1
 
 
 def test_a_failed_account_does_not_stop_the_others(three, monkeypatch):
