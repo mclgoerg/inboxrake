@@ -206,11 +206,12 @@ UNSUB_BAD_URL = "unsub_bad_url"
 UNSUB_NO_METHOD = "unsub_no_method"
 UNSUB_MAIL_FAILED = "unsub_mail_failed"  # the unsubscribe mail was not sent
 UNSUB_POOLED = "unsub_pooled"
+UNSUB_PROTECTED = "unsub_protected"      # skip_protected: the sender is protected
 UNSUB_UNKNOWN_GROUP = "unsub_unknown_group"
 UNSUB_FAILED = "unsub_failed"            # anything unexpected (see the log)
 UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
                UNSUB_TIMEOUT, UNSUB_BAD_URL, UNSUB_NO_METHOD,
-               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_UNKNOWN_GROUP,
+               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_PROTECTED, UNSUB_UNKNOWN_GROUP,
                UNSUB_FAILED)
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)

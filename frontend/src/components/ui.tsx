@@ -1375,6 +1375,26 @@ export function AccountAvatar({ name, size, className = "" }: {
   return <Avatar name={name} size={size} className={className} />;
 }
 
+/** The avatars of several accounts, overlapping (the "All accounts" item of
+ *  the account switcher, the account button while it is selected). Decorative:
+ *  the control around it carries the label. `ring` = the surface it sits on,
+ *  so each avatar is cut out of its neighbour. */
+export function AccountStack({ names, ring = "side", className = "" }: {
+  names: string[]; ring?: "side" | "panel" | "panel2" | "surface";
+  className?: string;
+}) {
+  const cut = { side: "ring-side", panel: "ring-panel", panel2: "ring-panel2",
+    surface: "ring-surface" }[ring];
+  return (
+    <span aria-hidden className={`inline-flex shrink-0 ${className}`}>
+      {names.slice(0, 4).map((n, i) => (
+        <Avatar key={n} name={n}
+          className={`ring-2 ${cut} ${i ? "-ml-1.5" : ""}`} />
+      ))}
+    </span>
+  );
+}
+
 /** Non-interactive heading line inside a Menu (e.g. the identity). */
 export function MenuHeading({ children }: { children: ReactNode }) {
   return (

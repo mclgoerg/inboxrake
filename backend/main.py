@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, StrictInt
 from . import FORMER_ENV
 from . import accountcopy
 from . import accounts as accountsmod
+from . import allaccounts
 from . import addresses as addressesmod
 from . import addressstore
 from . import aifilter
@@ -722,6 +723,11 @@ class AiGroupBody(BaseModel):
     # Restrict rating to exactly these (folder, uid) mails instead of the
     # whole group - the detail panel's "rate only what I selected" mode.
     uids: list[tuple[str, int]] | None = None
+
+
+class UnsubOneBody(AiGroupBody):
+    # a bulk path (the multi-account confirm) leaves a protected sender alone
+    skip_protected: bool = False
 
 
 class UnsubBulkBody(BaseModel):
@@ -1712,11 +1718,12 @@ def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
 
 
 @app.post("/api/unsubscribe")
-def post_unsubscribe(body: AiGroupBody, account: str | None = Query(None)):
+def post_unsubscribe(body: UnsubOneBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
     acc = _acc(account)
     try:
-        return unsub.unsubscribe(body.grouping, body.key, acc)
+        return unsub.unsubscribe(body.grouping, body.key, acc,
+                                 skip_protected=body.skip_protected)
     except Exception as exc:
         # a failed unsubscribe is a handled outcome: the code is the detail
         # (the UI words it); never raw exception text
@@ -2909,6 +2916,27 @@ def get_accounts_summary():
                 "mails": sum(r["count"] for r in senders.values()),
                 "size": sum(r["size"] for r in senders.values())}
     return out
+
+
+@app.get("/api/accounts/overview")
+def get_accounts_overview(since: str | None = Query(None, max_length=4000)):
+    """The Overview across ALL accounts of this workspace (read-only, no mail
+    server is contacted): per account its size, mails, new mails and last
+    scan, plus the senders that write to more than one account (see
+    allaccounts.py). `since` = a JSON object {account: epoch seconds}, the
+    visit each account's "+N new" counts from; anything unreadable is
+    ignored."""
+    marks: dict[str, float] = {}
+    try:
+        raw = json.loads(since) if since else {}
+    except ValueError:
+        raw = {}
+    if isinstance(raw, dict):
+        for name, ts in raw.items():
+            if isinstance(ts, (int, float)) and not isinstance(ts, bool) \
+                    and 0 <= ts < 1e11:
+                marks[str(name)] = float(ts)
+    return allaccounts.build(marks)
 
 
 def _keep_caller_signed_in(request: Request, response: Response,
