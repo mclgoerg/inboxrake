@@ -821,6 +821,16 @@ ICLOUD_INBOX += (
     + mails('"Gadget Weekly" <weekly@gadgetweekly.example>',
             ["This week in gadgets", "Test: the new earbuds"], 31,
             span_days=300, unread=0.85, unsub=True))
+# ... and two more from the very same address as in the Proton mailbox, so the
+# Senders list across accounts shows one row with a chip per account.
+random.seed(115)
+ICLOUD_INBOX += (
+    mails('"Gadget Weekly" <news@gadgetweekly.example>',
+          ["This week in gadgets", "Test: the new earbuds"], 18,
+          span_days=200, unread=0.8, unsub=True)
+    + mails('"ACME Store" <news@acme-store.example>',
+            ["Weekend SALE - up to 70% off", "Your points expire soon"], 12,
+            span_days=120, unread=0.9, unsub=True))
 random.setstate(_rs)
 _fruit = [m for m in _by(ICLOUD_INBOX, "fruitstore")
           if "has shipped" in m["subject"]]

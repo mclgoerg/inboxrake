@@ -2757,9 +2757,11 @@ def _attach_grades(senders: dict | None, acc) -> None:
         senders[k]["grade"] = grade
 
 
-def public_state(acc=None) -> dict:
+def public_state(acc=None, only: tuple[str, ...] | None = None) -> dict:
     """One account's state for the API: group records without the internal
-    UID lists, plus each group's per-mail rating summary."""
+    UID lists, plus each group's per-mail rating summary. `only`: just
+    these groupings (the lists across accounts read the Sender rows of every
+    account and need nothing else)."""
     acc = acc or accounts.get()
     cfg = cfgmod.load_config()
     plist = cfgmod.normalize_protected(cfg.get("protected"))
@@ -2807,7 +2809,8 @@ def public_state(acc=None) -> dict:
                     **({"purposes": purpose_summary(rec, acc)}
                        if rec.get("kind") == "company" else {})}
                 for k, rec in recs.items()}
-            for g, recs in acc.state["groups"].items()}
+            for g, recs in acc.state["groups"].items()
+            if only is None or g in only}
         _attach_grades(out["groups"].get("sender"), acc)
         return out
 
@@ -6850,31 +6853,17 @@ def parse_mail_query(q: str) -> dict:
     return out
 
 
-def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
-               direction: str | None = None, q: str = "", acc=None,
-               slot: dict | None = None) -> dict:
-    """One page of the scanned index as a flat, sorted, filtered list - no
-    IMAP traffic. Only (folder, uid) handles the index already exposes;
-    `total` is the filtered count for "x of y"; `ignored` lists group-level
-    qualifiers from `q` that do not apply per mail (see parse_mail_query).
-    `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
-    a view parameter next to `q`, not a query qualifier."""
-    acc = acc or accounts.get()
-    if sort not in MAIL_SORTS:
-        raise ValueError(f"bad sort {sort!r}")
-    if direction is None:
-        direction = "asc" if sort == "sender" else "desc"
-    if direction not in ("asc", "desc"):
-        raise ValueError(f"bad direction {direction!r}")
-    offset, limit = max(0, offset), max(1, min(limit, 1000))
-    f = parse_mail_query(q)
+def mail_hits(f: dict, acc, sort: str, direction: str,
+              slot: dict | None = None) -> list[dict]:
+    """Every scanned mail of the account that passes the parsed per-mail
+    filter `f` (parse_mail_query), sorted: the index records themselves, not
+    copies. The flat list pages through it; the lists across accounts merge
+    several of these."""
     cutoff = (time.time() - f["age_days"] * 86400
               if f["age_days"] is not None else None)
     since = (time.time() - f["in_seconds"]
              if f["in_seconds"] is not None else None)
     pinned = pinstore.load_account(acc.name)
-    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
-        cfgmod.load_config().get("protected")))
     with acc.lock:
         in_slot = rhythm.slot_matcher(
             slot, acc.state["groups"].get("sender") or {}, time.time()) \
@@ -6911,13 +6900,52 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
             hits.append(m)
         # (folder, uid) as the final tiebreak keeps paging stable.
         hits.sort(key=lambda m: (m["folder"], m["uid"]))
-        keyfn = {"date": lambda m: m["ts"], "size": lambda m: m["size"],
-                 "sender": lambda m: (m["addr"], m["name"].lower())}[sort]
-        hits.sort(key=keyfn, reverse=direction == "desc")
-        page = hits[offset:offset + limit]
-        mails = [{**_search_row(m), "ai": verdict_of(m),
-                  "pinned": m["msgid"] in pinned} for m in page]
-    return {"total": len(hits), "offset": offset, "mails": mails,
+        hits.sort(key=MAIL_SORT_KEYS[sort], reverse=direction == "desc")
+    return hits
+
+
+MAIL_SORT_KEYS = {"date": lambda m: m["ts"], "size": lambda m: m["size"],
+                  "sender": lambda m: (m["addr"], m["name"].lower())}
+
+
+def mail_rows(acc, hits: list[dict]) -> list[dict]:
+    """The API rows of some of `mail_hits`' mails (verdict and pin added)."""
+    pinned = pinstore.load_account(acc.name)
+    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
+    with acc.lock:
+        return [{**_search_row(m), "ai": verdict_of(m),
+                 "pinned": m["msgid"] in pinned} for m in hits]
+
+
+def mail_sort_args(sort: str, direction: str | None) -> tuple[str, str]:
+    """Validated (sort, direction) of the flat list; the direction defaults
+    to the sort's natural one."""
+    if sort not in MAIL_SORTS:
+        raise ValueError(f"bad sort {sort!r}")
+    if direction is None:
+        direction = "asc" if sort == "sender" else "desc"
+    if direction not in ("asc", "desc"):
+        raise ValueError(f"bad direction {direction!r}")
+    return sort, direction
+
+
+def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
+               direction: str | None = None, q: str = "", acc=None,
+               slot: dict | None = None) -> dict:
+    """One page of the scanned index as a flat, sorted, filtered list - no
+    IMAP traffic. Only (folder, uid) handles the index already exposes;
+    `total` is the filtered count for "x of y"; `ignored` lists group-level
+    qualifiers from `q` that do not apply per mail (see parse_mail_query).
+    `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
+    a view parameter next to `q`, not a query qualifier."""
+    acc = acc or accounts.get()
+    sort, direction = mail_sort_args(sort, direction)
+    offset, limit = max(0, offset), max(1, min(limit, 1000))
+    f = parse_mail_query(q)
+    hits = mail_hits(f, acc, sort, direction, slot)
+    return {"total": len(hits), "offset": offset,
+            "mails": mail_rows(acc, hits[offset:offset + limit]),
             "ignored": f["ignored"]}
 
 

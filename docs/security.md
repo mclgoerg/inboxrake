@@ -118,7 +118,8 @@ client ID, if you run one, is `INBOXRAKE_MS_CLIENT_ID` (see
   everything in Trash**, protected or not.
 - **Accounts stay strictly separate** - their state is never merged and no
   action touches two accounts in one call; the read-only "All accounts"
-  Overview only looks across the accounts of the signed-in user, and an action
+  views (Overview, Senders, All mail, Search) only look across the accounts of
+  the signed-in user, and an action
   over several of them runs one ordinary step per account, each with its own
   Undo and Activity entry. With SSO nothing is shared between users.
 

@@ -12,7 +12,13 @@ Only the CURRENT TENANT's accounts exist here: `accounts.names()` /
 `accounts.get()` are tenant-scoped, so another user's mailboxes can never
 appear in the answer.
 
-Two parts:
+Three more reads follow the Overview - the lists across accounts (Senders,
+All mail, Search; see `senders`, `mails`, `search` below). They only read what
+the accounts hold in memory, one account at a time, and tag every row with the
+account it belongs to; an action on such a row is the UI's job, one ordinary
+per-account call per account.
+
+Two parts of the Overview:
 - `accounts`: per mailbox its size, mails, senders, how many mails arrived
   since a given moment (the visit the UI remembers per account), when it was
   last scanned and whether the last scan failed;
@@ -25,12 +31,17 @@ Two parts:
 
 from __future__ import annotations
 
+import heapq
+import logging
 import time
 
 from . import accounts as accountsmod
 from . import config as cfgmod
+from . import mailops
 from . import smartkinds
 from . import unsubstore
+
+log = logging.getLogger("inboxrake.allaccounts")
 
 # Rows of "Same sender, several accounts" the answer carries (the UI shows the
 # first few and "All N").
@@ -73,6 +84,12 @@ def _account_row(name: str, im: dict, since: float | None,
             "new": _new_since(acc, since if since is not None
                               else now - NEW_WINDOW_S),
             "new_basis": "visit" if since is not None else "week",
+            # what the lists across accounts follow: a finished scan or a
+            # move that patched the index moves `rev`; `busy` = a move /
+            # unsubscribe job is still running there
+            "rev": acc.state["groups_rev"],
+            "busy": (acc.state["delete"]["status"] == "running"
+                     or acc.state["unsub"]["status"] == "running"),
         }
         for addr, rec in senders.items():
             if not (rec.get("bulk") or rec.get("unsub")):
@@ -148,3 +165,196 @@ def build(since: dict[str, float] | None = None,
                        "size": sum(r["size"] for r in rows),
                        "senders": sum(r["senders"] for r in rows)},
             "same_sender": same_sender(cands)}
+
+
+# ------------------------------------------------- the lists across accounts
+
+# How a sender's AI verdict is summed up when its accounts disagree: the most
+# cautious one wins (a "keep" anywhere keeps the row off the "safe to delete"
+# list).
+_VERDICT_CAUTION = {"keep": 0, "review": 1, "delete_safe": 2}
+# Unsubscribe status of a row across its accounts, worst first.
+_UNSUB_WORST = ("failed", "link", "pending", "done")
+# Fields only a single account's Sender record has a meaning for: a Smart
+# placement, the grade (graded per account from that account's own figures).
+_PER_ACCOUNT_ONLY = ("grade", "kind", "n_senders", "members", "smart_key",
+                     "smart_why", "purposes", "addr", "domain", "category")
+
+
+def _merge_unsub(recs: list[dict]) -> dict | None:
+    """The unsubscribe state of one sender over its accounts. `of` counts the
+    accounts whose mails carry an unsubscribe link, `n` those where it is
+    done; the worst outstanding status wins, like a domain row's."""
+    capable = [r for r in recs if r.get("unsub")]
+    states = [r["unsubscribed"] for r in capable if r.get("unsubscribed")]
+    if not states:
+        return None
+    done = sum(1 for u in states if u["status"] == "done")
+    status = next((w for w in _UNSUB_WORST
+                   if any(u["status"] == w for u in states)), "pending")
+    if status == "done" and done < len(capable):
+        status = "pending"
+    pick = next((u for u in states if u["status"] == status), states[0])
+    return {"n": done, "of": len(capable), "status": status,
+            "link": pick.get("link", ""), "addr": pick.get("addr", "")}
+
+
+def _merge_trackers(recs: list[dict]) -> dict | None:
+    got = [r["trackers"] for r in recs if r.get("trackers")]
+    if not got:
+        return None
+    hosts: list[str] = []
+    for t in got:
+        hosts += [h for h in t.get("hosts", []) if h not in hosts]
+    out = {"checked": sum(t["checked"] for t in got),
+           "pixel": sum(t["pixel"] for t in got),
+           "click": sum(t["click"] for t in got), "hosts": hosts[:5]}
+    if all("any" in t for t in got):
+        out["any"] = sum(t["any"] for t in got)
+    return out
+
+
+def merge_sender(parts: list[tuple[str, dict]]) -> dict:
+    """One row from the same sender address in several accounts: the biggest
+    account's record with the counts summed and flags combined, plus
+    `accounts` - one small part per account (what the chips, the detail pane
+    and the per-account steps read). `parts` = [(account, public record)]."""
+    parts = sorted(parts, key=lambda p: -p[1]["count"])
+    recs = [r for _, r in parts]
+    row = {k: v for k, v in recs[0].items() if k not in _PER_ACCOUNT_ONLY}
+    total = sum(r["count"] for r in recs)
+    row["count"] = total
+    for k in ("size", "unread", "att_size", "pinned"):
+        row[k] = sum(r.get(k, 0) for r in recs)
+    row["first"] = min((r["first"] for r in recs if r["first"]), default="")
+    row["last"] = max((r["last"] for r in recs if r["last"]), default="")
+    row["tags"] = list(dict.fromkeys(t for r in recs for t in r["tags"]))
+    row["samples"] = list(dict.fromkeys(
+        s for r in recs for s in r["samples"]))[:mailops.MAX_SAMPLES]
+    for k in ("bulk", "unsub", "protected", "replied", "new"):
+        row[k] = any(r.get(k) for r in recs)
+    row["new_ts"] = max((r.get("new_ts") or 0 for r in recs), default=0)
+    ai = [r["ai"] for r in recs if r.get("ai")]
+    row["ai"] = dict(min(ai, key=lambda a: _VERDICT_CAUTION.get(
+        a["verdict"], 1))) if ai else None
+    rated = [r["ratings"] for r in recs if r.get("ratings")]
+    row["ratings"] = {k: sum(r[k] for r in rated)
+                      for k in ("delete_safe", "review", "keep")} \
+        if rated else None
+    row["unsubscribed"] = _merge_unsub(recs)
+    still = [r["still_mailing"] for r in recs if r.get("still_mailing")]
+    row["still_mailing"] = max(still, key=lambda s: s["n"]) if still else None
+    row["engagement"] = round(
+        sum(r.get("engagement", 0) * r["count"] for r in recs) / total) \
+        if total else 0
+    tr = _merge_trackers(recs)
+    if tr:
+        row["trackers"] = tr
+    else:
+        row.pop("trackers", None)
+    row["accounts"] = [{
+        "account": a, "count": r["count"], "size": r["size"],
+        "unread": r["unread"], "pinned": r.get("pinned", 0),
+        "first": r["first"], "last": r["last"],
+        "protected": bool(r.get("protected")),
+        "unsub": bool(r.get("unsub")),
+        "unsubscribed": (r.get("unsubscribed") or {}).get("status"),
+        "grade": (r.get("grade") or {}).get("letter"),
+        "verdict": (r.get("ai") or {}).get("verdict"),
+        "still": (r.get("still_mailing") or {}).get("n", 0)}
+        for a, r in parts]
+    return row
+
+
+def senders() -> dict:
+    """The Sender rows of every account of the workspace in ONE list: the
+    same address in several accounts is one row (counts summed, one part per
+    account). Read from each account's loaded state, one after the other; an
+    account that was never scanned just has no rows. `accounts` carries what
+    the UI follows to know when to read again (`rev`, `status`)."""
+    per: dict[str, list[tuple[str, dict]]] = {}
+    meta = []
+    for name in accountsmod.names():
+        acc = accountsmod.get(name)
+        state = mailops.public_state(acc, only=("sender",))
+        meta.append({"name": name, "rev": state["groups_rev"],
+                     "status": state["status"],
+                     "scanned_ts": state["scanned_ts"]})
+        for key, rec in (state["groups"].get("sender") or {}).items():
+            per.setdefault(key, []).append((name, rec))
+    rows = [merge_sender(parts) for parts in per.values()]
+    rows.sort(key=lambda r: (-r["count"], r["key"]))
+    return {"accounts": meta, "senders": rows}
+
+
+def mails(offset: int, limit: int, sort: str, direction: str | None,
+          q: str, slot: dict | None = None, only: str | None = None) -> dict:
+    """One page of the flat mail list over every account: each account's
+    filtered, sorted mails are merged by the same sort, so the page is exactly
+    what one account's list would show for the union. Rows carry `account`.
+    `only`: just that account (a name that is not one of the workspace's
+    raises KeyError). No mail server is contacted."""
+    sort, direction = mailops.mail_sort_args(sort, direction)
+    offset, limit = max(0, offset), max(1, min(limit, 1000))
+    f = mailops.parse_mail_query(q)
+    keyfn = mailops.MAIL_SORT_KEYS[sort]
+    lists, accs = [], {}
+    if only is not None:
+        accountsmod.get(only)               # KeyError for a stranger's name
+    for name in accountsmod.names():
+        if only is not None and name != only:
+            continue
+        acc = accountsmod.get(name)
+        accs[name] = acc
+        lists.append([(name, m) for m in
+                      mailops.mail_hits(f, acc, sort, direction, slot)])
+    total = sum(len(lst) for lst in lists)
+    merged = heapq.merge(*lists, key=lambda p: keyfn(p[1]),
+                         reverse=direction == "desc")
+    page = [p for _, p in zip(range(offset + limit), merged)][offset:]
+    row_of: dict[tuple, dict] = {}
+    for name, acc in accs.items():
+        mine = [m for n, m in page if n == name]
+        for m, row in zip(mine, mailops.mail_rows(acc, mine)):
+            row_of[(name, m["folder"], m["uid"])] = {**row, "account": name}
+    return {"total": total, "offset": offset,
+            "mails": [row_of[(n, m["folder"], m["uid"])] for n, m in page],
+            "ignored": f["ignored"]}
+
+
+def search(query: str, body: bool = False, limit: int = 500) -> dict:
+    """Search over every account: the newest `limit` matches with their
+    account, and the notes of each search tagged with the account they came
+    from. Mail-text search follows each account's own setting (off there =
+    only the metadata hits and a note); one account failing is a note, not a
+    failure of the others."""
+    names = accountsmod.names()
+    found: list[dict] = []
+    notes: list[dict] = []
+    for name in names:
+        acc = accountsmod.get(name)
+        try:
+            mode = cfgmod.account_imap(name).get("body_search")
+            if body and mode == "disabled":
+                notes.append({"key": "body_off", "params": {},
+                              "account": name})
+                res = {"mails": mailops.search_mails(query, limit, acc=acc),
+                       "notes": []}
+            elif body and mode == "local":
+                res = mailops.search_local(query, limit, acc=acc)
+            elif body:
+                res = mailops.search_body(
+                    query, limit, acc=acc,
+                    budget=mailops.BODY_SEARCH_BUDGET_S / len(names))
+            else:
+                res = {"mails": mailops.search_mails(query, limit, acc=acc),
+                       "notes": []}
+        except Exception:
+            log.exception("search failed in account %s", name)
+            notes.append({"key": "account_failed", "params": {},
+                          "account": name})
+            continue
+        found += [{**m, "account": name} for m in res["mails"]]
+        notes += [{**n, "account": name} for n in res["notes"]]
+    found.sort(key=lambda m: -m["ts"])
+    return {"mails": found[:limit], "notes": notes}

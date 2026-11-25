@@ -78,6 +78,11 @@ interface Props {
   /** Senders with snoozed mail: address -> when the soonest comes back (epoch
    *  s). Their Sender rows (and one-sender Smart rows) show "back tomorrow". */
   snoozed?: Record<string, number>;
+  // The lists across accounts: one chip per account under a row's own lines.
+  chips?: (g: Group) => ReactNode;
+  // No grade column / badge (grades are per account: the rows across accounts
+  // carry none).
+  noGrade?: boolean;
 }
 
 /** The blue "back tomorrow" chip of a sender with snoozed mail. */
@@ -225,7 +230,7 @@ const ROW_ON = "bg-panel2";
    grouping mode (and with it the content) changes. */
 function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, onToggle,
   onToggleAll, onOpen, blockedKeys, selectMode, cards, banner,
-  sortK, sortDir, onSort, groupLabel, grouping, rowNote, snoozed
+  sortK, sortDir, onSort, groupLabel, grouping, rowNote, snoozed, chips, noGrade
 }: PageProps) {
   // Sort indicator, inline after the label: the active column shows an
   // accent arrow that ROTATES between directions; inactive sortable columns
@@ -256,7 +261,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
     slice.length > 0 && slice.every((g) => selected.has(g.key));
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   // Sender rows carry a grade: a column of its own, sortable.
-  const showGrade = grouping === "sender";
+  const showGrade = grouping === "sender" && !noGrade;
   // Hidden checkboxes stay in the layout (no shift): the mouse reveals them
   // on hover / focus; on touch they are inert until select mode.
   const hiddenCls = `opacity-0 coarse:pointer-events-none
@@ -361,6 +366,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
                   title={rowNote(g)}>{rowNote(g)}</div>
               )}
               <MetaLine g={g} />
+              {chips && <div className="mt-1">{chips(g)}</div>}
             </td>
             {!compact && (
               <td className={`px-2 py-2.5 text-right ${td}`}>{pill}</td>
@@ -394,7 +400,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
   onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe,
-  snoozed
+  snoozed, chips, noGrade
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   const [moreFor, setMoreFor] = useState<Group | null>(null);
@@ -495,8 +501,9 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                     )}
                     {pill}
                   </div>
+                  {chips && <div className="mt-1">{chips(g)}</div>}
                 </div>
-                {grouping === "sender" && g.grade && (
+                {grouping === "sender" && !noGrade && g.grade && (
                   <GradeBadge letter={g.grade.letter} />
                 )}
                 <div className="shrink-0 whitespace-nowrap text-right

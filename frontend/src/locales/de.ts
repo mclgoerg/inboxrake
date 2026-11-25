@@ -2913,6 +2913,41 @@ export const DE: Record<string, string> = {
   "pick.text":
     "„{page}“ arbeitet immer mit einem Konto. Wähle eins, um es zu öffnen.",
   "pick.back": "Zurück zur Übersicht",
+  "alist.title": "{verb}: {mails} in {n}\u00a0Konten?",
+  "alist.title_one": "{verb}: {mails} in 1\u00a0Konto?",
+  "alist.note_move":
+    "Jedes Konto führt seinen eigenen Schritt aus, mit eigenem Rückgängig und "
+    + "eigenem Eintrag in der Aktivität. Geschützte Absender und angeheftete "
+    + "Mails bleiben, wo sie sind.",
+  "alist.note_read":
+    "Jedes Konto führt seinen eigenen Schritt aus, mit eigenem Eintrag in "
+    + "der Aktivität.",
+  "alist.all_pinned": "alles angeheftet – bleibt unberührt",
+  "alist.all_protected": "alles geschützt – bleibt unberührt",
+  "alist.pinned_stay": "{n}\u00a0angeheftet bleiben",
+  "alist.protected_left": "{n}\u00a0geschützte bleiben unberührt",
+  "alist.out_trash": "{n}\u00a0Mails werden in den Papierkorb verschoben",
+  "alist.out_trash_one": "1\u00a0Mail wird in den Papierkorb verschoben",
+  "alist.out_archive": "{n}\u00a0Mails werden archiviert",
+  "alist.out_archive_one": "1\u00a0Mail wird archiviert",
+  "alist.out_read": "{n}\u00a0Mails werden als gelesen markiert",
+  "alist.out_read_one": "1\u00a0Mail wird als gelesen markiert",
+  "alist.out_none": "hier gibt es nichts zu tun",
+  "alist.bar_selected": "{n}\u00a0Absender \u00b7 {mails}\u00a0Mails",
+  "alist.bar_selected_one": "1\u00a0Absender \u00b7 {mails}\u00a0Mails",
+  "alist.unsub_one_only": "Abbestellen geht hier nur für einen Absender auf einmal",
+  "alist.none": "Scanne deine Konten, um hier ihre Absender zu sehen.",
+  "alist.in_accounts": "In {n}\u00a0Konten",
+  "alist.in_accounts_one": "In 1\u00a0Konto",
+  "alist.open_in": "In {account} öffnen",
+  "alist.show_mails": "Mails anzeigen",
+  "alist.detail_note":
+    "Schützen, Blockieren, Labels, Verschieben in einen Ordner und die Details "
+    + "der Note gelten für ein Konto: Öffne den Absender in diesem Konto.",
+  "alist.still_mailing": "schreibt weiter: {n}",
+  "alist.line": "{verb} in {account}",
+  "alist.account": "Konto",
+  "alist.account_all": "Alle Konten",
   "account.change": "Ändern…",
   "copy.entry": "Auf ein anderes Konto umziehen…",
   "copy.entry_sub": "Kopiere das Wichtige in ein anderes deiner Konten.",
@@ -3115,6 +3150,11 @@ export const DE: Record<string, string> = {
   "search.note.charset_fallback":
     "Dieser Server unterstützt keine UTF-8-Suche - Umlaute und andere "
     + "Sonderzeichen werden evtl. nicht gefunden.",
+  "search.note.body_off":
+    "Die Mailtext-Suche ist für dieses Konto aus – es wurden nur Absender und "
+    + "Betreff durchsucht.",
+  "search.note.account_failed":
+    "Dieses Konto konnte nicht durchsucht werden – seine Treffer fehlen.",
   "body_search.title": "Mailtext-Suche",
   "body_search.label": "Im Mailtext suchen",
   "body_search.server": "Mailserver fragen",

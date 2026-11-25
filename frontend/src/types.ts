@@ -733,6 +733,9 @@ export interface Mail {
   pinned?: boolean;   // absent in search/attachment lists
   msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
+  /** The account the mail belongs to - only in the lists across accounts
+   *  (All accounts: All mail, Search); a single account's lists leave it out. */
+  account?: string;
 }
 
 export interface MailsResp {
@@ -977,6 +980,8 @@ export interface TrackerReport {
 export interface SearchNote {
   key: string;
   params: Record<string, string | number>;
+  /** Search across accounts: the account the note is about. */
+  account?: string;
 }
 
 export interface SearchResp {
@@ -1410,6 +1415,11 @@ export interface AllAccountCard {
    *  week ("week"). */
   new: number;
   new_basis: "visit" | "week";
+  /** The account's `groups_rev`: it moves when a scan finished or a move
+   *  patched the index (the lists across accounts read again then). */
+  rev: number;
+  /** A move / unsubscribe job is still running there. */
+  busy: boolean;
 }
 
 /** One account's side of a sender that writes to several accounts. */
@@ -1435,6 +1445,39 @@ export interface SameSenderRow {
   size: number;
   /** Percent of these mails the user opened. */
   opened: number;
+}
+
+/** One account's part of a Sender row across accounts
+ *  (`GET /api/accounts/senders`). */
+export interface AcrossPart {
+  account: string;
+  count: number;
+  size: number;
+  unread: number;
+  /** Pinned mails (left alone by every move). */
+  pinned: number;
+  first: string;
+  last: string;
+  protected: boolean;
+  /** The mails carry a List-Unsubscribe header. */
+  unsub: boolean;
+  unsubscribed: "done" | "link" | "failed" | "pending" | null;
+  /** The sender's grade in THIS account (grades are per account). */
+  grade: GradeLetter | null;
+  verdict: Verdict | null;
+  /** Mails that arrived after the unsubscribe (Still mailing). */
+  still: number;
+}
+
+/** A Sender row across accounts: the same address in several accounts is
+ *  one row (counts summed) with one part per account. `grade` is left off the
+ *  row - each part has its own. */
+export type AcrossGroup = Group & { accounts: AcrossPart[] };
+
+export interface AllSendersResp {
+  accounts: { name: string; rev: number; status: string;
+    scanned_ts: number | null }[];
+  senders: AcrossGroup[];
 }
 
 export interface AllAccountsResp {

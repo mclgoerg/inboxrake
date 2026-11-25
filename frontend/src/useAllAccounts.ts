@@ -77,7 +77,10 @@ export function useAllAccounts(enabled: boolean, overviewOpen: boolean,
     void load();
   }, [enabled, key, load, overviewOpen]);
 
-  const scanning = data?.accounts.some((a) => a.status === "scanning") ?? false;
+  // (a move that runs in an account is followed too: the lists across
+  // accounts read again when its `rev` moves)
+  const scanning = data?.accounts.some(
+    (a) => a.status === "scanning" || a.busy) ?? false;
   useEffect(() => {
     if (!enabled || !scanning) return;
     const timer = setInterval(() => { void load(); }, POLL_MS);
