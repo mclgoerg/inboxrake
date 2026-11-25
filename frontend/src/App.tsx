@@ -187,6 +187,8 @@ export default function App() {
     () => (cfg ? Object.keys(cfg.accounts) : []), [cfg]);
   // All accounts needs two mailboxes: with fewer the choice is not in effect.
   const allScope = scopeAll && canScopeAll(accountNames);
+  const allScopeRef = useRef(allScope);
+  allScopeRef.current = allScope;
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
   // Settings with unsaved edits asks before the page is left (sidebar, tab
@@ -837,6 +839,11 @@ export default function App() {
       // Held while running; a page loaded mid-job counts as "this job".
       seq: staleDel || del.status === "running"
         ? (prev ? prev.seq : (del.seq ?? 0) - 1) : del.seq };
+    // All accounts: this state is the one account behind the view, not where
+    // the user acted. What happened in an account is said by the confirm's own
+    // list (with its Undo in that account's Activity) - a toast with an Undo
+    // for whichever account happens to be loaded would name nothing.
+    if (allScopeRef.current) return;
     if (state.status === "error" && prev?.scan !== "error")
       notify(t("err.generic", { msg: errorText(state.error) }), "error");
     if (!prev) return;
