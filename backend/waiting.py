@@ -54,6 +54,7 @@ ANSWERED_MAX = 100       # answered rows listed (the count is the full one)
 REMINDER_MAX_DAYS = 366  # how far ahead a reminder may be set
 FIRED_SHOWN = 3 * DAY
 TICK_SECONDS = 300
+ROLE_FOLDERS = ("trash", "junk")   # cached role folders that count as answers
 
 _HEADERS = ("FROM TO CC SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES")
 
@@ -209,12 +210,17 @@ def _incoming(acc) -> list[_In]:
     from . import mailops
     out = []
     with acc.lock:
-        for m in acc.index.values():
-            ids = tuple(i for i in [mailops._own_id(m), *(m.get("irt") or []),
-                                    *(m.get("refs") or [])] if i)
-            out.append(_In(ids, m["ts"] or 0, m["addr"], m["name"],
-                           bool(m["bulk"]), m["subject"], m["folder"],
-                           m["uid"]))
+        # the scanned folders, plus the cached Trash and Junk: an answer you
+        # binned or that landed in Junk is still an answer
+        mails = [*acc.index.values(),
+                 *(m for role in ROLE_FOLDERS
+                   for m in acc.role_index.get(role, {}).values())]
+    for m in mails:
+        ids = tuple(i for i in [mailops._own_id(m), *(m.get("irt") or []),
+                                *(m.get("refs") or [])] if i)
+        out.append(_In(ids, m["ts"] or 0, m["addr"], m["name"],
+                       bool(m["bulk"]), m["subject"], m["folder"],
+                       m["uid"]))
     return out
 
 
@@ -230,6 +236,14 @@ def _own_addresses(acc, sent: list[dict]) -> set[str]:
         log.warning("[%s] own addresses unavailable", acc.name, exc_info=True)
     own.discard("")
     return own
+
+
+def _company(addr: str) -> str:
+    """The company a work address belongs to ("Shop" for jane@mail.shop.example),
+    "" on a freemail domain or a shared platform host: a push may carry a
+    name, never part of an address."""
+    company = smartkinds.company_id(addr.rpartition("@")[2])
+    return company.partition(".")[0].capitalize() if company else ""
 
 
 def _is_automated(addr: str) -> bool:
@@ -326,6 +340,7 @@ def analyse(acc, now: float | None = None) -> Analysis:
         state = "answered" if answered else (
             "needed" if last["id"] in needed else "open")
         addr, name = who[0]
+        known = name or names.get(addr)
         earlier = [d for r, d in samples.get(addr, {}).items() if r != root]
         usual = statistics.median(earlier) \
             if len(earlier) >= MIN_SAMPLES else None
@@ -335,8 +350,8 @@ def analyse(acc, now: float | None = None) -> Analysis:
         items.append({
             "id": last["id"], "uid": last["uid"], "state": state,
             "person": {"addr": addr,
-                       "name": name or names.get(addr)
-                       or addr.partition("@")[0]},
+                       "name": known or addr.partition("@")[0]},
+            "_push_name": known or _company(addr),
             "subject": last["subj"], "ts": last["ts"], "age": age,
             "days": age // DAY,
             "overdue": state == "open" and age > limit,
@@ -531,16 +546,28 @@ def tick_account(acc, now: float | None = None) -> int:
             continue
         if not waitstore.mark_fired(msgid, int(now), acc.name):
             continue
-        webpush.waiting(acc, name=it["person"]["name"], days=it["days"],
-                        subject=it["subject"], usual=it["usual_days"])
+        webpush.waiting(acc, name=it["_push_name"], days=it["days"],
+                        usual=it["usual_days"], ref=msgid)
         sent += 1
     return sent
+
+
+def _fired(account: str, now: float, within: float = float("inf")) -> bool:
+    """Has this account any reminder that fired (within `within` seconds)?
+    A cheap read of the small store, before the conversation graph is built."""
+    block = waitstore.load_account(account)
+    return bool(block["track"]) and any(
+        r["fired"] and now - r["fired"] < within
+        for r in block["reminders"].values())
 
 
 def recent_reminders(acc, now: float | None = None) -> list[dict]:
     """The reminders that fired lately and whose mail still waits, for an
     open page to show once."""
     now = time.time() if now is None else now
+    # the page asks every minute: skip the graph when nothing can show
+    if not _fired(acc.name, now, FIRED_SHOWN):
+        return []
     a = analyse(acc, now)
     out = []
     for it in a.items:
@@ -555,6 +582,8 @@ def recent_reminders(acc, now: float | None = None) -> list[dict]:
 def reminded(acc, now: float | None = None) -> list[str]:
     """Names of the people behind reminders that fired and still wait: the
     digest's line."""
+    if not _fired(acc.name, time.time() if now is None else now):
+        return []
     a = analyse(acc, now)
     names: list[str] = []
     for it in a.items:

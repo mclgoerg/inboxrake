@@ -24,8 +24,8 @@ that. Whatever IS sent shows a notification (browsers revoke a subscription
 that gets silent pushes), and carries short generic text - never a subject or
 an address. The one thing a reminder adds is the service's name, the point of
 a reminder the person asked for, plus the amount and date it was announced
-with (a waiting reminder: the person's name and the subject of the mail the
-person asked about).
+with. A waiting reminder adds the person's name (or the company's, or just
+"Someone") and the days it has waited.
 
 Files (per tenant, atomic write, tolerant read): push_subscriptions.json,
 `{"subscriptions": [{endpoint, p256dh, auth, lang, origin, created}]}`; the
@@ -439,6 +439,7 @@ STRINGS = {
         "reminder_amount": "{amount} around {date}",
         "reminder_date": "Expected around {date}",
         "reminder_signin": "last sign-in {date}",
+        "someone": "Someone",
         "waiting_one": "{name} hasn't answered for 1 day",
         "waiting_other": "{name} hasn't answered for {n} days",
         "waiting_usual_one": "they usually answer in 1 day",
@@ -473,6 +474,7 @@ STRINGS = {
         "reminder_amount": "{amount} etwa am {date}",
         "reminder_date": "Erwartet etwa am {date}",
         "reminder_signin": "letzte Anmeldung am {date}",
+        "someone": "Jemand",
         "waiting_one": "{name} hat seit 1 Tag nicht geantwortet",
         "waiting_other": "{name} hat seit {n} Tagen nicht geantwortet",
         "waiting_usual_one": "antwortet sonst innerhalb von 1 Tag",
@@ -531,22 +533,22 @@ def _reminder_payload(lang: str, account: str, prefix: bool,
 def _waiting_payload(lang: str, account: str, prefix: bool,
                      params: dict) -> dict:
     """The reminder the person asked for on a mail nobody answered: who has
-    not answered and for how long, the subject they wrote, and how fast that
-    person usually answers (when known) - the board's wording."""
+    not answered, for how long and how fast that person usually answers (when
+    known). Never the subject or an address - like the subscription reminder,
+    which names only the service; the page and the digest may show more."""
     t = STRINGS.get(lang) or STRINGS["en"]
     days = max(0, int(params.get("days") or 0))
-    name = str(params.get("name") or "")[:80]
+    name = str(params.get("name") or "").strip()[:80] or t["someone"]
     title = (t["waiting_one"] if days == 1 else t["waiting_other"]).format(
         name=name, n=days)
     usual = int(params.get("usual") or 0)
-    detail = [f"“{str(params.get('subject') or '')[:80]}”"
-              if params.get("subject") else ""]
+    detail = []
     if usual > 0:
         detail.append((t["waiting_usual_one"] if usual == 1
                        else t["waiting_usual_other"]).format(n=usual))
     body = " · ".join(p for p in ([account] if prefix else []) + detail if p)
     digest = hashlib.sha1(
-        f"{name}\0{params.get('subject') or ''}".encode()).hexdigest()[:8]
+        f"{name}\0{params.get('ref') or ''}".encode()).hexdigest()[:8]
     return {"title": title, "body": body,
             "tag": f"{account}:waiting:{digest}", "url": "/#/waiting"}
 
@@ -626,8 +628,10 @@ def reminder(acc, **params) -> None:
 
 def waiting(acc, **params) -> None:
     """A "Remind me" on a mail nobody answered is due (backend/waiting.py):
-    `name` of the person, `days` open, the `subject` and how many days they
-    `usual`ly take (0 / None = unknown). Delivered like `reminder`."""
+    `name` of the person (empty = "Someone"), `days` open, `ref` (an opaque
+    id, only to keep two reminders apart) and how many days they `usual`ly
+    take (0 / None = unknown). Never a subject or an address. Delivered like
+    `reminder`."""
     job_finished(acc, "waiting", True, **params)
 
 

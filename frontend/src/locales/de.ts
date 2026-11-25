@@ -606,7 +606,7 @@ export const DE: Record<string, string> = {
   "sub.ics_note":
     "Aus den Belegen in deinem Postfach erwartet. Inboxrake kann es nicht "
     + "für dich kündigen.",
-    "waiting.menu": "Warten auf Antwort",
+  "waiting.menu": "Warten auf Antwort",
   "waiting.sub": "Mails von dir, bei denen das letzte Wort bei dir liegt",
   "waiting.sub_phone": "{n}\u00a0länger als üblich",
   "waiting.pane_title": "Warten auf Antwort",

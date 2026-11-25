@@ -1198,13 +1198,13 @@ analysis, bulk unsubscribe - the server sends a real Web Push, so the
 notification arrives with Inboxrake closed. The same goes for a
 [subscription reminder](#subscriptions) you switched on (it names the service,
 the expected date and amount) and a [reminder on an unanswered
-mail](#waiting-for-a-reply) you asked for (it names the person and the
-subject). Automatic scans and rules never
+mail](#waiting-for-a-reply) you asked for (it names the person - or just
+"Someone" - and the days it has waited). Automatic scans and rules never
 notify, nor does a cancelled job, and a device that is looking at Inboxrake
 right now gets the in-app message instead. The text is short and generic
 (for example "Scan finished", with the account and counts under it) and
 travels encrypted through the browser vendor's push service; no mail subject
-or address is in it (a reminder you asked for adds what you asked about). "Send test
+or address is in it. "Send test
 notification" checks a device. Each device belongs to the signed-in user,
 and notifies about that user's accounts only.
 

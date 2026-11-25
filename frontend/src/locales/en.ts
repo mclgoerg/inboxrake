@@ -1346,7 +1346,7 @@ export const EN: Record<string, string> = {
   "sub.ics_note":
     "Expected from the receipts in your mailbox. Inboxrake can't cancel it "
     + "for you.",
-    "waiting.menu": "Waiting for a reply",
+  "waiting.menu": "Waiting for a reply",
   "waiting.sub": "Mails you sent where the last word is yours",
   "waiting.sub_phone": "{n}\u00a0longer than usual",
   "waiting.pane_title": "Waiting for a reply",
