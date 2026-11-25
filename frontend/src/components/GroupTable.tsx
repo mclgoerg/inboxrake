@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
+import { Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, KeyRound, LifeBuoy,
   ListChecks, MailOpen, MessagesSquare, MoreHorizontal, Newspaper, Package,
   PanelRight, Reply, Shapes, Shield, ShieldOff, Tag as TagIcon, Trash2, Users,
@@ -9,7 +9,6 @@ import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
 import { fmtNum, fmtPct } from "../numfmt";
 import { GradeBadge } from "./GradeUi";
-import { chipText } from "../snooze";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
   isModalOpen, Meta, type SwipeAction, type TagTone } from "./ui";
@@ -36,8 +35,6 @@ export interface GroupSwipe {
   protect: (g: Group) => void;
   block: (g: Group) => void;
   unblock: (g: Group) => void;
-  /** Opens Not now (a phone sheet) for the row's unread mails. */
-  snooze?: (g: Group) => void;
 }
 
 interface Props {
@@ -75,29 +72,7 @@ interface Props {
   banner?: ReactNode;
   // Row swipe on touch screens (card layout only); absent = no swipe.
   swipe?: GroupSwipe;
-  /** Senders with snoozed mail: address -> when the soonest comes back (epoch
-   *  s). Their Sender rows (and one-sender Smart rows) show "back tomorrow". */
-  snoozed?: Record<string, number>;
 }
-
-/** The blue "back tomorrow" chip of a sender with snoozed mail. */
-function SnoozeChip({ until }: { until: number }) {
-  return (
-    <Tag tone="info" className="inline-flex shrink-0 items-center gap-1
-      whitespace-nowrap">
-      <AlarmClock size={14} aria-hidden />{chipText(until)}
-    </Tag>
-  );
-}
-
-/** When this row's snoozed mail comes back (a Sender row, or a Smart row that
- *  stands for one sender); undefined when none is snoozed. */
-const snoozedUntil = (g: Group, grouping: Grouping | undefined,
-    snoozed?: Record<string, number>): number | undefined =>
-  !snoozed ? undefined
-    : grouping === "sender" ? snoozed[g.key]
-    : grouping === "smart" && g.kind === "sender" ? snoozed[g.addr ?? ""]
-    : undefined;
 
 /** Thread / subject groups carry an English summary from the backend
  *  ("2 mails, 1 sender" / "3 senders"); show it in the UI language. Sender
@@ -225,7 +200,7 @@ const ROW_ON = "bg-panel2";
    grouping mode (and with it the content) changes. */
 function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, onToggle,
   onToggleAll, onOpen, blockedKeys, selectMode, cards, banner,
-  sortK, sortDir, onSort, groupLabel, grouping, rowNote, snoozed
+  sortK, sortDir, onSort, groupLabel, grouping, rowNote
 }: PageProps) {
   // Sort indicator, inline after the label: the active column shows an
   // accent arrow that ROTATES between directions; inactive sortable columns
@@ -351,9 +326,6 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
                   onClick={() => onOpen(g)}>
                   {g.label}
                 </button>
-                {snoozedUntil(g, grouping, snoozed) !== undefined && (
-                  <SnoozeChip until={snoozedUntil(g, grouping, snoozed)!} />
-                )}
                 {compact && <span className="shrink-0">{pill}</span>}
               </div>
               {rowNote?.(g) && (
@@ -393,8 +365,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
 /* Mobile: a card list - no table semantics, no horizontal squeeze. The
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
-  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe,
-  snoozed
+  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   const [moreFor, setMoreFor] = useState<Group | null>(null);
@@ -429,10 +400,6 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
         label: t("swipe.read"), ariaLabel: t("Mark read"),
         icon: <MailOpen size={18} aria-hidden />,
         onAction: () => swipe.read(g) }] : []),
-      ...(g.unread > 0 && swipe.snooze ? [{ key: "snooze", tone: "info" as const,
-        label: t("snooze.btn"), ariaLabel: t("snooze.swipe_label"),
-        icon: <AlarmClock size={18} aria-hidden />,
-        onAction: () => swipe.snooze!(g) }] : []),
     ];
     return { leading, trailing };
   };
@@ -490,9 +457,6 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1
                     type-meta text-muted">
                     <span><Stats g={g} /></span>
-                    {snoozedUntil(g, grouping, snoozed) !== undefined && (
-                      <SnoozeChip until={snoozedUntil(g, grouping, snoozed)!} />
-                    )}
                     {pill}
                   </div>
                 </div>

@@ -2175,7 +2175,7 @@ export function BulkBar({ summary, onClear, token, actions, primary, swap }: {
       pick(coarse ? "[data-bar-cancel]" : "[data-bar-field]")?.focus();
     } else {
       (was === "move" ? pick("[data-bar-move]")
-        : pick("[data-bar-more]") ?? pick('[aria-haspopup="menu"]'))?.focus();
+        : pick('[aria-haspopup="menu"]'))?.focus();
     }
   }, [swap]);
   return (

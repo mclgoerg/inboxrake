@@ -55,9 +55,9 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
-(Triage, Duplicates, Attachments, Rules, Junk, Trash, Snoozed), **Insights**
+(Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
 (Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply) and, at the bottom,
-Activity and Settings. Junk, Trash and Snoozed show their mail counts. On wide screens
+Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
 keep you there); below 1024 px they open as a window (full
@@ -183,8 +183,8 @@ bottom tab bar, filters and confirmations as bottom sheets, a compact list.
 <small class="where">Phones and tablets</small>
 
 Swipe a sender row left for Trash (a full swipe),
-Block and More, right for Protect, Read and Not now; swipe a mail row left for
-Trash, right for Pin, Read and Not now. Every swipe action asks the same confirmation as its
+Block and More, right for Protect and Read; swipe a mail row left for Trash,
+right for Pin and Read. Every swipe action asks the same confirmation as its
 button. Below 1024 px (phones and tablets), pull down from the top of Overview, Senders or All mail to scan
 (the header shows the scan's progress). Sheets close with a swipe down. In the
 installed app (PWA), where no browser chrome answers it, a swipe from the
@@ -297,7 +297,7 @@ a card's text is fetched when you expand it. Mails in Sent are read-only.
 
 A floating capsule at the bottom, there only once
 something is selected: how many groups and mails you picked, Clear
-selection, Unsubscribe, Archive, Move, **Not now**, a More menu (Mark read, AI review,
+selection, Unsubscribe, Archive, Move, a More menu (Mark read, AI review,
 Export CSV, "Limit to…" - the retention limiter, shown as a removable token
 while active) and the **Trash N** button. Tick rows with **Select** in the
 Senders toolbar (round checkboxes appear until you press Done; on a wide
@@ -556,56 +556,6 @@ supports it, and Inboxrake then offers to protect the sender), **Block** and
 a move to Trash. Senders you have replied to before are tagged "known" and
 gathered under a banner ("N senders you know - you replied to them before,
 probably not junk") with a "Show" button that lists only them.
-
-### Not now (snooze)
-
-<small class="where">Sender detail, mail reader, selection bars · Clean up → Snoozed</small>
-
-**Not now** hides mail until a time you pick: *Later today* (18:00),
-*Tomorrow morning* (08:00), *This weekend* (Saturday 09:00), *Next week*
-(Monday 08:00) or *Pick a date…*. It sits beside Move in a sender's detail
-(it snoozes that sender's **unread** mails), in the mail reader (that one
-mail, e.g. an invoice "until 1 Dec", so it is on top when you have to pay it)
-and in the selection bars (the ticked mails); on a phone it is a bottom sheet,
-and a swipe right on a row opens it. The times are your own clock.
-
-Snoozed mail waits in a folder named **Snoozed** on your mail server (so your
-phone's mail app does not show it either). Inboxrake creates it the first time
-you snooze; a folder role override in Settings → an account → Folders can point
-elsewhere. At the time you picked, each mail goes back to the folder it came
-from, **unread**, on top. Pinned mails are never snoozed, and mail of a
-protected sender is skipped when you snooze a whole sender or a selection (one
-mail you name yourself is fine). Snoozing is a move like Move to Trash: it
-shows in Activity (and the Time machine), and **Undo** puts the mails back
-where they were.
-
-**Deliver in batches** goes one step further for a sender that mails every
-day: *Deliver once a week* (Saturday 09:00) or *once a day* (18:00), in the
-time zone of your browser. Every new inbox mail from that sender (mail that
-arrives after you switched it on; pinned mails excepted, protected senders
-cannot have a batch) is held after each scan and the pile arrives together at
-the next slot, with one push "Your *sender* batch is here: N mails" if you
-enabled [notifications](#settings). Switching a batch off returns what it
-holds. A batch only sees new mail when Inboxrake scans, so turn on Auto-scan
-(Settings → Auto-scan) for it to catch mail every few minutes. "New" is
-measured against the **last scan**: when you switch a batch on, mail that
-Inboxrake has not scanned yet (arrived since the last scan) counts as
-existing, not as new, and is not held; a changed folder identity on the server
-(UIDVALIDITY) restarts the count from the next scan. A mail Inboxrake
-delivers is not held again while it stays in the inbox (one you move out
-and, more than a day later, back in counts as new again), and a mail that shares its Message-ID with one
-that is already snoozed stays where it is.
-
-**Clean up → Snoozed** (the sidebar item, or the Clean up tab on a phone) lists
-what waits: batches ("*sender* · weekly batch - 6 mails so far, delivered Sat
-09:00"), senders with several snoozed mails and single mails (by subject), each
-with when it comes back and **Back now**; a sender with snoozed mail also shows
-a small "back tomorrow" chip in the list. The page checks the folder when it
-opens: a mail you moved away in another app is forgotten, not brought back
-twice. If the **Snoozed** folder cannot be found (hidden or renamed on the
-server), the page says so and keeps what it remembers instead of dropping it.
-One account holds at most 5,000 snoozed mails; beyond that Not now refuses
-before anything moves. Nothing here uses AI.
 
 ### Delete permanently (Trash and Junk)
 

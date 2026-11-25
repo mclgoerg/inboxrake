@@ -11,7 +11,6 @@ import type {
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
-  BatchSlot, SnoozedResp, SnoozeResult,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -227,11 +226,6 @@ const ERROR_CODES: Record<string, string> = {
   copy_same_mailbox: "ferr.copy_same_mailbox",
   copy_cannot_confirm: "ferr.copy_cannot_confirm",
   copy_folder_reserved: "ferr.copy_folder_reserved",
-  snooze_cannot_create: "ferr.snooze_cannot_create",
-  snooze_bad_time: "ferr.snooze_bad_time",
-  snooze_protected: "ferr.snooze_protected",
-  snooze_full: "ferr.snooze_full",
-  snooze_no_folder: "ferr.snooze_no_folder",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -441,20 +435,6 @@ export const api = {
                    force = false) =>
     req<{ ok: boolean; queued: number }>("/api/delete_messages",
       { items, action, dest, force }),
-  // Not now: the unread mails of groups (`keys`) or exact mails (`items`) wait
-  // in the Snoozed folder until `until` (epoch s), then come back unread.
-  snooze: (when: { grouping?: Grouping; keys?: string[];
-      items?: [string, number][] }, until: number, unreadOnly = true) =>
-    req<SnoozeResult>("/api/snooze", { grouping: "sender", ...when, until,
-      unread_only: unreadOnly }),
-  snoozeBatch: (key: string, slot: BatchSlot | "off", tz: string,
-      label = "") =>
-    req<{ ok: boolean; slot: string; returned?: number; next?: number }>(
-      "/api/snooze/batch", { key, slot, tz, label }),
-  snoozed: () => req<SnoozedResp>("/api/snoozed"),
-  snoozedBack: (msgids: string[], batch = "") =>
-    req<{ returned: number; gone: number }>("/api/snoozed/back",
-      { msgids, batch }),
   pin: (folder: string, uid: number, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean }>("/api/pin",
       { folder, uid, pinned }),

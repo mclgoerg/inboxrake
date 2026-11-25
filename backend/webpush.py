@@ -17,10 +17,8 @@ identity moves it). Only jobs a person started push - never the auto-scan,
 rules or restore rescans - plus deliberate exceptions: an AI assistant's
 rule proposal (`proposal`, the maintainer's decision for the MCP endpoint), the
 notice of a new AI connection (`connection`), a subscription reminder (`reminder`: the person switched that very reminder on,
-so it is theirs; backend/subscriptions.py), a "Remind me" on a mail nobody
-answered (`waiting`: the same, backend/waiting.py) and a delivered batch
-(`batch`: the person set that sender to deliver in batches; backend/snooze.py,
-it names the sender like a reminder names its service) - and never to a device that
+so it is theirs; backend/subscriptions.py) and a "Remind me" on a mail nobody
+answered (`waiting`: the same, backend/waiting.py) - and never to a device that
 reported the app visible a moment ago (presence): the in-app toast covers
 that. Whatever IS sent shows a notification (browsers revoke a subscription
 that gets silent pushes), and carries short generic text - never a subject or
@@ -431,11 +429,6 @@ STRINGS = {
         "error_body": "Open Inboxrake for the details.",
         "job_scan": "Scan", "job_delete": "Clean-up", "job_ai": "AI review",
         "job_atts": "Attachment analysis", "job_unsub": "Bulk unsubscribe",
-        "batch_one": "Your {name} batch is here: {n} mail",
-        "batch_other": "Your {name} batch is here: {n} mails",
-        "batch_anon_one": "Your batch is here: {n} mail",
-        "batch_anon_other": "Your batch is here: {n} mails",
-        "batch_body": "Back in your Inbox, unread - they'll keep coming in batches",
         "proposal": "An AI assistant proposes a rule",
         "proposal_body": "Review it in Inboxrake. Nothing has moved yet.",
         "connection": "New AI connection",
@@ -469,12 +462,6 @@ STRINGS = {
         "job_scan": "Scan", "job_delete": "Aufräumen",
         "job_ai": "KI-Prüfung", "job_atts": "Anhang-Analyse",
         "job_unsub": "Massenabbestellen",
-        "batch_one": "Deine Sammellieferung von {name} ist da: {n} Mail",
-        "batch_other": "Deine Sammellieferung von {name} ist da: {n} Mails",
-        "batch_anon_one": "Deine Sammellieferung ist da: {n} Mail",
-        "batch_anon_other": "Deine Sammellieferung ist da: {n} Mails",
-        "batch_body": "Wieder im Posteingang, ungelesen - weitere kommen "
-                      "gesammelt",
         "proposal": "Ein KI-Assistent schlägt eine Regel vor",
         "proposal_body": "Sieh sie dir in Inboxrake an. Es wurde noch nichts "
                          "verschoben.",
@@ -573,17 +560,6 @@ def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
         return _reminder_payload(lang, account, prefix, params or {})
     if kind == "waiting":
         return _waiting_payload(lang, account, prefix, params or {})
-    if kind == "batch":
-        # the sender's display name is the point of a batch the person asked
-        # for (like a reminder's service name); never an address or subject
-        name = "" if "@" in label else label[:80]     # no address in a push
-        title = t[("batch" if name else "batch_anon")
-                  + ("_one" if n == 1 else "_other")].format(name=name, n=n)
-        body = " · ".join(p for p in (account if prefix else "",
-                                      t["batch_body"]) if p)
-        digest = hashlib.sha1(label.encode()).hexdigest()[:8]
-        return {"title": title, "body": body,
-                "tag": f"{account}:batch:{digest}", "url": "/#/snoozed"}
     if kind == "connection":
         # a hosted AI app was connected over OAuth: its host and level
         return {"title": t["connection"],

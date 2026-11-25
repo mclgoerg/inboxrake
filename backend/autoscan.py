@@ -25,7 +25,6 @@ from pathlib import Path
 from . import accounts
 from . import config as cfgmod
 from . import mailops
-from . import snooze
 from . import tenants
 
 log = logging.getLogger("inboxrake.autoscan")
@@ -136,10 +135,6 @@ def _interval_minutes(a: dict) -> int:
 def _tick() -> None:
     for tenant in tenants.known():
         with tenants.use(tenant):
-            try:
-                snooze.tick()       # snoozed mail that is due comes back
-            except Exception:
-                log.exception("snooze tick failed")
             cfg = cfgmod.load_config()
             for name, block in cfg["accounts"].items():
                 a = block.get("auto_scan") or {}

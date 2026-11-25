@@ -1,4 +1,4 @@
-import { AlarmClock, MailOpen, Pin, Trash2 } from "lucide-react";
+import { MailOpen, Pin, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
@@ -90,8 +90,6 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
 export interface MailSwipe {
   trash: (m: Mail) => void;
   read: (m: Mail) => void;
-  /** Opens Not now for this mail (a phone sheet). Absent: no such swipe. */
-  snooze?: (m: Mail) => void;
   /** The row's own background, which the sliding row must cover the buttons
    *  with (default the panel's). */
   bg?: string;
@@ -156,10 +154,6 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
         label: t("swipe.read"), ariaLabel: t("Mark read"),
         icon: <MailOpen size={18} aria-hidden />,
         onAction: () => swipe.read(m) }] : []),
-      ...(swipe.snooze ? [{ key: "snooze", tone: "info" as const,
-        label: t("snooze.btn"), ariaLabel: t("snooze.swipe_label"),
-        icon: <AlarmClock size={18} aria-hidden />,
-        onAction: () => swipe.snooze!(m) }] : []),
     ];
     return { leading, trailing };
   };

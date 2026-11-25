@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
+import { AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
@@ -35,7 +35,7 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
  * a tool whose number needs a run shows "Check" instead. */
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
-  | "junk" | "trash" | "snoozed" | "stats" | "space" | "wrapped" | "trackers"
+  | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "waiting" | "addresses" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
@@ -275,14 +275,6 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             // The big number is the count: the sub-line adds the size.
             sub={state?.trash_size ? fmtSize(state.trash_size) : undefined}
             onClick={() => onOpen("trash")} />
-        </li>
-        <li className="contents">
-          <Tile icon={<AlarmClock size={18} aria-hidden />}
-            tone="bg-info-bg text-info-fg" label={t("snooze.title")}
-            value={state?.snoozed
-              ? t("n.mails", { n: state.snoozed.count }) : null}
-            sub={t("snooze.tile_sub")}
-            onClick={() => onOpen("snoozed")} />
         </li>
       </ul>
     </div>

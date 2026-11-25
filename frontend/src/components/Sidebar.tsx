@@ -1,5 +1,5 @@
-import { AlarmClock, AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass,
-  Layers, LayoutDashboard, LayoutGrid, Mails,
+import { AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass, Layers,
+  LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -10,9 +10,8 @@ import { fmtNum } from "../numfmt";
 /** Tool entry points the sidebar can open: pages (`ToolPage`, Settings) and
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
-  | "rules" | "junk" | "trash" | "snoozed" | "stats" | "space" | "wrapped"
-  | "trackers" | "subscriptions" | "waiting" | "addresses" | "activity"
-  | "settings";
+  | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
+  | "subscriptions" | "waiting" | "addresses" | "activity" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -26,8 +25,6 @@ export interface SidebarProps {
   mailCount?: number;
   junkCount?: number | null;
   trashCount?: number | null;
-  /** Mails waiting in Snoozed (a count on Snoozed; none = no count). */
-  snoozedCount?: number | null;
   /** Rules an AI assistant proposed that wait for the user (a badge on Rules). */
   proposals?: number;
   /** Suggestions from what the user does by hand (counted on Rules, too). */
@@ -105,8 +102,9 @@ export function LeakBadge({ n }: { n?: number }) {
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, snoozedCount, proposals, habits,
-  subscriptions, waiting, leaked, disabled }: SidebarProps) {
+  mailCount, junkCount, trashCount, proposals, habits, subscriptions, waiting,
+  leaked,
+  disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
     <a href={hashOf(p)} aria-current={page === p ? "page" : undefined}
@@ -168,8 +166,6 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         junkCount)}
       {tool("trash", <Trash2 size={16} aria-hidden />, t("role.trash"),
         trashCount)}
-      {tool("snoozed", <AlarmClock size={16} aria-hidden />, t("snooze.title"),
-        snoozedCount)}
       {section(t("tools.group_insights"))}
       {tool("stats", <BarChart3 size={16} aria-hidden />, t("Statistics"))}
       {tool("space", <LayoutGrid size={16} aria-hidden />, t("space.title"))}
