@@ -579,7 +579,12 @@ test("below 1024 px the log has a Time machine card; it opens a page with a " +
 
 test("a Time machine restore and a paused rule have headlines in both " +
   "languages, and the steps the restore undid read as undone", async () => {
-  const moment = Math.floor(Date.now() / 1000) - 7200;
+  // two hours ago, but never before today's midnight: the headline says
+  // "today" (in the first two hours of a day, "now - 2 h" was yesterday)
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const moment = Math.max(Math.floor(Date.now() / 1000) - 7200,
+    Math.floor(midnight.getTime() / 1000));
   const list = [
     mk({ action: "restore", count: 4, label: String(moment), id: "r1",
       undoes_many: [{ id: "t1", count: 4 }] }),
