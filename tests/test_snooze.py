@@ -161,7 +161,7 @@ def test_the_store_survives_a_restart_and_the_file_is_private(tmp_path):
     assert snoozestore.summary("acc") == {
         "count": 1, "until": {DEALS: 5}, "batches": {DEALS: "weekly"}}
     assert snoozestore.load_account("nobody") == {
-        "mails": {}, "batches": {}, "released": []}
+        "mails": {}, "batches": {}, "released": {}}
 
 
 @pytest.mark.parametrize("content", [
@@ -178,7 +178,7 @@ def test_a_damaged_file_only_forgets_what_it_cannot_read(tmp_path, content):
         content if isinstance(content, bytes) else content.encode())
     snoozestore._cache.clear()
     assert snoozestore.load_account("acc") == {
-        "mails": {}, "batches": {}, "released": []}
+        "mails": {}, "batches": {}, "released": {}}
     snoozestore.add_mails({"<ok@x>": {"origin": "INBOX", "until": 9}}, "acc")
     assert list(snoozestore.load_account("acc")["mails"]) == ["<ok@x>"]
 
@@ -192,10 +192,14 @@ def test_the_store_is_capped_and_ignores_bad_records():
     assert n == 1
     with pytest.raises(ValueError):
         snoozestore.set_batch("", None, "acc")
-    snoozestore.drop_mails([f"<r{i}@x>" for i in range(
-        snoozestore.MAX_RELEASED + 5)], "acc", returned=True)
-    assert len(snoozestore.load_account("acc")["released"]) \
-        == snoozestore.MAX_RELEASED
+    # returned ids are no ring: all of them are remembered ...
+    snoozestore.drop_mails([f"<r{i}@x>" for i in range(2500)], "acc",
+                           returned=True)
+    assert len(snoozestore.load_account("acc")["released"]) == 2500
+    # ... and only a damaged, absurdly large file is cut when READ
+    assert len(snoozestore._clean({"released": {
+        f"<r{i}@x>": i for i in range(snoozestore.MAX_RELEASED + 5)}}
+    )["released"]) == snoozestore.MAX_RELEASED
 
 
 def test_accounts_are_strictly_separate_and_follow_a_rename_or_drop():
@@ -493,13 +497,6 @@ def test_the_listing_shows_the_store_when_the_server_is_unreachable(box,
     assert listed["stale"] and listed["count"] == 4
 
 
-def test_a_missing_snoozed_folder_forgets_the_store(box):
-    snoozestore.add_mails({"<m1@shop.example>": {
-        "origin": "INBOX", "until": 5, "addr": DEALS}}, acc().name)
-    out = snooze.release(acc(), {"<m1@shop.example>"})
-    assert out["gone"] == 1 and the_store()["mails"] == {}
-
-
 def test_nothing_returns_while_a_move_job_runs(box):
     scan()
     snooze_deals()
@@ -517,12 +514,13 @@ def test_the_scheduler_tick_returns_due_mail_and_does_not_connect_otherwise(
     scan()
     snooze_deals(later(1))
     box.commands.clear()
-    snooze.tick()
+    assert snooze.tick() == []
     assert box.commands == []                     # nothing due: no traffic
     snoozestore.add_mails({m: {**r, "until": int(time.time()) - 5}
                            for m, r in the_store()["mails"].items()},
                           acc().name)
-    snooze.tick()
+    for t in snooze.tick():
+        t.join(10)
     assert len(box.mailbox["Snoozed"]) == 0
     assert len(box.mailbox["INBOX"]) + len(box.mailbox["Archive"]) == 7
 
@@ -799,3 +797,267 @@ def test_the_batch_push_names_the_sender_but_never_an_address():
     anon = webpush._payload("en", "batch", True, "work", False, 2, DEALS)
     assert "@" not in json.dumps(anon) and anon["title"] \
         == "Your batch is here: 2 mails"
+
+
+# ------------------------------------------------- review fixes (#398)
+# Invariant: a mail Inboxrake moved into Snoozed always has a store record
+# that brings it back, and a delivered mail is never caught again.
+
+def test_a_record_added_while_the_folder_is_listed_is_not_dropped_as_gone(
+        box, monkeypatch):
+    """The snooze job's hook files its records between the folder listing
+    and the store read: the store is read BEFORE the listing."""
+    scan()
+    snooze_deals()
+    real = mailops.refresh_role_index
+
+    def racing(*a, **kw):
+        out = real(*a, **kw)
+        snoozestore.add_mails({"<late@shop.example>": {
+            "origin": "INBOX", "until": later(), "addr": DEALS}},
+            acc().name)
+        return out
+    monkeypatch.setattr(mailops, "refresh_role_index", racing)
+    snooze._verify(acc())
+    assert "<late@shop.example>" in the_store()["mails"]
+    assert len(the_store()["mails"]) == 5
+
+
+def test_the_folder_is_not_checked_while_a_move_job_runs(box):
+    """Mails already moved but not yet filed in the store (the job is still
+    running) must never be mistaken for gone ones."""
+    scan()
+    snooze_deals()
+    box.mailbox["Snoozed"].clear()                  # (the store runs ahead)
+    with acc().lock:
+        acc().state["delete"]["status"] = "running"
+    box.commands.clear()
+    listed = snooze.listing(acc())
+    snooze.after_scan(acc())
+    with acc().lock:
+        acc().state["delete"]["status"] = "idle"
+    assert listed["count"] == 4 and not listed["stale"]
+    assert len(the_store()["mails"]) == 4
+    assert box.commands == []                       # no traffic either
+
+
+def twin_box(box):
+    """INBOX: two deals mails that share one Message-ID."""
+    box.mailbox["INBOX"] = [mail(1, DEALS), mail(2, DEALS, msgid="<m1@shop.example>")]
+    box.mailbox["Archive"] = []
+    scan()
+
+
+def test_two_mails_with_one_message_id_are_never_stranded(box):
+    """One record per Message-ID: only one of the twins is snoozed (the
+    other stays where it is, counted), so nothing waits without a way back."""
+    twin_box(box)
+    r = snooze.snooze_groups(acc(), "sender", [DEALS], later())
+    wait_delete_done()
+    assert r["queued"] == 1 and r["skipped_duplicate"] == 1
+    assert len(box.mailbox["Snoozed"]) == 1 and len(box.mailbox["INBOX"]) == 1
+    assert len(the_store()["mails"]) == 1
+    snooze.release(acc(), set(the_store()["mails"]))
+    assert box.mailbox["Snoozed"] == []
+    assert len(box.mailbox["INBOX"]) == 2
+
+
+def test_a_message_id_that_is_already_snoozed_is_not_snoozed_again(box):
+    twin_box(box)
+    snooze.snooze_items(acc(), [["INBOX", 1]], later())
+    wait_delete_done()
+    scan()
+    r = snooze.snooze_items(acc(), [["INBOX", 2]], later())
+    wait_delete_done()
+    assert r["queued"] == 0 and r["skipped_duplicate"] == 1
+    assert len(box.mailbox["Snoozed"]) == 1 and len(the_store()["mails"]) == 1
+
+
+def test_a_message_id_waiting_in_the_queue_is_not_queued_twice(box):
+    twin_box(box)
+    with acc().lock:
+        acc().state["delete"]["status"] = "running"        # a job is busy
+        acc().delete_pending.append({"by_folder": {"INBOX": {1}}, "label": "x",
+                                     "action": snooze.ACTION, "dest": "",
+                                     "actor": "user"})
+    r = snooze.snooze_items(acc(), [["INBOX", 2]], later())
+    with acc().lock:
+        acc().delete_pending.clear()
+        acc().state["delete"]["status"] = "idle"
+    assert r["queued"] == 0 and r["skipped_duplicate"] == 1
+
+
+def test_a_full_store_refuses_before_anything_moves(box, monkeypatch):
+    scan()
+    monkeypatch.setattr(snoozestore, "MAX_MAILS", 3)
+    with pytest.raises(ValueError, match="snooze_full"):
+        snooze.snooze_groups(acc(), "sender", [DEALS], later())    # 4 unread
+    wait_delete_done()
+    assert "Snoozed" not in box.mailbox or box.mailbox["Snoozed"] == []
+    assert len(box.mailbox["INBOX"]) == 6 and the_store()["mails"] == {}
+    # what is stored counts, and so does what is already queued
+    snooze.snooze_items(acc(), [["INBOX", 1], ["INBOX", 2]], later())
+    wait_delete_done()
+    with pytest.raises(ValueError, match="snooze_full"):
+        snooze.snooze_items(acc(), [["INBOX", 3], ["INBOX", 5]], later())
+    assert len(the_store()["mails"]) == 2
+    snooze.snooze_items(acc(), [["INBOX", 3]], later())          # fits
+    wait_delete_done()
+    assert len(the_store()["mails"]) == 3
+
+
+def test_the_full_store_error_reaches_the_api_coded(box, monkeypatch):
+    scan()
+    monkeypatch.setattr(snoozestore, "MAX_MAILS", 1)
+    r = client.post("/api/snooze", json={"grouping": "sender", "keys": [DEALS],
+                                         "until": later()})
+    assert r.status_code == 400 and r.json()["detail"].startswith("snooze_full")
+
+
+def test_a_batch_does_not_catch_what_would_overfill_the_store(box, monkeypatch,
+                                                              caplog):
+    scan()
+    set_batch()
+    monkeypatch.setattr(snoozestore, "MAX_MAILS", 1)
+    box.mailbox["INBOX"] += [mail(21, DEALS), mail(22, DEALS)]
+    scan()
+    wait_delete_done()
+    assert "Subject 21" in subjects(box, "INBOX")           # nothing moved
+    assert "Subject 22" in subjects(box, "INBOX")
+    assert the_store()["mails"] == {}
+
+
+def test_a_hook_that_stores_fewer_than_moved_says_so_loudly(box, monkeypatch,
+                                                            caplog):
+    scan()
+    monkeypatch.setattr(snoozestore, "add_mails", lambda recs, account=None: 0)
+    with caplog.at_level("ERROR", logger="inboxrake.snooze"):
+        snooze_deals()
+    assert any("no record" in r.getMessage() for r in caplog.records)
+
+
+def test_a_delivery_is_never_caught_again_however_many_mails_came_back(box):
+    """The returned Message-IDs are no fixed-size ring: a mail stays marked
+    as long as it sits in the inbox, however many others returned since."""
+    scan()
+    set_batch()
+    box.mailbox["INBOX"].append(mail(21, DEALS))
+    scan()
+    wait_delete_done()
+    snooze.release(acc(), {"<m21@shop.example>"})
+    join_scan_threads()
+    # a flood of other returned mails (more than any ring would hold)
+    snoozestore.drop_mails([f"<flood{i}@x.example>" for i in range(2500)],
+                           acc().name, returned=True)
+    scan()
+    wait_delete_done()
+    assert box.mailbox["Snoozed"] == []
+    assert "Subject 21" in subjects(box, "INBOX")
+
+
+def test_returned_ids_are_pruned_by_presence_not_by_count():
+    snoozestore.drop_mails(["<here@x>", "<old@x>", "<new@x>"], "acc",
+                           returned=True)
+    now = time.time()
+    # the grace period protects a mail a scan has not seen back yet
+    assert snoozestore.prune_released({"<here@x>"}, "acc", now) == 0
+    later_on = now + snoozestore.RELEASED_GRACE + 60
+    # past it: only what is no longer in the inbox goes
+    assert snoozestore.prune_released({"<here@x>"}, "acc", later_on) == 2
+    assert list(snoozestore.load_account("acc")["released"]) == ["<here@x>"]
+
+
+def test_a_scan_forgets_returned_ids_of_mails_that_left_the_inbox(box,
+                                                                  monkeypatch):
+    scan()
+    snoozestore.drop_mails(["<gone@x>"], acc().name, returned=True)
+    monkeypatch.setattr(snoozestore, "RELEASED_GRACE", 0)
+    scan()
+    assert "<gone@x>" not in the_store()["released"]
+
+
+def test_two_returns_never_overlap_on_one_account(box, monkeypatch):
+    """Tick, scan, Back now and a batch switch may all want to return the
+    same mails: one runs, the others find it busy - never a double return."""
+    import threading
+    scan()
+    snooze_deals()
+    inside, go = threading.Event(), threading.Event()
+    real = mailops.refresh_role_index
+
+    def slow(*a, **kw):
+        inside.set()
+        go.wait(5)
+        return real(*a, **kw)
+    monkeypatch.setattr(mailops, "refresh_role_index", slow)
+    ids = set(the_store()["mails"])
+    first = threading.Thread(target=tenants.call_in, args=(
+        tenants.current(), snooze.release, acc(), ids), daemon=True)
+    first.start()
+    try:
+        assert inside.wait(5)
+        with pytest.raises(RuntimeError, match="busy_action"):
+            snooze.release(acc(), ids)
+    finally:
+        go.set()
+        first.join(10)
+    join_scan_threads()
+    entries = [e for e in auditlog.since(acc().name, 0)
+               if e["action"] == "snooze_return"]
+    assert len(entries) == 1 and entries[0]["count"] == 4
+
+
+def test_a_busy_account_after_a_batch_catch_is_not_an_error(box, monkeypatch,
+                                                            caplog):
+    scan()
+    set_batch()
+    snoozestore.add_mails({"<due@x>": {"origin": "INBOX", "until": 5,
+                                       "addr": PAT}}, acc().name)
+
+    def catching(a):
+        with a.lock:
+            a.state["delete"]["status"] = "running"     # the job just queued
+        return 1
+    monkeypatch.setattr(snooze, "catch_batches", catching)
+    with caplog.at_level("INFO", logger="inboxrake.snooze"):
+        snooze.after_scan(acc())
+    with acc().lock:
+        acc().state["delete"]["status"] = "idle"
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+    assert "<due@x>" in the_store()["mails"]          # the next tick takes it
+
+
+def test_the_tick_releases_off_the_scheduler_thread(box, monkeypatch):
+    import threading
+    scan()
+    snooze_deals(later(1))
+    snoozestore.add_mails({m: {**r, "until": int(time.time()) - 5}
+                           for m, r in the_store()["mails"].items()},
+                          acc().name)
+    seen = []
+    real = snooze.release_due
+
+    def spy(a, now=None):
+        seen.append(threading.current_thread())
+        return real(a, now)
+    monkeypatch.setattr(snooze, "release_due", spy)
+    for t in snooze.tick():
+        t.join(10)
+    assert len(seen) == 1 and seen[0] is not threading.current_thread()
+    assert seen[0].daemon
+    assert box.mailbox["Snoozed"] == []
+
+
+def test_a_missing_snoozed_folder_keeps_the_records(box):
+    scan()
+    snooze_deals()
+    del box.mailbox["Snoozed"]
+    with pytest.raises(RuntimeError, match="snooze_no_folder"):
+        snooze.release(acc(), set(the_store()["mails"]))
+    snooze.after_scan(acc())
+    listed = snooze.listing(acc())
+    assert listed["stale"] and listed["no_folder"] and listed["count"] == 4
+    assert len(the_store()["mails"]) == 4
+    # the folder is back (created again by hand): everything works again
+    box.mailbox["Snoozed"] = []
+    assert snooze.listing(acc())["count"] == 0     # (the mails are not there)

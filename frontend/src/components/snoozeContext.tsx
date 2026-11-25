@@ -36,7 +36,8 @@ export function useSnoozeActions(host: SnoozeHost) {
       toast?.show(t("err.generic", { msg: msgOf(e) }), { variant: "error" });
     /** Word what a snooze request left alone; true when it moved anything. */
     const settle = (r: SnoozeResult): boolean => {
-      const left = r.skipped_pinned + r.skipped_protected + r.skipped_no_id;
+      const left = r.skipped_pinned + r.skipped_protected + r.skipped_no_id
+        + (r.skipped_duplicate ?? 0);
       if (r.queued === 0) toast?.show(t("snooze.nothing"));
       else if (left > 0) toast?.show(t("snooze.skipped", { n: left }));
       host.refresh();

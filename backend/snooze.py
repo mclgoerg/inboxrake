@@ -21,7 +21,13 @@ which senders deliver in batches.
     and returns what it holds together, with one push per batch.
   * A mail gone from `Snoozed` (another client moved it) is dropped from the
     store, never trusted; its Message-ID is remembered so a batch does not
-    catch it again.
+    catch it again. A folder that cannot be found drops NOTHING: the page
+    shows what is remembered and says so.
+  * Every mail moved into `Snoozed` has a store record that brings it back
+    (one record per Message-ID: a mail whose id is already snoozed, queued or
+    twice in one pick stays where it is; the store's cap is checked before
+    anything moves), and a delivered mail is never caught again (its id is
+    remembered while it sits in the inbox).
 
 Nothing here uses AI, and nothing is deleted: every step is a reversible
 move.
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import threading
 import time
 from zoneinfo import ZoneInfo
 
@@ -54,6 +61,14 @@ DAILY = (18, 0)                     # a daily batch: 18:00
 MAX_AHEAD_DAYS = 800                # the furthest "Pick a date" may reach
 LABEL_SENDERS = 3                   # senders named in an undo / audit label
 HOLD_CHUNK = 500
+
+
+class NoFolder(RuntimeError):
+    """The account's Snoozed folder cannot be found on the server (the
+    records are kept)."""
+
+    def __init__(self):
+        super().__init__(mailops.coded(mailops.SNOOZE_NO_FOLDER))
 
 
 def _utc() -> datetime.tzinfo:
@@ -147,25 +162,60 @@ def _remember(acc, until: int, batch: str = ""):
     """The `on_moved` hook of a snooze job: file what moved in the store."""
     def hook(meta: dict, copies: list[dict]) -> None:
         records = {}
+        moved = 0
         for src, by_uid in meta.items():
             for m in by_uid.values():
+                moved += 1
                 if m.get("msgid"):
                     records[m["msgid"]] = {
                         "origin": src, "until": until, "addr": m["addr"],
                         "name": m.get("name", ""),
                         "subject": m.get("subject", ""), "batch": batch}
-        snoozestore.add_mails(records, acc.name)
+        stored = snoozestore.add_mails(records, acc.name)
+        if stored < moved:
+            # the plan checks for room and twin ids up front, so this is a
+            # bug or a race: say so, these mails will not come back by
+            # themselves
+            log.error("snooze bookkeeping filed %d of %d moved mails: "
+                      "the rest has no record", stored, moved)
     return hook
+
+
+def _taken(acc) -> set[str]:
+    """The Message-IDs that already have (or are about to get) a record:
+    the store's and those of the mails waiting in the move queue (acc.lock
+    held)."""
+    taken = set(snoozestore.load_account(acc.name)["mails"])
+    for job in [*acc.delete_pending, {"by_folder": acc.inflight}]:
+        for fld, uids in job["by_folder"].items():
+            for uid in uids:
+                m = acc.index.get(mailops.ikey(fld, uid))
+                if m and m.get("msgid"):
+                    taken.add(m["msgid"])
+    return taken
+
+
+def _queued_snoozes(acc) -> int:
+    """Mails in snooze jobs that have no record yet (acc.lock held; the
+    running job counts in full, which errs on the side of "full")."""
+    n = sum(len(u) for job in acc.delete_pending if job["action"] == ACTION
+            for u in job["by_folder"].values())
+    if acc.state["delete"].get("action") == ACTION:
+        n += sum(len(u) for u in acc.inflight.values())
+    return n
 
 
 def _plan(acc, picks: list[dict], explicit: bool) -> tuple[dict, dict]:
     """`({folder: {uid}}, skipped counts)` of the index entries `picks`:
     pinned mails never, protected senders' mails unless `explicit` (one mail
-    named by hand), mails without a Message-ID cannot be tracked."""
+    named by hand), mails without a Message-ID cannot be tracked, and a
+    Message-ID that is already snoozed, queued or picked twice gets one
+    record only - the twin stays where it is (acc.lock held)."""
     pinned = pinstore.load_account(acc.name)
     plist = _protected_list()
     by_folder: dict[str, set[int]] = {}
-    skipped = {"pinned": 0, "protected": 0, "no_id": 0}
+    skipped = {"pinned": 0, "protected": 0, "no_id": 0, "duplicate": 0}
+    taken = _taken(acc)
     for m in picks:
         if not m.get("msgid"):
             skipped["no_id"] += 1
@@ -173,7 +223,10 @@ def _plan(acc, picks: list[dict], explicit: bool) -> tuple[dict, dict]:
             skipped["pinned"] += 1
         elif not explicit and cfgmod.is_protected(m["addr"], plist):
             skipped["protected"] += 1
+        elif m["msgid"] in taken:
+            skipped["duplicate"] += 1
         else:
+            taken.add(m["msgid"])
             by_folder.setdefault(m["folder"], set()).add(m["uid"])
     return by_folder, skipped
 
@@ -181,8 +234,13 @@ def _plan(acc, picks: list[dict], explicit: bool) -> tuple[dict, dict]:
 def _enqueue(acc, by_folder: dict, label: str, until: int, skipped: dict,
              batch: str = "", actor: str = "user",
              quiet: bool = False) -> dict:
-    """Queue the move (acc.lock held)."""
+    """Queue the move (acc.lock held). Refuses (ValueError, coded) when the
+    store would outgrow its cap: nothing moves without a record."""
     n = sum(len(s) for s in by_folder.values())
+    if n and snoozestore.count(acc.name) + _queued_snoozes(acc) + n \
+            > snoozestore.MAX_MAILS:
+        raise ValueError(mailops.coded(mailops.SNOOZE_FULL,
+                                       n=snoozestore.MAX_MAILS))
     if n:
         mailops._start_delete(by_folder, label, acc, ACTION,
                               "", actor, None, "", _remember(acc, until, batch),
@@ -190,7 +248,8 @@ def _enqueue(acc, by_folder: dict, label: str, until: int, skipped: dict,
     return {"ok": True, "queued": n, "until": until,
             "skipped_pinned": skipped["pinned"],
             "skipped_protected": skipped["protected"],
-            "skipped_no_id": skipped["no_id"]}
+            "skipped_no_id": skipped["no_id"],
+            "skipped_duplicate": skipped.get("duplicate", 0)}
 
 
 def snooze_groups(acc, grouping: str, keys: list[str], until, *,
@@ -310,9 +369,10 @@ def catch_batches(acc) -> int:
         return 0
     pinned = pinstore.load_account(acc.name)
     plist = _protected_list()
-    skip = set(block["released"]) | set(block["mails"]) | pinned
+    skip = set(block["released"]) | pinned
     with acc.lock:
         mails = [m for m in acc.index.values() if m["folder"] == inbox]
+        skip |= _taken(acc)
     queued = 0
     for key, b in block["batches"].items():
         if b["uv"] != uv:
@@ -323,8 +383,12 @@ def catch_batches(acc) -> int:
             continue
         if cfgmod.is_protected(key, plist):
             continue
-        picks = [m for m in mails if m["addr"] == key and m["uid"] > b["after"]
-                 and m.get("msgid") and m["msgid"] not in skip]
+        picks = []
+        for m in mails:
+            if m["addr"] == key and m["uid"] > b["after"] \
+                    and m.get("msgid") and m["msgid"] not in skip:
+                skip.add(m["msgid"])         # a twin id is held once
+                picks.append(m)
         if not picks:
             continue
         until = next_slot(b["slot"], b["tz"], time.time())
@@ -335,6 +399,10 @@ def catch_batches(acc) -> int:
                          {"pinned": 0, "protected": 0, "no_id": 0},
                          batch=key, actor=ACTOR, quiet=True)
             queued += len(picks)
+        except ValueError:
+            log.warning("[%s] batch %r: the Snoozed store is full (%d mails), "
+                        "new mail stays in the inbox", acc.name, key,
+                        snoozestore.MAX_MAILS)
         except RuntimeError:
             log.info("[%s] batch %r: busy, tried again after the next scan",
                      acc.name, key)
@@ -355,7 +423,19 @@ def release(acc, msgids=None, *, due: float | None = None,
     names them, `due` takes the ones whose time is up (epoch s); `by` is the
     audit actor ("user" or ACTOR). Returns `{"returned": n, "gone": n,
     "batches": {key: n}}` (`gone`: no longer in the folder, dropped).
-    Raises RuntimeError(BUSY_ACTION) while a move job runs."""
+    Raises RuntimeError(BUSY_ACTION) while a move job runs or another return
+    of this account is in progress (a tick, a scan, Back now and a batch
+    switch may all want the same mails: one runs, never two), and NoFolder
+    when the Snoozed folder cannot be found (nothing is dropped then)."""
+    if not acc.release_lock.acquire(blocking=False):
+        raise RuntimeError(mailops.BUSY_ACTION)
+    try:
+        return _release(acc, msgids, due, by)
+    finally:
+        acc.release_lock.release()
+
+
+def _release(acc, msgids, due, by) -> dict:
     chosen = _records(snoozestore.load_account(acc.name), msgids, due)
     out: dict = {"returned": 0, "gone": 0, "batches": {}}
     if not chosen:
@@ -366,10 +446,8 @@ def release(acc, msgids=None, *, due: float | None = None,
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         src = folder(conn, acc)
-        if src is None:                       # no folder: nothing waits
-            snoozestore.drop_mails(list(chosen), acc.name)
-            out["gone"] = len(chosen)
-            return out
+        if src is None:                 # keep the records: not "gone"
+            raise NoFolder()
         uv, listed = mailops.refresh_role_index(conn, "snoozed", src, acc)
         uid_of = {m["msgid"]: m["uid"] for m in listed if m.get("msgid")}
         vanished = [m for m in chosen if m not in uid_of]
@@ -454,22 +532,39 @@ def release_due(acc, now: float | None = None) -> dict:
     return out
 
 
-def tick() -> None:
+def _tick_account(name: str, now: float) -> None:
+    try:
+        release_due(accounts.get(name), now)
+    except RuntimeError as exc:
+        log.info("[%s] snooze tick: %s", name, exc)
+    except Exception:
+        log.exception("[%s] snooze tick failed", name)
+
+
+def tick() -> list[threading.Thread]:
     """Every scheduler minute, in the current tenant: return what is due, in
-    each account that has something due. A busy / unreachable account waits
-    for the next tick."""
+    each account that has something due. The IMAP work and the push run on a
+    daemon thread per account (never waited on: a slow or unreachable server
+    must not delay the auto-scans of the other accounts and tenants); the
+    threads are returned for tests. A busy / unreachable account waits for
+    the next tick. (In the in-browser demo the thread shim runs it inline.)"""
     now = time.time()
+    tenant = tenants.current()
+    started: list[threading.Thread] = []
     for name in accounts.names():
-        block = snoozestore.load_account(name)
-        if not _records(block, None, now):
+        if not _records(snoozestore.load_account(name), None, now):
             continue
         try:
-            acc = accounts.get(name)
-            release_due(acc, now)
-        except RuntimeError as exc:
-            log.info("[%s] snooze tick: %s", name, exc)
-        except Exception:
-            log.exception("[%s] snooze tick failed", name)
+            if accounts.get(name).release_lock.locked():
+                continue                  # the last return is still going
+        except KeyError:
+            continue
+        worker = threading.Thread(
+            target=tenants.call_in, args=(tenant, _tick_account, name, now),
+            daemon=True)
+        worker.start()
+        started.append(worker)
+    return started
 
 
 def after_scan(acc) -> None:
@@ -477,34 +572,57 @@ def after_scan(acc) -> None:
     what the batches catch, return what is due. Never raises."""
     try:
         block = snoozestore.load_account(acc.name)
+        if block["released"]:
+            snoozestore.prune_released(_inbox_ids(acc), acc.name)
         if block["mails"]:
-            _verify(acc)
+            try:
+                _verify(acc)
+            except RuntimeError as exc:       # no folder: keep the records
+                log.info("[%s] snooze after the scan: %s", acc.name, exc)
         catch_batches(acc)
         if _records(snoozestore.load_account(acc.name), None, time.time()):
-            release_due(acc)
+            try:
+                release_due(acc)
+            except RuntimeError as exc:       # busy (a job was just queued):
+                log.info("[%s] snooze after the scan: %s", acc.name, exc)
     except Exception:
         log.exception("[%s] snooze after the scan failed", acc.name)
 
 
-def _verify(acc) -> list[dict]:
+def _inbox_ids(acc) -> set[str]:
+    """The Message-IDs of the inbox mails the last scan found."""
+    inbox, _, _ = _inbox(acc)
+    with acc.lock:
+        return {m["msgid"] for m in acc.index.values()
+                if m["folder"] == inbox and m.get("msgid")}
+
+
+def _verify(acc) -> list[dict] | None:
     """Drop the store's mails that are no longer in `Snoozed`; the live
-    listing of the rest."""
+    listing of the rest. Reads the store BEFORE it lists the folder, so a
+    record a running snooze job files meanwhile is never taken for a gone
+    mail, and does nothing at all (None) while a move job runs: its mails
+    are in the folder before their records are in the store. Raises NoFolder
+    when the folder cannot be found (nothing is dropped)."""
+    with acc.lock:
+        if mailops._job_running(acc):
+            return None
+    known = list(snoozestore.load_account(acc.name)["mails"])
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         src = folder(conn, acc)
-        listed = []
-        if src is not None:
-            _, listed = mailops.refresh_role_index(conn, "snoozed", src, acc)
+        if src is None:
+            raise NoFolder()
+        _, listed = mailops.refresh_role_index(conn, "snoozed", src, acc)
     finally:
         try:
             conn.logout()
         except Exception:
             pass
     here = {m["msgid"] for m in listed if m.get("msgid")}
-    block = snoozestore.load_account(acc.name)
-    gone = [m for m in block["mails"] if m not in here]
+    gone = [m for m in known if m not in here]
     if gone:
-        snoozestore.drop_mails(gone, acc.name, returned=src is not None)
+        snoozestore.drop_mails(gone, acc.name, returned=True)
     return listed
 
 
@@ -517,9 +635,11 @@ def listing(acc, now: float | None = None) -> dict:
     (a mail another client moved is dropped); an unreachable server shows
     what the store remembers."""
     now = time.time() if now is None else now
-    stale = False
+    stale = no_folder = False
     try:
         _verify(acc)
+    except NoFolder:
+        stale = no_folder = True        # the records stay, the page says so
     except Exception:
         log.exception("[%s] could not check the Snoozed folder", acc.name)
         stale = True
@@ -547,4 +667,4 @@ def listing(acc, now: float | None = None) -> dict:
                      "subject": first["subject"] if len(items) == 1 else "",
                      "msgids": [m for m, _ in items][:HOLD_CHUNK]})
     return {"count": len(block["mails"]), "batches": batches, "rows": rows,
-            "stale": stale, "now": int(now)}
+            "stale": stale, "no_folder": no_folder, "now": int(now)}

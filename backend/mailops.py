@@ -275,6 +275,8 @@ COPY_FOLDER_RESERVED = "copy_folder_reserved"  # folder=: Inbox / Trash / ...
 SNOOZE_CANNOT_CREATE = "snooze_cannot_create"  # folder=: no Snoozed folder
 SNOOZE_BAD_TIME = "snooze_bad_time"      # the return time is past / absurd
 SNOOZE_PROTECTED = "snooze_protected"    # a protected sender: no batch
+SNOOZE_FULL = "snooze_full"              # n=: the most snoozed mails per account
+SNOOZE_NO_FOLDER = "snooze_no_folder"    # the Snoozed folder cannot be found
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -284,7 +286,8 @@ FOLDER_ERROR_CODES = frozenset({
     COPY_NOT_SCANNED, COPY_FOLDER_NAME, COPY_CANNOT_CREATE,
     COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     COPY_SAME_MAILBOX, COPY_CANNOT_CONFIRM, COPY_FOLDER_RESERVED,
-    SNOOZE_CANNOT_CREATE, SNOOZE_BAD_TIME, SNOOZE_PROTECTED,
+    SNOOZE_CANNOT_CREATE, SNOOZE_BAD_TIME, SNOOZE_PROTECTED, SNOOZE_FULL,
+    SNOOZE_NO_FOLDER,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,

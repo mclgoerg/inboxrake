@@ -115,7 +115,9 @@ export function SnoozedPanel({ rev, onClose, onChanged }: {
         ) : (
           <div className="mx-auto max-w-2xl space-y-4">
             {data.stale && (
-              <p className="type-meta text-muted">{t("snooze.stale")}</p>
+              <p className="type-meta text-muted">
+                {t(data.no_folder ? "snooze.stale_no_folder" : "snooze.stale")}
+              </p>
             )}
             {empty ? (
               <EmptyState icon={<AlarmClock size={18} />}

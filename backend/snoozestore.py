@@ -3,8 +3,10 @@
 Per tenant, per account: every snoozed mail (by Message-ID: where it came
 from, when it comes back, who sent it, the subject for the single-mail row)
 and every batch (a sender whose new mail is held and delivered together: the
-slot and the user's time zone), plus the Message-IDs recently returned to
-the inbox (a batch must not catch its own delivery again). Mirrors
+slot and the user's time zone), plus the Message-IDs returned to
+the inbox (a batch must not catch its own delivery again) - each one is
+remembered while that mail still sits in the inbox, however many others have
+returned since (`prune_released`). Mirrors
 pinstore.py's persistence (per-tenant file, atomic write, tolerant read) and
 like it stays STRICTLY per account.
 
@@ -15,8 +17,8 @@ another client) is dropped from here by snooze.py, never trusted.
 File shape: {"accounts": {name: {"mails": {message-id: {"origin": folder,
 "until": epoch s, "addr": str, "name": str, "subject": str, "batch": key or
 ""}}, "batches": {key: {"slot": "weekly" | "daily", "tz": IANA name, "label":
-str, "uv": int, "after": int}}, "released": [message-id]}}}. A damaged file
-only forgets what it cannot understand.
+str, "uv": int, "after": int}}, "released": {message-id: epoch s}}}}. A
+damaged file only forgets what it cannot understand.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import json
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 from . import accounts
@@ -35,7 +38,9 @@ SNOOZE_PATH = Path(os.environ.get("SNOOZE_PATH", "/data/snoozed.json"))
 SLOTS = ("weekly", "daily")
 MAX_MAILS = 5000        # snoozed mails per account
 MAX_BATCHES = 200       # batch senders per account
-MAX_RELEASED = 2000     # returned Message-IDs remembered per account
+MAX_RELEASED = 50000    # sanity bound when READING a file; never a ring
+RELEASED_GRACE = 86400  # s a returned id stays even if no scan has seen the
+#                         mail back in the inbox yet (a scan may be mid-way)
 TZ_RE = re.compile(r"[A-Za-z0-9_+\-]+(?:/[A-Za-z0-9_+\-]+){0,2}")
 
 _LOCK = threading.Lock()
@@ -104,11 +109,19 @@ def _clean(raw) -> dict:
             if valid_key(key) and (c := _clean_batch(rec)) is not None \
                     and len(batches) < MAX_BATCHES:
                 batches[key] = c
-    released = [m for m in raw.get("released") or []
-                if isinstance(m, str) and 0 < len(m) <= 300] \
-        if isinstance(raw.get("released"), list) else []
-    return {"mails": mails, "batches": batches,
-            "released": released[-MAX_RELEASED:]}
+    released: dict[str, int] = {}
+    raw_rel = raw.get("released")
+    if isinstance(raw_rel, list):                  # (a plain list: undated)
+        raw_rel = {m: int(time.time()) for m in raw_rel
+                   if isinstance(m, str)}
+    if isinstance(raw_rel, dict):
+        for mid, ts in raw_rel.items():
+            if isinstance(mid, str) and 0 < len(mid) <= 300 and _is_int(ts):
+                released[mid] = ts
+    if len(released) > MAX_RELEASED:
+        released = dict(sorted(released.items(), key=lambda kv: kv[1])
+                        [-MAX_RELEASED:])
+    return {"mails": mails, "batches": batches, "released": released}
 
 
 def _read() -> dict[str, dict]:
@@ -182,20 +195,44 @@ def drop_mails(msgids, account: str | None = None,
                returned: bool = False) -> int:
     """Forget snoozed mails. `returned`: they went back to the inbox (or were
     moved there by another client) - remember their Message-IDs so a batch
-    does not catch them again. Returns how many were known."""
+    does not catch them again (until `prune_released` sees them leave the
+    inbox). Returns how many were known."""
     gone = []
+    now = int(time.time())
 
     def change(b):
         for mid in msgids:
             if b["mails"].pop(mid, None) is not None:
                 gone.append(mid)
             if returned:
-                if mid in b["released"]:
-                    b["released"].remove(mid)
-                b["released"].append(mid)
-        b["released"] = b["released"][-MAX_RELEASED:]
+                b["released"][mid] = now
     _update(account, change)
     return len(gone)
+
+
+def prune_released(present, account: str | None = None,
+                   now: float | None = None) -> int:
+    """Forget the returned Message-IDs of mails no longer in the inbox
+    (`present`: the Message-IDs a fresh scan found there) - but only once
+    `RELEASED_GRACE` has passed, so a scan that started before a return
+    cannot make its delivery look new. Never by count. Returns how many."""
+    now = time.time() if now is None else now
+    dropped = []
+
+    def change(b):
+        for mid, ts in list(b["released"].items()):
+            if mid not in present and now - ts >= RELEASED_GRACE:
+                del b["released"][mid]
+                dropped.append(mid)
+    _update(account, change)
+    return len(dropped)
+
+
+def count(account: str | None = None) -> int:
+    """How many mails the account's store holds."""
+    account = account or accounts.default_name()
+    with _LOCK:
+        return len((_load().get(account) or _clean({}))["mails"])
 
 
 def set_batch(key: str, batch: dict | None,

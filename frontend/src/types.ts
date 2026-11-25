@@ -620,6 +620,7 @@ export interface SnoozedResp {
   rows: SnoozedRow[];
   /** The server could not be asked: this is what Inboxrake remembers. */
   stale: boolean;
+  no_folder?: boolean;          // stale because the Snoozed folder is missing
   now: number;
 }
 export interface SnoozeResult {
@@ -629,6 +630,7 @@ export interface SnoozeResult {
   skipped_pinned: number;
   skipped_protected: number;
   skipped_no_id: number;
+  skipped_duplicate?: number;   // a Message-ID already snoozed or twice in the pick
 }
 
 export interface AppState {

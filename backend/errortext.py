@@ -53,6 +53,10 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'Pick a time in the future (within the next two years).',
     'snooze_protected':
         'A protected sender’s mail is never held back - unprotect the sender first.',
+    'snooze_full':
+        'Not now holds at most {n} mails per account - bring some back first. Nothing was snoozed.',
+    'snooze_no_folder':
+        'The “Snoozed” folder cannot be found on your mail server, so the snoozed mails cannot come back yet. Nothing was lost - the folder may be hidden or renamed.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

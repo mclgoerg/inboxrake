@@ -230,6 +230,8 @@ const ERROR_CODES: Record<string, string> = {
   snooze_cannot_create: "ferr.snooze_cannot_create",
   snooze_bad_time: "ferr.snooze_bad_time",
   snooze_protected: "ferr.snooze_protected",
+  snooze_full: "ferr.snooze_full",
+  snooze_no_folder: "ferr.snooze_no_folder",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
