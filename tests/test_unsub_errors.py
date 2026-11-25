@@ -115,6 +115,15 @@ def test_the_log_never_quotes_the_link_or_address(
     assert "TOKEN-7f3a" not in caplog.text
 
 
+def test_an_unexpected_failure_keeps_its_traceback_in_the_log(
+        monkeypatch, caplog):
+    with caplog.at_level("WARNING", logger=unsub.log.name):
+        res = _fail(monkeypatch, KeyError("some surprise"))
+    assert res["error"] == mailops.UNSUB_FAILED
+    assert "KeyError (unsub_failed)" in caplog.text
+    assert "Traceback" in caplog.text and "some surprise" in caplog.text
+
+
 def test_every_unsub_code_has_english_text_and_no_raw_words():
     for code in mailops.UNSUB_CODES:
         assert code in errortext.TEXT
