@@ -74,6 +74,8 @@ from . import webguard
 from . import unsub
 from . import unsubstore
 from . import verdictstore
+from . import waiting
+from . import waitstore
 from . import webpush
 from . import wrapped
 from . import aisort
@@ -220,6 +222,7 @@ async def _lifespan(app: FastAPI):
     digestmod.start_scheduler()
     autoscanmod.start_scheduler()
     subscriptions.start_scheduler()
+    waiting.start_scheduler()
     yield
 
 def _app_version() -> str:
@@ -1217,6 +1220,90 @@ def _subscription_action(account, fn):
         raise HTTPException(400, str(exc))
     except Exception as exc:
         raise _internal_error(exc, acc)
+
+
+# --------------------------------------------------- waiting for a reply
+
+class WaitingKeyBody(BaseModel):
+    id: str = Field(min_length=1, max_length=300)
+
+
+class WaitingNeededBody(WaitingKeyBody):
+    needed: bool = True
+
+
+class WaitingRemindBody(WaitingKeyBody):
+    at: int | None = None            # epoch seconds; None cancels
+
+
+class WaitingSettingsBody(BaseModel):
+    track: bool | None = None
+    days: int | None = None
+
+
+def _waiting_action(account, fn):
+    acc = _acc(account)
+    try:
+        return fn(acc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.get("/api/waiting")
+def get_waiting(account: str | None = Query(None)):
+    """The mails you sent that nobody answered (backend/waiting.py): matched
+    from the headers of your Sent folder and the scan index, no mail text and
+    no AI. Local data: nothing is asked of the mail server."""
+    return _waiting_action(account, waiting.listing)
+
+
+@app.get("/api/waiting/item")
+def get_waiting_item(id: str = Query(..., min_length=1, max_length=300),
+                     account: str | None = Query(None)):
+    """One row's conversation timeline and what opens it."""
+    return _waiting_action(account, lambda acc: waiting.detail(acc, id))
+
+
+@app.post("/api/waiting/needed")
+def post_waiting_needed(body: WaitingNeededBody,
+                        account: str | None = Query(None)):
+    """"No answer needed" (needed: true) / bring the mail back."""
+    return _waiting_action(account, lambda acc: waiting.set_needed(
+        acc, body.id, body.needed))
+
+
+@app.post("/api/waiting/remind")
+def post_waiting_remind(body: WaitingRemindBody,
+                        account: str | None = Query(None)):
+    """Remind me about one mail at a time (epoch seconds); `at: null` cancels."""
+    return _waiting_action(account, lambda acc: waiting.set_reminder(
+        acc, body.id, body.at))
+
+
+@app.get("/api/waiting/reminders")
+def get_waiting_reminders(account: str | None = Query(None)):
+    """Reminders that fired in the last days, for an open page to show once."""
+    return _waiting_action(account, lambda acc: {
+        "reminders": waiting.recent_reminders(acc)})
+
+
+@app.get("/api/waiting/settings")
+def get_waiting_settings(account: str | None = Query(None)):
+    """The switch and the threshold (Settings > Account), without a pass."""
+    acc = _acc(account)
+    block = waitstore.load_account(acc.name)
+    return {"track": block["track"], "days": block["days"]}
+
+
+@app.post("/api/waiting/settings")
+def post_waiting_settings(body: WaitingSettingsBody,
+                          account: str | None = Query(None)):
+    """Track mails waiting for a reply (off drops the sent index and reads
+    nothing extra) and the days after which a mail counts as waiting."""
+    return _waiting_action(account, lambda acc: waiting.set_settings(
+        acc, body.track, body.days))
 
 
 # ------------------------------------------------------- your addresses
@@ -3002,6 +3089,7 @@ def post_config(body: dict, request: Request, response: Response):
         pinstore.drop_account(str(body["delete_account"]))
         habitstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
+        waitstore.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
@@ -3033,6 +3121,7 @@ def post_config(body: dict, request: Request, response: Response):
             pinstore.rename_account(old, new)
             habitstore.rename_account(old, new)
             substore.rename_account(old, new)
+            waitstore.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)

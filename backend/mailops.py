@@ -53,6 +53,7 @@ from . import trackers
 from . import undostore
 from . import unsubstore
 from . import verdictstore
+from . import waiting
 from . import webpush
 
 FETCH_CHUNK = 500
@@ -2883,6 +2884,9 @@ def run_scan(acc=None, push: bool = False) -> None:
             if new_replied - replied:
                 replied |= new_replied
                 save_replied(acc)
+            # the same connection, headers only: the sent index behind
+            # "Waiting for a reply" (a no-op with the switch off)
+            waiting.update_sent_index(conn, roles, acc, progress_cb)
             knownsenders.update_scan(acc.name, {m["addr"] for m in messages})
             # Re-read: the threshold/protected list may have changed during
             # a long scan.
@@ -2948,6 +2952,7 @@ def run_scan(acc=None, push: bool = False) -> None:
                                  len(groups["sender"]), acc.name, arrived)
             addressstore.set_picked_main(acc.name, rcpt.main)
             save_snapshot(acc)
+            waiting.after_scan(acc)          # answers clear their reminders
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
             outcome = True
         finally:

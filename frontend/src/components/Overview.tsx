@@ -10,8 +10,9 @@ import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
 import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
 import { fmtMoney, unusedNames } from "../subscriptions";
+import { summaryLine } from "../waiting";
 import type { AuditEntry, Group, Habit, OverviewResp, Rule,
-  SubscriptionsResp } from "../types";
+  SubscriptionsResp, WaitingSummary } from "../types";
 import { HabitWidget } from "./HabitCards";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
@@ -75,6 +76,11 @@ export interface OverviewProps {
   habits?: Habit[];
   onOpenHabit?: (id: string) => void;
   onHabitsChanged?: () => void;
+  /** Mails you sent that nobody answered for longer than usual (null while
+   *  unknown): Next steps gets a line when some wait. */
+  waiting?: WaitingSummary | null;
+  /** Show of that line: the Waiting for a reply page. */
+  onShowWaiting?: () => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -253,7 +259,10 @@ export function Overview(p: OverviewProps) {
     n: habitList.length,
     names: habitList.slice(0, 3).map((h) => h.label).join(", "),
     onReview: () => p.onOpenHabit!(habitList[0].id) } : null;
-  const hasNext = cards.length > 0 || !!subsLine
+  const waitingLine = p.waiting && p.waiting.overdue > 0 && p.onShowWaiting ? {
+    n: p.waiting.people_n, line: summaryLine(p.waiting),
+    onShow: p.onShowWaiting } : null;
+  const hasNext = cards.length > 0 || !!subsLine || !!waitingLine
     || (!!habitsLine && !phone);
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
@@ -284,7 +293,8 @@ export function Overview(p: OverviewProps) {
             <div className="max-xl:order-2">
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
-                onCleanUp={p.onCleanUp} subs={subsLine} habits={habitsLine} />
+                onCleanUp={p.onCleanUp} subs={subsLine} habits={habitsLine}
+                waiting={waitingLine} />
             </div>
           )}
         </div>

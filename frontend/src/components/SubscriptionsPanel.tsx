@@ -36,9 +36,9 @@ function UseTag({ s, now }: { s: Subscription; now: Date }) {
 
 /** Card fill: `panel` on a page (the page is `surface`), `panel2` inside a
  *  dialog / full-screen tool, whose own surface is `panel`. */
-type Fill = { card: string; hover: string };
+export type Fill = { card: string; hover: string };
 
-function Kpi({ label, value, suffix, sub, icon, tone, pressed, onClick, fill }: {
+export function Kpi({ label, value, suffix, sub, icon, tone, pressed, onClick, fill }: {
   label?: string; value: string; suffix?: string; sub?: ReactNode;
   icon: ReactNode; tone: TagTone; pressed?: boolean; onClick?: () => void;
   fill: Fill;
