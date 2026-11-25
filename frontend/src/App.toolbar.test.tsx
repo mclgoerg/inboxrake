@@ -2,7 +2,7 @@
 /* Toolbar: tab pages for the tools, grouping segments, merged Inactive chip,
  * phone sort menu. */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { openTab, openTool } from "./toolTestUtils";
@@ -126,6 +126,9 @@ const open = async () => {
   await screen.findByPlaceholderText("Search or filter…");
   await waitFor(() => expect(screen.getAllByText("Acme").length)
     .toBeGreaterThan(0));
+  // App re-attaches its keydown listener (with the new rows) in an effect
+  // of a commit outside act(); flush it so the next key isn't dropped.
+  await act(async () => {});
 };
 
 test("the tool pages list every tool with a label; no loose tool icons",
