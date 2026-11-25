@@ -18,7 +18,6 @@ import { isPooled, smartContent, smartWhy } from "../smart";
 import type { AppState, Group, Grouping, GroupUnsub, Mail } from "../types";
 import { EditLabels } from "./EditLabels";
 import { FolderPicker, type PickEnv } from "./FolderPicker";
-import { GradeCard } from "./GradeUi";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { ArrivalStrip } from "./RhythmCard";
 import { MailRows, MessageView } from "./MailList";
@@ -820,7 +819,6 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         <StatTile label={t("detail.opened")} value={fmtPct(opened)} />
       </div>
       {stillCallout}
-      <GradeCard g={group} />
       {/* a sender's own rows only: a pool of senders has no one rhythm */}
       {mails && (grouping === "sender" || grouping === "smart")
         && !isPooled(group) && (

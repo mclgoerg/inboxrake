@@ -347,10 +347,10 @@ def test_groups_carry_the_tracker_summary(scanned):
     build()
     g = groups()
     assert g["noreply@dhl.example"]["trackers"] == {
-        "checked": 3, "pixel": 1, "click": 1, "any": 2,
+        "checked": 3, "pixel": 1, "click": 1,
         "hosts": ["mailer.example", "tracker.example"]}
     assert g["news@shop.example"]["trackers"] == {
-        "checked": 1, "pixel": 0, "click": 0, "any": 0, "hosts": []}
+        "checked": 1, "pixel": 0, "click": 0, "hosts": []}
     # other groupings too
     assert groups("domain")["dhl.example"]["trackers"]["pixel"] == 1
 

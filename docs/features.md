@@ -347,30 +347,6 @@ via "Sort: engagement", and filters with `eng:low` / `eng:medium` /
 `eng:high` (tiers <=33 / 34-66 / >=67) - usable in rules and saved
 presets, e.g. `eng:low age:>1y`. The score is never sent to the AI.
 
-### Sender grade
-
-<small class="where">Senders → every Sender row · Statistics</small>
-
-Every sender gets a grade from A to F and one plain sentence ("loud and
-ignored", "quiet and useful", "tracks you, but you read it"), shown as a
-badge in the Senders list and as a report card at the top of the sender
-detail. The card lists six checks with their value, a note and a
-✓ / ✗ / –, so the grade is never a black box: how much of the sender's mail
-you read, how often it mails, tracking (from the local body index, "not
-checked" without it), a one-click unsubscribe header, whether it stops after
-you unsubscribed (the watchdog) and the average mail size. Each good sign is
-+1, each bad one -1, a sender that keeps mailing after you unsubscribed
-counts -2; 3 points or more is an A, 2 a B, 0-1 a C, -1 to -2 a D and -3 or
-less an F. People you have written to never grade below C. The weights are
-fixed in the app and printed under "How grades work"; there is no AI and
-nothing leaves the server. Sort the list with "Grade · worst first", filter
-with `grade:d`, `grade:<=c` (C or worse) or `grade:>=b` (B or better) - also
-in rules and saved filters - and see how your senders spread over A-F, and
-how much mail the D and F senders send, in Statistics ("Show them" opens the
-list filtered to them). Grades are for the Sender view; a grade never acts on
-its own, and protected senders and pinned mails stay out of every cleanup as
-before.
-
 ### Filing senders in Smart
 
 <small class="where">Senders → Smart → pooled row</small>

@@ -191,9 +191,6 @@ export function QueryBuilder({ value, onChange, className = "",
         {flag("eng:low", t("qb.eng_low"))}
         {flag("eng:medium", t("qb.eng_medium"))}
         {flag("eng:high", t("qb.eng_high"))}
-        {flag("grade:<=d", t("qb.grade_d"))}
-        {flag("grade:<=c", t("qb.grade_c"))}
-        {flag("grade:>=b", t("qb.grade_b"))}
       </div>
       </>}
     </>

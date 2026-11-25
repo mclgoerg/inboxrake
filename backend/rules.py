@@ -40,7 +40,6 @@ from . import accounts
 from . import auditlog
 from . import config as cfgmod
 from . import demo
-from . import grades
 from . import keepsafe
 from . import mailops
 from . import pinstore
@@ -92,8 +91,7 @@ _RUN_LOCK = threading.Lock()      # one rule run at a time
 # ------------------------------------------------- filter DSL (port of lib.ts)
 
 _QUAL_RE = re.compile(
-    r"^(tag|ai|age|unread|is|has|eng|grade|att|from|domain|in):(.*)$")
-_GRADE_RE = re.compile(r"^(<=|>=)?([a-df])$")   # A B C D F - there is no E
+    r"^(tag|ai|age|unread|is|has|eng|att|from|domain|in):(.*)$")
 _AGE_RE = re.compile(r"^>?(\d+)(m|y)$")
 _UNREAD_RE = re.compile(r"^>?(\d+)$")
 _ATT_RE = re.compile(r"^>?(\d+)(k|m|g)?$")
@@ -107,7 +105,7 @@ def parse_filter(q: str) -> dict:
            "unread_min": None, "unsub": False, "protected_only": False,
            "replied": None, "att_min": None, "unsubscribed": None,
            "from_addr": None, "domain": None, "new_only": False,
-           "pinned_only": False, "eng": None, "grade": None,
+           "pinned_only": False, "eng": None,
            "still_mailing": False, "tracker_only": False,
            "in_seconds": None}
     for tok in (q or "").strip().lower().split():
@@ -147,8 +145,6 @@ def parse_filter(q: str) -> dict:
             out["still_mailing"] = True
         elif kind == "eng" and val in ("low", "medium", "high"):
             out["eng"] = val
-        elif kind == "grade" and (gm := _GRADE_RE.match(val)):
-            out["grade"] = (gm.group(1) or "=", gm.group(2).upper())
         elif kind == "has" and val == "pinned":
             out["pinned_only"] = True
         elif kind == "has" and val == "tracker":
@@ -222,14 +218,6 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
      "meaning": "how much the user engages with the sender (reads, "
                 "replies)",
      "example": "eng:low"},
-    {"qualifier": "grade", "values": None, "check": "grade",
-     "syntax": "grade:<letter>|<=<letter>|>=<letter>",
-     "meaning": "the sender's grade, A (best) to F (worst), from how much "
-                "the user opens its mail, how often it mails, tracking, "
-                "unsubscribe, whether it stops when asked and mail size. "
-                "`grade:d` = exactly D, `grade:<=c` = C or worse, "
-                "`grade:>=b` = B or better. Sender groups only",
-     "example": "grade:<=d"},
     {"qualifier": "att", "values": None, "check": "att",
      "syntax": "att:>N(k|m|g)",
      "meaning": "the group's attachments add up to more than N kilo-, "
@@ -271,8 +259,6 @@ def _token_ok(kind: str, val: str, tags: "set[str] | frozenset[str] | None"
         return bool(_UNREAD_RE.match(val)) and int(val.lstrip(">")) <= 100
     if check == "att":
         return bool(_ATT_RE.match(val))
-    if check == "grade":
-        return bool(_GRADE_RE.match(val))
     if check == "in":
         return bool(_IN_RE.match(val))
     if check == "tag" and tags is not None:
@@ -287,8 +273,7 @@ def _token_ok(kind: str, val: str, tags: "set[str] | frozenset[str] | None"
 # so they may repeat.
 _IS_SLOT = {"replied": "replied", "noreply-ever": "replied",
             "unsubscribed": "unsubscribed", "not-unsubscribed": "unsubscribed"}
-_SINGLE = frozenset({"ai", "age", "unread", "att", "eng", "grade", "from",
-                     "domain",
+_SINGLE = frozenset({"ai", "age", "unread", "att", "eng", "from", "domain",
                      "in"})
 
 
@@ -346,17 +331,6 @@ def _filter_error(bad: list[str], run: bool = False) -> str:
                          else mailops.RULE_FILTER_INVALID, names=names)
 
 
-def _grade_matches(g: dict, want: tuple[str, str]) -> bool:
-    """`grade:d` / `grade:<=c` (C or worse) / `grade:>=b` (B or better). A
-    row without a grade (only Sender rows carry one) never matches."""
-    have = (g.get("grade") or {}).get("letter")
-    if have not in grades.LETTERS:
-        return False
-    op, letter = want
-    i, j = grades.LETTERS.index(have), grades.LETTERS.index(letter)
-    return i == j if op == "=" else i >= j if op == "<=" else i <= j
-
-
 def match_group(g: dict, f: dict, now: float | None = None) -> bool:
     """`g` is a public_state()-shaped group record (has protected/replied)."""
     label = (g.get("label") or "").lower()
@@ -397,8 +371,6 @@ def match_group(g: dict, f: dict, now: float | None = None) -> bool:
             return False
     if f["eng"] is not None and \
             mailops.engagement_tier(g.get("engagement", 0)) != f["eng"]:
-        return False
-    if f["grade"] is not None and not _grade_matches(g, f["grade"]):
         return False
     if f["replied"] is not None and bool(g.get("replied")) != f["replied"]:
         return False
@@ -493,8 +465,7 @@ _PURGE_UNSUPPORTED = (
     ("protected_only", "is:protected"), ("replied", "is:replied"),
     ("unsubscribed", "is:unsubscribed"), ("new_only", "is:new"),
     ("still_mailing", "is:still-mailing"),
-    ("pinned_only", "has:pinned"), ("eng", "eng:"), ("grade", "grade:"),
-    ("att_min", "att:"),
+    ("pinned_only", "has:pinned"), ("eng", "eng:"), ("att_min", "att:"),
     ("domain", "domain:"), ("in_seconds", "in:"))
 
 

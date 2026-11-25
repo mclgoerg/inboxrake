@@ -204,9 +204,6 @@ export const DE: Record<string, string> = {
   "confirm.unpin_group_one":
     "Den Schutz der 1 geschützten Mail dieser Gruppe aufheben?",
   "Sort: engagement": "Sortierung: Interaktion",
-  "Sort: grade · worst first": "Sortierung: Note · schlechteste zuerst",
-  "Sort: grade · best first": "Sortierung: Note · beste zuerst",
-  "Grade": "Note",
   "Eng.": "Interaktion",
   "eng.col_tip":
     "Interaktion: wie viel du von diesem Absender wirklich liest und "
@@ -227,110 +224,6 @@ export const DE: Record<string, string> = {
   "qb.eng_low": "kaum Interaktion",
   "qb.eng_medium": "teils Interaktion",
   "qb.eng_high": "oft Interaktion",
-  "qb.grade_d": "Note D oder schlechter",
-  "qb.grade_c": "Note C oder schlechter",
-  "qb.grade_b": "Note B oder besser",
-  "grade.badge": "Note {letter}",
-  "grade.card": "Note des Absenders",
-  "grade.title": "Note {letter} · {pattern}",
-  "grade.pattern.loud": "laut und ignoriert",
-  "grade.pattern.quiet": "leise und nützlich",
-  "grade.pattern.tracks": "verfolgt dich, aber du liest es",
-  "grade.pattern.mixed": "gemischtes Bild",
-  "grade.line.loud":
-    "Schreibt dir oft, und du öffnest die Mails fast nie.",
-  "grade.line.quiet": "Schreibt dir selten, und du liest, was kommt.",
-  "grade.line.tracks":
-    "Verfolgt, ob du die Mails öffnest, aber du liest sie auch.",
-  "grade.line.mixed":
-    "Einige gute und einige schlechte Zeichen - die Prüfungen unten zeigen, "
-    + "welche.",
-  "grade.floor":
-    "Du schreibst diesem Absender, deshalb fällt die Note nie unter C.",
-  "grade.footnote": "Die Note nutzt nur, was Inboxrake schon weiß.",
-  "grade.how": "So entsteht die Note",
-  "grade.v_ok": "Gutes Zeichen",
-  "grade.v_bad": "Schlechtes Zeichen",
-  "grade.v_neutral": "Ohne Wirkung",
-  "grade.check.open": "Du öffnest die Mails",
-  "grade.check.often": "Wie oft",
-  "grade.check.tracking": "Tracking",
-  "grade.check.unsub": "Abmelden",
-  "grade.check.stops": "Hört auf, wenn du es verlangst",
-  "grade.check.size": "Mail-Größe",
-  "grade.val.few": "zu wenige Mails",
-  "grade.val.not_checked": "nicht geprüft",
-  "grade.val.none": "keine",
-  "grade.val.per_day": "{n} pro Tag",
-  "grade.val.per_week": "{n} pro Woche",
-  "grade.val.per_month": "{n} pro Monat",
-  "grade.val.track_pixel": "Pixel",
-  "grade.val.track_links": "Links",
-  "grade.val.track_both": "Pixel + Links",
-  "grade.val.unsub_post": "ein Klick",
-  "grade.val.unsub_link": "nur Link",
-  "grade.val.unsub_none": "keine",
-  "grade.val.stops_stopped": "hat aufgehört",
-  "grade.val.stops_still": "mailt weiter",
-  "grade.val.stops_never": "nicht getestet",
-  "grade.val.stops_open": "nicht abgeschlossen",
-  "grade.note.few": "Weniger als {n} Mails - zu früh für eine Aussage.",
-  "grade.note.open": "{read} von {total} Mails gelesen",
-  "grade.note.open_months": "{read} von {total} in {n} Monaten",
-  "grade.note.open_months_one": "{read} von {total} in 1 Monat",
-  "grade.note.often_more": "Öfter als bei {k} von 10 Absendern",
-  "grade.note.often_less": "Seltener als bei den meisten Absendern",
-  "grade.note.often_active": "Über den Zeitraum, in dem er mailt",
-  "grade.note.tracking_unchecked": "Braucht den lokalen Mail-Index",
-  "grade.note.tracking_none": "Kein Tracker in {n} geprüften Mails",
-  "grade.note.tracking_none_one": "Kein Tracker in der 1 geprüften Mail",
-  "grade.note.tracking_pixel": "Ein Tracking-Pixel in {pct} der Mails",
-  "grade.note.tracking_links": "Klick-Tracking in {pct} der Mails",
-  "grade.note.unsub_post": "List-Unsubscribe-Post-Header",
-  "grade.note.unsub_link": "Ein Link in der Mail, kein Ein-Klick-Header",
-  "grade.note.unsub_none": "Keine Abmeldemöglichkeit in den Mails",
-  "grade.note.stops_stopped": "Du hast dich abgemeldet und es kam nichts mehr",
-  "grade.note.stops_still": "{n} Mails kamen nach deiner Abmeldung",
-  "grade.note.stops_still_one": "1 Mail kam nach deiner Abmeldung",
-  "grade.note.stops_never": "Du hast dich nie abgemeldet",
-  "grade.note.stops_open": "Deine Abmeldung ist noch nicht abgeschlossen",
-  "grade.note.size": "Durchschnitt pro Mail",
-  "grade.note.size_att": "Durchschnitt pro Mail, {size} in Anhängen",
-  "grade.help.intro":
-    "Sechs Prüfungen, jede aus Daten, die die App schon hat: wie viel von "
-    + "den Mails des Absenders du liest, Mails pro Woche, Tracker-Markierungen "
-    + "aus dem lokalen Mail-Index, die Abmelde-Header, der Abmelde-Wächter "
-    + "und die Mail-Größe.",
-  "grade.help.open_ok": "Du liest {n}\u00a0% oder mehr seiner Mails",
-  "grade.help.open_bad": "Du liest weniger als {n}\u00a0% seiner Mails",
-  "grade.help.often_ok": "{n} Mails pro Woche oder weniger",
-  "grade.help.often_bad": "Mehr als {n} Mails pro Woche",
-  "grade.help.tracking_ok": "Kein Tracker gefunden",
-  "grade.help.tracking_bad":
-    "Tracker in {n}\u00a0% seiner Mails oder mehr (braucht den lokalen "
-    + "Mail-Index)",
-  "grade.help.unsub_ok": "Ein Ein-Klick-Header (List-Unsubscribe-Post)",
-  "grade.help.unsub_bad":
-    "Keine Abmeldemöglichkeit, obwohl er {n} oder mehr Mails schickt, mehr "
-    + "als {w} pro Woche",
-  "grade.help.stops_ok": "Du hast dich abgemeldet und es kam nichts mehr",
-  "grade.help.stops_bad":
-    "Mailt nach deiner Abmeldung weiter (zählt doppelt)",
-  "grade.help.size_ok": "Durchschnitt bis {n}\u00a0KB pro Mail",
-  "grade.help.size_bad": "Durchschnitt über {n}\u00a0MB pro Mail",
-  "grade.help.points":
-    "Ein gutes Zeichen zählt +1, ein schlechtes -1, alles andere 0. A: 3 "
-    + "oder mehr · B: 2 · C: 0 bis 1 · D: -1 bis -2 · F: -3 oder weniger.",
-  "grade.help.few":
-    "Ein Absender mit weniger als {n} Mails wird nicht danach bewertet, wie "
-    + "oft du ihn öffnest oder wie oft er mailt.",
-  "grade.help.fair":
-    "Ein Absender, dem du schreibst, bekommt nie weniger als C. Menschen, "
-    + "denen du schreibst, und geschützte Absender werden bewertet, aber nie "
-    + "zum Aufräumen vorgeschlagen.",
-  "grade.help.fixed":
-    "Die Gewichte sind fest in der App und stehen hier - keine KI, nichts "
-    + "verlässt den Server.",
   "bar.all_pinned": "alles geschützt - nichts zu verschieben",
   "toast.all_pinned":
     "Alle ausgewählten Mails sind geschützt - nichts wurde geändert.",
@@ -1487,13 +1380,6 @@ export const DE: Record<string, string> = {
   "stats.month_tip": "{month} · {mails} · {size}",
   "stats.tagged": "Kategorie-Tags",
   "stats.engagement": "Interaktion",
-  "grade.stats.title": "Die Noten deiner Absender",
-  "grade.stats.weak":
-    "Die {n} Absender mit Note D oder F schicken {pct} deiner Mails.",
-  "grade.stats.weak_one":
-    "Der 1 Absender mit Note D oder F schickt {pct} deiner Mails.",
-  "grade.stats.none": "Kein Absender hat Note D oder F.",
-  "grade.stats.show": "Diese anzeigen",
   "stats.per_year": "Mails pro Jahr",
   "stats.per_month": "Mails pro Monat",
   "stats.total_size": "Gesamtgröße",
@@ -3418,7 +3304,7 @@ export const DE: Record<string, string> = {
   "rule.purge_filter_help":
     "Trifft die Absender in diesem Ordner: Freitext, from:, age: (neueste "
     + "Mail des Absenders) und unread:. Ein leerer Filter bedeutet ALLE "
-    + "Absender. Hier nicht verfügbar: tag:, ai:, eng:, grade:, att:, is:, has: und domain:. "
+    + "Absender. Hier nicht verfügbar: tag:, ai:, eng:, att:, is:, has: und domain:. "
     + "Eine Mail wird erst gelöscht, wenn sie mehr als N Tage in diesem "
     + "Ordner liegt (ab dem Zeitpunkt, an dem Inboxrake sie dort zum ersten "
     + "Mal gesehen hat) und außerdem vor mehr als N Tagen empfangen wurde. "
