@@ -11,6 +11,7 @@ import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { QueryBuilder } from "./QueryBuilder";
 import { SlotChip } from "./RhythmCard";
+import { CheckupChip } from "./RuleCheckup";
 import type { ArrivalSlot } from "../rhythm";
 import { SortControl } from "./SortControl";
 import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
@@ -34,12 +35,15 @@ const naturalDir = (k: MailSort): "asc" | "desc" =>
  *  same delete_messages actions (with the same pinned-mail confirm flow) as
  *  the group detail view. */
 export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
-  initialSlot = null }: {
+  initialSlot = null, initialFinding = null }: {
   state: AppState;
   /** The filter the list opens with (e.g. `in:7d` from the Overview). */
   initialQuery?: string;
   /** The arrival slot it opens with (a cell of "When mail arrives"). */
   initialSlot?: ArrivalSlot | null;
+  /** The Rule checkup finding it lists the mails of (a view parameter like
+   *  the slot; `n` = how many mails the finding names). */
+  initialFinding?: { id: string; n: number } | null;
   onChanged: () => void;
   /** Where the filter + sort row is rendered (App's row B, so the toolbar
    *  keeps its place when switching tabs). Inline when omitted; null =
@@ -50,6 +54,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
   const [dq, setDq] = useState(initialQuery);       // debounced q
   const [slot, setSlot] = useState<ArrivalSlot | null>(initialSlot);
   useEffect(() => setSlot(initialSlot), [initialSlot]);
+  const [finding, setFinding] = useState(initialFinding);
+  useEffect(() => setFinding(initialFinding), [initialFinding]);
   const [sortK, setSortK] = useState<MailSort>(() => {
     const k = localStorage.getItem("pmc_mails_sort") as MailSort | null;
     return k && SORTS.some((o) => o.k === k) ? k : "date";
@@ -91,14 +97,15 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
   }, [sel.size]);
 
   const fetchKey = `${dq}\u0000${sortK}\u0000${dir}\u0000${
-    slot ? JSON.stringify(slot) : ""}`;
+    slot ? JSON.stringify(slot) : ""}\u0000${finding?.id ?? ""}`;
   useEffect(() => {
     let alive = true;     // a slow response for a previous query is dropped
     const sameQuery = loaded.current.key === fetchKey;
     const limit = sameQuery
       ? Math.min(Math.max(loaded.current.count, PAGE), 1000) : PAGE;
     if (!sameQuery) setLoading(true);
-    api.mails({ offset: 0, limit, sort: sortK, dir, q: dq, ...(slot && { slot }) })
+    api.mails({ offset: 0, limit, sort: sortK, dir, q: dq, ...(slot && { slot }),
+      ...(finding && { finding: finding.id }) })
       .then((r) => {
         if (!alive) return;
         loaded.current = { key: fetchKey, count: r.mails.length };
@@ -122,7 +129,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
     setMore(true);
     try {
       const r = await api.mails({ offset: mails.length, limit: PAGE,
-        sort: sortK, dir, q: dq, ...(slot && { slot }) });
+        sort: sortK, dir, q: dq, ...(slot && { slot }),
+        ...(finding && { finding: finding.id }) });
       // A newer filter / sort replaced the list meanwhile: this page belongs
       // to the old one.
       if (latestKey.current !== startKey) { setMore(false); return; }
@@ -303,6 +311,10 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
         </div>
       )}
       {slot && <SlotChip slot={slot} onClear={() => setSlot(null)} />}
+      {finding && (
+        <CheckupChip n={total} mails className="mb-2"
+          onClear={() => setFinding(null)} />
+      )}
       {ignored.length > 0 && (
         <p className="mb-2 type-meta text-muted">
           {t("mails.ignored", { list: ignored.join(" ") })}
@@ -329,7 +341,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       )}
       {!loading && !error && mails.length === 0 && (
         <EmptyState>
-          {dq || slot ? t("mails.none") : t("No scan yet - hit “Scan”.")}
+          {dq || slot || finding ? t("mails.none") : t("No scan yet - hit “Scan”.")}
         </EmptyState>
       )}
       <MailRows mails={mails} sel={sel} onToggle={toggle} onOpen={setView}

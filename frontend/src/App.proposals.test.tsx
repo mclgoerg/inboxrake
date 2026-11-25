@@ -29,6 +29,7 @@ vi.mock("./api", async (importOriginal) => ({
     version: () => Promise.resolve({ build: "v1" }),
     audit: () => Promise.resolve({ entries: [], total: 0 }),
     rules: () => Promise.resolve({ rules: state?.rules ?? [], cap: 500 }),
+    ruleCheckup: () => Promise.reject(new Error("x")),
     duplicatesSummary: () => Promise.reject(new Error("x")),
     folders: () => Promise.resolve({ folders: [], wildcards: [] }),
   },

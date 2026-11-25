@@ -57,6 +57,7 @@ import { AccountSwitcher } from "./components/AccountSwitcher";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterMenu";
 import { SelectMatches } from "./components/SelectMatches";
+import { CheckupChip } from "./components/RuleCheckup";
 import { Overview, type OverviewPhase } from "./components/Overview";
 import type { QuickWinCard } from "./quickwins";
 import { focusSpecialFolders } from "./components/FolderSettings";
@@ -184,8 +185,18 @@ export default function App() {
   // ... and the slot of "When mail arrives" it opens with (a view parameter
   // next to the query, see AllMailsView)
   const [allMailsSlot, setAllMailsSlot] = useState<ArrivalSlot | null>(null);
+  // ... and the Rule checkup finding whose mails it lists (a view parameter
+  // too: the server knows which mails the finding is about)
+  const [allMailsFinding, setAllMailsFinding] =
+    useState<{ id: string; n: number } | null>(null);
+  // The Senders list narrowed to the senders of a Rule checkup finding (their
+  // addresses; gone with the page, the grouping or its own "Show all")
+  const [senderSubset, setSenderSubset] = useState<Set<string> | null>(null);
   useEffect(() => {
-    if (page !== "all") { setAllMailsQuery(""); setAllMailsSlot(null); }
+    if (page !== "all") {
+      setAllMailsQuery(""); setAllMailsSlot(null); setAllMailsFinding(null);
+    }
+    if (page !== "senders") setSenderSubset(null);
   }, [page]);
   const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
@@ -827,16 +838,25 @@ export default function App() {
     () => mode === "smart" ? smartMembers(state?.groups?.sender) : undefined,
     [state, mode]);
 
+  const subset = mode === "sender" ? senderSubset : null;
   const groups = useMemo(() => {
     const f = parseFilter(filter);
     const now = nowMs();
-    const filtered = allGroups.filter((g) => matchGroup(g, f, now, members));
+    const filtered = allGroups.filter((g) => (!subset || subset.has(g.key))
+      && matchGroup(g, f, now, members));
     return filtered.sort((a, b) => {
       const va = sortValue(a, sortK), vb = sortValue(b, sortK);
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return cmp * sortDir || b.count - a.count;
     });
-  }, [allGroups, members, filter, sortK, sortDir]);
+  }, [allGroups, members, filter, sortK, sortDir, subset]);
+  useEffect(() => {
+    // nothing of the finding's senders is left (acted on, or gone): the list
+    // is the whole list again
+    if (senderSubset && state?.groups?.sender && !groups.length) {
+      setSenderSubset(null);
+    }
+  }, [senderSubset, groups, state]);
 
   // A selection only covers what is visible: a filter or search that hides a
   // ticked group takes it out of every action and count (and out of the
@@ -2839,6 +2859,21 @@ export default function App() {
         onClose={() => closeTool(() => {
           setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
         })}
+        onShowSenders={(keys) => {
+          // the Rule checkup's senders: the Sender list, narrowed to them
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
+          setFlat(false); setMode("sender");
+          setSelected(new Set()); setFocusIdx(-1); cancelFollow();
+          setDetail(null);
+          setFilter("");
+          setSenderSubset(new Set(keys));
+        }}
+        onShowMails={(id, n) => {
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
+          setAllMailsQuery(""); setAllMailsSlot(null);
+          setAllMailsFinding({ id, n });
+          setFlat(true);
+        }}
         onChanged={refresh}
       />
     )}
@@ -3366,6 +3401,7 @@ export default function App() {
         state && (
           <AllMailsView key={state.account} state={state}
             initialQuery={allMailsQuery} initialSlot={allMailsSlot}
+            initialFinding={allMailsFinding}
             onChanged={refresh} toolbarSlot={toolbarSlot} />
         )
       ) : groups.length > 0 ? (
@@ -3374,12 +3410,19 @@ export default function App() {
         <GroupTable
           groups={groups}
           selected={selected}
-          banner={matchKeys.length > 0 && (
-            <SelectMatches n={matchKeys.length}
-              skipped={groups.length - matchKeys.length}
-              allSelected={allMatchesSelected}
-              onSelect={selectMatches} onClear={clearMatches} />
-          )}
+          banner={(subset || matchKeys.length > 0) && (<>
+            {subset && (
+              <CheckupChip n={groups.length} mails={false}
+                className="bg-accent-tint px-3 py-2.5"
+                onClear={() => setSenderSubset(null)} />
+            )}
+            {matchKeys.length > 0 && (
+              <SelectMatches n={matchKeys.length}
+                skipped={groups.length - matchKeys.length}
+                allSelected={allMatchesSelected}
+                onSelect={selectMatches} onClear={clearMatches} />
+            )}
+          </>)}
           compact={paneOpen}
           selectMode={selectMode}
           swipe={groupSwipe}

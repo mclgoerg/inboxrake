@@ -6773,13 +6773,15 @@ def parse_mail_query(q: str) -> dict:
 
 def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                direction: str | None = None, q: str = "", acc=None,
-               slot: dict | None = None) -> dict:
+               slot: dict | None = None,
+               only: "frozenset[tuple[str, int]] | None" = None) -> dict:
     """One page of the scanned index as a flat, sorted, filtered list - no
     IMAP traffic. Only (folder, uid) handles the index already exposes;
     `total` is the filtered count for "x of y"; `ignored` lists group-level
     qualifiers from `q` that do not apply per mail (see parse_mail_query).
     `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
-    a view parameter next to `q`, not a query qualifier."""
+    a view parameter next to `q`, not a query qualifier. `only` (the Rule
+    checkup's "Show the N mails") keeps just those (folder, uid) mails."""
     acc = acc or accounts.get()
     if sort not in MAIL_SORTS:
         raise ValueError(f"bad sort {sort!r}")
@@ -6803,6 +6805,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
         hits = []
         for m in acc.index.values():
             if in_slot and not in_slot(m):
+                continue
+            if only is not None and (m["folder"], m["uid"]) not in only:
                 continue
             if f["from_addr"] is not None and m["addr"] != f["from_addr"]:
                 continue

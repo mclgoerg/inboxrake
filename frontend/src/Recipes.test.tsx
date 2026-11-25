@@ -23,7 +23,10 @@ vi.mock("./api", async (importOriginal) => ({
   api: { createRule: (b: unknown) => createRule(b),
          runRule: (id: string) => runRule(id),
          aiFilter: (...a: unknown[]) => aiFilter(...a),
-         rules: () => Promise.resolve({ rules: [], cap: 500 }) },
+         rules: () => Promise.resolve({ rules: [], cap: 500 }),
+         ruleCheckup: () => Promise.resolve({ account: "proton",
+           scanned_ts: null, analysed: false, needs_scan: false, checked: 0,
+           rules: 0, findings: [] }) },
 }));
 vi.mock("./components/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./components/ui")>()),

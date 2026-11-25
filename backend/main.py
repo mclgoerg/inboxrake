@@ -59,6 +59,8 @@ from . import overview as overviewmod
 from . import pinstore
 from . import presets as presetsmod
 from . import rhythm as rhythmmod
+from . import rulecheck as rulecheckmod
+from . import rulecheckstore
 from . import rules as rulesmod
 from . import secretbox
 from . import stats as statsmod
@@ -1991,6 +1993,34 @@ def post_rules(body: RuleBody, account: str | None = Query(None)):
         raise HTTPException(400, str(exc))
 
 
+@app.get("/api/rules/checkup")
+def get_rules_checkup(account: str | None = Query(None)):
+    """The Rule checkup of one account: overlapping, conflicting, broken and
+    idle rules, found locally. Read-only - nothing is changed by it."""
+    acc = _acc(account)
+    try:
+        return rulecheckmod.checkup(acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class CheckupIgnoreBody(BaseModel):
+    id: str
+    ignored: bool = True
+
+
+@app.post("/api/rules/checkup/ignore")
+def post_rules_checkup_ignore(body: CheckupIgnoreBody,
+                              account: str | None = Query(None)):
+    """Ignore one finding of the Rule checkup (or show it again)."""
+    acc = _acc(account)
+    try:
+        rulecheckmod.set_ignored(acc, body.id, body.ignored)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
 @app.post("/api/rules/{rule_id}")
 def post_rule_update(rule_id: str, body: dict):
     try:
@@ -2646,9 +2676,11 @@ def get_mails(offset: int = Query(0, ge=0),
               slot_days: str = Query("0,1,2,3,4,5,6", max_length=20),
               tz: str = Query("", max_length=64),
               tzoff: int = Query(0, ge=-840, le=840),
+              finding: str = Query("", max_length=16),
               account: str | None = Query(None)):
     """Flat "All mails" view: one page of the scan index as
-    {total, offset, mails, ignored}. `q` takes plain words plus the
+    {total, offset, mails, ignored}. `finding` (a Rule checkup finding's
+    id) narrows it to the mails that finding is about. `q` takes plain words plus the
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
     has:pinned; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
@@ -2662,8 +2694,14 @@ def get_mails(offset: int = Query(0, ge=0),
                 "tz": tz, "offset": tzoff})
         except ValueError:
             raise HTTPException(400, "bad slot")
-    return mailops.list_mails(offset, limit, sort, dir, q, _acc(account),
-                              slot=arrival)
+    acc = _acc(account)
+    only = None
+    if finding:                 # "Show the N mails" of a Rule checkup finding
+        if not rulecheckstore.valid_fingerprint(finding):
+            raise HTTPException(400, "bad finding")
+        only = rulecheckmod.finding_mails(acc, finding)
+    return mailops.list_mails(offset, limit, sort, dir, q, acc,
+                              slot=arrival, only=only)
 
 
 @app.get("/api/export")
@@ -2941,6 +2979,7 @@ def post_config(body: dict, request: Request, response: Response):
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
+        rulecheckstore.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
@@ -2971,6 +3010,7 @@ def post_config(body: dict, request: Request, response: Response):
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
             substore.rename_account(old, new)
+            rulecheckstore.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)

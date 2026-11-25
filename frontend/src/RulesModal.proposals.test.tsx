@@ -23,7 +23,10 @@ vi.mock("./api", async (importOriginal) => ({
          deleteRule: (id: string) => deleteRule(id),
          runRule: (id: string) => runRule(id),
          createRule: vi.fn(),
-         rules: () => Promise.resolve({ rules: [], cap: 500 }) },
+         rules: () => Promise.resolve({ rules: [], cap: 500 }),
+         ruleCheckup: () => Promise.resolve({ account: "proton",
+           scanned_ts: null, analysed: false, needs_scan: false, checked: 0,
+           rules: 0, findings: [] }) },
 }));
 
 const baseState: AppState = {

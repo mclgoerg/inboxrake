@@ -66,6 +66,7 @@ os.environ.update(
     LABELS_PATH=str(DATA / "sender_labels.json"),
     DUPS_PATH=str(DATA / "duplicates_kept.json"),
     SUBS_PATH=str(DATA / "subscriptions.json"),
+    RULE_CHECKUP_PATH=str(DATA / "rule_checkup.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),
@@ -310,7 +311,8 @@ def _forget_the_last_visitor() -> None:
     (pins, known senders, ...) and the stores' in-memory copies of them."""
     import shutil
     from backend import (addresses, addressstore, dupstore, labelstore,
-                         pinstore, substore, unsubstore, verdictstore)
+                         pinstore, rulecheckstore, substore, unsubstore,
+                         verdictstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
             continue
@@ -319,6 +321,7 @@ def _forget_the_last_visitor() -> None:
     pinstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
+    rulecheckstore._cache.clear()
     addressstore._cache.clear()
     addresses._cache.clear()
     unsubstore._cache.clear()

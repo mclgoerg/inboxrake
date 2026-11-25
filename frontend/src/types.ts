@@ -487,7 +487,68 @@ export interface Rule {
    *  filters were validated); its execute runs are skipped. */
   filter_invalid?: string[];
   created: number;
+  /** When the rule's definition (filter, action, target, ...) last changed. */
+  edited?: number;
   last_run: RuleRun | null;
+}
+
+/** The Rule checkup's kinds, in the order they are listed. */
+export type CheckupKind = "conflict" | "overlap" | "dest_missing"
+  | "only_protected" | "never_matches" | "stale_report";
+
+/** One sender row of a Compare (a sender both rules reach). `n` = the mails
+ *  at stake there (left by the keep-rule, or acted on by both). */
+export interface CheckupSender {
+  addr: string; label: string; n: number; last: number | null;
+}
+
+/** One finding of the Rule checkup (GET /api/rules/checkup). `rules` are rule
+ *  ids in the order the rules run (creation order). */
+export interface CheckupFinding {
+  id: string;
+  kind: CheckupKind;
+  rules: string[];
+  ignored: boolean;
+  /** conflict / overlap: how many mails, and the senders involved. */
+  n?: number;
+  senders?: CheckupSender[];
+  senders_total?: number;
+  /** conflict: the rule created first (acts first). */
+  first?: string;
+  /** overlap: the rule whose "keep" is defeated, and the one that takes the
+   *  mails; the defeated rule's retention. A purge overlap has no mails. */
+  defeated?: string;
+  by?: string;
+  purge?: boolean;
+  scope?: "junk" | "trash";
+  keep_latest?: number | null;
+  older_than_days?: number | null;
+  winner_days?: number;
+  compare?: { unit: "senders" | "mails"; only_a: number; both: number;
+              only_b: number } | null;
+  /** dest_missing */
+  folder?: string;
+  due?: boolean;
+  /** only_protected */
+  protected?: number;
+  pinned?: number;
+  /** never_matches */
+  runs?: number;
+  since?: number;
+  /** stale_report */
+  days?: number;
+  last?: number;
+}
+
+export interface RuleCheckup {
+  account: string;
+  scanned_ts: number | null;
+  /** false: no finished scan, so the checks that read the mails were skipped. */
+  analysed: boolean;
+  needs_scan: boolean;
+  checked: number;
+  rules: number;
+  findings: CheckupFinding[];
 }
 
 /** Slim live-update payload (SSE): AppState without `groups`. */

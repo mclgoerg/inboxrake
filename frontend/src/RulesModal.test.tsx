@@ -23,7 +23,11 @@ vi.mock("./api", async (importOriginal) => ({
          updateRule: (id: string, body: unknown) => updateRule(id, body),
          deleteRule: (id: string) => deleteRule(id),
          runRule: (id: string) => runRule(id),
-         rules: () => listRules() },
+         rules: () => listRules(),
+         // the Rule checkup finds nothing here (see RuleCheckup.test.tsx)
+         ruleCheckup: () => Promise.resolve({ account: "proton",
+           scanned_ts: null, analysed: false, needs_scan: false, checked: 0,
+           rules: 0, findings: [] }) },
 }));
 
 const baseState: AppState = {

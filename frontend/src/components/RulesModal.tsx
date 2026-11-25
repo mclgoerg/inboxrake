@@ -7,11 +7,13 @@ import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
-import type { AppState, Grouping, KeepSafeClass, Rule, RuleRun, RuleScope }
-  from "../types";
+import type { AppState, CheckupFinding, Grouping, KeepSafeClass, Rule, RuleRun,
+  RuleScope } from "../types";
 import { type Recipe, recipeBody, recipeFolder,
   recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
+import { CheckupBadges, type CheckupHost, CheckupSheet, CheckupWhatSheet,
+  CompareSheet, RuleCheckupCard, useRuleCheckup } from "./RuleCheckup";
 import { QueryBuilder } from "./QueryBuilder";
 import { NewRuleModes, type NewRuleMode, RecipeDialog, type RuleAi,
   RecipeStarters } from "./RecipePicker";
@@ -233,8 +235,9 @@ function FormRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** A rule read as a sentence: "When a Sender group matches ... then ...". */
-function RuleSentence({ rule }: { rule: Rule }) {
+/** A rule read as a sentence: "When a Sender group matches ... then ...".
+ *  `badges`: the Rule checkup's small badges, at the end. */
+function RuleSentence({ rule, badges }: { rule: Rule; badges?: ReactNode }) {
   const purge = isPurge(rule.scope);
   const danger = purge || rule.action === "trash";
   return (
@@ -265,6 +268,7 @@ function RuleSentence({ rule }: { rule: Rule }) {
               className="mr-1 inline align-text-bottom" />
               {t(`sched.${rule.schedule}`)}</Part></span>,
         }} />
+      {badges}
     </p>
   );
 }
@@ -328,9 +332,9 @@ function ProposalReport({ rule }: { rule: Rule }) {
 /** A rule an AI assistant proposed, waiting for the user: accent outline,
  *  who proposed it, its report inline and Approve… / Report again / Edit /
  *  Decline. Nothing is moved until the user approves. */
-function ProposalCard({ rule, busy, error, onApprove, onAgain, onEdit,
+function ProposalCard({ rule, busy, error, badges, onApprove, onAgain, onEdit,
   onDecline }: {
-  rule: Rule; busy: boolean; error?: string;
+  rule: Rule; busy: boolean; error?: string; badges?: ReactNode;
   onApprove: () => void; onAgain: () => void; onEdit: () => void;
   onDecline: () => void;
 }) {
@@ -361,7 +365,7 @@ function ProposalCard({ rule, busy, error, onApprove, onAgain, onEdit,
           <WandSparkles size={14} aria-hidden />{t("proposal.tag")}
         </Tag>
       </div>
-      <RuleSentence rule={rule} />
+      <RuleSentence rule={rule} badges={badges} />
       <ProposalReport rule={rule} />
       {error && (
         <div role="alert" className="mt-2 type-meta text-danger-fg">{error}</div>
@@ -402,9 +406,11 @@ function ProposalCard({ rule, busy, error, onApprove, onAgain, onEdit,
 
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
-function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
-  onDelete }: {
+function RuleCard({ rule, busy, error, fresh, badges, onRun, onEdit, onReport,
+  onMode, onDelete }: {
   rule: Rule; busy: boolean; error?: string;
+  /** The Rule checkup's badges for this rule. */
+  badges?: ReactNode;
   /** Just added from a recipe: line 2 says so and the report shows inline. */
   fresh?: boolean;
   onRun: () => void; onEdit: () => void; onReport: () => void;
@@ -451,7 +457,7 @@ function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
           {t("rule.need_report")}
         </div>
       )}
-      <RuleSentence rule={rule} />
+      <RuleSentence rule={rule} badges={badges} />
       {fresh && <ProposalReport rule={rule} />}
       {!!rule.filter_invalid?.length && (
         <div className="mt-2 flex items-start gap-1 type-meta text-review-fg">
@@ -500,8 +506,13 @@ function RuleCard({ rule, busy, error, fresh, onRun, onEdit, onReport, onMode,
 }
 
 export function RulesModal({ state, onClose, onChanged, initialQuery = "",
-  initialRecipe, ai }: {
+  initialRecipe, ai, onShowSenders, onShowMails }: {
   state: AppState;
+  /** The Rule checkup's "Show the N senders" / "Show the N mails": the page
+   *  that lists them, narrowed to those (the sender addresses / the finding's
+   *  id). */
+  onShowSenders?: (keys: string[]) => void;
+  onShowMails?: (findingId: string, n: number) => void;
   /** Describe it… (AI is on: enabled; the demo: disabled with its hint);
    *  absent when there is no AI provider. */
   ai?: RuleAi;
@@ -549,6 +560,13 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     ...all.filter((r) => !isProposal(r))];
   }, [state.rules]);
   const waiting = rules.filter(isProposal).length;
+
+  // The Rule checkup: findings about the rules together (read-only; every fix
+  // is one of the buttons below, which use the editor / confirms of this page).
+  const checkup = useRuleCheckup(state);
+  const [sheet, setSheet] = useState<{ only?: string } | null>(null);
+  const [compare, setCompare] = useState<CheckupFinding | null>(null);
+  const [what, setWhat] = useState(false);
 
   // The effective per-run cap, from the server (purge confirms name it).
   const capRef = useRef<number | null>(null);
@@ -851,6 +869,26 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     setEditing(true);
   };
 
+  // What the checkup's buttons do: the sheets close, then the page's own
+  // editor / confirm / list takes over.
+  const checkupHost: CheckupHost = {
+    rules,
+    onEdit: (rule) => { setSheet(null); setCompare(null); edit(rule); },
+    onDelete: (rule) => { void del(rule); },
+    onCompare: setCompare,
+    onShowSenders: onShowSenders && ((f) => {
+      if (f.senders?.length) onShowSenders(f.senders.map((s) => s.addr));
+    }),
+    onShowMails: onShowMails && ((f) => onShowMails(f.id, f.n ?? 0)),
+    onIgnore: (f, ignored) => {
+      api.ignoreFinding(f.id, ignored).then(checkup.reload)
+        .catch((e: any) => toast?.show(t("err.generic",
+          { msg: e.message ?? e })));
+    },
+  };
+  const badgesOf = (id: string) => <CheckupBadges checkup={checkup.data}
+    ruleId={id} onOpen={(rid) => setSheet({ only: rid })} />;
+
   // Phones get a grouped form; tablets keep the label column (the filter
   // builder opens as a popover there, which a grouped list would clip).
   const phone = useMediaQuery("(max-width: 639px)");
@@ -1084,15 +1122,20 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
               className={`col-start-2 shrink-0 whitespace-nowrap ${LINK_ACCENT}`}>
               {t("rules.how")}</a>
           </p>
-          {rules.map((rule) => isProposal(rule) ? (
+          {rules.filter(isProposal).map((rule) => (
             <ProposalCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
+              badges={badgesOf(rule.id)}
               onApprove={() => approve(rule)} onAgain={() => reportAgain(rule)}
               onEdit={() => edit(rule)} onDecline={() => decline(rule)} />
-          ) : (
+          ))}
+          <RuleCheckupCard checkup={checkup.data} host={checkupHost}
+            phone={phone} onOpen={() => setSheet({})}
+            onWhat={() => setWhat(true)} />
+          {rules.filter((r) => !isProposal(r)).map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}
-              fresh={fresh.has(rule.id)}
+              fresh={fresh.has(rule.id)} badges={badgesOf(rule.id)}
               onRun={() => run(rule)} onEdit={() => edit(rule)}
               onReport={() => setReportId(rule.id)}
               onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
@@ -1112,6 +1155,15 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
         <ReportSheet rule={rules.find((r) => r.id === reportId)!}
           onClose={() => setReportId(null)} />
       )}
+      {sheet && checkup.data && (
+        <CheckupSheet checkup={checkup.data} host={checkupHost}
+          only={sheet.only} onClose={() => setSheet(null)} />
+      )}
+      {compare && (
+        <CompareSheet f={compare} host={checkupHost}
+          onClose={() => setCompare(null)} />
+      )}
+      {what && <CheckupWhatSheet onClose={() => setWhat(false)} />}
       {creating === "recipe" && (
         <RecipeDialog state={state} ai={ai} highlight={mark}
           onClose={() => { setMark(undefined); setCreating(null); }}
