@@ -132,6 +132,11 @@ const row = async (label: string) => {
   const find = () => [...document.querySelectorAll("tr[data-gidx]")]
     .find((tr) => tr.textContent?.includes(label)) as HTMLElement | undefined;
   await waitFor(() => expect(find()).toBeTruthy());
+  // The rows appear in a commit outside act(), and React runs its effects -
+  // App's keydown listener, re-attached with the new rows - as a separate
+  // task. A key pressed before that reaches the old listener, which sees no
+  // rows and drops it, so flush them first.
+  await act(async () => {});
   return find()!;
 };
 const pane = () => document.querySelector("[data-split-pane]");

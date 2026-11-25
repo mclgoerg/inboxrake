@@ -129,6 +129,9 @@ const row = async (label: string) => {
   const find = () => [...document.querySelectorAll("tr[data-gidx]")]
     .find((tr) => tr.textContent?.includes(label)) as HTMLElement | undefined;
   await waitFor(() => expect(find()).toBeTruthy());
+  // App re-attaches its keydown listener (with the new rows) in an effect
+  // of a commit outside act(); flush it so the next key isn't dropped.
+  await act(async () => {});
   return find()!;
 };
 
