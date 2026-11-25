@@ -203,6 +203,8 @@ from a cleanup you keep doing by hand: "You keep doing this"),
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
+**Not now** (snooze a sender's unread mail or a single mail until a time you
+pick, or let a noisy sender deliver once a day / a week in one batch),
 trackers, a grade from A to F for every sender with the reasons behind it,
 subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), "Waiting

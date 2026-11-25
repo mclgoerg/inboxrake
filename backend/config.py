@@ -707,7 +707,8 @@ def _write_tenant_config(cfg: dict) -> None:
 
 
 # Roles a confirmed folder choice (`role_overrides`) can be saved for.
-SPECIAL_ROLES = ("trash", "junk", "sent", "drafts", "archive", "all")
+SPECIAL_ROLES = ("trash", "junk", "sent", "drafts", "archive", "all",
+                 "snoozed")
 
 
 def auth_method(im: dict) -> str:

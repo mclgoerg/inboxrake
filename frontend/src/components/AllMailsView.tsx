@@ -8,6 +8,8 @@ import type { AppState, Mail } from "../types";
 import { FilterField } from "./FilterMenu";
 import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
+import { NotNow, NotNowSheet } from "./NotNow";
+import { useSnooze } from "./snoozeContext";
 import type { ReaderActions } from "./MailReader";
 import { QueryBuilder } from "./QueryBuilder";
 import { SlotChip } from "./RhythmCard";
@@ -67,6 +69,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [view, setView] = useState<Mail | null>(null);
   const toast = useToast();
+  const snooze = useSnooze();
+  const [snoozing, setSnoozing] = useState<Mail | null>(null);
   const phone = useMediaQuery("(width < 48rem)");
   const filterRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -232,6 +236,27 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       return ok;
     },
     pin: (m, pinned) => togglePin(liveOf(m), pinned),
+    snooze: async (m, until) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setView(null);
+        setMails((cur) => cur.filter((x) => mailKey(x) !== mailKey(m)));
+        setTotal((n) => Math.max(0, n - 1));
+        onChanged();
+      }
+      return ok;
+    },
+  };
+  // The ticked mails wait until `until` (the server leaves pinned ones).
+  const snoozeSelected = async (until: number) => {
+    const chosen = mails.filter((m) => sel.has(mailKey(m)));
+    if (!chosen.length) return;
+    if (await snooze.mails(itemsOf(chosen), until)) {
+      setMails((cur) => cur.filter((m) => !sel.has(mailKey(m)) || !!m.pinned));
+      setTotal((n) => Math.max(0, n - chosen.filter((m) => !m.pinned).length));
+      setSel(new Set());
+      onChanged();
+    }
   };
 
   const onAction = (v: string) => {
@@ -337,7 +362,14 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
         // (the bar's buttons are disabled while a move runs: so is a swipe)
         swipe={{ bg: "bg-surface",
           trash: (m) => { if (!busy) void actOn([m], "trash"); },
-          read: (m) => { if (!busy) void actOn([m], "mark_read"); } }} />
+          read: (m) => { if (!busy) void actOn([m], "mark_read"); },
+          snooze: (m) => { if (!busy) setSnoozing(m); } }} />
+      {snoozing && (
+        <NotNowSheet scope="mail" n={1}
+          who={snoozing.subject || t("(no subject)")}
+          onSnooze={(until) => readerActions.snooze!(snoozing, until)}
+          onClose={() => setSnoozing(null)} />
+      )}
       {mails.length < total && (
         <div className="py-3 text-center">
           <Button variant="secondary" disabled={more} onClick={loadMore}>
@@ -364,6 +396,9 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
                 disabled={busy} onClick={() => onAction("mark_read")}>
                 {t("Mark read")}
               </BarButton>
+              <NotNow look="bar" scope="selected" n={sel.size}
+                who={t("nav.all_mail")} disabled={busy}
+                onSnooze={snoozeSelected} />
             </>
           )}
           primary={

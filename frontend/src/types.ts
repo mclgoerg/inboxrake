@@ -582,6 +582,57 @@ export interface Rule {
 /** Slim live-update payload (SSE): AppState without `groups`. */
 export type StatusMsg = Omit<AppState, "groups">;
 
+/** What waits in the account's Snoozed folder, as the state carries it:
+ *  mails snoozed, the soonest return per sender address, and the senders that
+ *  deliver in batches (backend snoozestore.summary). */
+export interface SnoozeSummary {
+  count: number;
+  until: Record<string, number>;
+  batches: Record<string, BatchSlot>;
+}
+export type BatchSlot = "weekly" | "daily";
+
+/** One sender's batch on the Snoozed page: what it holds so far and when
+ *  the next delivery is (epoch s). */
+export interface SnoozedBatch {
+  key: string;
+  label: string;
+  slot: BatchSlot;
+  tz: string;
+  held: number;
+  next: number;
+  msgids: string[];
+}
+/** One row of snoozed mail: a single mail (its subject) or one sender's
+ *  mails that come back together. */
+export interface SnoozedRow {
+  kind: "mail" | "sender";
+  addr: string;
+  label: string;
+  count: number;
+  until: number;
+  subject: string;
+  msgids: string[];
+}
+export interface SnoozedResp {
+  count: number;
+  batches: SnoozedBatch[];
+  rows: SnoozedRow[];
+  /** The server could not be asked: this is what Inboxrake remembers. */
+  stale: boolean;
+  no_folder?: boolean;          // stale because the Snoozed folder is missing
+  now: number;
+}
+export interface SnoozeResult {
+  ok: boolean;
+  queued: number;
+  until: number;
+  skipped_pinned: number;
+  skipped_protected: number;
+  skipped_no_id: number;
+  skipped_duplicate?: number;   // a Message-ID already snoozed or twice in the pick
+}
+
 export interface AppState {
   account: string;
   status: "idle" | "scanning" | "done" | "error";
@@ -600,6 +651,8 @@ export interface AppState {
    *  listing is older than the folder's count). */
   trash_size?: number | null;
   junk_count?: number | null;
+  /** Snoozed mail and batches (absent on an older server). */
+  snoozed?: SnoozeSummary;
   notice: { key: string; params: Record<string, string | number> } | null;
   undo: UndoEntry[];
   /** AI assistants' own undo list (never mixed into `undo`). */

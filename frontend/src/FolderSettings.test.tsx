@@ -408,3 +408,21 @@ test("folders without a delimiter (NIL) stay flat", () => {
   expect(pad("Work")).toBe("0rem");
   expect(pad("Work.Reports")).toBe("0rem");
 });
+
+test("the Snoozed folder Inboxrake made is a special folder, never a scan folder", () => {
+  mount({ wildcards: [], special: [
+    special("trash", "Trash", { source: "name" }),
+    special("snoozed", "Snoozed", { source: "name" })],
+  folders: [folder("INBOX"), folder("Trash", { role: "trash", excluded: true }),
+    folder("Snoozed", { role: "snoozed", excluded: true })] });
+  const block = screen.getByText("Special folders").parentElement!;
+  // the role's name and the server folder it points at
+  expect(within(block).getAllByText("Snoozed")).toHaveLength(2);
+  // no scan checkbox for it, and it is not in the "Folders to scan" list
+  expect(screen.queryByRole("checkbox", { name: /Snoozed/ })).toBeNull();
+  cleanup();
+  setLang("de");
+  mount({ wildcards: [], special: [special("snoozed", "Snoozed", { source: "name" })],
+    folders: [folder("INBOX"), folder("Snoozed", { role: "snoozed", excluded: true })] });
+  expect(screen.getAllByText("Zurückgestellt").length).toBeGreaterThan(0);
+});

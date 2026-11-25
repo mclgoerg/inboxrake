@@ -1,4 +1,4 @@
-import { Archive, ArrowLeftRight, FolderInput, Globe, History, KeyRound, ListChecks, Mail,
+import { AlarmClock, Archive, ArrowLeftRight, FolderInput, Globe, History, KeyRound, ListChecks, Mail,
   MailCheck, Pin, RefreshCw, Send, ShieldCheck, Trash2, Undo2, BellOff, VenetianMask,
   type LucideIcon } from "lucide-react";
 
@@ -13,6 +13,8 @@ export const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
   account_copy: { icon: ArrowLeftRight, tone: "bg-info-bg text-info-fg" },
   mark_read: { icon: MailCheck, tone: "bg-chip text-chiptext" },
+  snooze: { icon: AlarmClock, tone: "bg-info-bg text-info-fg" },
+  snooze_return: { icon: AlarmClock, tone: "bg-chip text-chiptext" },
   rule_execute: { icon: ListChecks, tone: "bg-review-bg text-review-fg" },
   rule_report: { icon: ListChecks, tone: "bg-chip text-chiptext" },
   unsubscribe: { icon: BellOff, tone: "bg-info-bg text-info-fg" },

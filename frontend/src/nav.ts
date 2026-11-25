@@ -5,12 +5,13 @@ import { afterBackSettles } from "./backStack";
 /** Tools that open as a page beside the sidebar (from 1024 px; below it they
  *  stay modals). */
 export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
-  | "rules" | "junk" | "trash" | "stats" | "space" | "trackers"
+  | "rules" | "junk" | "trash" | "snoozed" | "stats" | "space" | "trackers"
   | "subscriptions" | "waiting" | "addresses" | "activity" | "move";
 
 export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
-  "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
-  "trackers", "subscriptions", "waiting", "addresses", "activity", "move"];
+  "duplicates", "attachments", "rules", "junk", "trash", "snoozed", "stats",
+  "space", "trackers", "subscriptions", "waiting", "addresses", "activity",
+  "move"];
 
 /** Pages of the app shell. `settings` is a page of its own (not a tool): from
  *  1024 px a section column beside the form, below it an iOS-style root list
@@ -29,7 +30,7 @@ export const isTabPage = (p: Page): boolean => TAB_PAGES.includes(p);
 /** The tab page (below 1024 px) that lists each tool; Search has none. */
 export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
   triage: "cleanup", duplicates: "cleanup", attachments: "cleanup",
-  rules: "cleanup", junk: "cleanup", trash: "cleanup",
+  rules: "cleanup", junk: "cleanup", trash: "cleanup", snoozed: "cleanup",
   stats: "insights", space: "insights", trackers: "insights",
   subscriptions: "insights", waiting: "insights", addresses: "insights",
   activity: "insights",

@@ -4,7 +4,7 @@
  * unsubscribe card. PRIVACY: bodies are plain text only - no HTML is ever
  * rendered, no remote content loaded and nothing is linkified (phishing). */
 
-import { Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, FileText,
+import { AlarmClock, Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, FileText,
   FolderInput, HardDrive, Inbox, MailMinus, MessagesSquare, MousePointerClick,
   MoreHorizontal, Paperclip, Pin, ShieldCheck, Trash2, User,
   type LucideIcon } from "lucide-react";
@@ -18,6 +18,7 @@ import { nowDate } from "../clock";
 import { isForward, splitQuoted } from "../quoted";
 import type { Mail, MessageDetail, UnsubVia } from "../types";
 import { FolderPicker } from "./FolderPicker";
+import { NotNow } from "./NotNow";
 import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, modalCount, Spinner,
   Tag,
   useMediaQuery, useOptionalToast } from "./ui";
@@ -63,6 +64,9 @@ export interface ReaderActions {
   trash?: (m: Mail) => unknown;
   /** Move this mail to a folder (confirm, undo as in the opener). */
   move?: (m: Mail, dest: string) => Promise<boolean>;
+  /** Not now: wait in the Snoozed folder until `until` (epoch s), then come
+   *  back unread. Resolves false when nothing was snoozed. */
+  snooze?: (m: Mail, until: number) => Promise<boolean>;
   /** Set the pin; resolves false when it failed. Without it the reader
    *  calls the pin endpoint itself. */
   pin?: (m: Mail, pinned: boolean) => unknown;
@@ -280,6 +284,18 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
           pressed: pin.on, off: locked })}
       {canMove && btn("move", ico(FolderInput), t("detail.move"),
         () => setPicking(true), { aria: t("reader.move_label"), off: locked })}
+      {actions?.snooze && (
+        <NotNow key="snooze" look="reader" scope="mail" n={1}
+          who={mail.subject || t("(no subject)")} disabled={locked}
+          forceSheet={!top}
+          sheetTrigger={top ? undefined : (open) => (
+            <button type="button" className={BAR_ITEM} disabled={locked}
+              onClick={open}>
+              {face(<AlarmClock size={18} aria-hidden />, t("snooze.btn"))}
+            </button>
+          )}
+          onSnooze={(until) => void actions.snooze!(mail, until)} />
+      )}
       {onConversation && btn("conversation",
         ico(MessagesSquare), convLabel,
         onConversation, { aria: t("thread.read") })}
