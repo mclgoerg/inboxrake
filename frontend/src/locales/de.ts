@@ -2390,7 +2390,7 @@ export const DE: Record<string, string> = {
   "ferr.snooze_cannot_create": "Der Ordner „{folder}“ konnte auf deinem Mailserver nicht angelegt werden, deshalb wurde nichts zurückgestellt.",
   "ferr.snooze_bad_time": "Wähle einen Zeitpunkt in der Zukunft (innerhalb der nächsten zwei Jahre).",
   "ferr.snooze_protected": "Mails eines geschützten Absenders werden nie zurückgehalten – hebe zuerst den Schutz auf.",
-  "ferr.snooze_full": "„Nicht jetzt“ hält höchstens {n} Mails pro Konto zurück – hol zuerst einige zurück. Es wurde nichts zurückgestellt.",
+  "ferr.snooze_full": "Dieses Konto hält schon so viele zurückgestellte Mails, wie „Nicht jetzt“ aufnehmen kann – hol zuerst einige zurück. Es wurde nichts zurückgestellt.",
   "ferr.snooze_no_folder": "Der Ordner „Snoozed“ wurde auf deinem Mailserver nicht gefunden, deshalb können die zurückgestellten Mails noch nicht zurückkommen. Es ist nichts verloren – der Ordner ist vielleicht ausgeblendet oder umbenannt.",
   "snooze.btn": "Nicht jetzt",
   "snooze.swipe_label": "Nicht jetzt: zurückstellen",

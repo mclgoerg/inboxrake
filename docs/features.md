@@ -587,7 +587,13 @@ cannot have a batch) is held after each scan and the pile arrives together at
 the next slot, with one push "Your *sender* batch is here: N mails" if you
 enabled [notifications](#settings). Switching a batch off returns what it
 holds. A batch only sees new mail when Inboxrake scans, so turn on Auto-scan
-(Settings → Auto-scan) for it to catch mail every few minutes.
+(Settings → Auto-scan) for it to catch mail every few minutes. "New" is
+measured against the **last scan**: when you switch a batch on, mail that
+Inboxrake has not scanned yet (arrived since the last scan) counts as
+existing, not as new, and is not held; a changed folder identity on the server
+(UIDVALIDITY) restarts the count from the next scan. A mail Inboxrake
+delivers is never held again, and a mail that shares its Message-ID with one
+that is already snoozed stays where it is.
 
 **Clean up → Snoozed** (the sidebar item, or the Clean up tab on a phone) lists
 what waits: batches ("*sender* · weekly batch - 6 mails so far, delivered Sat
@@ -595,7 +601,10 @@ what waits: batches ("*sender* · weekly batch - 6 mails so far, delivered Sat
 with when it comes back and **Back now**; a sender with snoozed mail also shows
 a small "back tomorrow" chip in the list. The page checks the folder when it
 opens: a mail you moved away in another app is forgotten, not brought back
-twice. Nothing here uses AI.
+twice. If the **Snoozed** folder cannot be found (hidden or renamed on the
+server), the page says so and keeps what it remembers instead of dropping it.
+One account holds at most 5,000 snoozed mails; beyond that Not now refuses
+before anything moves. Nothing here uses AI.
 
 ### Delete permanently (Trash and Junk)
 

@@ -239,8 +239,7 @@ def _enqueue(acc, by_folder: dict, label: str, until: int, skipped: dict,
     n = sum(len(s) for s in by_folder.values())
     if n and snoozestore.count(acc.name) + _queued_snoozes(acc) + n \
             > snoozestore.MAX_MAILS:
-        raise ValueError(mailops.coded(mailops.SNOOZE_FULL,
-                                       n=snoozestore.MAX_MAILS))
+        raise ValueError(mailops.coded(mailops.SNOOZE_FULL))
     if n:
         mailops._start_delete(by_folder, label, acc, ACTION,
                               "", actor, None, "", _remember(acc, until, batch),

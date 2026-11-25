@@ -137,6 +137,15 @@ test("what the server left alone is named", async () => {
   await screen.findByText(/1 mail stayed where it is/);
 });
 
+test("a mail that is already snoozed is named among those left alone", async () => {
+  snooze.mockResolvedValue({ ...ok, queued: 2, skipped_duplicate: 1 });
+  show();
+  await screen.findByText("Mail 1");
+  fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+  fireEvent.click(menuItem(/Tomorrow morning/));
+  await screen.findByText(/1 mail stayed where it is \(pinned, from a protected sender or already snoozed\)/);
+});
+
 test("an API refusal reads as a toast, nothing closes", async () => {
   snooze.mockRejectedValue(new Error("Pick a time in the future"));
   show();

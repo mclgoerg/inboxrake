@@ -255,7 +255,7 @@ export const EN: Record<string, string> = {
   "ferr.snooze_cannot_create": "Could not create the \u201c{folder}\u201d folder on your mail server, so nothing was snoozed.",
   "ferr.snooze_bad_time": "Pick a time in the future (within the next two years).",
   "ferr.snooze_protected": "A protected sender\u2019s mail is never held back - unprotect the sender first.",
-  "ferr.snooze_full": "Not now holds at most {n} mails per account - bring some back first. Nothing was snoozed.",
+  "ferr.snooze_full": "This account already holds as many snoozed mails as Not now can keep - bring some back first. Nothing was snoozed.",
   "ferr.snooze_no_folder": "The \u201cSnoozed\u201d folder cannot be found on your mail server, so the snoozed mails cannot come back yet. Nothing was lost - the folder may be hidden or renamed.",
   "snooze.btn": "Not now",
   "snooze.swipe_label": "Not now: snooze",

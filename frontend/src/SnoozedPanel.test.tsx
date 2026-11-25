@@ -143,6 +143,17 @@ test("a server that could not be asked says so; a failed load offers a retry", a
   await screen.findAllByTestId("snoozed-row");
 });
 
+test("a missing Snoozed folder says so and still lists what is remembered", async () => {
+  snoozed.mockResolvedValue(data({ stale: true, no_folder: true }));
+  const { unmount } = show();
+  await screen.findByText(/Can’t find the “Snoozed” folder on your mail server/);
+  expect(screen.getAllByTestId("snoozed-row")).toHaveLength(3);
+  unmount();
+  setLang("de");
+  show();
+  await screen.findByText(/Der Ordner „Snoozed“ wurde auf deinem Mailserver nicht gefunden/);
+});
+
 test("a failed Back now shows the error and keeps the list", async () => {
   snoozedBack.mockRejectedValue(new Error("busy_action"));
   show();

@@ -72,6 +72,19 @@ describe("errorText", () => {
     expect(errorText("busy_purge")).toContain("endgültiges Löschen");
   });
 
+  test("the snooze refusals are worded in both languages", () => {
+    expect(errorText("snooze_full")).toBe(
+      "This account already holds as many snoozed mails as Not now can keep - "
+      + "bring some back first. Nothing was snoozed.");
+    expect(errorText("snooze_no_folder")).toContain("cannot be found");
+    setLang("de");
+    expect(errorText("snooze_full")).toBe(
+      "Dieses Konto hält schon so viele zurückgestellte Mails, wie „Nicht "
+      + "jetzt“ aufnehmen kann – hol zuerst einige zurück. Es wurde nichts "
+      + "zurückgestellt.");
+    expect(errorText("snooze_no_folder")).toContain("nicht gefunden");
+  });
+
   test("a role param is named in the interface language", () => {
     expect(errorText("role_unconfirmed:role=trash")).toBe(
       "More than one folder could be “Trash” - choose the right one in "
