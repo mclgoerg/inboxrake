@@ -4,7 +4,8 @@ import type {
   AccountSummary, AllAccountsResp, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
-  Mail, MessageDetail, SubReminder, SubscriptionsResp,
+  Mail, MessageDetail, SubReminder, SubscriptionsResp, WaitingDetail,
+  WaitingReminder, WaitingResp,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
@@ -733,6 +734,24 @@ export const api = {
       { body_amounts: bodyAmounts }),
   subscriptionAmounts: () =>
     req<{ read: number; found: number }>("/api/subscriptions/amounts", {}),
+  // Waiting for a reply (backend/waiting.py): local data, nothing is sent
+  waiting: () => req<WaitingResp>("/api/waiting"),
+  waitingItem: (id: string) =>
+    req<WaitingDetail>(`/api/waiting/item?id=${encodeURIComponent(id)}`),
+  waitingNeeded: (id: string, needed: boolean) =>
+    req<{ ok: boolean }>("/api/waiting/needed", { id, needed }),
+  /** Remind me about one mail at `at` (epoch s); null cancels. */
+  waitingRemind: (id: string, at: number | null) =>
+    req<{ ok: boolean; at: number | null }>("/api/waiting/remind", { id, at }),
+  waitingReminders: () =>
+    req<{ reminders: WaitingReminder[] }>("/api/waiting/reminders"),
+  waitingSettingsGet: (account?: string) =>
+    req<{ track: boolean; days: number }>(
+      forAccount("/api/waiting/settings", account)),
+  waitingSettings: (patch: { track?: boolean; days?: number },
+    account?: string) =>
+    req<{ track: boolean; days: number }>(
+      forAccount("/api/waiting/settings", account), patch),
   // Your addresses (backend/addresses.py) and the optional alias service
   addresses: () => req<AddressReport>("/api/addresses"),
   addressesSummary: () =>

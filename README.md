@@ -205,8 +205,9 @@ watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
 trackers, a grade from A to F for every sender with the reasons behind it,
 subscriptions (what you still pay for, from receipt subjects, with
-reminders and an optional amount read from the latest receipt), "Your
-addresses" (which of your aliases leaked, retire one), space
+reminders and an optional amount read from the latest receipt), "Waiting
+for a reply" (the mails you sent that nobody answered, with a reminder),
+"Your addresses" (which of your aliases leaked, retire one), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
 an earlier point), multiple accounts that stay strictly separate (with an

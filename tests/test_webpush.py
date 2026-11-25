@@ -927,3 +927,74 @@ def test_only_the_own_tenant_hears_the_reminder(bridge, network):
     webpush.reminder(accountsmod.get("default"), **_reminder_params())
     time.sleep(0.2)
     assert network.sent == []
+
+
+# ------------------------------------ "Remind me" on an unanswered mail (IX111)
+
+def _waiting_params(**over):
+    return {"name": "Travelly", "days": 14,
+            "subject": "Re: Change of booking 88213", "usual": 2, **over}
+
+
+def test_the_waiting_reminder_reads_like_the_board_in_both_languages():
+    en = webpush._payload("en", "waiting", True, "default", False,
+                          params=_waiting_params())
+    assert en["title"] == "Travelly hasn't answered for 14 days"
+    assert en["body"] == ("“Re: Change of booking 88213” · "
+                          "they usually answer in 2 days")
+    assert en["url"] == "/#/waiting"
+    de = webpush._payload("de", "waiting", True, "default", False,
+                          params=_waiting_params())
+    assert de["title"] == "Travelly hat seit 14 Tagen nicht geantwortet"
+    assert de["body"] == ("“Re: Change of booking 88213” · "
+                          "antwortet sonst innerhalb von 2 Tagen")
+
+
+def test_the_waiting_reminder_words_one_day_and_an_unknown_usual_time():
+    p = webpush._payload("en", "waiting", True, "work", True,
+                         params=_waiting_params(days=1, usual=1))
+    assert p["title"] == "Travelly hasn't answered for 1 day"
+    assert p["body"].endswith("they usually answer in 1 day")
+    assert p["body"].startswith("work · ")
+    p = webpush._payload("de", "waiting", True, "a", False,
+                         params=_waiting_params(days=1, usual=None))
+    assert p["title"] == "Travelly hat seit 1 Tag nicht geantwortet"
+    assert p["body"] == "“Re: Change of booking 88213”"
+
+
+def test_the_waiting_reminder_has_no_address_and_a_stable_tag():
+    p = webpush._payload("en", "waiting", True, "default", False,
+                         params=_waiting_params(addr="help@travelly.example"))
+    assert "@" not in json.dumps(p)
+    again = webpush._payload("de", "waiting", True, "default", False,
+                             params=_waiting_params())
+    assert p["tag"] == again["tag"] and "Travelly" not in p["tag"]
+    other = webpush._payload("en", "waiting", True, "default", False,
+                             params=_waiting_params(subject="Something else"))
+    assert other["tag"] != p["tag"]
+
+
+def test_a_waiting_reminder_is_delivered_and_skips_a_visible_device(
+        bridge, network):
+    keys, key = device()
+    webpush.subscribe(ENDPOINT, keys["p256dh"], keys["auth"], "de")
+    webpush.set_presence(ENDPOINT, True)
+    webpush.waiting(accountsmod.get("default"), **_waiting_params())
+    time.sleep(0.2)
+    assert network.sent == []                      # the page shows it itself
+    webpush.set_presence(ENDPOINT, False)
+    webpush.waiting(accountsmod.get("default"), **_waiting_params())
+    assert _wait(lambda: network.sent)
+    got = _decrypt(network.sent[0][2], (keys, key))
+    assert got["title"] == "Travelly hat seit 14 Tagen nicht geantwortet"
+
+
+def test_only_the_own_tenant_hears_the_waiting_reminder(bridge, network):
+    _enable_oidc()
+    alice = tenants.for_subject("alice@x.example")
+    keys = device()[0]
+    with tenants.use(alice):
+        webpush.subscribe(ENDPOINT, keys["p256dh"], keys["auth"])
+    webpush.waiting(accountsmod.get("default"), **_waiting_params())
+    time.sleep(0.2)
+    assert network.sent == []
