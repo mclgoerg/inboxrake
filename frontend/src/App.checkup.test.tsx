@@ -52,7 +52,8 @@ const acct = {
 };
 const cfg: Config = {
   default_account: "proton",
-  accounts: { proton: { ...acct, user: "me@proton.example" } },
+  accounts: { proton: { ...acct, user: "me@proton.example" },
+    other: { ...acct, user: "me@other.example" } },
   oauth_providers: [], oauth_ms_device_available: false,
   auth: { mode: "none", is_admin: false },
   protected: [], categories: {}, new_sender_window_days: 7,
@@ -169,4 +170,58 @@ test("Show the 12 mails: All mail on that finding's mails", async () => {
     { finding: "fedcba9876543210" }));
   expect(screen.getByTestId("checkup-chip").textContent!
     .replace(/ /g, " ")).toContain("12 mails from the Rule checkup");
+});
+
+const nb = (e: Element) => e.textContent!.replace(/ /g, " ");
+
+test("a search that hides every finding sender keeps the narrowing for when it is cleared",
+  async () => {
+    await mount([finding({})]);
+    fireEvent.click(screen.getByRole("button", { name: /^Show the 2\s+senders$/ }));
+    await screen.findAllByTestId("checkup-chip");
+    const box = screen.getByPlaceholderText("Search or filter…");
+    fireEvent.change(box, { target: { value: "c@x.example" } });   // only c matches
+    await waitFor(() => expect(rows()).toEqual([]));
+    fireEvent.change(box, { target: { value: "" } });
+    await waitFor(() => expect(rows()).toEqual(["a", "b"]));
+    expect(screen.getAllByTestId("checkup-chip").length).toBeGreaterThan(0);
+  });
+
+test("none of the finding's senders left: the whole list again", async () => {
+  await mount([finding({ addrs: ["z@x.example"], senders: [
+    { addr: "z@x.example", label: "Label z", n: 1, last: 1 }],
+  senders_total: 1 })]);
+  fireEvent.click(screen.getByRole("button", { name: /^Show the sender$/ }));
+  await waitFor(() => expect(rows()).toEqual(["a", "b", "c"]));
+  expect(screen.queryByTestId("checkup-chip")).toBeNull();
+});
+
+test("the narrowing does not come back after another grouping", async () => {
+  await mount([finding({})]);
+  fireEvent.click(screen.getByRole("button", { name: /^Show the 2\s+senders$/ }));
+  await screen.findAllByTestId("checkup-chip");
+  fireEvent.click(screen.getByRole("tab", { name: "Subject" }));
+  await waitFor(() => expect(screen.queryByTestId("checkup-chip")).toBeNull());
+  fireEvent.click(screen.getByRole("tab", { name: "Sender" }));
+  await waitFor(() => expect(rows()).toEqual(["a", "b", "c"]));
+  expect(screen.queryByTestId("checkup-chip")).toBeNull();
+});
+
+test("a finding's mails do not follow a switch to another account", async () => {
+  mails.mockResolvedValue({ total: 12, offset: 0, ignored: [], mails: [{
+    uid: 1, folder: "INBOX", date: "2026-01-01", ts: 1, subject: "Subject 1",
+    addr: "a@x.example", size: 10, seen: true, ai: null, pinned: false }] });
+  await mount([finding({ kind: "conflict", id: "fedcba9876543210", n: 12,
+    first: "r1", senders_total: 1, senders: [{ addr: "a@x.example",
+      label: "Label a", n: 12, last: 1 }],
+    compare: { unit: "mails", only_a: 0, both: 12, only_b: 0 } })]);
+  fireEvent.click(screen.getByRole("button", { name: /^Show the 12\s+mails$/ }));
+  await screen.findAllByTestId("checkup-chip");
+  state = { ...state, account: "other" };
+  fireEvent.click(screen.getByRole("button", { name: /proton/ }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: /other/ }));
+  await waitFor(() => expect(screen.queryByTestId("checkup-chip")).toBeNull());
+  expect(nb(document.body)).not.toContain("from the Rule checkup");
+  await waitFor(() => expect(mails).toHaveBeenLastCalledWith(
+    expect.not.objectContaining({ finding: expect.anything() })));
 });

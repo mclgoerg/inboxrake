@@ -57,7 +57,7 @@ KINDS = ("conflict", "overlap", "dest_missing", "only_protected",
 NEVER_MIN_RUNS = 3          # runs that found nothing before it is a finding
 NEVER_MIN_DAYS = 2          # ... spread over at least this many days
 STALE_DAYS = 30             # a report older than this is stale
-MAX_SENDERS = 100           # sender rows listed per finding (counts are exact)
+MAX_SENDERS = 100           # sender rows a Compare lists (counts and `addrs` are exact)
 
 _LOCK = threading.Lock()
 # {(tenant id, account): {fingerprint: frozenset({(folder, uid)})}} - the mails
@@ -222,7 +222,7 @@ def _pair_findings(acc, plans: list[tuple[dict, dict]], out: list[dict],
                 out.append({
                     "id": fp, "kind": "conflict", "rules": ids,
                     "first": x["id"], "n": len(shared),
-                    "senders_total": len(per),
+                    "senders_total": len(per), "addrs": sorted(per),
                     "senders": _rows(acc, sender_ix, per, set(per)),
                     "compare": {"unit": "mails",
                                 "only_a": len(px["acts"]) - len(shared),
@@ -247,7 +247,7 @@ def _pair_findings(acc, plans: list[tuple[dict, dict]], out: list[dict],
             out.append({
                 "id": fp, "kind": "overlap", "rules": ids,
                 "defeated": loser["id"], "by": winner["id"], "n": len(hits),
-                "senders_total": len(both),
+                "senders_total": len(both), "addrs": sorted(both),
                 "senders": _rows(acc, sender_ix, per, both),
                 "keep_latest": loser.get("keep_latest"),
                 "older_than_days": loser.get("older_than_days"),
@@ -285,7 +285,7 @@ def _purge_findings(purge_rules: list[dict], out: list[dict]) -> None:
                                            rulesmod.definition_sig(y)]),
                 "kind": "overlap", "rules": ids, "defeated": loser["id"],
                 "by": winner["id"], "n": 0, "senders_total": 0,
-                "senders": [], "purge": True, "scope": x["scope"],
+                "addrs": [], "senders": [], "purge": True, "scope": x["scope"],
                 "keep_latest": None,
                 "older_than_days": loser["older_than_days"],
                 "winner_days": winner["older_than_days"],

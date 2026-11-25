@@ -198,6 +198,14 @@ export default function App() {
     }
     if (page !== "senders") setSenderSubset(null);
   }, [page]);
+  // ... nor does it outlive the grouping or the account it was made for
+  useEffect(() => {
+    if (mode !== "sender") setSenderSubset(null);
+  }, [mode]);
+  useEffect(() => {
+    setSenderSubset(null);
+    setAllMailsFinding(null);
+  }, [account]);
   const overview = page === "overview";
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
@@ -851,12 +859,14 @@ export default function App() {
     });
   }, [allGroups, members, filter, sortK, sortDir, subset]);
   useEffect(() => {
-    // nothing of the finding's senders is left (acted on, or gone): the list
-    // is the whole list again
-    if (senderSubset && state?.groups?.sender && !groups.length) {
+    // none of the finding's senders is left (acted on, or gone): the list is
+    // the whole list again. (A search that hides them all does not count: the
+    // narrowing is still there when it is cleared.)
+    const senders = state?.groups?.sender;
+    if (senderSubset && senders && ![...senderSubset].some((k) => senders[k])) {
       setSenderSubset(null);
     }
-  }, [senderSubset, groups, state]);
+  }, [senderSubset, state]);
 
   // A selection only covers what is visible: a filter or search that hides a
   // ticked group takes it out of every action and count (and out of the

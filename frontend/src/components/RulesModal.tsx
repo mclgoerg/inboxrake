@@ -877,7 +877,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     onDelete: (rule) => { void del(rule); },
     onCompare: setCompare,
     onShowSenders: onShowSenders && ((f) => {
-      if (f.senders?.length) onShowSenders(f.senders.map((s) => s.addr));
+      const keys = f.addrs ?? f.senders?.map((s) => s.addr) ?? [];
+      if (keys.length) onShowSenders(keys);
     }),
     onShowMails: onShowMails && ((f) => onShowMails(f.id, f.n ?? 0)),
     onIgnore: (f, ignored) => {

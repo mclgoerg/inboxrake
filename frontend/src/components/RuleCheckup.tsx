@@ -92,9 +92,6 @@ const names = (list: string[]) => new Intl.ListFormat(
   getLang() === "de" ? "de" : "en-GB",
   { style: "long", type: "conjunction" }).format(list);
 
-/** What a rule does, as its card words it ("move to Trash", "archive"). */
-const actLabel = (r: Rule) => t(`rule.act_${r.action}`, { folder: r.dest });
-
 const retLabel = (keep: number | null | undefined,
                   older: number | null | undefined) => keep != null
   ? t("rule.ret_keep", { n: keep }) : t("rule.ret_older", { n: older ?? 0 });
@@ -119,11 +116,15 @@ function findingText(f: CheckupFinding, byId: Map<string, Rule>): ReactNode {
   const r = (id: string | undefined) => bold(byId.get(id ?? "")?.name ?? "");
   const first = byId.get(f.rules[0]), second = byId.get(f.rules[1]);
   switch (f.kind) {
-    case "conflict":
+    case "conflict": {
+      // "A archives 12 mails that B moves to Trash."
+      const verb = (rule: Rule | undefined, kind: "cm" | "cr") => rule
+        ? t(`checkup.${kind}_${rule.action}`, { folder: rule.dest,
+          mails: t("n.mails", { n: f.n ?? 0 }) }) : "";
       return <Fill template={t("checkup.t_conflict")} parts={{
         a: bold(first?.name ?? ""), b: bold(second?.name ?? ""),
-        va: first ? actLabel(first) : "", vb: second ? actLabel(second) : "",
-        mails: t("n.mails", { n: f.n ?? 0 }) }} />;
+        main: verb(first, "cm"), rel: verb(second, "cr") }} />;
+    }
     case "overlap": {
       const x = byId.get(f.defeated ?? ""), y = byId.get(f.by ?? "");
       if (f.purge) return <Fill template={t("checkup.t_overlap_purge")}
@@ -172,7 +173,7 @@ function FindingRow({ f, host, byId }: {
 }) {
   const rule = byId.get(f.rules[0]);
   const comparable = f.kind === "overlap" || f.kind === "conflict";
-  const senders = f.senders?.length ?? 0;
+  const senders = f.addrs?.length ?? f.senders?.length ?? 0;
   return (
     <li data-finding={f.id} data-kind={f.kind}
       className={`flex items-start gap-3 border-t border-line py-3
@@ -439,6 +440,11 @@ export function CompareSheet({ f, host, onClose }: {
                 </span>
               </li>
             ))}
+            {(f.senders_total ?? 0) > senders.length && (
+              <li className="px-3 py-2 type-meta text-muted">
+                {t("rule.pv_more", { n: (f.senders_total ?? 0) - senders.length })}
+              </li>
+            )}
           </ul>
         )}
         <Notice icon={<Info size={16} aria-hidden />}>

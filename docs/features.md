@@ -750,8 +750,9 @@ Each finding names the rules and the senders and says what happens today.
 back in Report only, as every change does), **Delete…** asks first,
 **Compare** shows two rules side by side with the senders they share, **Show
 the N senders** / **Show the N mails** open Senders / All mail narrowed to
-them, and **Ignore** hides a finding until you change one of its rules (a
-quiet "N ignored" line brings it back). Affected rule cards get a small badge
+them, and **Ignore** hides a finding until it changes - a rule is edited,
+the missing folder is another one, an old report has been renewed and has aged
+again (a quiet "N ignored" line brings an ignored finding back at any time). Affected rule cards get a small badge
 at the end of the sentence ("overlaps 1", "folder gone") that opens the
 finding; when all is well the card shrinks to one line, "Rule checkup: all
 fine". On a phone the card is one row that opens the same list.

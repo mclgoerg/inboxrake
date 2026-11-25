@@ -512,6 +512,9 @@ export interface CheckupFinding {
   /** conflict / overlap: how many mails, and the senders involved. */
   n?: number;
   senders?: CheckupSender[];
+  /** Every sender address of the finding (`senders` lists the first rows
+   *  only); `senders_total` is how many there are. */
+  addrs?: string[];
   senders_total?: number;
   /** conflict: the rule created first (acts first). */
   first?: string;

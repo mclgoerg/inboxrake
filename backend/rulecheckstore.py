@@ -2,9 +2,10 @@
 
 Per tenant, per account: the findings they chose to Ignore, each named by its
 FINGERPRINT (a hash of what the finding is about - the kind, the rules and
-the definitions they had when it was found - never a name, an address or a
-subject). Editing a rule changes its definition, so a finding that was
-ignored comes back when the rule is changed; "Show again" forgets an ignore.
+what was found: their definitions, the missing folder, the report's date -
+never a name, an address or a subject). When that changes (a rule is edited,
+the target folder is another, a newer report has aged) it is a new finding
+and shows again; "Show again" forgets an ignore.
 
 Mirrors substore.py's persistence (per-tenant file, atomic write, tolerant
 read, per-tenant cache) and like it stays STRICTLY per account: the account

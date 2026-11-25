@@ -181,9 +181,10 @@ test("a conflict shows the mails button and Compare; a purge overlap has no send
     older_than_days: 7 }]);
   const c = await card();
   const conflict = c.querySelector(`[data-finding="${CONFLICT.id}"]`)!;
-  expect(nb(conflict.textContent)).toContain("Sweep old newsletters (move to Trash) "
-    + "and Receipts into their own folder (move to Receipts) act on the same "
-    + "12 mails. The one created first acts first.");
+  // as the board words it: "A archives 12 mails that B moves to Trash."
+  expect(nb(conflict.textContent)).toContain("Sweep old newsletters moves 12 "
+    + "mails to Trash that Receipts into their own folder moves to “Receipts”. "
+    + "The one created first acts first.");
   expect(within(conflict as HTMLElement).getAllByRole("button")
     .map((b) => nb(b.textContent))).toEqual(["Show the 12 mails", "Compare", "Ignore"]);
   fireEvent.click(within(conflict as HTMLElement)
@@ -432,6 +433,68 @@ test("German: card, texts, buttons and the compare sheet", async () => {
   expect(d).toContain("Nur Sweep old newsletters");
   expect(d).toContain("5 bleiben");
   expect(d).toContain("Keep the latest 5 of every newsletter bearbeiten…");
+});
+
+test("a conflict reads as the board words it, for archive and folders too, in German", async () => {
+  const arch = { ...TICKETS, id: "r7", name: "Archive shop mail" };
+  checkup = result([{ ...CONFLICT, rules: ["r7", "r1"], first: "r7" }]);
+  mount([arch, SWEEP]);
+  let c = await card();
+  expect(nb(c.textContent)).toContain("Archive shop mail archives 12 mails "
+    + "that Sweep old newsletters moves to Trash. The one created first acts "
+    + "first.");
+  cleanup();
+  setLang("de");
+  checkup = result([{ ...CONFLICT, rules: ["r7", "r1"], first: "r7" }]);
+  mount([arch, SWEEP]);
+  c = await card();
+  expect(nb(c.textContent)).toContain("Archive shop mail archiviert 12 Mails, "
+    + "die Sweep old newsletters in den Papierkorb verschiebt. Die zuerst "
+    + "angelegte Regel greift zuerst zu.");
+  cleanup();
+  checkup = result([{ ...CONFLICT, rules: ["r1", "r3"] }]);
+  mount();
+  c = await card();
+  expect(nb(c.textContent)).toContain("Sweep old newsletters verschiebt 12 Mails "
+    + "in den Papierkorb, die Receipts into their own folder nach „Receipts“ "
+    + "verschiebt.");
+});
+
+test("every sender goes to the Senders page and counts in the button, "
+  + "whatever a Compare lists", async () => {
+  const cut: CheckupFinding = { ...OVERLAP, senders_total: 4,
+    senders: OVERLAP.senders!.slice(0, 1),
+    addrs: ["a@old.example", "b@old.example", "c@old.example", "d@old.example"] };
+  checkup = result([cut]);
+  mount();
+  fireEvent.click(await screen.findByRole("button",
+    { name: /^Show the 4\s+senders$/ }));
+  expect(onShowSenders).toHaveBeenCalledWith(cut.addrs);
+  // the sentence names the first and counts the rest
+  expect(nb(screen.getByTestId("checkup-card").textContent)).toContain(
+    "both act on Old Forum and 3 more.");
+  // the Compare lists the rows it has and says how many more there are
+  fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+  const dlg = await screen.findByRole("dialog", { name: "Compare" });
+  expect(nb(dlg.textContent)).toContain("+3 more");
+});
+
+test("German: the sender list in a sentence ends with 'und N weitere'", async () => {
+  setLang("de");
+  checkup = result([{ ...OVERLAP, senders_total: 5, senders: [...OVERLAP.senders!,
+    { addr: "d@old.example", label: "Hobby Post", n: 1, last: 1 }] }]);
+  mount();
+  expect(nb((await card()).textContent)).toContain(
+    "betreffen beide Old Forum, Retro Weekly, Garden Notes und 2 weitere.");
+});
+
+test("German: What it checks names the feature as the app does", async () => {
+  setLang("de");
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Was geprüft wird" }));
+  const dlg = await screen.findByRole("dialog", { name: "Was der Regel-Check prüft" });
+  expect(nb(dlg.textContent)).toContain("„Sicher behalten“");
+  expect(nb(dlg.textContent)).not.toContain("Keep-safe");
 });
 
 test("German phone row", async () => {

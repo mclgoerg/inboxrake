@@ -846,6 +846,7 @@ export const DE: Record<string, string> = {
   "checkup.sub_scan": "gepr\u00fcft nach dem Scan vor {ago} \u00b7 nichts wird von selbst ge\u00e4ndert",
   "checkup.sub_now": "gerade gepr\u00fcft \u00b7 nichts wird von selbst ge\u00e4ndert",
   "checkup.what": "Was gepr\u00fcft wird",
+  "checkup.more": "{n} weitere",
   "checkup.all_fine": "Regel-Check: alles in Ordnung",
   "checkup.needs_scan":
     "Regel-Check: Scanne einmal, damit deine Regeln gegen deine Mails gepr\u00fcft werden",
@@ -881,8 +882,13 @@ export const DE: Record<string, string> = {
   "checkup.c_never_matches": "Regeln, die nie zutreffen",
   "checkup.c_stale_report": "Regeln im Nur-Bericht-Modus mit einem Bericht, der 30+\u00a0Tage alt ist",
   "checkup.t_conflict":
-    "{a} ({va}) und {b} ({vb}) betreffen dieselben {mails}. Die zuerst angelegte "
-    + "Regel greift zuerst zu.",
+    "{a} {main}, die {b} {rel}. Die zuerst angelegte Regel greift zuerst zu.",
+  "checkup.cm_trash": "verschiebt {mails} in den Papierkorb",
+  "checkup.cm_archive": "archiviert {mails}",
+  "checkup.cm_move": "verschiebt {mails} nach „{folder}“",
+  "checkup.cr_trash": "in den Papierkorb verschiebt",
+  "checkup.cr_archive": "archiviert",
+  "checkup.cr_move": "nach „{folder}“ verschiebt",
   "checkup.t_overlap":
     "{y} und {x} betreffen beide {senders}. {x} soll einige Mails in Ruhe lassen "
     + "({ret}), aber {y} nimmt auch diese mit - das gilt f\u00fcr sie also nie.",
@@ -981,7 +987,7 @@ export const DE: Record<string, string> = {
   "checkup.w_real":
     "Die \u00dcberschneidungspr\u00fcfung z\u00e4hlt, was ein Lauf wirklich anfassen w\u00fcrde: \u201eau\u00dfer "
     + "den neuesten N\u201c und \u201ewenn \u00e4lter als N Tage\u201c, das Limit pro Lauf, gesch\u00fctzte "
-    + "Absender, gesch\u00fctzte Mails und Keep-safe.",
+    + "Absender, gesch\u00fctzte Mails und \u201eSicher behalten\u201c.",
   "checkup.chip_senders": "{n}\u00a0Absender aus dem Regel-Check",
   "checkup.chip_senders_one": "1\u00a0Absender aus dem Regel-Check",
   "checkup.chip_mails": "{n}\u00a0Mails aus dem Regel-Check",

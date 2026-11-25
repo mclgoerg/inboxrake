@@ -151,6 +151,29 @@ def test_the_cap_decides_what_a_run_touches(box, monkeypatch):
     assert len(of(check(), "overlap")) == 1
 
 
+def test_the_cap_takes_groups_largest_first_as_a_run_does(box, monkeypatch):
+    # forum 8 mails, retro 6: a cap of 8 takes the forum and leaves the retro
+    # (a smallest-first pass would take the retro and leave the forum)
+    monkeypatch.setattr(rulesmod, "RULE_CAP", 8)
+    make("Keep the latest 2", "old.example", keep_latest=2)
+    make("Sweep both", "old.example")
+    f = of(check(), "overlap")[0]
+    assert [s["addr"] for s in f["senders"] if s["n"]] == [FORUM]
+    assert f["n"] == 2
+    got = client.get("/api/mails", params={"finding": f["id"]}).json()
+    assert {m["addr"] for m in got["mails"]} == {FORUM}
+
+
+def test_every_sender_is_listed_apart_from_the_rows_a_compare_shows(
+        box, monkeypatch):
+    monkeypatch.setattr(rulecheck, "MAX_SENDERS", 1)
+    make("Keep the latest 2", "old.example", keep_latest=2)
+    make("Sweep both", "old.example")
+    f = of(check(), "overlap")[0]
+    assert f["senders_total"] == 2 and len(f["senders"]) == 1
+    assert f["addrs"] == sorted([FORUM, RETRO])      # all of them, for Show
+
+
 def test_pinned_mails_are_not_taken_so_no_overlap_on_them(box):
     make("Keep the latest 2", "old.example", keep_latest=2)
     make("Sweep the forum", "forum")

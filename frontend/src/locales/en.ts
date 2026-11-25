@@ -1518,8 +1518,13 @@ export const EN: Record<string, string> = {
   "checkup.c_never_matches": "rules that never match",
   "checkup.c_stale_report": "report-only rules whose report is 30+ days old",
   "checkup.t_conflict":
-    "{a} ({va}) and {b} ({vb}) act on the same {mails}. The one created first "
-    + "acts first.",
+    "{a} {main} that {b} {rel}. The one created first acts first.",
+  "checkup.cm_trash": "moves {mails} to Trash",
+  "checkup.cm_archive": "archives {mails}",
+  "checkup.cm_move": "moves {mails} to “{folder}”",
+  "checkup.cr_trash": "moves to Trash",
+  "checkup.cr_archive": "archives",
+  "checkup.cr_move": "moves to “{folder}”",
   "checkup.t_overlap":
     "{y} and {x} both act on {senders}. {x} is meant to leave some mails alone "
     + "({ret}), but {y} takes those too - so that never holds for them.",
