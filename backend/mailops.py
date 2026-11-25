@@ -3382,7 +3382,7 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
     return entry["id"]
 
 
-def _told_moved(hook, meta: dict, copies: list[dict], account: str) -> None:
+def _told_moved(hook, meta: dict, copies: list[dict]) -> None:
     """Tell a job's `on_moved` hook what moved; a failing hook is logged, it
     never fails the job."""
     if hook is None:
@@ -3390,7 +3390,7 @@ def _told_moved(hook, meta: dict, copies: list[dict], account: str) -> None:
     try:
         hook(meta, copies)
     except Exception:
-        log.exception("[%s] bookkeeping of the moved mails failed", account)
+        log.exception("bookkeeping of the moved mails failed")
 
 
 def _delete_worker(acc) -> None:
@@ -3482,7 +3482,7 @@ def _delete_worker(acc) -> None:
                 label, meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor,
                 quiet=bool(job.get("quiet"))) or undo_id[0]
-            _told_moved(job.get("on_moved"), meta, copies, acc.name)
+            _told_moved(job.get("on_moved"), meta, copies)
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
