@@ -803,24 +803,6 @@ ICLOUD_INBOX = (
                   [("Mietvertrag.docx", 900000), ("Anlage.zip", 6000000)]],
             att_n=9)
     + ICLOUD_TAIL)
-# All accounts: the same senders write to this mailbox as well - the very
-# same address (Deals Daily) or another address of the same company (Chirper,
-# Gadget Weekly) - so "Same sender, several accounts" has rows. Own random
-# stream: the data after it stays unchanged.
-_rs = random.getstate()
-random.seed(114)
-ICLOUD_INBOX += (
-    mails('"Deals Daily" <deals@dealsdaily.example>',
-          ["Today's top deals", "Only today: flash prices",
-           "Your daily picks"], 58, newest_days=0.3, span_days=90,
-          unread=0.97, unsub=True, at="daily")
-    + mails('"Chirper" <digest@chirper.example>',
-            ["Your weekly Chirper digest", "People you may know"], 26,
-            span_days=400, unread=0.92, unsub=True)
-    + mails('"Gadget Weekly" <weekly@gadgetweekly.example>',
-            ["This week in gadgets", "Test: the new earbuds"], 31,
-            span_days=300, unread=0.85, unsub=True))
-random.setstate(_rs)
 _fruit = [m for m in _by(ICLOUD_INBOX, "fruitstore")
           if "has shipped" in m["subject"]]
 ICLOUD_COPIES = (copies(_by(ICLOUD_INBOX, "cloudphotos")[:3])

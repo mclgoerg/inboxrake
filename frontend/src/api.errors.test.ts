@@ -303,7 +303,7 @@ describe("the unsubscribe codes", () => {
   test.each([
     "mailto_unsafe", "unsub_blocked", "unsub_tls", "unsub_unreachable",
     "unsub_timeout", "unsub_bad_url", "unsub_no_method", "unsub_mail_failed",
-    "unsub_pooled", "unsub_protected", "unsub_unknown_group", "unsub_failed",
+    "unsub_pooled", "unsub_unknown_group", "unsub_failed",
   ])("%s is worded in both languages", (code) => {
     const key = `ferr.${code}`;
     expect(errorText(code)).toBe(EN[key]);

@@ -2,9 +2,8 @@
 
 Every connected account gets its own AccountState: scan state, message
 index, folder UIDVALIDITYs/roles, replied cache, cancel flags and delete
-queue - nothing is ever shared across accounts or acted on in one call
-(`allaccounts.py` only READS them side by side, for the All accounts
-Overview). Instances are created lazily from the configured account names.
+queue - nothing is ever shared or aggregated across accounts. Instances
+are created lazily from the configured account names.
 """
 
 from __future__ import annotations

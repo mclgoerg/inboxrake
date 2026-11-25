@@ -92,9 +92,7 @@ Connect several providers at once (e.g. Proton
 Bridge + Gmail). Every account is strictly separate: its own scans, groups,
 rules, saved presets, digest settings, statistics, folder exclusions,
 duplicate and label choices and replied/verdict/known-senders caches - nothing
-is ever mixed, and nothing is ever *done* to two accounts at once (the
-read-only [All accounts](#all-accounts) Overview only looks across them). The
-account switcher (top of the sidebar; the
+is ever mixed or aggregated. The account switcher (top of the sidebar; the
 avatar on a phone) shows a card per account with its sign-in state, last scan,
 mails and size and switches the whole view between accounts; a card whose
 sign-in is broken leads straight to that account's settings. It also holds
@@ -102,44 +100,6 @@ sign-in is broken leads straight to that account's settings. It also holds
 the links to Activity and Settings. Accounts can be renamed (all their data
 follows) and removed in settings, and each has its own folder-discovery
 picker.
-
-### All accounts
-
-<small class="where">Account switcher → All accounts · Overview</small>
-
-With two or more accounts the account switcher gets **All accounts** on top
-(stacked avatars, "N mailboxes"). The choice is remembered like the current
-account. The Overview then shows every mailbox side by side: a card per account
-with its size, mails, how many mails are **new** since your last visit (the last
-week when there was none before), when it was last scanned (a failed scan in
-orange), one bar for where the space is, and **Same sender, several
-accounts** - the newsletters and shops that write to more than one of your
-addresses. Senders are matched by exact sender address first, then by the
-company domain (never freemail or shared platform hosts: a `gmail.com` sender is
-only matched by its full address); protected senders and people you wrote to
-are left out. **Open an account** from its card (on a phone: the account chips
-above the widgets, All plus each account).
-
-**Unsubscribe in N…** opens one confirm that lists each account with its own
-checkbox, the address and method it would use there (one click, a mail, a
-page) and how many mails it covers. "Also move the N mails to Trash" is off by
-default; ticked, the confirm is the danger kind (verb and count, the keep-safe
-check of big moves) and each account moves that sender's mails only after *its*
-unsubscribe is done (protected senders and pinned mails stay). Then one step
-runs **per account**, one after the other: each is recorded in that account's
-Activity with its own Undo, an account whose step fails does not stop the
-others and is reported, and an unticked account is never touched. If the list
-of accounts changes while the confirm is open, an account that is gone is
-skipped and said so.
-
-**Scan all** scans every mailbox one after the other (an account that is busy
-with another job is left out and named). Only your own accounts are ever
-listed: with several users (SSO) each person sees only their workspace. What
-works on one account at a time - Senders, All mail, Search (for now), Rules,
-Junk and Trash, the tools, Activity - shows **Pick an account** with the
-account list while All accounts is selected; Settings opens as usual. The
-numbers come from what each account's last scan already holds, so opening the
-page contacts no mail server.
 
 ### Move to another account
 

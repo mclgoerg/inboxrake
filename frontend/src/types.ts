@@ -1271,61 +1271,6 @@ export interface AccountSummary {
   size: number;
 }
 
-/** One mailbox's card on the All accounts Overview
- *  (`GET /api/accounts/overview`). */
-export interface AllAccountCard {
-  name: string;
-  /** The mailbox's address. */
-  user: string;
-  /** The scan state: idle / scanning / done / error. */
-  status: string;
-  progress: string;
-  /** The last good scan (kept while one runs or after a failed one). */
-  scanned_ts: number | null;
-  failed: boolean;
-  mails: number;
-  size: number;
-  senders: number;
-  junk: number | null;
-  trash: number | null;
-  /** Mails since the remembered visit (`new_basis` "visit"), else the last
-   *  week ("week"). */
-  new: number;
-  new_basis: "visit" | "week";
-}
-
-/** One account's side of a sender that writes to several accounts. */
-export interface SameSenderAccount {
-  account: string;
-  /** The address that stands for the match in that account (its Sender
-   *  group key there). */
-  addr: string;
-  mails: number;
-  size: number;
-  /** It carries a List-Unsubscribe header. */
-  unsub: boolean;
-  /** Its recorded unsubscribe: done / needs a page / failed, null = none. */
-  state: "done" | "link" | "failed" | null;
-}
-
-export interface SameSenderRow {
-  key: string;
-  name: string;
-  match: "address" | "domain";
-  accounts: SameSenderAccount[];
-  mails: number;
-  size: number;
-  /** Percent of these mails the user opened. */
-  opened: number;
-}
-
-export interface AllAccountsResp {
-  now: number;
-  accounts: AllAccountCard[];
-  totals: { mails: number; size: number; senders: number };
-  same_sender: SameSenderRow[];
-}
-
 /** The admin's cap on AI assistants (the `assistants.access` server setting). */
 export type AssistantAccess = "off" | "read_propose" | "act";
 export type AssistantLevel = "read" | "propose" | "act";

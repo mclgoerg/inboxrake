@@ -209,10 +209,8 @@ reminders and an optional amount read from the latest receipt), "Your
 addresses" (which of your aliases leaked, retire one), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
-an earlier point), multiple accounts that stay strictly separate (with an
-"All accounts" Overview that reads across them and one confirm that
-unsubscribes from the same sender in each) and a
-copy-to-another-account wizard for a provider switch,
+an earlier point), multiple strictly separate
+accounts with a copy-to-another-account wizard for a provider switch,
 system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant
 ask questions about the mailbox and propose rules for you to approve
