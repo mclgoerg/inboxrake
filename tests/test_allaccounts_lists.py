@@ -358,6 +358,18 @@ def _wait(acc, timeout=5.0):
     raise TimeoutError("delete job did not finish")
 
 
+def _scanned(acc, timeout=10.0):
+    """An undo re-reads the account in the background: wait for that scan, or
+    the combined list is read while the account is still being scanned."""
+    end = time.time() + timeout
+    while time.time() < end:
+        with acc.lock:
+            if acc.state["status"] != "scanning":
+                return
+        time.sleep(0.01)
+    raise TimeoutError("scan did not finish")
+
+
 def _audited(name):
     return {e["action"] for e in auditlog.load(name, 0, 1000)["entries"]}
 
@@ -386,6 +398,7 @@ def test_a_selection_runs_one_step_per_ticked_account(three):
         r["key"] for r in _senders()["senders"]}
     # undoing one account's step leaves the other's in place
     mailops.undo_last(acc=accountsmod.get("one"))
+    _scanned(accountsmod.get("one"))
     assert len(three["host-two"].mailbox["Trash"]) == 3
     assert _row(_senders(), "deals@dealsdaily.example")["count"] == 5
 
