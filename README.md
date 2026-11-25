@@ -213,8 +213,8 @@ for a reply" (the mails you sent that nobody answered, with a reminder),
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
 an earlier point), multiple accounts that stay strictly separate (with an
-"All accounts" Overview, Senders, All mail and Search that read across them,
-and one confirm that acts on the ticked accounts, one step each) and a
+"All accounts" Overview that reads across them and one confirm that
+unsubscribes from the same sender in each) and a
 copy-to-another-account wizard for a provider switch,
 system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant

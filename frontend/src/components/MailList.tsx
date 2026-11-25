@@ -2,7 +2,6 @@ import { AlarmClock, MailOpen, Pin, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode }
   from "react";
 import { api, fmtSize, mailKey } from "../api";
-import { forMail } from "../mailAccount";
 import { groupByDate, monthHeading } from "../dayGroups";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
@@ -12,7 +11,6 @@ import { BodyState, MailChips, MailHeader, MailText, RawHeaders, ReaderFrame,
   UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
   from "./MailReader";
 import { ThreadView } from "./ThreadView";
-import { AccountBadge } from "./AcrossChips";
 
 const RENDER_CAP = 500;
 
@@ -44,11 +42,11 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
     setError("");
     setQuoted(false);
     setHeaders(false);
-    forMail(mail, () => api.message(mail.folder, mail.uid))
+    api.message(mail.folder, mail.uid)
       .then((d) => alive && setDetail(d))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => { alive = false; };
-  }, [mail.folder, mail.uid, mail.account]);
+  }, [mail.folder, mail.uid]);
 
   if (reading) {
     return <ThreadView mail={mail} initial={detail ?? undefined} pin={pin}
@@ -176,8 +174,6 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   const multiFolder = !!detailed || variesFolder;
   const renderRow = (m: Mail) => {
         const meta: ReactNode[] = [];
-        // the lists across accounts: whose mail it is, first
-        if (m.account) meta.push(<AccountBadge account={m.account} />);
         if (multiFolder) meta.push(m.folder);
         if (multiSender) meta.push(mark ? mark(m.addr) : m.addr);
         meta.push(fmtSize(m.size));
@@ -197,14 +193,11 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             onToggle={() => onToggle(mailKey(m))} unread={!m.seen}
             subject={mark && m.subject ? mark(subject) : subject}
             // the sender truncates; folder and size (and their dots) stay
-            // (across accounts the line is longer by the account's name: on a
-            // narrow phone it wraps instead of running under the AI pill)
-            meta={<Meta items={meta} wrap={!!m.account}
-              shrink={multiSender ? meta.length - 2 : 0} />}
+            meta={<Meta items={meta} shrink={multiSender ? meta.length - 2 : 0} />}
             dateIso={m.date || ""}
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
             pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing}
-            spread={spread} wrapMeta={!!m.account} />
+            spread={spread} />
         );
         return swipe ? (
           <SwipeRow key={mailKey(m)} {...swipeActions(m)}

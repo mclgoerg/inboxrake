@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 /* All accounts in the app: the switcher item, the Overview across the
- * accounts (Senders, All mail and Search across accounts: App.allaccounts.lists
- * .test), "Pick an account" on what works on one account, the remembered
+ * accounts, "Pick an account" on what works on one account, the remembered
  * choice, the phone's chips, and Scan all / the multi-account confirm opened
  * from the list. (The pieces have their own tests: AllAccountsOverview,
  * UnsubscribeAcross, allAccounts, useAllAccounts.) */
@@ -176,13 +175,15 @@ test("with a single account the choice is not in effect", async () => {
   expect(accountsOverview).not.toHaveBeenCalled();
 });
 
-test("what works on one account asks which; picking one opens the page for " +
-  "it", async () => {
-  mount({ scope: true, hash: "#/rules" });
+test("what works on one account asks which: Senders shows Pick an account; " +
+  "picking one opens the page for it", async () => {
+  mount({ scope: true, hash: "#/senders" });
   await screen.findByText("Pick an account");
   expect(screen.getByText(/works on one account at a time/)).toBeTruthy();
+  // the single account's list is not shown behind it
+  expect(screen.queryByText("Label solo")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /icloud/ }));
-  await waitFor(() => expect(rules).toHaveBeenCalled());
+  await screen.findAllByText("Label solo");
   expect(localStorage.getItem("pmc_scope")).toBeNull();
   expect(localStorage.getItem("pmc_account")).toBe("icloud");
   expect(screen.queryByText("Pick an account")).toBeNull();

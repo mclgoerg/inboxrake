@@ -11,7 +11,6 @@ import { AlarmClock, Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, Fil
 import { createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode } from "react";
 import { api, fmtSize, mailKey } from "../api";
-import { forMail } from "../mailAccount";
 import { getLang, t } from "../i18n";
 import { useEdgeBack } from "../gestures";
 import { fmtDate } from "../lib";
@@ -52,11 +51,7 @@ export interface ReaderHost {
   unsubscribed?: (addr: string) => "done" | "link" | "failed" | "pending" | null;
 }
 
-/** A reader that can do nothing beyond reading (and what its opener hands
- *  it): no sender page, no Block, no unsubscribe, no folders to move to. The
- *  lists across accounts provide it - the app's own host belongs to ONE
- *  account, and nothing there may act on a mail of another. */
-export const NO_HOST: ReaderHost = { selfAddrs: [], account: "", folders: [] };
+const NO_HOST: ReaderHost = { selfAddrs: [], account: "", folders: [] };
 const ReaderHostContext = createContext<ReaderHost>(NO_HOST);
 export const ReaderHostProvider = ReaderHostContext.Provider;
 export const useReaderHost = (): ReaderHost => useContext(ReaderHostContext);
@@ -154,7 +149,7 @@ export function useReaderPin(mail: Mail, detail: MessageDetail | null | undefine
     try {
       const r = actions?.pin
         ? await actions.pin(mail, next)
-        : await forMail(mail, () => api.pin(mail.folder, mail.uid, next));
+        : await api.pin(mail.folder, mail.uid, next);
       if (r !== false) {
         setOverride({ key, on: next });
         if (!actions?.pin) actions?.pinned?.(mail, next);

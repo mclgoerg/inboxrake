@@ -2871,25 +2871,18 @@ def get_mails(offset: int = Query(0, ge=0),
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
     has:pinned; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
-    return mailops.list_mails(
-        offset, limit, sort, dir, q, _acc(account),
-        slot=_arrival_slot(slot, slot_kind, slot_period, slot_days, tz, tzoff))
-
-
-def _arrival_slot(slot: str, kind: str, period: str, days: str, tz: str,
-                  tzoff: int) -> dict | None:
-    """The arrival-rhythm slot of a flat-list request ("<from>-<to>" plus its
-    kind / period / days / time zone), or None when none was asked for."""
-    if not slot:
-        return None
-    try:
-        lo, hi = (int(x) for x in slot.split("-"))
-        return rhythmmod.clean_slot({
-            "kind": kind, "period": period, "from": lo, "to": hi,
-            "days": [int(d) for d in days.split(",")],
-            "tz": tz, "offset": tzoff})
-    except ValueError:
-        raise HTTPException(400, "bad slot")
+    arrival = None
+    if slot:                    # "<from>-<to>": the arrival-rhythm slot
+        try:
+            lo, hi = (int(x) for x in slot.split("-"))
+            arrival = rhythmmod.clean_slot({
+                "kind": slot_kind, "period": slot_period, "from": lo, "to": hi,
+                "days": [int(d) for d in slot_days.split(",")],
+                "tz": tz, "offset": tzoff})
+        except ValueError:
+            raise HTTPException(400, "bad slot")
+    return mailops.list_mails(offset, limit, sort, dir, q, _acc(account),
+                              slot=arrival)
 
 
 @app.get("/api/export")
@@ -3125,48 +3118,6 @@ def get_accounts_overview(since: str | None = Query(None, max_length=4000)):
                     and 0 <= ts < 1e11:
                 marks[str(name)] = float(ts)
     return allaccounts.build(marks)
-
-
-@app.get("/api/accounts/senders")
-def get_accounts_senders():
-    """The Sender rows of ALL accounts of this workspace in one list (read-only,
-    no mail server is contacted): the same address in several accounts is one
-    row with its counts summed and one part per account (allaccounts.py)."""
-    return allaccounts.senders()
-
-
-@app.get("/api/accounts/mails")
-def get_accounts_mails(offset: int = Query(0, ge=0),
-                       limit: int = Query(100, ge=1, le=1000),
-                       sort: Literal["date", "size", "sender"] = Query("date"),
-                       dir: Literal["asc", "desc"] | None = Query(None),
-                       q: str = Query(""),
-                       slot: str = Query("", max_length=80),
-                       slot_kind: str = Query("all"),
-                       slot_period: str = Query("all"),
-                       slot_days: str = Query("0,1,2,3,4,5,6", max_length=20),
-                       tz: str = Query("", max_length=64),
-                       tzoff: int = Query(0, ge=-840, le=840),
-                       only: str | None = Query(None, max_length=200)):
-    """The flat "All mails" list over every account of this workspace (see
-    /api/mails): each row carries the `account` it belongs to; `only` narrows
-    it to one account. No IMAP traffic."""
-    try:
-        return allaccounts.mails(
-            offset, limit, sort, dir, q,
-            _arrival_slot(slot, slot_kind, slot_period, slot_days, tz, tzoff),
-            only)
-    except KeyError as exc:
-        raise HTTPException(400, str(exc.args[0]))
-
-
-@app.get("/api/accounts/search")
-def get_accounts_search(q: str = Query(...),
-                        scope: Literal["meta", "body"] = Query("meta")):
-    """Search over every account (see /api/search); rows and notes carry the
-    account they came from. Mail-text search follows each account's own
-    `body_search` setting."""
-    return allaccounts.search(q, body=scope == "body")
 
 
 def _keep_caller_signed_in(request: Request, response: Response,

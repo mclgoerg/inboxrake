@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
-  AccountSummary, AllAccountsResp, AllSendersResp, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AllAccountsResp, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp, WaitingDetail,
@@ -375,27 +375,6 @@ async function req<T>(path: string, body?: unknown,
   return res.json() as Promise<T>;
 }
 
-/** What the flat mail list asks for (`GET /api/mails`). `slot`: only the
- *  mails that arrive in one slot of the "When mail arrives" card (a view
- *  parameter beside `q`). */
-export interface MailsParams {
-  offset: number; limit: number; sort: string; dir: string; q: string;
-  slot?: ArrivalSlot | null;
-  /** Across accounts only: just this account's mails. */
-  only?: string | null;
-}
-
-const mailsQuery = (p: MailsParams): string => {
-  const z = userZone();
-  return `offset=${p.offset}&limit=${p.limit}`
-    + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
-    + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
-      + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
-      + `&slot_days=${p.slot.days.join(",")}`
-      + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}` : "")
-    + (p.only ? `&only=${encodeURIComponent(p.only)}` : "");
-};
-
 export const api = {
   state: () => req<AppState>("/api/state"),
   scan: (account?: string) =>
@@ -511,8 +490,6 @@ export const api = {
     Object.keys(since).length
       ? `/api/accounts/overview?since=${encodeURIComponent(JSON.stringify(since))}`
       : "/api/accounts/overview"),
-  /** The Sender rows of every account in one list (All accounts). */
-  accountsSenders: () => req<AllSendersResp>("/api/accounts/senders"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
   /** AI assistants (MCP): this workspace's access tokens. */
   assistantTokens: () => req<AssistantTokenList>("/api/assistants/tokens"),
@@ -569,18 +546,18 @@ export const api = {
     req<{ ok: boolean }>("/api/notice/clear", keys ? { keys } : {}),
   /** `slot`: only the mails that arrive in one slot of the "When mail
    *  arrives" card (a view parameter beside `q`). */
-  mails: (p: MailsParams) => req<MailsResp>(`/api/mails?${mailsQuery(p)}`),
-  /** The same list over every account (All accounts): rows carry their
-   *  `account`. */
-  accountsMails: (p: MailsParams) =>
-    req<MailsResp>(`/api/accounts/mails?${mailsQuery(p)}`),
+  mails: (p: { offset: number; limit: number; sort: string; dir: string;
+            q: string; slot?: ArrivalSlot | null }) => {
+    const z = userZone();
+    return req<MailsResp>(`/api/mails?offset=${p.offset}&limit=${p.limit}`
+      + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
+      + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
+        + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
+        + `&slot_days=${p.slot.days.join(",")}`
+        + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}` : ""));
+  },
   search: (q: string, body = false) =>
     req<SearchResp>(`/api/search?q=${encodeURIComponent(q)}`
-      + (body ? "&scope=body" : "")),
-  /** Search over every account (All accounts); hits and notes carry their
-   *  `account`. */
-  accountsSearch: (q: string, body = false) =>
-    req<SearchResp>(`/api/accounts/search?q=${encodeURIComponent(q)}`
       + (body ? "&scope=body" : "")),
   folders: (account?: string) =>
     req<FoldersResp>(account

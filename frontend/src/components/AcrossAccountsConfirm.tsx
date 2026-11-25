@@ -28,9 +28,6 @@ export interface ConfirmLine {
   blocked?: string;
   /** Mails the optional extra step would move in this account. */
   extraCount?: number;
-  /** The mails this account's step covers, as a number (the confirm button
-   *  can name the sum over the ticked accounts). */
-  mails?: number;
 }
 
 export interface AcrossAccountsConfirmProps {
@@ -42,16 +39,8 @@ export interface AcrossAccountsConfirmProps {
    *  default; `n` is how many mails the TICKED accounts would move. Its
    *  confirm is the danger kind while it is ticked. */
   extra?: { label: (n: number) => string; note: string };
-  /** The accessible name of an account's checkbox (default: "Unsubscribe in
-   *  {account}"). */
-  lineLabel?: (account: string) => string;
-  /** A destructive step (a move to Trash, Archive): the confirm is the danger
-   *  kind from the start, not only while the extra step is ticked. */
-  danger?: boolean;
-  /** The confirm button's text for this many accounts (and extra mails);
-   *  `mails` = the sum of the ticked lines' own `mails`. */
-  confirmLabel: (accounts: number, extraMails: number | null,
-    mails: number) => string;
+  /** The confirm button's text for this many accounts (and extra mails). */
+  confirmLabel: (accounts: number, extraMails: number | null) => string;
   /** Run the steps for the ticked accounts. `progress` reports the account
    *  being worked on. Null = nothing ran (a check the user declined): the
    *  dialog stays as it is. */
@@ -75,8 +64,8 @@ type Phase = "review" | "running" | "result";
 const TONE = { done: "safe", link: "review", failed: "keep",
   skipped: "neutral" } as const;
 
-export function AcrossAccountsConfirm({ title, lines, note, extra, danger,
-  lineLabel, confirmLabel, run, resultTitle, outcomeExtra, problem, loading, onFinished, onClose }:
+export function AcrossAccountsConfirm({ title, lines, note, extra, confirmLabel,
+  run, resultTitle, outcomeExtra, problem, loading, onFinished, onClose }:
   AcrossAccountsConfirmProps) {
   const [ticked, setTicked] = useState<Set<string>>(
     () => new Set(lines.filter((l) => !l.blocked).map((l) => l.account)));
@@ -102,7 +91,6 @@ export function AcrossAccountsConfirm({ title, lines, note, extra, danger,
 
   const chosen = lines.filter((l) => ticked.has(l.account) && !l.blocked);
   const extraMails = chosen.reduce((n, l) => n + (l.extraCount ?? 0), 0);
-  const stepMails = chosen.reduce((n, l) => n + (l.mails ?? 0), 0);
   const showExtra = !!extra && lines.some((l) => (l.extraCount ?? 0) > 0);
   const trashing = showExtra && alsoExtra && extraMails > 0;
 
@@ -143,8 +131,7 @@ export function AcrossAccountsConfirm({ title, lines, note, extra, danger,
             {lines.map((l) => (
               <li key={l.account}>
                 <Checkbox className="w-full gap-3 px-3 py-2.5"
-                  aria-label={lineLabel ? lineLabel(l.account)
-                    : t("allc.account", { account: l.account })}
+                  aria-label={t("allc.account", { account: l.account })}
                   disabled={!!l.blocked || phase === "running"}
                   checked={ticked.has(l.account) && !l.blocked}
                   onChange={(e) => {
@@ -230,14 +217,14 @@ export function AcrossAccountsConfirm({ title, lines, note, extra, danger,
         ) : (<>
           <Button variant="secondary" onClick={onClose}
             disabled={phase === "running"}>{t("Cancel")}</Button>
-          <Button variant={danger || trashing ? "danger" : "primary"}
+          <Button variant={trashing ? "danger" : "primary"}
             disabled={loading || phase === "running" || !chosen.length}
             onClick={(e) => {
               // A double tap must not confirm unseen (see ConfirmDialog).
               if (e.detail === 0
                   || Date.now() - armedAt.current >= DIALOG_ARM_MS) void start();
             }}>
-            {confirmLabel(chosen.length, trashing ? extraMails : null, stepMails)}
+            {confirmLabel(chosen.length, trashing ? extraMails : null)}
           </Button>
         </>)}
       </div>
