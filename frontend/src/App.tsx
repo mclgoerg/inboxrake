@@ -16,6 +16,7 @@ import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
 import { canScopeAll, loadAllScope, saveAllScope } from "./allAccounts";
 import { useAllAccounts } from "./useAllAccounts";
+import { useAllSenders } from "./useAllSenders";
 import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useConnectRoute, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
@@ -23,7 +24,7 @@ import { CleanupPage, InsightsPage } from "./components/TabPages";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { whenText } from "./timemachine";
 import { DetailPanel } from "./components/DetailPanel";
-import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
+import { NO_HOST, ReaderHostProvider, type ReaderHost } from "./components/MailReader";
 import { useNewConnections } from "./newConnections";
 import { ConnectPage } from "./components/ConnectPage";
 import { Login } from "./components/Login";
@@ -64,6 +65,7 @@ import { WrappedStory } from "./components/WrappedStory";
 import { AccountSwitcher } from "./components/AccountSwitcher";
 import { AccountChips, AllAccountsOverview } from "./components/AllAccountsOverview";
 import { PickAccountList, PickAccountTool } from "./components/PickAccount";
+import { AllSendersView } from "./components/AllSendersView";
 import { UnsubscribeAcross } from "./components/UnsubscribeAcross";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterMenu";
@@ -185,6 +187,8 @@ export default function App() {
     () => (cfg ? Object.keys(cfg.accounts) : []), [cfg]);
   // All accounts needs two mailboxes: with fewer the choice is not in effect.
   const allScope = scopeAll && canScopeAll(accountNames);
+  const allScopeRef = useRef(allScope);
+  allScopeRef.current = allScope;
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
   // Settings with unsaved edits asks before the page is left (sidebar, tab
@@ -226,6 +230,31 @@ export default function App() {
   // The Overview of all accounts: its numbers (also the sidebar's counts while
   // All accounts is selected) and Scan all.
   const all = useAllAccounts(allScope, allScope && overview, accountNames);
+  // The lists across accounts follow what any account's data did (a scan, a
+  // finished move: their `groups_rev`); the Senders page reads its rows.
+  const allFollow = (all.data?.accounts ?? [])
+    .map((a) => `${a.name}:${a.rev}`).join(",");
+  const allSenders = useAllSenders(allScope && page === "senders", allFollow);
+  // A step queued in an account can fail later, while the view is on All
+  // accounts (the single-account toasts are muted there): say which account,
+  // once per job. The first numbers are the baseline - a failure from before
+  // the view was opened is not news. No Undo: nothing was moved by that job
+  // beyond what Activity lists.
+  const seenFailed = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!all.data) { seenFailed.current = null; return; }
+    const prev = seenFailed.current;
+    const next: Record<string, string> = {};
+    for (const a of all.data.accounts) {
+      next[a.name] = a.job_failed?.id ?? "";
+      if (prev && a.job_failed && prev[a.name] !== a.job_failed.id) {
+        notify(t("all.job_failed", { account: a.name,
+          msg: errorText(a.job_failed.error) }), "error");
+      }
+    }
+    seenFailed.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all.data]);
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
   const pageByApp = useRef(false);
@@ -467,6 +496,8 @@ export default function App() {
     clearTimeout(timer.current);
     localStorage.setItem("pmc_account", name);
     if (!keepScope) { setScopeAll(false); saveAllScope(false); }
+    // a sender still waiting to open belonged to the view being left
+    setPendingSender(null);
     apiSetAccount(name);
     // Switching swaps the ENTIRE view: no state may leak across accounts.
     stateRef.current = null;
@@ -489,6 +520,7 @@ export default function App() {
     noteAccountSwitch();
     setScopeAll(true);
     saveAllScope(true);
+    setPendingSender(null);
     setSelected(new Set());
     setSelectMode(false);
     setDetail(null);
@@ -787,6 +819,20 @@ export default function App() {
       keys: pendingUnsub.keys, pooled: 0 });
     setPendingUnsub(null);
   }, [pendingUnsub, state?.account, account]);
+  // "Open in <account>" of a sender across accounts: switch, then open the
+  // sender there once that account is loaded.
+  const [pendingSender, setPendingSender] =
+    useState<{ account: string; key: string } | null>(null);
+  useEffect(() => {
+    if (!pendingSender || state?.account !== pendingSender.account
+        || account !== pendingSender.account) return;
+    const g = state.groups.sender?.[pendingSender.key];
+    setPendingSender(null);
+    // (not just the detail: the page may have been left on Smart / Subject /
+    // Thread, where this sender has no row to show)
+    if (g) openSender(g);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSender, state, account]);
   const sheetRun = useRef<number | null>(null);
   useUnsubscribeOpener(setUnsubSheet);
   // The account generation the open sheet was rendered in (see its onTrash).
@@ -819,6 +865,11 @@ export default function App() {
       // Held while running; a page loaded mid-job counts as "this job".
       seq: staleDel || del.status === "running"
         ? (prev ? prev.seq : (del.seq ?? 0) - 1) : del.seq };
+    // All accounts: this state is the one account behind the view, not where
+    // the user acted. What happened in an account is said by the confirm's own
+    // list (with its Undo in that account's Activity) - a toast with an Undo
+    // for whichever account happens to be loaded would name nothing.
+    if (allScopeRef.current) return;
     if (state.status === "error" && prev?.scan !== "error")
       notify(t("err.generic", { msg: errorText(state.error) }), "error");
     if (!prev) return;
@@ -3212,7 +3263,7 @@ export default function App() {
     {wide && allMode && !routed && (
       <PageHeader contain="mx-auto max-w-6xl xl:max-w-360"
         title={overview ? t("nav.overview") : pagePickName}
-        sub={overview ? allSub : undefined}
+        sub={allSub}
         actions={overview ? (
           <Button variant="secondary" onClick={scanAllNow}
             aria-label={t("all.scan_all")} disabled={!!all.run}>
@@ -3260,7 +3311,7 @@ export default function App() {
               : overview ? "nav.overview"
               : flat ? "nav.all_mail" : "nav.senders")}
           </h1>
-          {allMode && overview && !scrolled && !!allSub && (
+          {allMode && !scrolled && !!allSub && (
             <div className="truncate type-meta text-muted">{allSub}</div>
           )}
           {!allMode && !toolPage && !scrolled && (scanning || !!scannedAgo) && (
@@ -3656,6 +3707,31 @@ export default function App() {
               onSelect={(n) => n ? switchAccount(n) : undefined} />)}
           onOpenAccount={(n) => switchAccount(n)}
           onUnsubscribe={setAcrossRow} />
+      ) : page === "senders" ? (
+        // The lists across accounts read the loaded snapshots; what they do to
+        // an account is one confirmed step per account (see AllSendersView).
+        <ReaderHostProvider value={NO_HOST}>
+          <AllSendersView data={allSenders.data} failed={allSenders.failed}
+            onRetry={() => { void allSenders.reload(); }}
+            names={accountNames} phone={phone} demo={demo}
+            exists={(a) => !!cfgRef.current?.accounts[a]}
+            onOpenIn={(a, key) => {
+              switchAccount(a);             // (clears what was pending)
+              setPendingSender({ account: a, key });
+            }}
+            onShowMails={(key) => openAllMailNewest(`from:${key}`)}
+            onPage={(p) => goPage(p)}
+            onOpenActivity={(a) => { switchAccount(a); openTool("activity"); }}
+            onChanged={() => { void all.reload(); void allSenders.reload(); }} />
+        </ReaderHostProvider>
+      ) : flat ? (
+        <AllMailsView key={`all:${allMailsQuery}`}
+          initialQuery={allMailsQuery} initialSlot={allMailsSlot}
+          onChanged={() => { void all.reload(); }}
+          across={{ names: accountNames, follow: allFollow,
+            exists: (a) => !!cfgRef.current?.accounts[a],
+            onPage: (p) => goPage(p),
+            onOpenActivity: (a) => { switchAccount(a); openTool("activity"); } }} />
       ) : (
         <PickAccountList cfg={cfg} page={pagePickName}
           onPick={pickAccount} onOverview={() => goPage("overview")} />
@@ -3783,10 +3859,22 @@ export default function App() {
           history entry; a tool opened from a tab page / menu pushes its own. */}
       <PageSlot page={wide} parent={shownTool ? backTarget : undefined}
         entry={!routeTool}>{allMode ? (shownTool && cfg && (
-          <PickAccountTool cfg={cfg} page={toolName(shownTool)}
-            onPick={pickAccount}
-            onClose={() => closeTool(clearToolFlags)} />
-        )) : toolPanels}</PageSlot>
+          shownTool === "search" ? (
+            <SearchPanel across={{ names: accountNames,
+              exists: (a) => !!cfgRef.current?.accounts[a],
+              onOpenActivity: (a) => { switchAccount(a); openTool("activity"); } }}
+              bodySearch={accountNames.some((n) =>
+                cfg.accounts[n]?.body_search !== "disabled")}
+              bodyMode={accountNames.some((n) =>
+                cfg.accounts[n]?.body_search !== "local" && cfg.accounts[n]
+                  ?.body_search !== "disabled") ? "server" : "local"}
+              onClose={() => closeTool(() => setSearchOpen(false))}
+              onDeleted={() => { void all.reload(); }} />
+          ) : (
+            <PickAccountTool cfg={cfg} page={toolName(shownTool)}
+              onPick={pickAccount}
+              onClose={() => closeTool(clearToolFlags)} />
+          ))) : toolPanels}</PageSlot>
       {/* A real dialog over whatever page is open - not a page of the slot. */}
       {unsubSheet && state && (
         <UnsubscribeSheet key={account} request={unsubSheet}

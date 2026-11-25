@@ -93,7 +93,7 @@ Bridge + Gmail). Every account is strictly separate: its own scans, groups,
 rules, saved presets, digest settings, statistics, folder exclusions,
 duplicate and label choices and replied/verdict/known-senders caches - nothing
 is ever mixed, and nothing is ever *done* to two accounts at once (the
-read-only [All accounts](#all-accounts) Overview only looks across them). The
+read-only [All accounts](#all-accounts) views only look across them). The
 account switcher (top of the sidebar; the
 avatar on a phone) shows a card per account with its sign-in state, last scan,
 mails and size and switches the whole view between accounts; a card whose
@@ -105,7 +105,7 @@ picker.
 
 ### All accounts
 
-<small class="where">Account switcher → All accounts · Overview</small>
+<small class="where">Account switcher → All accounts · Overview, Senders, All mail, Search</small>
 
 With two or more accounts the account switcher gets **All accounts** on top
 (stacked avatars, "N mailboxes"). The choice is remembered like the current
@@ -134,12 +134,39 @@ skipped and said so.
 
 **Scan all** scans every mailbox one after the other (an account that is busy
 with another job is left out and named). Only your own accounts are ever
-listed: with several users (SSO) each person sees only their workspace. What
-works on one account at a time - Senders, All mail, Search (for now), Rules,
-Junk and Trash, the tools, Activity - shows **Pick an account** with the
-account list while All accounts is selected; Settings opens as usual. The
+listed: with several users (SSO) each person sees only their workspace. The
 numbers come from what each account's last scan already holds, so opening the
 page contacts no mail server.
+
+**Senders, All mail and Search** read across the accounts too. The Senders page
+has **one row per sender address**: the same address in several accounts is a
+single row with its mails summed and a chip per account (its mails there); the
+filter, the sort and the select-all-matches work over the union, and the
+account chips above the list narrow it to one account's side of every row.
+A sender's detail lists the accounts it is in - each with its own numbers,
+its protection and its **own grade** (grades are worked out per account, so the
+row itself shows none, and there is no grade sort or `grade:` match here) - and
+**Open in** *account name* takes you to that account's own detail, where everything
+that belongs to one account lives: Move to a folder, Protect, Block, labels, the
+grade's six checks, limits. **Show the mails** opens All mail for that sender
+across the accounts. All mail and Search show an **account badge on every
+row**; All mail can be narrowed to one account, Search has an account select,
+and a mail opens in its reader with every call going to *its* account (the
+reader offers no Move, sender page or Block here - those are per account).
+
+What you do with a selection goes through the same multi-account confirm:
+**Move to Trash**, **Archive** and **Mark as read** (and, for one sender at a
+time, **Unsubscribe in N…**) list each account the selection reaches with its
+own checkbox and count, then run one step per ticked account - the account's own
+background job with its own Undo and Activity entry. The single-account rules
+hold per account: protected senders are left out of a Trash, pinned mails stay,
+a big move to Trash asks the keep-safe question for that account. An account
+whose step fails does not stop the others and is reported, an unticked account
+is never touched, and no keyboard shortcut (j / k / x / #) works on the lists
+across accounts - nothing is ever done to an account you did not see named.
+What works on one account at a time - Rules, Junk and Trash, the tools,
+Activity - shows **Pick an account** with the account list while All accounts is
+selected; Settings opens as usual.
 
 ### Move to another account
 

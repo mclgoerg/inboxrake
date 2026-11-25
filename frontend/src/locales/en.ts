@@ -705,6 +705,7 @@ export const EN: Record<string, string> = {
   "all.new_week": "+{n} new this week",
   "all.failed_ago": "{ago} ago · failed",
   "all.failed": "scan failed",
+  "all.job_failed": "A step in {account} did not finish: {msg}",
   "all.space_title": "Where your {size} are",
   "all.by_account": "by account",
   "all.space_bar": "Space by account: {parts}",
@@ -773,6 +774,40 @@ export const EN: Record<string, string> = {
   "pick.text":
     "\u201c{page}\u201d works on one account at a time. Pick one to open it.",
   "pick.back": "Back to Overview",
+  "alist.title": "{verb}: {mails} in {n}\u00a0accounts?",
+  "alist.title_one": "{verb}: {mails} in 1\u00a0account?",
+  "alist.note_move":
+    "Each account runs its own step, with its own Undo and Activity entry. "
+    + "Protected senders and pinned mails stay where they are.",
+  "alist.note_read":
+    "Each account runs its own step, with its own Activity entry.",
+  "alist.all_pinned": "all pinned - left alone",
+  "alist.all_protected": "all protected - left alone",
+  "alist.pinned_stay": "{n}\u00a0pinned stay",
+  "alist.protected_left": "{n}\u00a0protected left alone",
+  "alist.out_trash": "{n}\u00a0mails are moving to Trash",
+  "alist.out_trash_one": "1\u00a0mail is moving to Trash",
+  "alist.out_archive": "{n}\u00a0mails are being archived",
+  "alist.out_archive_one": "1\u00a0mail is being archived",
+  "alist.out_read": "{n}\u00a0mails are being marked as read",
+  "alist.out_read_one": "1\u00a0mail is being marked as read",
+  "alist.out_none": "nothing to do here",
+  "alist.bar_selected": "{n}\u00a0senders \u00b7 {mails}\u00a0mails",
+  "alist.bar_selected_one": "1\u00a0sender \u00b7 {mails}\u00a0mails",
+  "alist.unsub_one_only": "Unsubscribe works on one sender at a time here",
+  "alist.none": "Scan your accounts to see their senders here.",
+  "alist.in_accounts": "In {n}\u00a0accounts",
+  "alist.in_accounts_one": "In 1\u00a0account",
+  "alist.open_in": "Open in {account}",
+  "alist.show_mails": "Show the mails",
+  "alist.detail_note":
+    "Block, labels, moving to a folder and the grade's details work on one "
+    + "account: open the sender in that account. Protecting a sender covers "
+    + "all your accounts - do it from any one of them.",
+  "alist.still_mailing": "still mailing: {n}",
+  "alist.line": "{verb} in {account}",
+  "alist.account": "Account",
+  "alist.account_all": "All accounts",
   "account.change": "Change…",
   "account.smtp_row": "Sending server (unsubscribe mails)",
   "account.same_as_imap": "Same as IMAP",
@@ -887,6 +922,11 @@ export const EN: Record<string, string> = {
   "search.note.charset_fallback":
     "This server does not support UTF-8 search - accented characters may "
     + "not match.",
+  "search.note.body_off":
+    "Mail text search is off for this account - only sender and subject were "
+    + "searched.",
+  "search.note.account_failed":
+    "Could not search this account - its results are missing.",
   "body_search.title": "Mail text search",
   "body_search.label": "Search inside mail text",
   "body_search.server": "Ask the mail server",

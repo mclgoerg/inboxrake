@@ -2,13 +2,15 @@ import { ArrowUpLeft, ChevronRight, Clock, Hourglass, Mail as MailIcon, Papercli
   Reply, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize, mailKey } from "../api";
+import type { AcrossAction } from "../acrossLists";
 import { nowDate, nowMs } from "../clock";
 import { t } from "../i18n";
 import { matchGroup, olderThan, parseFilter } from "../lib";
 import { confirmTrashItems } from "../mailActions";
 import type { Group, Mail, SearchNote } from "../types";
+import { AcrossMailsConfirm } from "./AcrossActions";
 import { MailRows, MessageView } from "./MailList";
-import type { ReaderActions } from "./MailReader";
+import { NO_HOST, ReaderHostProvider, type ReaderActions } from "./MailReader";
 import { useSnooze } from "./snoozeContext";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
   Segmented, Select, Spinner, useOptionalToast } from "./ui";
@@ -71,7 +73,18 @@ const inWindow = (m: Mail, when: When): boolean => {
 };
 
 export function SearchPanel({ bodySearch = false, bodyMode = "server",
-  groups, onClose, onDeleted, onOpenSender, onOpenFiltered }: {
+  groups, onClose, onDeleted, onOpenSender, onOpenFiltered, across }: {
+  /** All accounts: search every account of the workspace. Hits carry their
+   *  account (a badge on the row) and can be narrowed to one; a selection
+   *  acts through the multi-account confirm, one step per account. The sender
+   *  list and the "Try" presets belong to one account's groups and are not
+   *  shown. */
+  across?: {
+    /** The accounts' own order. */
+    names: string[];
+    exists: (account: string) => boolean;
+    onOpenActivity: (account: string) => void;
+  };
   /** The account's body_search mode is "server" or "local": the "Also mail
    *  text" scope is on offer (otherwise it is disabled, with the reason). */
   bodySearch?: boolean;
@@ -97,6 +110,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const [when, setWhen] = useState<When>("any");
   const [folder, setFolder] = useState("");
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  // across accounts: the account the hits are narrowed to ("" = all), and
+  // the trash confirm that is open (as it was drawn)
+  const [account, setAccount] = useState("");
+  const [acting, setActing] = useState<{ mails: Mail[];
+    action: AcrossAction } | null>(null);
   const seq = useRef(0);
   // What the last search asked for, so the pause after Enter (or a Recent
   // tap) does not run it a second time and drop the selection.
@@ -123,7 +141,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     setBusy(true);
     setNote("");
     try {
-      const r = await api.search(s, body);
+      const r = await (across ? api.accountsSearch : api.search)(s, body);
       if (mine !== seq.current) return;   // a newer search superseded this one
       setRes({ q: s, mails: r.mails, notes: r.notes });
       setSel(new Set());
@@ -178,7 +196,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   };
 
   const mails = useMemo(() => (res?.mails ?? []).filter((m) =>
-    inWindow(m, when) && (!folder || m.folder === folder)), [res, when, folder]);
+    inWindow(m, when) && (!folder || m.folder === folder)
+    && (!account || m.account === account)), [res, when, folder, account]);
   // Selection and actions only ever cover what the list shows.
   const visible = useMemo(() => new Set(mails.map(mailKey)), [mails]);
   const picked = useMemo(
@@ -217,6 +236,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
     if (!res || go.length === 0) return false;
+    if (across) {
+      // One step per account, asked and run in the multi-account confirm.
+      setActing({ mails: go, action: "trash" });
+      return false;
+    }
     try {
       // (one mail: its subject is named, not "1 mail"; a big move carries
       // the keep-safe box - the mails kept safe are protected and stay)
@@ -254,7 +278,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     trash: async (m) => {
       if (await trashMails([m], m.subject)) setView(null);
     },
-    snooze: async (m, until) => {
+    // (no snooze across accounts: it would act on the loaded account)
+    ...(across ? {} : { snooze: async (m: Mail, until: number) => {
       const ok = await snooze.mails([[m.folder, m.uid]], until);
       if (ok) {
         setRes((cur) => cur && { ...cur, mails: cur.mails.filter(
@@ -263,7 +288,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
         onDeleted();
       }
       return ok;
-    },
+    } }),
   };
 
   const allSelected = mails.length > 0
@@ -282,7 +307,18 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     </p>
   );
 
-  return (
+  // The mails of an account whose Trash step ran leave the results.
+  const actedOn = (acted: Mail[]) => {
+    const gone = new Set(acted.map(mailKey));
+    setRes((cur) => cur && { ...cur,
+      mails: cur.mails.filter((m) => !gone.has(mailKey(m))) });
+    setSel((cur) => new Set([...cur].filter((k) => !gone.has(k))));
+    if (view && gone.has(mailKey(view))) setView(null);
+    setNote(t("note.background", { verb: t("Move to Trash") }));
+    onDeleted();
+  };
+
+  const panel = (
     <Modal onClose={onClose} size="lg" full>
       <PanelHeader
         title={<span className="inline-flex items-center gap-2">
@@ -344,6 +380,13 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                       <option value="year">{t("search.time_year")}</option>
                       <option value="old">{t("search.time_old")}</option>
                     </Select>
+                    {across && (
+                      <Select aria-label={t("alist.account")} value={account}
+                        onChange={(e) => setAccount(e.target.value)}>
+                        <option value="">{t("alist.account_all")}</option>
+                        {across.names.map((n) => <option key={n}>{n}</option>)}
+                      </Select>
+                    )}
                     <Select aria-label={t("search.folder")} value={folder}
                       onChange={(e) => setFolder(e.target.value)}>
                       <option value="">{t("search.folder_all")}</option>
@@ -368,8 +411,10 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 </p>
               )}
               {res?.notes.map((n) => (
-                <p key={n.key + JSON.stringify(n.params)}
+                <p key={n.key + JSON.stringify(n.params) + (n.account ?? "")}
                   className="mt-2 type-meta text-muted">
+                  {n.account && <strong className="font-semibold">
+                    {n.account}: </strong>}
                   {t(`search.note.${n.key}`, n.params)}
                 </p>
               ))}
@@ -527,6 +572,16 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
           </div>
         </div>
       )}
+      {acting && across && (
+        <AcrossMailsConfirm mails={acting.mails} action={acting.action}
+          order={across.names} exists={across.exists}
+          onOpenActivity={(a) => { setActing(null); across.onOpenActivity(a); }}
+          onChanged={actedOn} onClose={() => setActing(null)} />
+      )}
     </Modal>
   );
+  // (the app's reader host belongs to one account: across accounts the reader
+  // can read, pin and Trash through the confirm - nothing else)
+  return across
+    ? <ReaderHostProvider value={NO_HOST}>{panel}</ReaderHostProvider> : panel;
 }
