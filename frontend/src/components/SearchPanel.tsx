@@ -278,7 +278,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     trash: async (m) => {
       if (await trashMails([m], m.subject)) setView(null);
     },
-    snooze: async (m, until) => {
+    // (no snooze across accounts: it would act on the loaded account)
+    ...(across ? {} : { snooze: async (m: Mail, until: number) => {
       const ok = await snooze.mails([[m.folder, m.uid]], until);
       if (ok) {
         setRes((cur) => cur && { ...cur, mails: cur.mails.filter(
@@ -287,7 +288,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
         onDeleted();
       }
       return ok;
-    },
+    } }),
   };
 
   const allSelected = mails.length > 0

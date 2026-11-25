@@ -148,6 +148,8 @@ test("the bar has no Move (a folder of one account means nothing in another)",
   fireEvent.click(screen.getAllByRole("checkbox")[0]);
   const bar = screen.getByRole("region", { name: "Selection actions" });
   expect(within(bar).queryByRole("button", { name: "Move" })).toBeNull();
+  // nor Not now: a snooze would act on the account loaded behind the view
+  expect(within(bar).queryByRole("button", { name: /Not now/ })).toBeNull();
   expect(within(bar).getByRole("button", { name: "Archive" })).toBeTruthy();
   expect(within(bar).getByRole("button", { name: "Mark read" })).toBeTruthy();
 });
@@ -240,6 +242,7 @@ test("the reader offers nothing that belongs to one account: no Move, no " +
   fireEvent.click(await screen.findByText("Offer two"));
   await screen.findByText("body text");
   expect(screen.queryByRole("button", { name: /Move/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Not now/ })).toBeNull();
   fireEvent.click(screen.getAllByRole("button", { name: /More/ })[0]);
   expect(screen.queryByRole("menuitem", { name: /Open sender/ })).toBeNull();
   expect(screen.queryByRole("menuitem", { name: /Block/ })).toBeNull();

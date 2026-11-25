@@ -272,7 +272,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       return ok;
     } }),
     pin: (m, pinned) => togglePin(liveOf(m), pinned),
-    snooze: async (m, until) => {
+    // (no snooze across accounts: it would act on the loaded account)
+    ...(across ? {} : { snooze: async (m: Mail, until: number) => {
       const ok = await snooze.mails([[m.folder, m.uid]], until);
       if (ok) {
         setView(null);
@@ -281,7 +282,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
         onChanged();
       }
       return ok;
-    },
+    } }),
   };
   // The ticked mails wait until `until` (the server leaves pinned ones).
   const snoozeSelected = async (until: number) => {
@@ -420,8 +421,9 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
         swipe={{ bg: "bg-surface",
           trash: (m) => { if (!busy) void actOn([m], "trash"); },
           read: (m) => { if (!busy) void actOn([m], "mark_read"); },
-          snooze: (m) => { if (!busy) setSnoozing(m); } }} />
-      {snoozing && (
+          ...(across ? {} : {
+            snooze: (m: Mail) => { if (!busy) setSnoozing(m); } }) }} />
+      {snoozing && !across && (
         <NotNowSheet scope="mail" n={1}
           who={snoozing.subject || t("(no subject)")}
           onSnooze={(until) => readerActions.snooze!(snoozing, until)}
@@ -455,9 +457,11 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
                 disabled={busy} onClick={() => onAction("mark_read")}>
                 {t("Mark read")}
               </BarButton>
-              <NotNow look="bar" scope="selected" n={sel.size}
-                who={t("nav.all_mail")} disabled={busy}
-                onSnooze={snoozeSelected} />
+              {!across && (
+                <NotNow look="bar" scope="selected" n={sel.size}
+                  who={t("nav.all_mail")} disabled={busy}
+                  onSnooze={snoozeSelected} />
+              )}
             </>
           )}
           primary={
