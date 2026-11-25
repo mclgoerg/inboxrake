@@ -7,9 +7,8 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { QueryBuilder } from "./components/QueryBuilder";
 import { parseFilter } from "./lib";
-import { setLang } from "./i18n";
 
-afterEach(() => { cleanup(); setLang("en"); });
+afterEach(cleanup);
 
 function setup(initial = "") {
   let value = initial;
@@ -104,27 +103,6 @@ test.each([
   fireEvent.click(screen.getByText(label));
   expect(s.get()).toBe(token);
   expect(parseFilter(s.get()).eng).toBe(token.slice(4));
-});
-
-test.each([
-  ["graded D or worse", "grade:<=d", { op: "<=", letter: "D" }],
-  ["graded C or worse", "grade:<=c", { op: "<=", letter: "C" }],
-  ["graded B or better", "grade:>=b", { op: ">=", letter: "B" }],
-])("grade chip '%s' emits the %s DSL token", (label, token, parsed) => {
-  const s = setup();
-  fireEvent.click(screen.getByText(label));
-  expect(s.get()).toBe(token);
-  expect(parseFilter(s.get()).grade).toEqual(parsed);
-});
-
-test("the grade chips read in German", () => {
-  const s = setup();
-  setLang("de");
-  s.rerender();
-  for (const label of ["Note D oder schlechter", "Note C oder schlechter",
-    "Note B oder besser"]) {
-    expect(screen.getByText(label)).toBeTruthy();
-  }
 });
 
 test("every row adds its own token, Add buttons are one per row", () => {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, mailKey } from "../api";
-import { forMail } from "../mailAccount";
 import { t } from "../i18n";
 import type { ConversationResp, Mail, MessageDetail } from "../types";
 import { Avatar, Button, Spinner, Tag, useBackLayer } from "./ui";
@@ -52,13 +51,11 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
 
   useEffect(() => {
     let alive = true;
-    forMail(mail, () => api.thread(mail.folder, mail.uid))
-      // (across accounts: its cards belong to the mail's account, too)
-      .then((c) => alive && setConv(mail.account ? { ...c,
-        mails: c.mails.map((m) => ({ ...m, account: mail.account })) } : c))
+    api.thread(mail.folder, mail.uid)
+      .then((c) => alive && setConv(c))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => { alive = false; };
-  }, [mail.folder, mail.uid, mail.account]);
+  }, [mail.folder, mail.uid]);
 
   // Fetch the text of the expanded mails: BATCH at a time, one request (and
   // one IMAP login on the server) per batch - never one connection per mail.
@@ -70,8 +67,7 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
     setBusy(true);
     setBodies((b) => ({ ...b, ...Object.fromEntries(
       todo.map((m) => [mailKey(m), "loading" as const])) }));
-    forMail(mail, () => api.messages(
-      todo.map((m) => [m.folder, m.uid] as [string, number])))
+    api.messages(todo.map((m) => [m.folder, m.uid] as [string, number]))
       .then((r) => setBodies((b) => {
         const next = { ...b };
         for (const m of todo) {

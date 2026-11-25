@@ -1,17 +1,15 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
-  AccountSummary, AllAccountsResp, AllSendersResp, AddressReport, HabitsResp, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
-  Mail, MessageDetail, SubReminder, SubscriptionsResp, WaitingDetail,
-  WaitingReminder, WaitingResp,
+  Mail, MessageDetail, SubReminder, SubscriptionsResp,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
-  BatchSlot, SnoozedResp, SnoozeResult,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -34,18 +32,6 @@ let ACCOUNT = "";
 
 export function setAccount(name: string) {
   ACCOUNT = name;
-}
-
-/** Run the calls `fn` STARTS (before its first await) against one account
- *  instead of the active one - the multi-account confirm runs one step per
- *  account through the ordinary per-account calls. Only the synchronous part
- *  of `fn` is scoped (`req` reads the account when it builds the URL), so
- *  every call of a step is wrapped on its own: `inAccount(a, () =>
- *  api.unsubscribe(...))`, never a block with an await between two calls. */
-export function inAccount<T>(name: string, fn: () => T): T {
-  const previous = ACCOUNT;
-  ACCOUNT = name;
-  try { return fn(); } finally { ACCOUNT = previous; }
 }
 
 /** Pin a call to one account (the one being edited in Settings, which is
@@ -200,7 +186,6 @@ const ERROR_CODES: Record<string, string> = {
   unsub_no_method: "ferr.unsub_no_method",
   unsub_mail_failed: "ferr.unsub_mail_failed",
   unsub_pooled: "ferr.unsub_pooled",
-  unsub_protected: "ferr.unsub_protected",
   unsub_unknown_group: "ferr.unsub_unknown_group",
   unsub_failed: "ferr.unsub_failed",
   // plain words -> filter (backend/aifilter.py)
@@ -227,11 +212,6 @@ const ERROR_CODES: Record<string, string> = {
   copy_same_mailbox: "ferr.copy_same_mailbox",
   copy_cannot_confirm: "ferr.copy_cannot_confirm",
   copy_folder_reserved: "ferr.copy_folder_reserved",
-  snooze_cannot_create: "ferr.snooze_cannot_create",
-  snooze_bad_time: "ferr.snooze_bad_time",
-  snooze_protected: "ferr.snooze_protected",
-  snooze_full: "ferr.snooze_full",
-  snooze_no_folder: "ferr.snooze_no_folder",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -375,27 +355,6 @@ async function req<T>(path: string, body?: unknown,
   return res.json() as Promise<T>;
 }
 
-/** What the flat mail list asks for (`GET /api/mails`). `slot`: only the
- *  mails that arrive in one slot of the "When mail arrives" card (a view
- *  parameter beside `q`). */
-export interface MailsParams {
-  offset: number; limit: number; sort: string; dir: string; q: string;
-  slot?: ArrivalSlot | null;
-  /** Across accounts only: just this account's mails. */
-  only?: string | null;
-}
-
-const mailsQuery = (p: MailsParams): string => {
-  const z = userZone();
-  return `offset=${p.offset}&limit=${p.limit}`
-    + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
-    + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
-      + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
-      + `&slot_days=${p.slot.days.join(",")}`
-      + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}` : "")
-    + (p.only ? `&only=${encodeURIComponent(p.only)}` : "");
-};
-
 export const api = {
   state: () => req<AppState>("/api/state"),
   scan: (account?: string) =>
@@ -462,20 +421,6 @@ export const api = {
                    force = false) =>
     req<{ ok: boolean; queued: number }>("/api/delete_messages",
       { items, action, dest, force }),
-  // Not now: the unread mails of groups (`keys`) or exact mails (`items`) wait
-  // in the Snoozed folder until `until` (epoch s), then come back unread.
-  snooze: (when: { grouping?: Grouping; keys?: string[];
-      items?: [string, number][] }, until: number, unreadOnly = true) =>
-    req<SnoozeResult>("/api/snooze", { grouping: "sender", ...when, until,
-      unread_only: unreadOnly }),
-  snoozeBatch: (key: string, slot: BatchSlot | "off", tz: string,
-      label = "") =>
-    req<{ ok: boolean; slot: string; returned?: number; next?: number }>(
-      "/api/snooze/batch", { key, slot, tz, label }),
-  snoozed: () => req<SnoozedResp>("/api/snoozed"),
-  snoozedBack: (msgids: string[], batch = "") =>
-    req<{ returned: number; gone: number }>("/api/snoozed/back",
-      { msgids, batch }),
   pin: (folder: string, uid: number, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean }>("/api/pin",
       { folder, uid, pinned }),
@@ -504,15 +449,6 @@ export const api = {
   /** Per account: what its last scan holds (the account switcher's cards). */
   accountsSummary: () => req<Record<string, AccountSummary>>(
     "/api/accounts/summary"),
-  /** All accounts: every mailbox's card and the senders that write to
-   *  several of them. `since` = per account the epoch seconds its "+N new"
-   *  counts from (the remembered visit). Read-only, no mail server. */
-  accountsOverview: (since: Record<string, number> = {}) => req<AllAccountsResp>(
-    Object.keys(since).length
-      ? `/api/accounts/overview?since=${encodeURIComponent(JSON.stringify(since))}`
-      : "/api/accounts/overview"),
-  /** The Sender rows of every account in one list (All accounts). */
-  accountsSenders: () => req<AllSendersResp>("/api/accounts/senders"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
   /** AI assistants (MCP): this workspace's access tokens. */
   assistantTokens: () => req<AssistantTokenList>("/api/assistants/tokens"),
@@ -533,10 +469,8 @@ export const api = {
   revokeAssistantToken: (id: string) =>
     req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
       undefined, "DELETE"),
-  /** `skipProtected`: refuse a protected sender (the multi-account confirm). */
-  unsubscribe: (grouping: Grouping, key: string, skipProtected = false) =>
-    req<UnsubResult>("/api/unsubscribe", skipProtected
-      ? { grouping, key, skip_protected: true } : { grouping, key }),
+  unsubscribe: (grouping: Grouping, key: string) =>
+    req<UnsubResult>("/api/unsubscribe", { grouping, key }),
   unsubscribeBulk: (grouping: Grouping, keys: string[]) =>
     req<UnsubBulkResult>("/api/unsubscribe_bulk", { grouping, keys }),
   unsubscribePreview: (grouping: Grouping, keys: string[], single = false) =>
@@ -569,18 +503,18 @@ export const api = {
     req<{ ok: boolean }>("/api/notice/clear", keys ? { keys } : {}),
   /** `slot`: only the mails that arrive in one slot of the "When mail
    *  arrives" card (a view parameter beside `q`). */
-  mails: (p: MailsParams) => req<MailsResp>(`/api/mails?${mailsQuery(p)}`),
-  /** The same list over every account (All accounts): rows carry their
-   *  `account`. */
-  accountsMails: (p: MailsParams) =>
-    req<MailsResp>(`/api/accounts/mails?${mailsQuery(p)}`),
+  mails: (p: { offset: number; limit: number; sort: string; dir: string;
+            q: string; slot?: ArrivalSlot | null }) => {
+    const z = userZone();
+    return req<MailsResp>(`/api/mails?offset=${p.offset}&limit=${p.limit}`
+      + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
+      + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
+        + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
+        + `&slot_days=${p.slot.days.join(",")}`
+        + `&tz=${encodeURIComponent(z.tz)}&tzoff=${z.tzoff}` : ""));
+  },
   search: (q: string, body = false) =>
     req<SearchResp>(`/api/search?q=${encodeURIComponent(q)}`
-      + (body ? "&scope=body" : "")),
-  /** Search over every account (All accounts); hits and notes carry their
-   *  `account`. */
-  accountsSearch: (q: string, body = false) =>
-    req<SearchResp>(`/api/accounts/search?q=${encodeURIComponent(q)}`
       + (body ? "&scope=body" : "")),
   folders: (account?: string) =>
     req<FoldersResp>(account
@@ -613,13 +547,6 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
   runRule: (id: string) => req<RuleRun>(`/api/rules/${id}/run`, {}),
-  /** "You keep doing this": the habits mined from the account's Activity. */
-  habits: (account?: string) =>
-    req<HabitsResp>(forAccount("/api/habits", account)),
-  habitDismiss: (key: string, account?: string) =>
-    req<{ ok: boolean }>(forAccount("/api/habits/dismiss", account), { key }),
-  habitsShow: (account?: string) =>
-    req<{ shown: number }>(forAccount("/api/habits/show", account), {}),
   createPreset: (name: string, query: string) =>
     req<FilterPreset>("/api/presets", { name, query }),
   updatePreset: (id: string, name: string, query: string) =>
@@ -777,24 +704,6 @@ export const api = {
       { body_amounts: bodyAmounts }),
   subscriptionAmounts: () =>
     req<{ read: number; found: number }>("/api/subscriptions/amounts", {}),
-  // Waiting for a reply (backend/waiting.py): local data, nothing is sent
-  waiting: () => req<WaitingResp>("/api/waiting"),
-  waitingItem: (id: string) =>
-    req<WaitingDetail>(`/api/waiting/item?id=${encodeURIComponent(id)}`),
-  waitingNeeded: (id: string, needed: boolean) =>
-    req<{ ok: boolean }>("/api/waiting/needed", { id, needed }),
-  /** Remind me about one mail at `at` (epoch s); null cancels. */
-  waitingRemind: (id: string, at: number | null) =>
-    req<{ ok: boolean; at: number | null }>("/api/waiting/remind", { id, at }),
-  waitingReminders: () =>
-    req<{ reminders: WaitingReminder[] }>("/api/waiting/reminders"),
-  waitingSettingsGet: (account?: string) =>
-    req<{ track: boolean; days: number }>(
-      forAccount("/api/waiting/settings", account)),
-  waitingSettings: (patch: { track?: boolean; days?: number },
-    account?: string) =>
-    req<{ track: boolean; days: number }>(
-      forAccount("/api/waiting/settings", account), patch),
   // Your addresses (backend/addresses.py) and the optional alias service
   addresses: () => req<AddressReport>("/api/addresses"),
   addressesSummary: () =>

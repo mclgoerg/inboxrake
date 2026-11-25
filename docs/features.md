@@ -55,9 +55,9 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
-(Triage, Duplicates, Attachments, Rules, Junk, Trash, Snoozed), **Insights**
-(Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply) and, at the bottom,
-Activity and Settings. Junk, Trash and Snoozed show their mail counts. On wide screens
+(Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
+(Statistics, Space map, Your year in mail, Trackers, Subscriptions) and, at the bottom,
+Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
 keep you there); below 1024 px they open as a window (full
@@ -92,9 +92,7 @@ Connect several providers at once (e.g. Proton
 Bridge + Gmail). Every account is strictly separate: its own scans, groups,
 rules, saved presets, digest settings, statistics, folder exclusions,
 duplicate and label choices and replied/verdict/known-senders caches - nothing
-is ever mixed, and nothing is ever *done* to two accounts at once (the
-read-only [All accounts](#all-accounts) views only look across them). The
-account switcher (top of the sidebar; the
+is ever mixed or aggregated. The account switcher (top of the sidebar; the
 avatar on a phone) shows a card per account with its sign-in state, last scan,
 mails and size and switches the whole view between accounts; a card whose
 sign-in is broken leads straight to that account's settings. It also holds
@@ -102,71 +100,6 @@ sign-in is broken leads straight to that account's settings. It also holds
 the links to Activity and Settings. Accounts can be renamed (all their data
 follows) and removed in settings, and each has its own folder-discovery
 picker.
-
-### All accounts
-
-<small class="where">Account switcher → All accounts · Overview, Senders, All mail, Search</small>
-
-With two or more accounts the account switcher gets **All accounts** on top
-(stacked avatars, "N mailboxes"). The choice is remembered like the current
-account. The Overview then shows every mailbox side by side: a card per account
-with its size, mails, how many mails are **new** since your last visit (the last
-week when there was none before), when it was last scanned (a failed scan in
-orange), one bar for where the space is, and **Same sender, several
-accounts** - the newsletters and shops that write to more than one of your
-addresses. Senders are matched by exact sender address first, then by the
-company domain (never freemail or shared platform hosts: a `gmail.com` sender is
-only matched by its full address); protected senders and people you wrote to
-are left out. **Open an account** from its card (on a phone: the account chips
-above the widgets, All plus each account).
-
-**Unsubscribe in N…** opens one confirm that lists each account with its own
-checkbox, the address and method it would use there (one click, a mail, a
-page) and how many mails it covers. "Also move the N mails to Trash" is off by
-default; ticked, the confirm is the danger kind (verb and count, the keep-safe
-check of big moves) and each account moves that sender's mails only after *its*
-unsubscribe is done (protected senders and pinned mails stay). Then one step
-runs **per account**, one after the other: each is recorded in that account's
-Activity with its own Undo, an account whose step fails does not stop the
-others and is reported, and an unticked account is never touched. If the list
-of accounts changes while the confirm is open, an account that is gone is
-skipped and said so.
-
-**Scan all** scans every mailbox one after the other (an account that is busy
-with another job is left out and named). Only your own accounts are ever
-listed: with several users (SSO) each person sees only their workspace. The
-numbers come from what each account's last scan already holds, so opening the
-page contacts no mail server.
-
-**Senders, All mail and Search** read across the accounts too. The Senders page
-has **one row per sender address**: the same address in several accounts is a
-single row with its mails summed and a chip per account (its mails there); the
-filter, the sort and the select-all-matches work over the union, and the
-account chips above the list narrow it to one account's side of every row.
-A sender's detail lists the accounts it is in - each with its own numbers,
-its protection and its **own grade** (grades are worked out per account, so the
-row itself shows none, and there is no grade sort or `grade:` match here) - and
-**Open in** *account name* takes you to that account's own detail, where everything
-that belongs to one account lives: Move to a folder, Protect, Block, labels, the
-grade's six checks, limits. **Show the mails** opens All mail for that sender
-across the accounts. All mail and Search show an **account badge on every
-row**; All mail can be narrowed to one account, Search has an account select,
-and a mail opens in its reader with every call going to *its* account (the
-reader offers no Move, sender page or Block here - those are per account).
-
-What you do with a selection goes through the same multi-account confirm:
-**Move to Trash**, **Archive** and **Mark as read** (and, for one sender at a
-time, **Unsubscribe in N…**) list each account the selection reaches with its
-own checkbox and count, then run one step per ticked account - the account's own
-background job with its own Undo and Activity entry. The single-account rules
-hold per account: protected senders are left out of a Trash, pinned mails stay,
-a big move to Trash asks the keep-safe question for that account. An account
-whose step fails does not stop the others and is reported, an unticked account
-is never touched, and no keyboard shortcut (j / k / x / #) works on the lists
-across accounts - nothing is ever done to an account you did not see named.
-What works on one account at a time - Rules, Junk and Trash, the tools,
-Activity - shows **Pick an account** with the account list while All accounts is
-selected; Settings opens as usual.
 
 ### Move to another account
 
@@ -210,8 +143,8 @@ bottom tab bar, filters and confirmations as bottom sheets, a compact list.
 <small class="where">Phones and tablets</small>
 
 Swipe a sender row left for Trash (a full swipe),
-Block and More, right for Protect, Read and Not now; swipe a mail row left for
-Trash, right for Pin, Read and Not now. Every swipe action asks the same confirmation as its
+Block and More, right for Protect and Read; swipe a mail row left for Trash,
+right for Pin and Read. Every swipe action asks the same confirmation as its
 button. Below 1024 px (phones and tablets), pull down from the top of Overview, Senders or All mail to scan
 (the header shows the scan's progress). Sheets close with a swipe down. In the
 installed app (PWA), where no browser chrome answers it, a swipe from the
@@ -324,7 +257,7 @@ a card's text is fetched when you expand it. Mails in Sent are read-only.
 
 A floating capsule at the bottom, there only once
 something is selected: how many groups and mails you picked, Clear
-selection, Unsubscribe, Archive, Move, **Not now**, a More menu (Mark read, AI review,
+selection, Unsubscribe, Archive, Move, a More menu (Mark read, AI review,
 Export CSV, "Limit to…" - the retention limiter, shown as a removable token
 while active) and the **Trash N** button. Tick rows with **Select** in the
 Senders toolbar (round checkboxes appear until you press Done; on a wide
@@ -413,30 +346,6 @@ as a small three-step meter on each row (tap or hover for the breakdown), sorts
 via "Sort: engagement", and filters with `eng:low` / `eng:medium` /
 `eng:high` (tiers <=33 / 34-66 / >=67) - usable in rules and saved
 presets, e.g. `eng:low age:>1y`. The score is never sent to the AI.
-
-### Sender grade
-
-<small class="where">Senders → every Sender row · Statistics</small>
-
-Every sender gets a grade from A to F and one plain sentence ("loud and
-ignored", "quiet and useful", "tracks you, but you read it"), shown as a
-badge in the Senders list and as a report card at the top of the sender
-detail. The card lists six checks with their value, a note and a
-✓ / ✗ / –, so the grade is never a black box: how much of the sender's mail
-you read, how often it mails, tracking (from the local body index, "not
-checked" without it), a one-click unsubscribe header, whether it stops after
-you unsubscribed (the watchdog) and the average mail size. Each good sign is
-+1, each bad one -1, a sender that keeps mailing after you unsubscribed
-counts -2; 3 points or more is an A, 2 a B, 0-1 a C, -1 to -2 a D and -3 or
-less an F. People you have written to never grade below C. The weights are
-fixed in the app and printed under "How grades work"; there is no AI and
-nothing leaves the server. Sort the list with "Grade · worst first", filter
-with `grade:d`, `grade:<=c` (C or worse) or `grade:>=b` (B or better) - also
-in rules and saved filters - and see how your senders spread over A-F, and
-how much mail the D and F senders send, in Statistics ("Show them" opens the
-list filtered to them). Grades are for the Sender view; a grade never acts on
-its own, and protected senders and pinned mails stay out of every cleanup as
-before.
 
 ### Filing senders in Smart
 
@@ -583,56 +492,6 @@ supports it, and Inboxrake then offers to protect the sender), **Block** and
 a move to Trash. Senders you have replied to before are tagged "known" and
 gathered under a banner ("N senders you know - you replied to them before,
 probably not junk") with a "Show" button that lists only them.
-
-### Not now (snooze)
-
-<small class="where">Sender detail, mail reader, selection bars · Clean up → Snoozed</small>
-
-**Not now** hides mail until a time you pick: *Later today* (18:00),
-*Tomorrow morning* (08:00), *This weekend* (Saturday 09:00), *Next week*
-(Monday 08:00) or *Pick a date…*. It sits beside Move in a sender's detail
-(it snoozes that sender's **unread** mails), in the mail reader (that one
-mail, e.g. an invoice "until 1 Dec", so it is on top when you have to pay it)
-and in the selection bars (the ticked mails); on a phone it is a bottom sheet,
-and a swipe right on a row opens it. The times are your own clock.
-
-Snoozed mail waits in a folder named **Snoozed** on your mail server (so your
-phone's mail app does not show it either). Inboxrake creates it the first time
-you snooze; a folder role override in Settings → an account → Folders can point
-elsewhere. At the time you picked, each mail goes back to the folder it came
-from, **unread**, on top. Pinned mails are never snoozed, and mail of a
-protected sender is skipped when you snooze a whole sender or a selection (one
-mail you name yourself is fine). Snoozing is a move like Move to Trash: it
-shows in Activity (and the Time machine), and **Undo** puts the mails back
-where they were.
-
-**Deliver in batches** goes one step further for a sender that mails every
-day: *Deliver once a week* (Saturday 09:00) or *once a day* (18:00), in the
-time zone of your browser. Every new inbox mail from that sender (mail that
-arrives after you switched it on; pinned mails excepted, protected senders
-cannot have a batch) is held after each scan and the pile arrives together at
-the next slot, with one push "Your *sender* batch is here: N mails" if you
-enabled [notifications](#settings). Switching a batch off returns what it
-holds. A batch only sees new mail when Inboxrake scans, so turn on Auto-scan
-(Settings → Auto-scan) for it to catch mail every few minutes. "New" is
-measured against the **last scan**: when you switch a batch on, mail that
-Inboxrake has not scanned yet (arrived since the last scan) counts as
-existing, not as new, and is not held; a changed folder identity on the server
-(UIDVALIDITY) restarts the count from the next scan. A mail Inboxrake
-delivers is not held again while it stays in the inbox (one you move out
-and, more than a day later, back in counts as new again), and a mail that shares its Message-ID with one
-that is already snoozed stays where it is.
-
-**Clean up → Snoozed** (the sidebar item, or the Clean up tab on a phone) lists
-what waits: batches ("*sender* · weekly batch - 6 mails so far, delivered Sat
-09:00"), senders with several snoozed mails and single mails (by subject), each
-with when it comes back and **Back now**; a sender with snoozed mail also shows
-a small "back tomorrow" chip in the list. The page checks the folder when it
-opens: a mail you moved away in another app is forgotten, not brought back
-twice. If the **Snoozed** folder cannot be found (hidden or renamed on the
-server), the page says so and keeps what it remembers instead of dropping it.
-One account holds at most 5,000 snoozed mails; beyond that Not now refuses
-before anything moves. Nothing here uses AI.
 
 ### Delete permanently (Trash and Junk)
 
@@ -798,45 +657,6 @@ subscription, on your own server through your own mail connection, and keeps
 only the amount and its currency. Nothing is sent anywhere, and switching it
 off forgets the amounts it found. It is off by default.
 
-### Waiting for a reply
-
-<small class="where">Insights → Waiting for a reply</small>
-
-Lists the mails **you sent** where the last word is yours - nobody has
-answered. The scan reads your Sent folder's headers (Message-ID, date,
-subject, From, To / Cc, In-Reply-To, References; never a mail body) for the
-last 90 days, and only what is new each time; the first scan after this
-exists reads the 90 days. A sent mail is **waiting** when it went to at least
-one person (your own addresses, `no-reply` style addresses and list or
-newsletter senders are not people), it is your **latest** mail of its
-conversation (the same In-Reply-To / References matching as the Conversation
-view) and nothing newer in that conversation came back from one of those
-people. Their newsletters are never an answer. An answer you moved to Trash
-or that landed in Junk still counts. A reply in a folder Inboxrake does not
-scan (for example Gmail's All Mail only) is not seen, so that mail stays
-on the list until you mark it "No answer needed". It turns **orange** after
-the days you choose (2, 3 or 7; Settings · Account) - or later, when that
-person usually takes longer: the usual time is the median over their earlier
-answered conversations, needs at least two of them, and shows in the pane
-("usually answers you within 2 days (4 earlier conversations)").
-
-The page has three figures (waiting longer than usual, sent in the last 3
-days, the share of your mails that got an answer in 30 days) and the list in
-three views: **Open**, **Answered** and **Not needed**, most overdue first.
-The pane tells the conversation as a timeline and offers **Remind me**
-(tomorrow, next Monday or a day you pick, at 09:00; a Web Push through the
-same channel as the other reminders, plus a line in the activity digest; it
-fires once and clears itself when the answer arrives), **Open the
-conversation** and **No answer needed** (takes it off the list; "Bring it
-back" undoes it). On a phone swipe a row left for No answer needed and right
-for Remind me (tomorrow). The sidebar shows how many wait longer than usual,
-and the Overview's Next steps gets the line "3 people haven't answered you".
-
-Inboxrake never sends mail for you - you reply from your own mail app. It is
-all read from headers, with no AI. **Settings · Account → Track mails waiting
-for a reply** (on by default, per account) switches it off: nothing extra is
-read from the Sent folder and the index of it is deleted.
-
 ### Your addresses
 
 <small class="where">Insights → Your addresses</small>
@@ -922,32 +742,6 @@ like any other. A new install with no rules sees the top three right on the
 Rules page. A recipe that files mail needs its folder to exist (Inboxrake
 does not create folders): if there is none, the editor opens so you can pick
 one.
-
-### You keep doing this
-
-<small class="where">Clean up → Rules · Overview → Next steps · Settings › General</small>
-
-Every cleanup you do by hand is written to Activity. A small local check
-(on this server, no AI, nothing sent anywhere) looks at the last 60 days for
-**the same action on the same sender, by hand, at least 3 times on at least 3
-different days** - trash, archive, move to the same folder, or mark as read -
-and turns each find into a ready rule: *Deals Daily → move to Trash if older
-than 7 days · weekly*. The age is the youngest mail you moved each time,
-rounded down to 1, 3, 7, 14 or 30 days; the schedule is daily when you did it
-every few days and weekly otherwise. Steps you undid never count, nor do steps
-of rules or assistants, and a protected sender, a sender an existing rule
-already covers, or one you hid is never suggested.
-
-The suggestions sit in a **You keep doing this** section above your rules
-(with a count on the Rules item), as one line in Overview › Next steps and as
-a widget on the phone's Overview. Each card shows what you did, what the rule
-would catch right now and says it starts in **Report only**. **Make it a
-rule** creates an ordinary rule - report mode, its report runs once - and
-**Not this one** hides that sender for good (**Settings › General › Hidden
-suggestions › Show** brings them back). **Why these?** lists the steps each
-suggestion is based on. When a cleanup you just did made a suggestion
-appear, its toast offers **Automate…**. **Settings › General › Suggest
-rules from what I do** switches all of it off.
 
 ### Retention actions
 
@@ -1277,9 +1071,7 @@ a clean-up (move, delete, mark read), AI review or sorting, attachment
 analysis, bulk unsubscribe - the server sends a real Web Push, so the
 notification arrives with Inboxrake closed. The same goes for a
 [subscription reminder](#subscriptions) you switched on (it names the service,
-the expected date and amount) and a [reminder on an unanswered
-mail](#waiting-for-a-reply) you asked for (it names the person - or just
-"Someone" - and the days it has waited). Automatic scans and rules never
+the expected date and amount). Automatic scans and rules never
 notify, nor does a cancelled job, and a device that is looking at Inboxrake
 right now gets the in-app message instead. The text is short and generic
 (for example "Scan finished", with the account and counts under it) and

@@ -28,7 +28,6 @@ from pydantic import BaseModel, Field, StrictInt
 from . import FORMER_ENV
 from . import accountcopy
 from . import accounts as accountsmod
-from . import allaccounts
 from . import addresses as addressesmod
 from . import addressstore
 from . import aifilter
@@ -46,8 +45,6 @@ from . import digest as digestmod
 from . import dupstore
 from . import demo as demomod
 from . import errortext
-from . import habits as habitsmod
-from . import habitstore
 from . import knowledge as knowledgemod
 from . import labels as labelsmod
 from . import labelstore
@@ -64,8 +61,6 @@ from . import presets as presetsmod
 from . import rhythm as rhythmmod
 from . import rules as rulesmod
 from . import secretbox
-from . import snooze as snoozemod
-from . import snoozestore
 from . import stats as statsmod
 from . import substore
 from . import subscriptions
@@ -76,8 +71,6 @@ from . import webguard
 from . import unsub
 from . import unsubstore
 from . import verdictstore
-from . import waiting
-from . import waitstore
 from . import webpush
 from . import wrapped
 from . import aisort
@@ -224,7 +217,6 @@ async def _lifespan(app: FastAPI):
     digestmod.start_scheduler()
     autoscanmod.start_scheduler()
     subscriptions.start_scheduler()
-    waiting.start_scheduler()
     yield
 
 def _app_version() -> str:
@@ -730,11 +722,6 @@ class AiGroupBody(BaseModel):
     uids: list[tuple[str, int]] | None = None
 
 
-class UnsubOneBody(AiGroupBody):
-    # a bulk path (the multi-account confirm) leaves a protected sender alone
-    skip_protected: bool = False
-
-
 class UnsubBulkBody(BaseModel):
     grouping: str = "sender"
     keys: list[str] = Field(min_length=1)
@@ -1224,90 +1211,6 @@ def _subscription_action(account, fn):
         raise _internal_error(exc, acc)
 
 
-# --------------------------------------------------- waiting for a reply
-
-class WaitingKeyBody(BaseModel):
-    id: str = Field(min_length=1, max_length=300)
-
-
-class WaitingNeededBody(WaitingKeyBody):
-    needed: bool = True
-
-
-class WaitingRemindBody(WaitingKeyBody):
-    at: int | None = None            # epoch seconds; None cancels
-
-
-class WaitingSettingsBody(BaseModel):
-    track: bool | None = None
-    days: int | None = None
-
-
-def _waiting_action(account, fn):
-    acc = _acc(account)
-    try:
-        return fn(acc)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except Exception as exc:
-        raise _internal_error(exc, acc)
-
-
-@app.get("/api/waiting")
-def get_waiting(account: str | None = Query(None)):
-    """The mails you sent that nobody answered (backend/waiting.py): matched
-    from the headers of your Sent folder and the scan index, no mail text and
-    no AI. Local data: nothing is asked of the mail server."""
-    return _waiting_action(account, waiting.listing)
-
-
-@app.get("/api/waiting/item")
-def get_waiting_item(id: str = Query(..., min_length=1, max_length=300),
-                     account: str | None = Query(None)):
-    """One row's conversation timeline and what opens it."""
-    return _waiting_action(account, lambda acc: waiting.detail(acc, id))
-
-
-@app.post("/api/waiting/needed")
-def post_waiting_needed(body: WaitingNeededBody,
-                        account: str | None = Query(None)):
-    """"No answer needed" (needed: true) / bring the mail back."""
-    return _waiting_action(account, lambda acc: waiting.set_needed(
-        acc, body.id, body.needed))
-
-
-@app.post("/api/waiting/remind")
-def post_waiting_remind(body: WaitingRemindBody,
-                        account: str | None = Query(None)):
-    """Remind me about one mail at a time (epoch seconds); `at: null` cancels."""
-    return _waiting_action(account, lambda acc: waiting.set_reminder(
-        acc, body.id, body.at))
-
-
-@app.get("/api/waiting/reminders")
-def get_waiting_reminders(account: str | None = Query(None)):
-    """Reminders that fired in the last days, for an open page to show once."""
-    return _waiting_action(account, lambda acc: {
-        "reminders": waiting.recent_reminders(acc)})
-
-
-@app.get("/api/waiting/settings")
-def get_waiting_settings(account: str | None = Query(None)):
-    """The switch and the threshold (Settings > Account), without a pass."""
-    acc = _acc(account)
-    block = waitstore.load_account(acc.name)
-    return {"track": block["track"], "days": block["days"]}
-
-
-@app.post("/api/waiting/settings")
-def post_waiting_settings(body: WaitingSettingsBody,
-                          account: str | None = Query(None)):
-    """Track mails waiting for a reply (off drops the sent index and reads
-    nothing extra) and the days after which a mail counts as waiting."""
-    return _waiting_action(account, lambda acc: waiting.set_settings(
-        acc, body.track, body.days))
-
-
 # ------------------------------------------------------- your addresses
 
 def _address_refusal(exc: Exception) -> HTTPException:
@@ -1591,98 +1494,6 @@ def post_pin_group(body: PinGroupBody, account: str | None = Query(None)):
         raise _internal_error(exc, acc)
 
 
-class SnoozeBody(BaseModel):
-    grouping: str = "sender"
-    keys: list[str] | None = Field(None, max_length=500)   # groups ...
-    items: list[tuple[str, int]] | None = Field(None, max_length=5000)  # ... or mails
-    until: int                      # epoch seconds, from the browser's clock
-    unread_only: bool = True        # groups: only their unread mails
-
-
-@app.post("/api/snooze")
-def post_snooze(body: SnoozeBody, account: str | None = Query(None)):
-    """Not now: move the unread mails of groups (`keys`) or exact mails
-    (`items`) into the account's Snoozed folder until `until`; they come back
-    unread. A background move job with an Undo step; pinned mails and (in a
-    group or a selection) protected senders' mails are skipped and counted."""
-    _check_grouping(body.grouping)
-    if bool(body.keys) == bool(body.items):
-        raise HTTPException(400, "give keys or items")
-    acc = _acc(account)
-    try:
-        if body.keys:
-            return snoozemod.snooze_groups(
-                acc, body.grouping, body.keys, body.until,
-                unread_only=body.unread_only)
-        return snoozemod.snooze_items(
-            acc, [list(i) for i in body.items], body.until)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc))
-    except Exception as exc:
-        raise _internal_error(exc, acc)
-
-
-class SnoozeBatchBody(BaseModel):
-    key: str = Field(max_length=254)          # the sender's address
-    slot: Literal["weekly", "daily", "off"]
-    tz: str = Field("", max_length=64)        # the user's IANA time zone
-    label: str = Field("", max_length=100)
-
-
-@app.post("/api/snooze/batch")
-def post_snooze_batch(body: SnoozeBatchBody,
-                      account: str | None = Query(None)):
-    """Deliver the NEW mail of one sender once a day / a week ("off" returns
-    what is held and stops)."""
-    acc = _acc(account)
-    try:
-        return snoozemod.set_batch(acc, body.key, body.slot, body.tz,
-                                   body.label)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc))
-    except Exception as exc:
-        raise _internal_error(exc, acc)
-
-
-@app.get("/api/snoozed")
-def get_snoozed(account: str | None = Query(None)):
-    """The Snoozed page: batches and snoozed mails (see snooze.listing)."""
-    acc = _acc(account)
-    try:
-        return snoozemod.listing(acc)
-    except Exception as exc:
-        raise _internal_error(exc, acc)
-
-
-class SnoozeBackBody(BaseModel):
-    msgids: list[str] = Field(default_factory=list, max_length=5000)
-    batch: str = Field("", max_length=254)    # a batch: everything it holds
-
-
-@app.post("/api/snoozed/back")
-def post_snoozed_back(body: SnoozeBackBody,
-                      account: str | None = Query(None)):
-    """Back now: return snoozed mails (named, or a batch's) to where they
-    were, unread."""
-    acc = _acc(account)
-    ids = set(body.msgids)
-    if body.batch:
-        ids |= {m for m, r in snoozestore.load_account(acc.name)["mails"]
-                .items() if r["batch"] == body.batch}
-    if not ids:
-        raise HTTPException(400, "nothing named")
-    try:
-        return snoozemod.release(acc, ids)
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc))
-    except Exception as exc:
-        raise _internal_error(exc, acc)
-
-
 class KeepSafeBody(BaseModel):
     """The mails a Trash move would act on: a selection (`items`) or groups
     (`grouping` + `keys` and the move's retention / sender limits)."""
@@ -1899,12 +1710,11 @@ def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
 
 
 @app.post("/api/unsubscribe")
-def post_unsubscribe(body: UnsubOneBody, account: str | None = Query(None)):
+def post_unsubscribe(body: AiGroupBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
     acc = _acc(account)
     try:
-        return unsub.unsubscribe(body.grouping, body.key, acc,
-                                 skip_protected=body.skip_protected)
+        return unsub.unsubscribe(body.grouping, body.key, acc)
     except Exception as exc:
         # a failed unsubscribe is a handled outcome: the code is the detail
         # (the UI words it); never raw exception text
@@ -2209,35 +2019,6 @@ def post_rule_run(rule_id: str):
         raise HTTPException(404, "unknown rule")
     except RuntimeError as exc:
         raise HTTPException(409, str(exc))
-
-
-@app.get("/api/habits")
-def get_habits(account: str | None = Query(None)):
-    """"You keep doing this" (backend/habits.py): the same cleanup done by hand
-    again and again, as ready-to-make rules with the steps they are based
-    on. Mined from this account's audit log; local, no AI. `enabled` False =
-    switched off in Settings (nothing is mined)."""
-    return habitsmod.suggestions(_acc(account))
-
-
-class HabitBody(BaseModel):
-    key: str
-
-
-@app.post("/api/habits/dismiss")
-def post_habit_dismiss(body: HabitBody, account: str | None = Query(None)):
-    """"Not this one": never suggest this sender's habit again."""
-    acc = _acc(account)
-    if not habitstore.hide(body.key, acc.name):
-        raise HTTPException(400, "bad sender key")
-    return {"ok": True}
-
-
-@app.post("/api/habits/show")
-def post_habits_show(account: str | None = Query(None)):
-    """Settings > General > Hidden suggestions > Show: the hidden senders may
-    be suggested again."""
-    return {"shown": habitstore.show_all(_acc(account).name)}
 
 
 class PresetBody(BaseModel):
@@ -2871,25 +2652,18 @@ def get_mails(offset: int = Query(0, ge=0),
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
     has:pinned; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
-    return mailops.list_mails(
-        offset, limit, sort, dir, q, _acc(account),
-        slot=_arrival_slot(slot, slot_kind, slot_period, slot_days, tz, tzoff))
-
-
-def _arrival_slot(slot: str, kind: str, period: str, days: str, tz: str,
-                  tzoff: int) -> dict | None:
-    """The arrival-rhythm slot of a flat-list request ("<from>-<to>" plus its
-    kind / period / days / time zone), or None when none was asked for."""
-    if not slot:
-        return None
-    try:
-        lo, hi = (int(x) for x in slot.split("-"))
-        return rhythmmod.clean_slot({
-            "kind": kind, "period": period, "from": lo, "to": hi,
-            "days": [int(d) for d in days.split(",")],
-            "tz": tz, "offset": tzoff})
-    except ValueError:
-        raise HTTPException(400, "bad slot")
+    arrival = None
+    if slot:                    # "<from>-<to>": the arrival-rhythm slot
+        try:
+            lo, hi = (int(x) for x in slot.split("-"))
+            arrival = rhythmmod.clean_slot({
+                "kind": slot_kind, "period": slot_period, "from": lo, "to": hi,
+                "days": [int(d) for d in slot_days.split(",")],
+                "tz": tz, "offset": tzoff})
+        except ValueError:
+            raise HTTPException(400, "bad slot")
+    return mailops.list_mails(offset, limit, sort, dir, q, _acc(account),
+                              slot=arrival)
 
 
 @app.get("/api/export")
@@ -2937,7 +2711,6 @@ def get_export_config():
             "protected": cfgmod.normalize_protected(cfg.get("protected")),
             "categories": cfg.get("categories") or {},
             "keep_safe": cfgmod.keep_safe_of(cfg),
-            "habits": cfgmod.habits_of(cfg),
             "ai": cfgmod.strip_ai_secrets(cfg["ai"]),
         },
         "rules": rulesmod.load_rules(),
@@ -2963,7 +2736,7 @@ def post_import_config(body: dict):
     imported rules are forced back to report mode (safety floor)."""
     c = body.get("config") or {}
     update = {k: c[k] for k in ("accounts", "protected", "categories", "keep_safe",
-                         "habits", "ai") if k in c}
+                         "ai") if k in c}
     if isinstance(update.get("accounts"), dict):
         update["accounts"] = {
             n: cfgmod.strip_account_secrets(b) if isinstance(b, dict) else b
@@ -3106,69 +2879,6 @@ def get_accounts_summary():
     return out
 
 
-@app.get("/api/accounts/overview")
-def get_accounts_overview(since: str | None = Query(None, max_length=4000)):
-    """The Overview across ALL accounts of this workspace (read-only, no mail
-    server is contacted): per account its size, mails, new mails and last
-    scan, plus the senders that write to more than one account (see
-    allaccounts.py). `since` = a JSON object {account: epoch seconds}, the
-    visit each account's "+N new" counts from; anything unreadable is
-    ignored."""
-    marks: dict[str, float] = {}
-    try:
-        raw = json.loads(since) if since else {}
-    except ValueError:
-        raw = {}
-    if isinstance(raw, dict):
-        for name, ts in raw.items():
-            if isinstance(ts, (int, float)) and not isinstance(ts, bool) \
-                    and 0 <= ts < 1e11:
-                marks[str(name)] = float(ts)
-    return allaccounts.build(marks)
-
-
-@app.get("/api/accounts/senders")
-def get_accounts_senders():
-    """The Sender rows of ALL accounts of this workspace in one list (read-only,
-    no mail server is contacted): the same address in several accounts is one
-    row with its counts summed and one part per account (allaccounts.py)."""
-    return allaccounts.senders()
-
-
-@app.get("/api/accounts/mails")
-def get_accounts_mails(offset: int = Query(0, ge=0),
-                       limit: int = Query(100, ge=1, le=1000),
-                       sort: Literal["date", "size", "sender"] = Query("date"),
-                       dir: Literal["asc", "desc"] | None = Query(None),
-                       q: str = Query(""),
-                       slot: str = Query("", max_length=80),
-                       slot_kind: str = Query("all"),
-                       slot_period: str = Query("all"),
-                       slot_days: str = Query("0,1,2,3,4,5,6", max_length=20),
-                       tz: str = Query("", max_length=64),
-                       tzoff: int = Query(0, ge=-840, le=840),
-                       only: str | None = Query(None, max_length=200)):
-    """The flat "All mails" list over every account of this workspace (see
-    /api/mails): each row carries the `account` it belongs to; `only` narrows
-    it to one account. No IMAP traffic."""
-    try:
-        return allaccounts.mails(
-            offset, limit, sort, dir, q,
-            _arrival_slot(slot, slot_kind, slot_period, slot_days, tz, tzoff),
-            only)
-    except KeyError as exc:
-        raise HTTPException(400, str(exc.args[0]))
-
-
-@app.get("/api/accounts/search")
-def get_accounts_search(q: str = Query(...),
-                        scope: Literal["meta", "body"] = Query("meta")):
-    """Search over every account (see /api/search); rows and notes carry the
-    account they came from. Mail-text search follows each account's own
-    `body_search` setting."""
-    return allaccounts.search(q, body=scope == "body")
-
-
 def _keep_caller_signed_in(request: Request, response: Response,
                            old_sub: str | None) -> None:
     """After THIS request signed everyone out (new epoch) the person who did
@@ -3230,10 +2940,7 @@ def post_config(body: dict, request: Request, response: Response):
         digestmod.drop_account(str(body["delete_account"]))
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
-        habitstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
-        waitstore.drop_account(str(body["delete_account"]))
-        snoozestore.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
@@ -3263,10 +2970,7 @@ def post_config(body: dict, request: Request, response: Response):
             digestmod.rename_account(old, new)
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
-            habitstore.rename_account(old, new)
             substore.rename_account(old, new)
-            waitstore.rename_account(old, new)
-            snoozestore.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)

@@ -40,7 +40,6 @@ domain or subject), its label, or its sub-label. `shop` finds
 | `has:tracker` | A checked mail carries a tracking pixel or click tracking (needs the local body index). | |
 | `in:<N>(min\|h\|d)` | A time window of N minutes, hours or days back from now, only valid next to `is:new`, `is:still-mailing` or `ai:` (see below). | `is:new in:7d` |
 | `eng:low\|medium\|high` | How much you engage with the sender: scores up to 33 are low, 34-66 medium, 67 and up high. | `eng:low` |
-| `grade:<letter>` / `grade:<=<letter>` / `grade:>=<letter>` | The sender's grade, A (best), B, C, D or F (worst; there is no E): `grade:d` is exactly D, `grade:<=c` is C or worse, `grade:>=b` is B or better. Sender rows only; see [Sender grade](features.md#sender-grade). | `grade:<=d` |
 | `from:<address>` | Exactly this sender address (sender grouping only). | `from:news@shop.example` |
 | `domain:<domain>` | Exactly this domain (domain grouping). | `domain:shop.example` |
 
@@ -63,7 +62,7 @@ the same.
 
 > [!WARNING]
 > **Typos can widen a filter.** An unknown qualifier name, or a bad value for
-> `is:`, `has:`, `eng:` or `grade:`, is treated as a free
+> `is:`, `has:` or `eng:`, is treated as a free
 > word and usually matches nothing. But an invalid `age:`, `unread:` or
 > `att:` value (for example `age:>2w`, `unread:high`, `att:>10mb`) is
 > silently **ignored** and the rest of the filter still applies - so the
@@ -71,7 +70,7 @@ the same.
 > every newsletter group. Check the result list before you act. Saving a **rule**
 > with such a part is refused with an error that names it, and a rule saved
 > before that check shows a warning: its execute runs are skipped (report runs
-> still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `grade:`, `ai:`, `from:`, `domain:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
+> still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `ai:`, `from:`, `domain:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
 > qualifiers in a rule and refused unless they are valid ones. The AI filter writer validates strictly
 > and retries when the filter it wrote contains a bad token.
 
@@ -98,4 +97,4 @@ Executed trash actions are normal reversible moves.
 from Junk or Trash. They are opt-in, need a report run of their current
 definition first, skip protected senders and pinned mails, and accept only
 a filter over sender, date and read state (plus `has:tracker`) - the qualifiers `tag:`, `ai:`,
-`is:`, `has:pinned`, `eng:`, `grade:`, `att:` and `domain:` are refused there.
+`is:`, `has:pinned`, `eng:`, `att:` and `domain:` are refused there.

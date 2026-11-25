@@ -6,12 +6,11 @@ import { fmtAgo, fmtSize } from "../lib";
 import type { AccountSummary, Config } from "../types";
 import { demoHint } from "../demoMode";
 import { statusOf, StatusDot } from "./SettingsPage";
-import { AccountAvatar, AccountStack, IconTile, Meta, Segmented } from "./ui";
+import { AccountAvatar, IconTile, Meta, Segmented } from "./ui";
 
 type Appearance = "system" | "light" | "dark";
 
-/** The account menu's body: with two or more accounts an "All accounts" card
- *  on top (stacked avatars, "N mailboxes"), then one card per account (avatar, name, address,
+/** The account menu's body: one card per account (avatar, name, address,
  *  status dot, sign-in state + last scan + mails and size), Add account,
  *  Appearance, Settings / Activity rows and the version. The same markup sits
  *  in the desktop popover (`menu`: role=menu items, arrows move) and in the
@@ -19,7 +18,7 @@ type Appearance = "system" | "light" | "dark";
  *  account's settings (`onFix`) instead of switching to it. */
 export function AccountSwitcher({ menu, cfg, account, summary, appearance,
   onAppearance, onSwitch, onFix, onAdd, onSettings, onActivity, onLogout,
-  identity, admin, demo, version, scopeAll = false, onAll }: {
+  identity, admin, demo, version }: {
   /** Inside a `Menu` popover (items need the menu roles). */
   menu: boolean;
   cfg: Config;
@@ -40,10 +39,6 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
   admin?: boolean;
   demo?: boolean;
   version?: string;
-  /** "All accounts" is the selected scope (no single account is). */
-  scopeAll?: boolean;
-  /** Select All accounts; absent = the item is not offered. */
-  onAll?: () => void;
 }) {
   const row = (label: ReactNode, icon: ReactNode, onClick: () => void,
     chevron = true) => (
@@ -71,33 +66,10 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
       )}
       <div role="group" aria-label={t("menu.accounts")}
         className="flex flex-col gap-2">
-        {onAll && Object.keys(cfg.accounts).length >= 2 && (
-          <div className={`rounded-card border bg-panel
-            ${scopeAll ? "border-accent" : "border-line"}`}>
-            <button type="button" role={menu ? "menuitemradio" : undefined}
-              aria-checked={menu ? scopeAll : undefined}
-              aria-current={!menu && scopeAll ? "true" : undefined}
-              onClick={() => !scopeAll && onAll()}
-              className="flex min-h-11 w-full items-center gap-3 rounded-card
-                p-3 text-left enabled:hover:bg-panel2">
-              <AccountStack names={Object.keys(cfg.accounts)} ring="panel" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate type-body font-medium">
-                  {t("all.title")}</span>
-                <span className="block truncate type-meta text-muted">
-                  {t("all.mailboxes", { n: Object.keys(cfg.accounts).length })}
-                </span>
-              </span>
-              {scopeAll ? <Check size={16} aria-hidden className="text-accent" />
-                : <ChevronRight size={16} aria-hidden
-                  className="shrink-0 text-faint" />}
-            </button>
-          </div>
-        )}
         {Object.entries(cfg.accounts).map(([name, im]) => {
           const status = statusOf(im);
           const broken = status !== "ok";
-          const active = name === account && !scopeAll;
+          const active = name === account;
           const sum = summary?.[name];
           // Each bit stays whole on a wrapped line ("227.4 MB" never sits
           // alone), see `Meta`.

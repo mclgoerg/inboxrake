@@ -198,24 +198,17 @@ An Overview start page with cleanup suggestions, five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content, a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,
-Attachments, rules and a scheduler (start one from a ready-made recipe, or
-from a cleanup you keep doing by hand: "You keep doing this"),
+Attachments, rules and a scheduler (start one from a ready-made recipe),
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
-**Not now** (snooze a sender's unread mail or a single mail until a time you
-pick, or let a noisy sender deliver once a day / a week in one batch),
-trackers, a grade from A to F for every sender with the reasons behind it,
-subscriptions (what you still pay for, from receipt subjects, with
-reminders and an optional amount read from the latest receipt), "Waiting
-for a reply" (the mails you sent that nobody answered, with a reminder),
-"Your addresses" (which of your aliases leaked, retire one), space
+trackers, subscriptions (what you still pay for, from receipt subjects, with
+reminders and an optional amount read from the latest receipt), "Your
+addresses" (which of your aliases leaked, retire one), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
-an earlier point), multiple accounts that stay strictly separate (with an
-"All accounts" Overview, Senders, All mail and Search that read across them,
-and one confirm that acts on the ticked accounts, one step each) and a
-copy-to-another-account wizard for a provider switch,
+an earlier point), multiple strictly separate
+accounts with a copy-to-another-account wizard for a provider switch,
 system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant
 ask questions about the mailbox and propose rules for you to approve

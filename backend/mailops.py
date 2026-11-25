@@ -37,14 +37,11 @@ from . import auditlog
 from . import bodyindex
 from . import config as cfgmod
 from . import dupstore
-from . import habitlog
 from . import demo
-from . import grades
 from . import knownsenders
 from . import labelstore
 from . import pinstore
 from . import rhythm
-from . import snoozestore
 from . import aisortstore
 from . import knowledgestore
 from . import smartkinds
@@ -54,7 +51,6 @@ from . import trackers
 from . import undostore
 from . import unsubstore
 from . import verdictstore
-from . import waiting
 from . import webpush
 
 FETCH_CHUNK = 500
@@ -98,9 +94,6 @@ AUTOMATED_RE = smartkinds.AUTOMATED_RE
 log = logging.getLogger("inboxrake.mail")
 
 ACTIONS = ("trash", "archive", "move", "mark_read")
-# What the job queue may also run: snoozing (backend/snooze.py). Rules and
-# the MCP tools keep ACTIONS - they never snooze.
-JOB_ACTIONS = (*ACTIONS, "snooze")
 # Stable error codes of the pin feature: the UI maps them to translated
 # texts (frontend/src/api.ts ERROR_CODES) instead of showing raw English.
 NO_MESSAGE_ID = "no_message_id"      # set_pin: nothing stable to key a pin on
@@ -211,12 +204,11 @@ UNSUB_BAD_URL = "unsub_bad_url"
 UNSUB_NO_METHOD = "unsub_no_method"
 UNSUB_MAIL_FAILED = "unsub_mail_failed"  # the unsubscribe mail was not sent
 UNSUB_POOLED = "unsub_pooled"
-UNSUB_PROTECTED = "unsub_protected"      # skip_protected: the sender is protected
 UNSUB_UNKNOWN_GROUP = "unsub_unknown_group"
 UNSUB_FAILED = "unsub_failed"            # anything unexpected (see the log)
 UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
                UNSUB_TIMEOUT, UNSUB_BAD_URL, UNSUB_NO_METHOD,
-               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_PROTECTED, UNSUB_UNKNOWN_GROUP,
+               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_UNKNOWN_GROUP,
                UNSUB_FAILED)
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)
@@ -271,12 +263,6 @@ COPY_NO_JOB = "copy_no_job"              # nothing to pause / resume / cancel
 COPY_SAME_MAILBOX = "copy_same_mailbox"  # both accounts are one mailbox
 COPY_CANNOT_CONFIRM = "copy_cannot_confirm"    # could not tell they differ
 COPY_FOLDER_RESERVED = "copy_folder_reserved"  # folder=: Inbox / Trash / ...
-# Snooze (backend/snooze.py)
-SNOOZE_CANNOT_CREATE = "snooze_cannot_create"  # folder=: no Snoozed folder
-SNOOZE_BAD_TIME = "snooze_bad_time"      # the return time is past / absurd
-SNOOZE_PROTECTED = "snooze_protected"    # a protected sender: no batch
-SNOOZE_FULL = "snooze_full"              # the account holds the most it can
-SNOOZE_NO_FOLDER = "snooze_no_folder"    # the Snoozed folder cannot be found
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -286,8 +272,6 @@ FOLDER_ERROR_CODES = frozenset({
     COPY_NOT_SCANNED, COPY_FOLDER_NAME, COPY_CANNOT_CREATE,
     COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     COPY_SAME_MAILBOX, COPY_CANNOT_CONFIRM, COPY_FOLDER_RESERVED,
-    SNOOZE_CANNOT_CREATE, SNOOZE_BAD_TIME, SNOOZE_PROTECTED, SNOOZE_FULL,
-    SNOOZE_NO_FOLDER,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,
@@ -1170,13 +1154,11 @@ _ROLE_NAMES: dict[str, set[str]] = {
     "drafts": {"drafts", "draft", "entwürfe"},
     "archive": {"archive", "archiv"},
     "all": {"all mail", "alle nachrichten", "tous les messages"},
-    # the folder snoozed mail waits in (backend/snooze.py creates it)
-    "snoozed": {"snoozed"},
 }
 
 # Roles that never belong in cleanup scans: trash/junk hold deleted mail,
 # sent/drafts are the user's own, "all" would double-count everything.
-EXCLUDED_ROLES = ("trash", "junk", "sent", "drafts", "all", "snoozed")
+EXCLUDED_ROLES = ("trash", "junk", "sent", "drafts", "all")
 
 
 # Gmail's Starred / Important are saved searches shown as folders: every
@@ -1244,7 +1226,7 @@ def _role_overrides(acc) -> dict[str, str]:
     if not isinstance(ov, dict):
         return {}
     return {str(r): str(n) for r, n in ov.items()
-            if r in _ROLE_NAMES and isinstance(n, str)}
+            if r in _ROLE_FLAGS.values() and isinstance(n, str)}
 
 
 def resolve_roles(conn, acc=None, pairs=None) -> dict:
@@ -2744,24 +2726,9 @@ def _trash_size(acc) -> int | None:
     return sum(int(m.get("size") or 0) for m in index.values())
 
 
-def _attach_grades(senders: dict | None, acc) -> None:
-    """Adds `grade` (backend/grades.py) to each public Sender record, derived
-    from the record's own figures plus whether its newest mail offers
-    one-click unsubscribe (lock held)."""
-    if not senders:
-        return
-    one_click = {k for k, rec in acc.state["groups"]["sender"].items()
-                 if k in senders and rec["unsub"]
-                 and any(oc for _, oc in group_unsub_senders(rec, acc).values())}
-    for k, grade in grades.grade_all(senders, one_click).items():
-        senders[k]["grade"] = grade
-
-
-def public_state(acc=None, only: tuple[str, ...] | None = None) -> dict:
+def public_state(acc=None) -> dict:
     """One account's state for the API: group records without the internal
-    UID lists, plus each group's per-mail rating summary. `only`: just
-    these groupings (the lists across accounts read the Sender rows of every
-    account and need nothing else)."""
+    UID lists, plus each group's per-mail rating summary."""
     acc = acc or accounts.get()
     cfg = cfgmod.load_config()
     plist = cfgmod.normalize_protected(cfg.get("protected"))
@@ -2782,7 +2749,6 @@ def public_state(acc=None, only: tuple[str, ...] | None = None) -> dict:
         out = {k: v for k, v in acc.state.items() if k != "groups"}
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
-        out["snoozed"] = snoozestore.summary(acc.name)
         out["groups"] = {
             g: {k: {**{kk: vv for kk, vv in rec.items() if kk != "folders"},
                     "ratings": _rating_counts(rec, verdict_of, acc),
@@ -2809,9 +2775,7 @@ def public_state(acc=None, only: tuple[str, ...] | None = None) -> dict:
                     **({"purposes": purpose_summary(rec, acc)}
                        if rec.get("kind") == "company" else {})}
                 for k, rec in recs.items()}
-            for g, recs in acc.state["groups"].items()
-            if only is None or g in only}
-        _attach_grades(out["groups"].get("sender"), acc)
+            for g, recs in acc.state["groups"].items()}
         return out
 
 
@@ -2825,7 +2789,6 @@ def public_status(acc=None) -> dict:
             {k: v for k, v in acc.state.items() if k != "groups"}))
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
-        out["snoozed"] = snoozestore.summary(acc.name)
     flush_undo(acc)          # a safety net: whatever was left unwritten
     return out
 
@@ -2903,9 +2866,6 @@ def run_scan(acc=None, push: bool = False) -> None:
             if new_replied - replied:
                 replied |= new_replied
                 save_replied(acc)
-            # the same connection, headers only: the sent index behind
-            # "Waiting for a reply" (a no-op with the switch off)
-            waiting.update_sent_index(conn, roles, acc, progress_cb)
             knownsenders.update_scan(acc.name, {m["addr"] for m in messages})
             # Re-read: the threshold/protected list may have changed during
             # a long scan.
@@ -2971,10 +2931,7 @@ def run_scan(acc=None, push: bool = False) -> None:
                                  len(groups["sender"]), acc.name, arrived)
             addressstore.set_picked_main(acc.name, rcpt.main)
             save_snapshot(acc)
-            waiting.after_scan(acc)          # answers clear their reminders
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
-            from . import snooze                 # (it imports this module)
-            snooze.after_scan(acc)               # batches, returns; never raises
             outcome = True
         finally:
             try:
@@ -3138,9 +3095,6 @@ def _apply_removal(moved_uids: dict[str, set[int]], acc) -> dict:
 
 def _resolve_dest(conn, action: str, dest: str, acc=None) -> str:
     """Raw name of the folder an action moves mail into (via folder role)."""
-    if action == "snooze":
-        from . import snooze      # (snooze.py imports this module)
-        return snooze.folder(conn, acc, create=True)
     if action in ("trash", "archive"):
         name = folder_roles(conn, acc).get(action)
         if not name:
@@ -3388,17 +3342,6 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
     return entry["id"]
 
 
-def _told_moved(hook, meta: dict, copies: list[dict]) -> None:
-    """Tell a job's `on_moved` hook what moved; a failing hook is logged, it
-    never fails the job."""
-    if hook is None:
-        return
-    try:
-        hook(meta, copies)
-    except Exception:
-        log.exception("bookkeeping of the moved mails failed")
-
-
 def _delete_worker(acc) -> None:
     persisted = False     # the snapshot already reflects every finished job
     by_user = cancelled_any = False      # for the Web Push at the very end
@@ -3449,8 +3392,7 @@ def _delete_worker(acc) -> None:
             # worded with its name)
             acc.state["delete"]["actor"] = actor
             acc.state["delete"]["action"] = action
-        by_user = by_user or not str(actor).startswith(
-            ("rule:", "mcp:", "snooze"))
+        by_user = by_user or not str(actor).startswith(("rule:", "mcp:"))
 
         def progress_cb(moved, total):
             with acc.lock:
@@ -3463,17 +3405,6 @@ def _delete_worker(acc) -> None:
         moved_uids: dict[str, set[int]] = {}
         copies: list[dict] = []
         audit_id = auditlog.new_id()
-        # what the habit miner needs of a manual step, read before the mails
-        # leave the index (see habitlog.py)
-        habit_src: dict[tuple[str, int], tuple[str, int, bool]] = {}
-        if habitlog.is_manual(actor) and action in habitlog.HABIT_ACTIONS:
-            with acc.lock:
-                for folder, uids in by_folder.items():
-                    for uid in uids:
-                        m = acc.index.get(ikey(folder, uid))
-                        if m:
-                            habit_src[(folder, uid)] = (
-                                m["addr"], m["ts"], m["seen"])
         done = 0
         t0 = time.time()
         log.info("action %r started: %d mails (%s)", action,
@@ -3486,9 +3417,7 @@ def _delete_worker(acc) -> None:
             meta = _apply_removal(moved_uids, acc)
             undo_id[0] = _record_undo(
                 label, meta, action, resolved[0], acc, copies=copies,
-                audit_id=audit_id, token=token, actor=actor,
-                quiet=bool(job.get("quiet"))) or undo_id[0]
-            _told_moved(job.get("on_moved"), meta, copies)
+                audit_id=audit_id, token=token, actor=actor) or undo_id[0]
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
@@ -3535,18 +3464,12 @@ def _delete_worker(acc) -> None:
         flush_undo(acc)
         if action != "mark_read" and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
-        habit = {}
-        if habit_src and not error and not cancelled:
-            touched = (by_folder if action == "mark_read" else moved_uids)
-            habit = habitlog.step_facts(
-                [habit_src[(f, u)] for f, uids in touched.items() for u in uids
-                 if (f, u) in habit_src], action, resolved[0], time.time())
         auditlog.record(
             action, actor=actor, account=acc.name,
             count=done if action == "mark_read" else freed[1],
             size=0 if action == "mark_read" else freed[0], label=label,
             outcome="error" if error else ("cancelled" if cancelled else "ok"),
-            error=error, entry_id=audit_id, habit=habit)
+            error=error, entry_id=audit_id)
         if job.get("completion") is not None:
             job["completion"].update(moved=done if action == "mark_read" else freed[1],
                                      error=error or ("action_cancelled" if cancelled else ""),
@@ -3556,14 +3479,10 @@ def _delete_worker(acc) -> None:
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
-                  token: str = "", on_moved=None, quiet: bool = False) -> None:
+                  token: str = "") -> None:
     """Enqueue a background mail action (acc.lock held by caller). `token`
-    (an AI assistant's token id) files the undo step in the assistant list.
-    `on_moved(meta, copies)` is told what the job moved (`meta`: {folder:
-    {uid: index record}}, `copies`: where each mail landed) - snoozing
-    remembers its mails there; `quiet` keeps the UI's generic "moved N" toast
-    for the job's undo step silent."""
-    if action not in JOB_ACTIONS:
+    (an AI assistant's token id) files the undo step in the assistant list."""
+    if action not in ACTIONS:
         raise ValueError("bad action")
     if action == "move" and not dest:
         raise ValueError("move needs a target folder")
@@ -3586,8 +3505,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         return
     acc.delete_pending.append({"by_folder": by_folder, "label": label,
                             "action": action, "dest": dest, "actor": actor,
-                            "token": token, "completion": completion,
-                            "on_moved": on_moved, "quiet": quiet})
+                            "token": token, "completion": completion})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
         # at start, so a stale "done" tick of an earlier job is not mistaken
@@ -6796,7 +6714,7 @@ def search_body(query: str, limit: int = 500, acc=None,
 
 MAIL_SORTS = ("date", "size", "sender")
 _MQ_RE = re.compile(r"^(age|size|att|from|domain|folder|is|has|"
-                    r"tag|ai|unread|eng|grade|in):(.*)$")
+                    r"tag|ai|unread|eng|in):(.*)$")
 _MQ_IN_RE = re.compile(r"^(\d+)(min|h|d)$")
 _MQ_IN_UNIT = {"min": 60, "h": 3600, "d": 86400}
 _MQ_AGE_RE = re.compile(r"^>?(\d+)(d|m|y)$")
@@ -6812,7 +6730,7 @@ def parse_mail_query(q: str) -> dict:
     analysis has covered), `from:addr` (exact), `domain:example.com`,
     `folder:text`, `is:unread|read`, `has:pinned`, `in:7d|12h|90min` (arrived
     within that window - the same term the group filter takes).
-    Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`, `grade:`,
+    Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`,
     `is:unsub|protected|replied|new|...`, `has:` other than pinned) have no
     per-mail meaning here: they are NOT applied and are reported back in
     `ignored` instead of silently matching nothing. (This is a separate,
@@ -6846,24 +6764,38 @@ def parse_mail_query(q: str) -> dict:
             out["pinned"] = True
         elif kind == "in" and (a := _MQ_IN_RE.match(val)):
             out["in_seconds"] = int(a.group(1)) * _MQ_IN_UNIT[a.group(2)]
-        elif kind in ("tag", "ai", "unread", "eng", "grade", "is", "has"):
+        elif kind in ("tag", "ai", "unread", "eng", "is", "has"):
             out["ignored"].append(tok)
         else:                       # malformed age:/size:/att: value
             out["text"].append(tok)
     return out
 
 
-def mail_hits(f: dict, acc, sort: str, direction: str,
-              slot: dict | None = None) -> list[dict]:
-    """Every scanned mail of the account that passes the parsed per-mail
-    filter `f` (parse_mail_query), sorted: the index records themselves, not
-    copies. The flat list pages through it; the lists across accounts merge
-    several of these."""
+def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
+               direction: str | None = None, q: str = "", acc=None,
+               slot: dict | None = None) -> dict:
+    """One page of the scanned index as a flat, sorted, filtered list - no
+    IMAP traffic. Only (folder, uid) handles the index already exposes;
+    `total` is the filtered count for "x of y"; `ignored` lists group-level
+    qualifiers from `q` that do not apply per mail (see parse_mail_query).
+    `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
+    a view parameter next to `q`, not a query qualifier."""
+    acc = acc or accounts.get()
+    if sort not in MAIL_SORTS:
+        raise ValueError(f"bad sort {sort!r}")
+    if direction is None:
+        direction = "asc" if sort == "sender" else "desc"
+    if direction not in ("asc", "desc"):
+        raise ValueError(f"bad direction {direction!r}")
+    offset, limit = max(0, offset), max(1, min(limit, 1000))
+    f = parse_mail_query(q)
     cutoff = (time.time() - f["age_days"] * 86400
               if f["age_days"] is not None else None)
     since = (time.time() - f["in_seconds"]
              if f["in_seconds"] is not None else None)
     pinned = pinstore.load_account(acc.name)
+    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
     with acc.lock:
         in_slot = rhythm.slot_matcher(
             slot, acc.state["groups"].get("sender") or {}, time.time()) \
@@ -6900,52 +6832,13 @@ def mail_hits(f: dict, acc, sort: str, direction: str,
             hits.append(m)
         # (folder, uid) as the final tiebreak keeps paging stable.
         hits.sort(key=lambda m: (m["folder"], m["uid"]))
-        hits.sort(key=MAIL_SORT_KEYS[sort], reverse=direction == "desc")
-    return hits
-
-
-MAIL_SORT_KEYS = {"date": lambda m: m["ts"], "size": lambda m: m["size"],
-                  "sender": lambda m: (m["addr"], m["name"].lower())}
-
-
-def mail_rows(acc, hits: list[dict]) -> list[dict]:
-    """The API rows of some of `mail_hits`' mails (verdict and pin added)."""
-    pinned = pinstore.load_account(acc.name)
-    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
-        cfgmod.load_config().get("protected")))
-    with acc.lock:
-        return [{**_search_row(m), "ai": verdict_of(m),
-                 "pinned": m["msgid"] in pinned} for m in hits]
-
-
-def mail_sort_args(sort: str, direction: str | None) -> tuple[str, str]:
-    """Validated (sort, direction) of the flat list; the direction defaults
-    to the sort's natural one."""
-    if sort not in MAIL_SORTS:
-        raise ValueError(f"bad sort {sort!r}")
-    if direction is None:
-        direction = "asc" if sort == "sender" else "desc"
-    if direction not in ("asc", "desc"):
-        raise ValueError(f"bad direction {direction!r}")
-    return sort, direction
-
-
-def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
-               direction: str | None = None, q: str = "", acc=None,
-               slot: dict | None = None) -> dict:
-    """One page of the scanned index as a flat, sorted, filtered list - no
-    IMAP traffic. Only (folder, uid) handles the index already exposes;
-    `total` is the filtered count for "x of y"; `ignored` lists group-level
-    qualifiers from `q` that do not apply per mail (see parse_mail_query).
-    `slot` (rhythm.clean_slot) narrows the list to one arrival-rhythm slot -
-    a view parameter next to `q`, not a query qualifier."""
-    acc = acc or accounts.get()
-    sort, direction = mail_sort_args(sort, direction)
-    offset, limit = max(0, offset), max(1, min(limit, 1000))
-    f = parse_mail_query(q)
-    hits = mail_hits(f, acc, sort, direction, slot)
-    return {"total": len(hits), "offset": offset,
-            "mails": mail_rows(acc, hits[offset:offset + limit]),
+        keyfn = {"date": lambda m: m["ts"], "size": lambda m: m["size"],
+                 "sender": lambda m: (m["addr"], m["name"].lower())}[sort]
+        hits.sort(key=keyfn, reverse=direction == "desc")
+        page = hits[offset:offset + limit]
+        mails = [{**_search_row(m), "ai": verdict_of(m),
+                  "pinned": m["msgid"] in pinned} for m in page]
+    return {"total": len(hits), "offset": offset, "mails": mails,
             "ignored": f["ignored"]}
 
 

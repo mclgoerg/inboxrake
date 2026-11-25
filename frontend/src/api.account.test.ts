@@ -39,36 +39,3 @@ test("an account name is URL-encoded", async () => {
   await api.setFolderRole("trash", "Trash", "me & you");
   expect(urls()).toEqual(["/api/folders/role?account=me%20%26%20you"]);
 });
-
-/* All accounts: a step of the multi-account confirm pins the calls it starts to
- * one account, and the active account is back right after. */
-
-test("inAccount pins the calls it starts to that account and restores the " +
-  "active one", async () => {
-  const { inAccount } = await import("./api");
-  await Promise.all([
-    inAccount("one", () => api.unsubscribe("sender", "a@x.example")),
-    inAccount("two", () => api.deleteGroups("sender", ["a@x.example"])),
-  ]);
-  await api.unsubscribePreview("sender", ["a@x.example"], true);
-  expect(urls()).toEqual(["/api/unsubscribe?account=one",
-    "/api/delete?account=two", "/api/unsubscribe/preview?account=active"]);
-});
-
-test("inAccount restores the active account when the call throws", () => {
-  return import("./api").then(({ inAccount }) => {
-    expect(() => inAccount("one", () => { throw new Error("x"); }))
-      .toThrow("x");
-    return api.state();
-  }).then(() => expect(urls()).toEqual(["/api/state?account=active"]));
-});
-
-test("the all-accounts numbers take the remembered visits as JSON", async () => {
-  await api.accountsOverview();
-  await api.accountsOverview({ one: 1700000000, "two & three": 5 });
-  expect(urls()).toEqual([
-    "/api/accounts/overview?account=active",
-    "/api/accounts/overview?since="
-      + encodeURIComponent('{"one":1700000000,"two & three":5}')
-      + "&account=active"]);
-});

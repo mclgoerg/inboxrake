@@ -2,9 +2,8 @@
 
 Every connected account gets its own AccountState: scan state, message
 index, folder UIDVALIDITYs/roles, replied cache, cancel flags and delete
-queue - nothing is ever shared across accounts or acted on in one call
-(`allaccounts.py` only READS them side by side, for the All accounts
-Overview). Instances are created lazily from the configured account names.
+queue - nothing is ever shared or aggregated across accounts. Instances
+are created lazily from the configured account names.
 """
 
 from __future__ import annotations
@@ -113,9 +112,6 @@ class AccountState:
         # Held for the whole of one permanent deletion (Empty Trash, purge of
         # Trash / Junk mails): two of them never run side by side.
         self.purge_lock = threading.Lock()
-        # Held (non-blocking) for the whole of one return of snoozed mail
-        # (backend/snooze.py): two returns never overlap.
-        self.release_lock = threading.Lock()
         # UIDs of the delete job currently being processed (guarded by
         # `lock`) - new jobs dedup against these too, not just the queue.
         self.inflight: dict[str, set[int]] = {}

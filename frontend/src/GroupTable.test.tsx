@@ -5,7 +5,6 @@ import { GroupTable, localizedSub } from "./components/GroupTable";
 import { EngagementMeter, PinBadge, TrackerBadge } from "./components/ui";
 import { setLang } from "./i18n";
 import { popupPick } from "./toolTestUtils";
-import { gradedGroup } from "./gradeTestUtil";
 import type { Group } from "./types";
 
 const mk = (i: number): Group => ({
@@ -824,54 +823,3 @@ describe("tracker badge", () => {
   });
 });
 
-
-describe("GroupTable grade column", () => {
-  beforeEach(() => setLang("en"));
-  const graded = ["A", "B", "D", "F"].map((l, i) =>
-    gradedGroup(`g${i}@x.example`, `Graded ${l}`, l as "A"));
-
-  it("Sender rows show a sortable Grade column and a badge per row", () => {
-    const onSort = vi.fn();
-    const { container } = renderTable({ groups: graded, grouping: "sender",
-      onSort });
-    const gradeBtn = [...container.querySelectorAll("thead button")]
-      .find((b) => b.textContent === "Grade")!;
-    fireEvent.click(gradeBtn);
-    expect(onSort).toHaveBeenCalledWith("grade");
-    const table = container.querySelector("table")!;
-    expect([...table.querySelectorAll("tbody tr [role=img]")]
-      .map((b) => b.getAttribute("aria-label")))
-      .toEqual(["Grade A", "Grade B", "Grade D", "Grade F"]);
-    // the phone cards carry the badge too
-    expect(container.querySelectorAll(".md\\:hidden [role=img][aria-label^='Grade ']"))
-      .toHaveLength(4);
-  });
-
-  it("the sorted column is announced", () => {
-    const { container } = renderTable({ groups: graded, grouping: "sender",
-      sortK: "grade", sortDir: -1 });
-    const th = [...container.querySelectorAll("thead th")]
-      .find((x) => x.textContent === "Grade")!;
-    expect(th.getAttribute("aria-sort")).toBe("descending");
-  });
-
-  it("other groupings and rows without a grade have none", () => {
-    const { container, rerender } = renderTable({ groups: graded,
-      grouping: "subject" });
-    expect(container.querySelector("[aria-label^='Grade ']")).toBeNull();
-    expect([...container.querySelectorAll("thead th")]
-      .some((x) => x.textContent === "Grade")).toBe(false);
-    rerender(<GroupTable groups={groups.slice(0, 3)} selected={new Set()}
-      focusedKey={null} onToggle={noop} onToggleAll={noop} onOpen={noop}
-      sortK="count" sortDir={-1} onSort={noop} groupLabel="Sender"
-      grouping="sender" resetSignal="a" />);
-    expect(container.querySelector("[aria-label^='Grade ']")).toBeNull();
-  });
-
-  it("the select-all banner spans the grade column too", () => {
-    const { container } = renderTable({ groups: graded, grouping: "sender",
-      banner: <div>All 4 matches</div> });
-    const cell = container.querySelector("tbody tr td[colspan]")!;
-    expect(cell.getAttribute("colspan")).toBe("7");
-  });
-});

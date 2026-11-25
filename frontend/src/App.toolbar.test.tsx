@@ -155,14 +155,14 @@ test("Clean up and Insights are tab pages with their tools in order",
   async () => {
     await open();
     const strip = (els: HTMLElement[]) => els.map((i) => i.textContent!
-      .replace(/^[A-Z]?(?=Triage)/, "").replace(/(Triage|Rules|Duplicates|Attachments|Junk|Trash|Snoozed|Statistics|Space map|Your year in mail|Trackers|Recent activity|AI review).*/, "$1"));
+      .replace(/^[A-Z]?(?=Triage)/, "").replace(/(Triage|Rules|Duplicates|Attachments|Junk|Trash|Statistics|Space map|Your year in mail|Trackers|Recent activity|AI review).*/, "$1"));
     openTab("Clean up");
     // Triage is the feature card above the tile list
     expect(strip(screen.getAllByRole("button", {
-      name: /^(Triage|Duplicates|Attachments|Rules|Junk|Trash|Snoozed|AI review)/ }))).toEqual(["Triage", "Duplicates",
-      "Attachments", "AI review", "Junk", "Rules", "Trash", "Snoozed"]);
+      name: /^(Triage|Duplicates|Attachments|Rules|Junk|Trash|AI review)/ }))).toEqual(["Triage", "Duplicates",
+      "Attachments", "AI review", "Junk", "Rules", "Trash"]);
     expect(within(screen.getByRole("list", { name: "Clean up" }))
-      .getAllByRole("button")).toHaveLength(7);
+      .getAllByRole("button")).toHaveLength(6);
     openTab("Insights");
     expect(strip(screen.getAllByRole("button", {
       name: /^(Statistics|Space map|Your year in mail|Trackers|Recent activity)/ }))).toEqual(["Statistics", "Space map",

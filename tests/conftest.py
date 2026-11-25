@@ -34,12 +34,10 @@ from backend import mailops                   # noqa: E402
 from backend import pinstore                  # noqa: E402
 from backend import presets as presetsmod     # noqa: E402
 from backend import rules as rulesmod         # noqa: E402
-from backend import snoozestore               # noqa: E402
 from backend import stats as statsmod         # noqa: E402
 from backend import substore                 # noqa: E402
 from backend import tenants as tenantsmod     # noqa: E402
 from backend import unsubstore                # noqa: E402
-from backend import waitstore                 # noqa: E402
 from backend import verdictstore              # noqa: E402
 from backend import webpush                   # noqa: E402
 from backend import aisortstore               # noqa: E402
@@ -89,10 +87,6 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(dupstore, "DUPS_PATH",
                         tmp_path / "duplicates_kept.json")
     monkeypatch.setattr(substore, "SUBS_PATH", tmp_path / "subscriptions.json")
-    monkeypatch.setattr(waitstore, "WAITING_PATH", tmp_path / "waiting.json")
-    monkeypatch.setattr(waitstore, "SENT_INDEX_PATH",
-                        tmp_path / "sent_index.json")
-    monkeypatch.setattr(snoozestore, "SNOOZE_PATH", tmp_path / "snoozed.json")
     monkeypatch.setattr(accountcopy, "ACCOUNT_COPY_PATH",
                         tmp_path / "account_copy.json")
     monkeypatch.setattr(accountcopy, "LEDGER_PATH",
@@ -117,9 +111,6 @@ def isolate(tmp_path, monkeypatch):
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
-    waitstore._cache.clear()
-    waitstore._index_cache.clear()
-    snoozestore._cache.clear()
     mailops._SENT_CACHE.clear()
     accountsmod.reset()
     yield
@@ -143,7 +134,6 @@ def isolate(tmp_path, monkeypatch):
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
-    snoozestore._cache.clear()
     accountsmod.reset()
 
 
@@ -477,14 +467,6 @@ class FakeIMAP:
                 hits = msgs
             elif args[-1] == "DELETED":
                 hits = [m for m in msgs if m.get("deleted")]
-            elif "SINCE" in args and "HEADER" not in args:
-                # `SINCE d-Mon-yyyy`: mails whose INTERNALDATE falls on or
-                # after that (UTC) day, like a server's date-only search
-                day = datetime.datetime.strptime(
-                    args[args.index("SINCE") + 1], "%d-%b-%Y").replace(
-                    tzinfo=datetime.timezone.utc)
-                hits = [m for m in msgs if datetime.datetime.strptime(
-                    m["date"], "%d-%b-%Y %H:%M:%S %z") >= day]
             elif "UID" in args and "HEADER" not in args:
                 # `UID n:*` answers the newest mail even below n, as a real
                 # server does (a range "to *" always holds the last one)

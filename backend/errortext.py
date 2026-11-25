@@ -47,16 +47,6 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "We couldn't confirm that these two accounts are different mailboxes (the server did not answer the check), so nothing was copied. Try again.",
     'copy_folder_reserved':
         '“{folder}” is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.',
-    'snooze_cannot_create':
-        'Could not create the “{folder}” folder on your mail server, so nothing was snoozed.',
-    'snooze_bad_time':
-        'Pick a time in the future (within the next two years).',
-    'snooze_protected':
-        'A protected sender’s mail is never held back - unprotect the sender first.',
-    'snooze_full':
-        'This account already holds as many snoozed mails as Not now can keep - bring some back first. Nothing was snoozed.',
-    'snooze_no_folder':
-        'The “Snoozed” folder cannot be found on your mail server, so the snoozed mails cannot come back yet. Nothing was lost - the folder may be hidden or renamed.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':
@@ -117,8 +107,6 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "The unsubscribe mail could not be sent - check the account's mail-sending (SMTP) settings.",
     'unsub_pooled':
         "A combined row has no single sender to unsubscribe from - open one of its senders.",
-    'unsub_protected':
-        "This sender is protected, so it was not unsubscribed.",
     'unsub_unknown_group':
         "That group no longer exists - rescan and try again.",
     'unsub_failed':

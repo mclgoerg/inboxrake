@@ -106,44 +106,6 @@ export interface StillMailing {
   addrs: string[];      // those senders, capped
 }
 
-/** The letters of a sender grade, best first. */
-export type GradeLetter = "A" | "B" | "C" | "D" | "F";
-export type CheckVerdict = "ok" | "bad" | "neutral";
-export type GradePattern = "loud" | "quiet" | "tracks" | "mixed";
-
-/** One of the six checks behind a grade (backend/grades.py). `v` is the
- *  verdict; the other fields are the figures the UI words, present only
- *  where the data was there. */
-export interface GradeCheck {
-  id: "open" | "often" | "tracking" | "unsub" | "stops" | "size";
-  v: CheckVerdict;
-  kind?: string;       // tracking: pixel | links | both | none | unchecked;
-                       // unsub: post | link | none; stops: stopped | still |
-                       // open | never
-  read?: number;       // open: mails read ...
-  total?: number;      // ... of this many
-  pct?: number;        // open: read share; tracking: mails with any flag
-  months?: number;     // open: the sender's active period
-  per_week?: number;   // often
-  rank?: number;       // often: % of senders that mail less often
-  checked?: number;    // tracking: mails the body index checked
-  pixel_pct?: number;
-  click_pct?: number;
-  n?: number;          // stops (still): mails after the unsubscribe
-  avg?: number;        // size: average bytes per mail
-  att?: number;        // size: attachment bytes of the sender
-}
-
-/** A Sender row's grade, derived by the backend on every state build. */
-export interface GroupGrade {
-  letter: GradeLetter;
-  points: number;
-  pattern: GradePattern;
-  checks: GradeCheck[];
-  /** The "you wrote to them" floor lifted the letter to C. */
-  floor?: boolean;
-}
-
 export interface Group {
   key: string;
   label: string;
@@ -171,7 +133,6 @@ export interface Group {
   still_mailing?: StillMailing | null;
   pinned: number;   // mails of this group protected from bulk actions
   engagement: number;   // 0-100, see lib.ts engagementTier()
-  grade?: GroupGrade;   // Sender rows only
   trackers?: GroupTrackers;   // only when the body index checked its mails
   // Smart grouping only. The backend ships fields, the UI words them
   // (lib.ts smartView): `sub` is empty and `label` is an English fallback
@@ -194,9 +155,6 @@ export interface GroupTrackers {
   checked: number;
   pixel: number;
   click: number;
-  /** Checked mails with a pixel OR a click-tracking link (absent in a
-   *  summary from before it existed). */
-  any?: number;
   hosts: string[];
 }
 
@@ -439,53 +397,6 @@ export interface AuditEntry {
   kept_safe?: number;
   /** On a Time machine restore: the same for every step it undid. */
   undoes_many?: { id: string; count: number }[];
-  /** A manual step: the sender groups it covered (what "You keep doing this"
-   *  reads); newer entries only. */
-  keys?: string[];
-}
-
-/** One manual step a suggestion is based on (the "Why these?" evidence). */
-export interface HabitStep {
-  id: string;
-  ts: number;
-  /** Mails the step covered for this sender. */
-  n: number;
-  unread: number;
-  /** Age of the youngest mail it moved (days); null = not known. */
-  youngest_days: number | null;
-}
-
-/** "You keep doing this": the same cleanup done by hand again and again, as
- *  the ordinary rule it would become (`rule`; the client adds its name). */
-export interface Habit {
-  id: string;
-  key: string;
-  label: string;
-  action: "trash" | "archive" | "move" | "mark_read";
-  dest: string;
-  dest_name: string;
-  times: number;
-  days: number;
-  since: number;
-  last: number;
-  steps: HabitStep[];
-  min_n: number;
-  max_n: number;
-  always_unread: boolean;
-  older_than_days: number | null;
-  schedule: "daily" | "weekly";
-  /** What the rule would act on in the current scan; null = no scan. */
-  catch: number | null;
-  rule: { grouping: Grouping; query: string; action: string; dest: string;
-    schedule: "daily" | "weekly"; older_than_days: number | null };
-}
-
-export interface HabitsResp {
-  /** False: switched off in Settings (nothing is mined). */
-  enabled: boolean;
-  suggestions: Habit[];
-  /** Senders the user said "Not this one" to. */
-  hidden: number;
 }
 
 /** Who did it, for the Activity filter. */
@@ -582,57 +493,6 @@ export interface Rule {
 /** Slim live-update payload (SSE): AppState without `groups`. */
 export type StatusMsg = Omit<AppState, "groups">;
 
-/** What waits in the account's Snoozed folder, as the state carries it:
- *  mails snoozed, the soonest return per sender address, and the senders that
- *  deliver in batches (backend snoozestore.summary). */
-export interface SnoozeSummary {
-  count: number;
-  until: Record<string, number>;
-  batches: Record<string, BatchSlot>;
-}
-export type BatchSlot = "weekly" | "daily";
-
-/** One sender's batch on the Snoozed page: what it holds so far and when
- *  the next delivery is (epoch s). */
-export interface SnoozedBatch {
-  key: string;
-  label: string;
-  slot: BatchSlot;
-  tz: string;
-  held: number;
-  next: number;
-  msgids: string[];
-}
-/** One row of snoozed mail: a single mail (its subject) or one sender's
- *  mails that come back together. */
-export interface SnoozedRow {
-  kind: "mail" | "sender";
-  addr: string;
-  label: string;
-  count: number;
-  until: number;
-  subject: string;
-  msgids: string[];
-}
-export interface SnoozedResp {
-  count: number;
-  batches: SnoozedBatch[];
-  rows: SnoozedRow[];
-  /** The server could not be asked: this is what Inboxrake remembers. */
-  stale: boolean;
-  no_folder?: boolean;          // stale because the Snoozed folder is missing
-  now: number;
-}
-export interface SnoozeResult {
-  ok: boolean;
-  queued: number;
-  until: number;
-  skipped_pinned: number;
-  skipped_protected: number;
-  skipped_no_id: number;
-  skipped_duplicate?: number;   // a Message-ID already snoozed or twice in the pick
-}
-
 export interface AppState {
   account: string;
   status: "idle" | "scanning" | "done" | "error";
@@ -651,8 +511,6 @@ export interface AppState {
    *  listing is older than the folder's count). */
   trash_size?: number | null;
   junk_count?: number | null;
-  /** Snoozed mail and batches (absent on an older server). */
-  snoozed?: SnoozeSummary;
   notice: { key: string; params: Record<string, string | number> } | null;
   undo: UndoEntry[];
   /** AI assistants' own undo list (never mixed into `undo`). */
@@ -733,9 +591,6 @@ export interface Mail {
   pinned?: boolean;   // absent in search/attachment lists
   msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
-  /** The account the mail belongs to - only in the lists across accounts
-   *  (All accounts: All mail, Search); a single account's lists leave it out. */
-  account?: string;
 }
 
 export interface MailsResp {
@@ -980,8 +835,6 @@ export interface TrackerReport {
 export interface SearchNote {
   key: string;
   params: Record<string, string | number>;
-  /** Search across accounts: the account the note is about. */
-  account?: string;
 }
 
 export interface SearchResp {
@@ -1118,8 +971,6 @@ export interface Config {
   /** Keep-safe switches (per class, plus "Check rule runs too"). Absent from
    *  older backends. */
   keep_safe?: KeepSafeSettings;
-  /** "Suggest rules from what I do" (absent from older backends). */
-  habits?: { suggest: boolean };
   ai: {
     provider: "anthropic" | "foundry" | "openai" | "ollama";
     model: string;
@@ -1278,71 +1129,6 @@ export interface SubReminder {
   amount: number | null; currency: string;
 }
 
-/** GET /api/waiting (backend/waiting.py): the mails you sent that nobody
- *  answered, matched from the headers of your Sent folder. */
-export interface WaitingItem {
-  /** the sent mail's Message-ID (what every decision is keyed by) */
-  id: string;
-  uid: number;
-  state: "open" | "answered" | "needed";
-  person: { addr: string; name: string };
-  subject: string;
-  /** epoch s you sent it, whole seconds / days open */
-  ts: number;
-  age: number;
-  days: number;
-  overdue: boolean;
-  /** how many days this person usually takes (null = not known: fewer than
-   *  two earlier conversations) and from how many conversations */
-  usual_days: number | null;
-  usual_n: number;
-  answered_ts: number | null;
-  answered_days: number | null;
-  /** people the mail went to (lists and no-reply addresses not counted) */
-  recipients: number;
-  reminder: { at: number; fired: number } | null;
-}
-export interface WaitingSummary {
-  overdue: number;
-  /** how many different people those are */
-  people_n: number;
-  /** up to three names, most overdue first, and how many more there are */
-  people: string[];
-  more: number;
-  oldest_days: number;
-}
-export interface WaitingResp {
-  tracking: boolean;
-  days: number;
-  scanned: boolean;
-  counts: { open: number; answered: number; needed: number };
-  kpis: { overdue: number; recent: number; share: number | null;
-    share_of: number };
-  summary: WaitingSummary;
-  items: WaitingItem[];
-}
-export interface WaitingEvent {
-  ts: number;
-  kind: "in" | "out";
-  who: string;
-  subject: string;
-  /** a mail of yours: when they answered it (before your next one) */
-  answered_ts?: number | null;
-}
-export interface WaitingDetail {
-  id: string;
-  timeline: WaitingEvent[];
-  /** their newsletters since (never an answer) */
-  newsletters: number;
-  /** your sent mail, and the latest received mail of the conversation (null
-   *  when you started it) */
-  sent: { folder: string; uid: number };
-  thread: { folder: string; uid: number; ts: number; subject: string;
-    addr: string } | null;
-}
-export interface WaitingReminder { id: string; ts: number; name: string;
-  days: number }
-
 /** GET /api/overview: counts behind the Overview, one account. */
 export interface OverviewResp {
   now: number;
@@ -1392,102 +1178,6 @@ export interface AccountSummary {
   scanned_ts: number | null;
   mails: number;
   size: number;
-}
-
-/** One mailbox's card on the All accounts Overview
- *  (`GET /api/accounts/overview`). */
-export interface AllAccountCard {
-  name: string;
-  /** The mailbox's address. */
-  user: string;
-  /** The scan state: idle / scanning / done / error. */
-  status: string;
-  progress: string;
-  /** The last good scan (kept while one runs or after a failed one). */
-  scanned_ts: number | null;
-  failed: boolean;
-  mails: number;
-  size: number;
-  senders: number;
-  junk: number | null;
-  trash: number | null;
-  /** Mails since the remembered visit (`new_basis` "visit"), else the last
-   *  week ("week"). */
-  new: number;
-  new_basis: "visit" | "week";
-  /** The account's `groups_rev`: it moves when a scan finished or a move
-   *  patched the index (the lists across accounts read again then). */
-  rev: number;
-  /** A move / unsubscribe job is still running there. */
-  busy: boolean;
-  /** The last move / unsubscribe job that ended with an error (`id` = the
-   *  job's number, so it is said once); null / absent when none did. */
-  job_failed?: { id: string; error: string } | null;
-}
-
-/** One account's side of a sender that writes to several accounts. */
-export interface SameSenderAccount {
-  account: string;
-  /** The address that stands for the match in that account (its Sender
-   *  group key there). */
-  addr: string;
-  mails: number;
-  size: number;
-  /** It carries a List-Unsubscribe header. */
-  unsub: boolean;
-  /** Its recorded unsubscribe: done / needs a page / failed, null = none. */
-  state: "done" | "link" | "failed" | null;
-}
-
-export interface SameSenderRow {
-  key: string;
-  name: string;
-  match: "address" | "domain";
-  accounts: SameSenderAccount[];
-  mails: number;
-  size: number;
-  /** Percent of these mails the user opened. */
-  opened: number;
-}
-
-/** One account's part of a Sender row across accounts
- *  (`GET /api/accounts/senders`). */
-export interface AcrossPart {
-  account: string;
-  count: number;
-  size: number;
-  unread: number;
-  /** Pinned mails (left alone by every move). */
-  pinned: number;
-  first: string;
-  last: string;
-  protected: boolean;
-  /** The mails carry a List-Unsubscribe header. */
-  unsub: boolean;
-  unsubscribed: "done" | "link" | "failed" | "pending" | null;
-  /** The sender's grade in THIS account (grades are per account). */
-  grade: GradeLetter | null;
-  verdict: Verdict | null;
-  /** Mails that arrived after the unsubscribe (Still mailing). */
-  still: number;
-}
-
-/** A Sender row across accounts: the same address in several accounts is
- *  one row (counts summed) with one part per account. `grade` is left off the
- *  row - each part has its own. */
-export type AcrossGroup = Group & { accounts: AcrossPart[] };
-
-export interface AllSendersResp {
-  accounts: { name: string; rev: number; status: string;
-    scanned_ts: number | null }[];
-  senders: AcrossGroup[];
-}
-
-export interface AllAccountsResp {
-  now: number;
-  accounts: AllAccountCard[];
-  totals: { mails: number; size: number; senders: number };
-  same_sender: SameSenderRow[];
 }
 
 /** The admin's cap on AI assistants (the `assistants.access` server setting). */

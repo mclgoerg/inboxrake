@@ -6,10 +6,8 @@ import { categoryHues, categoryName } from "../categories";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
-import { gradeStats } from "../grades";
-import type { Group, StatsResp } from "../types";
+import type { StatsResp } from "../types";
 import type { ArrivalSlot } from "../rhythm";
-import { GradesCard } from "./GradeUi";
 import { RhythmCard } from "./RhythmCard";
 import {
   Avatar, Button, Donut, hueFillAt, IconTile, Loading, MiniBars, Modal,
@@ -204,7 +202,7 @@ function Columns({ rows }: {
  *  and domains, engagement, AI coverage, cleanup progress and scan history.
  *  `onOpenSender` (top senders are buttons when given) opens a sender. */
 export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
-  onUnsubscribe, onOpenRecipe, senders: senderRows, onShowGrades }: {
+  onUnsubscribe, onOpenRecipe }: {
   onClose: () => void; onWrapped?: () => void;
   onOpenSender?: (key: string) => void;
   /** Opens All mail filtered to a slot of "When mail arrives". */
@@ -213,10 +211,6 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
   onUnsubscribe?: (key: string) => void;
   /** Opens New rule > From a recipe with this recipe marked. */
   onOpenRecipe?: (id: string) => void;
-  /** The Sender rows (with their grades) for "Your senders' grades". */
-  senders?: Record<string, Group>;
-  /** Opens the Senders list with this filter (grade:<=d). */
-  onShowGrades?: (query: string) => void;
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
@@ -319,7 +313,6 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
     y.year.localeCompare(x.year));
   const oldestYear = years.length ? years[years.length - 1].year : "";
   const yearMax = Math.max(1, ...years.map((y) => y.count));
-  const grades = senderRows ? gradeStats(Object.values(senderRows)) : null;
   const senders = stats?.top_senders ?? [];
   const domains = stats?.top_domains ?? [];
   const SENDERS_HEAD = 6;
@@ -654,14 +647,6 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
               </div>
 
               <div className="min-w-0 space-y-3">
-                {grades && (
-                  <ChartCard title={t("grade.stats.title")}>
-                    <GradesCard stats={grades}
-                      onShow={onShowGrades
-                        && (() => onShowGrades("grade:<=d"))} />
-                  </ChartCard>
-                )}
-
                 <ChartCard title={t("stats.ai")} hint={t("stats.ai_hint")}>
                   <div aria-hidden="true" className="mb-3 flex h-3 gap-0.5
                     overflow-hidden rounded-full bg-chip">

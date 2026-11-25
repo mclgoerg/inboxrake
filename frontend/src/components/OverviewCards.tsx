@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Ghost, Hourglass, Info, Mail, MoreHorizontal,
-  Newspaper, Paperclip, Repeat, ShieldAlert, Sparkles, BellOff, TrendingDown,
+  Newspaper, Paperclip, ShieldAlert, Sparkles, BellOff, TrendingDown,
   TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -430,21 +430,13 @@ const CARD_TILE: Record<string, { icon: ReactNode; tone: TagTone }> = {
  *  confirm, the cross hides a row until it grows - nothing here touches the
  *  mailbox itself. */
 export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
-  onCleanUp, subs, habits, waiting }: {
+  onCleanUp, subs }: {
   cards: QuickWinCard[];
-  /** The "N cleanups you keep doing by hand" line (backend/habits.py), not
-   *  one of the checked steps; its Review opens the suggestions on Rules.
-   *  Phones show the widget instead. */
-  habits?: { n: number; names: string; onReview: () => void } | null;
   /** The "N subscriptions you may not use" line (backend/subscriptions.py);
    *  absent while there is nothing that looks unused. Its Review opens the
    *  Subscriptions page - it is not one of the checked clean-up steps. */
   subs?: { n: number; names: string; about: string; onReview: () => void }
     | null;
-  /** The "N people haven't answered you" line (backend/waiting.py); absent
-   *  while nothing waits longer than usual. Its Show opens Waiting for a
-   *  reply - like the subscriptions line it is not a clean-up step. */
-  waiting?: { n: number; line: string; onShow: () => void } | null;
   /** Mails + size the union of all cards could free. */
   canGo: { mails: number; size: number };
   onDismiss: (c: QuickWinCard) => void;
@@ -548,26 +540,6 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
             </li>
           );
         })}
-        {habits && !phone && (
-          <li data-testid="habits-step"
-            className={`${ROW_LINE} flex items-center gap-3 py-2`}>
-            <span aria-hidden className="inline-flex size-8 shrink-0
-              items-center justify-center">
-              <span className="inline-flex size-5 items-center justify-center
-                rounded-full bg-accent text-on-accent">
-                <Check size={14} /></span>
-            </span>
-            <span className="shrink-0"><IconTile tone="accent">
-              <Repeat size={16} /></IconTile></span>
-            <div className="min-w-0 flex-1">
-              <div className="type-body font-medium">
-                {t("habit.next_title", { n: habits.n })}</div>
-              <div className="truncate type-meta text-muted">{habits.names}</div>
-            </div>
-            <Button variant="tinted" size="sm" className="shrink-0"
-              onClick={habits.onReview}>{t("qw.review")}</Button>
-          </li>
-        )}
         {subs && (
           <li data-testid="subs-step"
             className={`${ROW_LINE} flex items-center gap-3 py-2`}>
@@ -589,28 +561,6 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
             </div>
             <Button variant="tinted" size="sm" className="shrink-0"
               onClick={subs.onReview}>{t("qw.review")}</Button>
-          </li>
-        )}
-        {waiting && (
-          <li data-testid="waiting-step"
-            className={`${ROW_LINE} flex items-center gap-3 py-2`}>
-            {/* decorative, like the subscriptions line: not a checked step */}
-            <span aria-hidden className="inline-flex size-8 shrink-0
-              items-center justify-center">
-              <span className="inline-flex size-5 items-center justify-center
-                rounded-full bg-accent text-on-accent">
-                <Check size={14} /></span>
-            </span>
-            <span className="shrink-0"><IconTile tone="review">
-              <Hourglass size={16} /></IconTile></span>
-            <div className="min-w-0 flex-1">
-              <div className="type-body font-medium">
-                {t("waiting.next_title", { n: waiting.n })}</div>
-              <div className="truncate type-meta text-muted">
-                {waiting.line}</div>
-            </div>
-            <Button variant="tinted" size="sm" className="shrink-0"
-              onClick={waiting.onShow}>{t("waiting.show")}</Button>
           </li>
         )}
       </ul>

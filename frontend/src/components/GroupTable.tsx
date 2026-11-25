@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
+import { Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, KeyRound, LifeBuoy,
   ListChecks, MailOpen, MessagesSquare, MoreHorizontal, Newspaper, Package,
   PanelRight, Reply, Shapes, Shield, ShieldOff, Tag as TagIcon, Trash2, Users,
@@ -8,14 +8,12 @@ import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
 import { fmtNum, fmtPct } from "../numfmt";
-import { GradeBadge } from "./GradeUi";
-import { chipText } from "../snooze";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
   isModalOpen, Meta, type SwipeAction, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
-  | "engagement" | "grade";
+  | "engagement";
 
 const PAGE_SIZES = [25, 50, 100, 200];
 const ALL = 1_000_000;
@@ -36,8 +34,6 @@ export interface GroupSwipe {
   protect: (g: Group) => void;
   block: (g: Group) => void;
   unblock: (g: Group) => void;
-  /** Opens Not now (a phone sheet) for the row's unread mails. */
-  snooze?: (g: Group) => void;
 }
 
 interface Props {
@@ -75,34 +71,7 @@ interface Props {
   banner?: ReactNode;
   // Row swipe on touch screens (card layout only); absent = no swipe.
   swipe?: GroupSwipe;
-  /** Senders with snoozed mail: address -> when the soonest comes back (epoch
-   *  s). Their Sender rows (and one-sender Smart rows) show "back tomorrow". */
-  snoozed?: Record<string, number>;
-  // The lists across accounts: one chip per account under a row's own lines.
-  chips?: (g: Group) => ReactNode;
-  // No grade column / badge (grades are per account: the rows across accounts
-  // carry none).
-  noGrade?: boolean;
 }
-
-/** The blue "back tomorrow" chip of a sender with snoozed mail. */
-function SnoozeChip({ until }: { until: number }) {
-  return (
-    <Tag tone="info" className="inline-flex shrink-0 items-center gap-1
-      whitespace-nowrap">
-      <AlarmClock size={14} aria-hidden />{chipText(until)}
-    </Tag>
-  );
-}
-
-/** When this row's snoozed mail comes back (a Sender row, or a Smart row that
- *  stands for one sender); undefined when none is snoozed. */
-const snoozedUntil = (g: Group, grouping: Grouping | undefined,
-    snoozed?: Record<string, number>): number | undefined =>
-  !snoozed ? undefined
-    : grouping === "sender" ? snoozed[g.key]
-    : grouping === "smart" && g.kind === "sender" ? snoozed[g.addr ?? ""]
-    : undefined;
 
 /** Thread / subject groups carry an English summary from the backend
  *  ("2 mails, 1 sender" / "3 senders"); show it in the UI language. Sender
@@ -230,7 +199,7 @@ const ROW_ON = "bg-panel2";
    grouping mode (and with it the content) changes. */
 function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, onToggle,
   onToggleAll, onOpen, blockedKeys, selectMode, cards, banner,
-  sortK, sortDir, onSort, groupLabel, grouping, rowNote, snoozed, chips, noGrade
+  sortK, sortDir, onSort, groupLabel, grouping, rowNote
 }: PageProps) {
   // Sort indicator, inline after the label: the active column shows an
   // accent arrow that ROTATES between directions; inactive sortable columns
@@ -260,8 +229,6 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
   const allChecked =
     slice.length > 0 && slice.every((g) => selected.has(g.key));
   const showChecks = !!cards || !!selectMode || selected.size > 0;
-  // Sender rows carry a grade: a column of its own, sortable.
-  const showGrade = grouping === "sender" && !noGrade;
   // Hidden checkboxes stay in the layout (no shift): the mouse reveals them
   // on hover / focus; on touch they are inert until select mode.
   const hiddenCls = `opacity-0 coarse:pointer-events-none
@@ -300,11 +267,6 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
             {sortBtn("label", groupLabel)}
           </th>
           {!compact && <th className={`${th} w-44`} />}
-          {showGrade && (
-            <th className={`${th} w-16`} aria-sort={ariaSort("grade")}>
-              {sortBtn("grade", t("Grade"))}
-            </th>
-          )}
           <th className={`${th} w-32 text-right`}
             aria-sort={ariaSort(sortK === "size" ? "size" : "count")}>
             {/* Stacked like the cells below: Mails over Size. */}
@@ -318,8 +280,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
       </thead>
       <tbody>
         {banner && (
-          <tr><td colSpan={(compact ? 5 : 6) + (showGrade ? 1 : 0)}
-            className="p-0">{banner}</td></tr>
+          <tr><td colSpan={compact ? 5 : 6} className="p-0">{banner}</td></tr>
         )}
         {slice.map((g, i) => {
           const on = g.key === openKey || selected.has(g.key);
@@ -356,9 +317,6 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
                   onClick={() => onOpen(g)}>
                   {g.label}
                 </button>
-                {snoozedUntil(g, grouping, snoozed) !== undefined && (
-                  <SnoozeChip until={snoozedUntil(g, grouping, snoozed)!} />
-                )}
                 {compact && <span className="shrink-0">{pill}</span>}
               </div>
               {rowNote?.(g) && (
@@ -366,15 +324,9 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
                   title={rowNote(g)}>{rowNote(g)}</div>
               )}
               <MetaLine g={g} />
-              {chips && <div className="mt-1">{chips(g)}</div>}
             </td>
             {!compact && (
               <td className={`px-2 py-2.5 text-right ${td}`}>{pill}</td>
-            )}
-            {showGrade && (
-              <td className={`px-2 py-2.5 ${td}`}>
-                {g.grade && <GradeBadge letter={g.grade.letter} />}
-              </td>
             )}
             <td className={`whitespace-nowrap px-2 py-2.5 text-right
               tabular-nums ${td}`}>
@@ -399,8 +351,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
 /* Mobile: a card list - no table semantics, no horizontal squeeze. The
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
-  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe,
-  snoozed, chips, noGrade
+  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   const [moreFor, setMoreFor] = useState<Group | null>(null);
@@ -435,10 +386,6 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
         label: t("swipe.read"), ariaLabel: t("Mark read"),
         icon: <MailOpen size={18} aria-hidden />,
         onAction: () => swipe.read(g) }] : []),
-      ...(g.unread > 0 && swipe.snooze ? [{ key: "snooze", tone: "info" as const,
-        label: t("snooze.btn"), ariaLabel: t("snooze.swipe_label"),
-        icon: <AlarmClock size={18} aria-hidden />,
-        onAction: () => swipe.snooze!(g) }] : []),
     ];
     return { leading, trailing };
   };
@@ -496,16 +443,9 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1
                     type-meta text-muted">
                     <span><Stats g={g} /></span>
-                    {snoozedUntil(g, grouping, snoozed) !== undefined && (
-                      <SnoozeChip until={snoozedUntil(g, grouping, snoozed)!} />
-                    )}
                     {pill}
                   </div>
-                  {chips && <div className="mt-1">{chips(g)}</div>}
                 </div>
-                {grouping === "sender" && !noGrade && g.grade && (
-                  <GradeBadge letter={g.grade.letter} />
-                )}
                 <div className="shrink-0 whitespace-nowrap text-right
                   tabular-nums">
                   <div className="font-semibold">{fmtNum(g.count)}</div>

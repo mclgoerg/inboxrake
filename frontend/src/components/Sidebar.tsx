@@ -1,5 +1,5 @@
-import { AlarmClock, AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass,
-  Layers, LayoutDashboard, LayoutGrid, Mails,
+import { AtSign, BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
+  LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -10,9 +10,8 @@ import { fmtNum } from "../numfmt";
 /** Tool entry points the sidebar can open: pages (`ToolPage`, Settings) and
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
-  | "rules" | "junk" | "trash" | "snoozed" | "stats" | "space" | "wrapped"
-  | "trackers" | "subscriptions" | "waiting" | "addresses" | "activity"
-  | "settings";
+  | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
+  | "subscriptions" | "addresses" | "activity" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -26,17 +25,10 @@ export interface SidebarProps {
   mailCount?: number;
   junkCount?: number | null;
   trashCount?: number | null;
-  /** Mails waiting in Snoozed (a count on Snoozed; none = no count). */
-  snoozedCount?: number | null;
   /** Rules an AI assistant proposed that wait for the user (a badge on Rules). */
   proposals?: number;
-  /** Suggestions from what the user does by hand (counted on Rules, too). */
-  habits?: number;
   /** Subscriptions found (a count on Subscriptions; none = no count). */
   subscriptions?: number;
-  /** Mails you sent that nobody answered for longer than usual (a badge on
-   *  Waiting for a reply). */
-  waiting?: number;
   /** Addresses that look leaked (a badge on Your addresses). */
   leaked?: number;
   /** Tools that are disabled today stay disabled with the same rule. */
@@ -54,37 +46,18 @@ function Count({ n }: { n?: number | null }) {
     : <span className="ml-auto type-meta tabular-nums text-muted">{fmtNum(n)}</span>;
 }
 
-/** The count of things waiting on Rules - proposals of an AI assistant plus
- *  the suggestions from what the user does (`extra`): an accent disc, with
- *  the words for a screen reader. */
-export function ProposalBadge({ n, extra = 0, quiet = false }: {
-  n?: number; extra?: number;
-  /** the surrounding text already says it: no screen-reader words */
+/** The count of proposals waiting: an accent disc, with the words for a
+ *  screen reader. */
+export function ProposalBadge({ n, quiet = false }: {
+  n?: number; /** the surrounding text already says it: no screen-reader words */
   quiet?: boolean;
 }) {
-  const total = (n ?? 0) + extra;
-  return !total ? null : (
+  return !n ? null : (
     <span className="ml-auto inline-flex min-w-5 items-center justify-center
       rounded-full bg-accent px-1.5 type-caption font-semibold tabular-nums
       text-on-accent">
-      {quiet ? fmtNum(total) : <span aria-hidden>{fmtNum(total)}</span>}
-      {!quiet && <span className="sr-only">{[
-        n ? t("proposal.badge", { n }) : "",
-        extra ? t("habit.sub_count", { n: extra }) : "",
-      ].filter(Boolean).join(". ")}</span>}
-    </span>
-  );
-}
-
-/** The count of mails waiting for a reply longer than usual: a warm disc,
- *  with the words for a screen reader. */
-export function WaitingBadge({ n }: { n?: number }) {
-  return !n ? null : (
-    <span className="ml-auto inline-flex min-w-5 items-center justify-center
-      rounded-full bg-review-bg px-1.5 type-caption font-semibold
-      tabular-nums text-review-fg">
-      <span aria-hidden>{fmtNum(n)}</span>
-      <span className="sr-only">{t("waiting.badge", { n })}</span>
+      {quiet ? fmtNum(n) : <span aria-hidden>{fmtNum(n)}</span>}
+      {!quiet && <span className="sr-only">{t("proposal.badge", { n })}</span>}
     </span>
   );
 }
@@ -105,8 +78,8 @@ export function LeakBadge({ n }: { n?: number }) {
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, snoozedCount, proposals, habits,
-  subscriptions, waiting, leaked, disabled }: SidebarProps) {
+  mailCount, junkCount, trashCount, proposals, subscriptions, leaked,
+  disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
     <a href={hashOf(p)} aria-current={page === p ? "page" : undefined}
@@ -163,13 +136,11 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("attachments", <Paperclip size={16} aria-hidden />,
         t("Attachments"))}
       {tool("rules", <ClipboardList size={16} aria-hidden />, t("Rules"),
-        undefined, <ProposalBadge n={proposals} extra={habits} />)}
+        undefined, <ProposalBadge n={proposals} />)}
       {tool("junk", <ShieldAlert size={16} aria-hidden />, t("role.junk"),
         junkCount)}
       {tool("trash", <Trash2 size={16} aria-hidden />, t("role.trash"),
         trashCount)}
-      {tool("snoozed", <AlarmClock size={16} aria-hidden />, t("snooze.title"),
-        snoozedCount)}
       {section(t("tools.group_insights"))}
       {tool("stats", <BarChart3 size={16} aria-hidden />, t("Statistics"))}
       {tool("space", <LayoutGrid size={16} aria-hidden />, t("space.title"))}
@@ -180,8 +151,6 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         subscriptions)}
       {tool("addresses", <AtSign size={16} aria-hidden />, t("addr.menu"),
         undefined, <LeakBadge n={leaked} />)}
-      {tool("waiting", <Hourglass size={16} aria-hidden />, t("waiting.menu"),
-        undefined, <WaitingBadge n={waiting} />)}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

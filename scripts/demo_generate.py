@@ -21,8 +21,7 @@ from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, demo, knowledgestore,
-                     mailops, pinstore, rules, snooze, snoozestore, unsubstore,
-                     verdictstore)
+                     mailops, pinstore, rules, unsubstore, verdictstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -368,8 +367,7 @@ def _arrival(days_ago: float, profile: str) -> float:
 def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
           span_days=700.0, unread=0.7, size=(9000, 60000), unsub=False,
           atts=None, att_n=3, html=None, chain: list | None = None,
-          me: str = ME, at: str | None = None,
-          one_click: bool = False) -> list[dict]:
+          me: str = ME, at: str | None = None) -> list[dict]:
     out = []
     profile = at or ("work" if chain is not None
                      else "newsletter" if unsub else "mixed")
@@ -384,7 +382,6 @@ def mails(frm: str, subjects: list[str], n: int, *, newest_days=1.0,
         out.append(make_msg(
             next(_UID), frm=frm, subject=subj,
             unsub="<https://unsub.example/u>" if unsub else None,
-            unsub_post=unsub and one_click,       # List-Unsubscribe-Post
             msgid=f"<demo-{next(_UID)}@demo.example>",
             size=random.randint(*size),
             seen=random.random() > unread,
@@ -453,10 +450,10 @@ PROTON_INBOX = WANDER + (
     + mails('"TechDigest" <digest@techdigest.example>',
             ["Issue #{n}: Rust vs. the world", "Weekly: self-hosting corner",
              "Issue #{n}: the terminal renaissance"], 88, unsub=True,
-          one_click=True, html=newsletter_html(click=CLICK_HOST))
+          html=newsletter_html(click=CLICK_HOST))
     + mails('"Streamly" <info@streamly.example>',
             ["New this week on Streamly", "Your watchlist just got better"],
-            64, unsub=True, unread=0.8, one_click=True,
+            64, unsub=True, unread=0.8,
             html=newsletter_html("track.streamly-demo.example"))
     + mails('"Bergsport Huber" <newsletter@bergsport-huber.example>',
             ["Neu eingetroffen: Tourenski 2026", "Wochenend-Angebote",
@@ -532,29 +529,14 @@ PROTON_INBOX = WANDER + (
 # (some days two), mostly unread. The shared random stream is restored so the
 # data after it stays unchanged.
 _rs = random.getstate()
-# (Sender grade: it is the loud, tracking sender with a one-click unsubscribe.)
 PROTON_INBOX += (
     mails('"Deals Daily" <deals@dealsdaily.example>',
           ["Today's top deals", "Only today: flash prices",
            "Your daily picks"], 75, newest_days=0.2, unread=0.98, unsub=True,
-          at="daily", one_click=True,
-          html=newsletter_html(PIXEL_HOST, CLICK_HOST))
+          at="daily")
     + mails('"Deals Daily" <deals@dealsdaily.example>',
             ["Deal ends at midnight"], 18, newest_days=0.4, span_days=75,
-            unread=0.98, unsub=True, at="daily", one_click=True,
-            html=newsletter_html(PIXEL_HOST, CLICK_HOST)))
-random.setstate(_rs)
-
-# A sender that earns an F in the grades: a mail a day for two weeks, never
-# opened, heavy, tracking, and no way to unsubscribe. Own random stream.
-_rs = random.getstate()
-random.seed(115)
-PROTON_INBOX += mails('"Bonus Blast" <hi@bonusblast.example>',
-                      ["You may have won!", "Claim your bonus now",
-                       "Last reminder: an unclaimed reward"], 17,
-                      newest_days=0.6, unread=1.0, at="daily",
-                      size=(1200000, 1800000),
-                      html=newsletter_html(PIXEL_HOST, CLICK_HOST))
+            unread=0.98, unsub=True, at="daily"))
 random.setstate(_rs)
 
 # A "ghost" sender for Your year in mail: plenty of mail, never opened. The
@@ -804,34 +786,6 @@ ICLOUD_INBOX = (
                   [("Mietvertrag.docx", 900000), ("Anlage.zip", 6000000)]],
             att_n=9)
     + ICLOUD_TAIL)
-# All accounts: the same senders write to this mailbox as well - the very
-# same address (Deals Daily) or another address of the same company (Chirper,
-# Gadget Weekly) - so "Same sender, several accounts" has rows. Own random
-# stream: the data after it stays unchanged.
-_rs = random.getstate()
-random.seed(114)
-ICLOUD_INBOX += (
-    mails('"Deals Daily" <deals@dealsdaily.example>',
-          ["Today's top deals", "Only today: flash prices",
-           "Your daily picks"], 58, newest_days=0.3, span_days=90,
-          unread=0.97, unsub=True, at="daily")
-    + mails('"Chirper" <digest@chirper.example>',
-            ["Your weekly Chirper digest", "People you may know"], 26,
-            span_days=400, unread=0.92, unsub=True)
-    + mails('"Gadget Weekly" <weekly@gadgetweekly.example>',
-            ["This week in gadgets", "Test: the new earbuds"], 31,
-            span_days=300, unread=0.85, unsub=True))
-# ... and two more from the very same address as in the Proton mailbox, so the
-# Senders list across accounts shows one row with a chip per account.
-random.seed(115)
-ICLOUD_INBOX += (
-    mails('"Gadget Weekly" <news@gadgetweekly.example>',
-          ["This week in gadgets", "Test: the new earbuds"], 18,
-          span_days=200, unread=0.8, unsub=True)
-    + mails('"ACME Store" <news@acme-store.example>',
-            ["Weekend SALE - up to 70% off", "Your points expire soon"], 12,
-            span_days=120, unread=0.9, unsub=True))
-random.setstate(_rs)
 _fruit = [m for m in _by(ICLOUD_INBOX, "fruitstore")
           if "has shipped" in m["subject"]]
 ICLOUD_COPIES = (copies(_by(ICLOUD_INBOX, "cloudphotos")[:3])
@@ -908,90 +862,10 @@ for _i, _dom in enumerate(["ticketline", "oldclub", "parcelhub", "bankalert",
         ["An update for you", "Still interested?"], 3, 900 - _i * 40,
         3 + _i * 30, original="old.demo@oldmail.example")
 
-# --- Waiting for a reply -----------------------------------------------------
-# Mail the demo user sent that nobody answered (Insights), and the small
-# history behind it: a person who usually answers within a couple of days (four
-# earlier conversations), a conversation with answers, newsletters of that
-# sender that are no answer, and a few answered mails. Deterministic (no random
-# draws, UIDs from a range of their own), so the rest of the demo stays exactly
-# as it was. Everything is dated relative to NOW.
-_WUID = iter(range(800_000, 900_000))
-WAIT_IN: list[dict] = []
-WAIT_SENT: list[dict] = []
-
-
-def _w_in(frm: str, subject: str, days_ago: float, msgid: str, *, irt=None,
-          refs=None, unsub=False, body=None) -> str:
-    WAIT_IN.append(make_msg(
-        next(_WUID), frm=frm, subject=subject, msgid=msgid, irt=irt,
-        refs=refs, seen=True, size=3000, date=_date(days_ago),
-        unsub="<https://unsub.example/u>" if unsub else None,
-        body=body or "Noted - I will write back soon."))
-    return msgid
-
-
-def _w_out(to: str, subject: str, days_ago: float, msgid: str, *, irt=None,
-           refs=None, body=None) -> str:
-    WAIT_SENT.append(make_msg(
-        next(_WUID), frm=ME, subject=subject, msgid=msgid, irt=irt, refs=refs,
-        to=to, seen=True, size=2500, date=_date(days_ago),
-        body=body or "Hello,\n\ncould you let me know? Thank you."))
-    return msgid
-
-
-_TRAVELLY = '"Travelly" <help@travelly.example>'
-# four earlier conversations, each answered after 1-3 days
-for _k, (_ago, _gap) in enumerate([(80, 2), (66, 2), (50, 1), (35, 3)]):
-    _m = _w_out(_TRAVELLY, f"Question about trip {_k + 1}", _ago,
-                f"<wait-t{_k}@demo.example>")
-    _w_in(_TRAVELLY, f"Re: Question about trip {_k + 1}", _ago - _gap,
-          f"<wait-t{_k}-a@demo.example>", irt=_m, refs=[_m])
-# the conversation behind the open mail: confirmation, your question, their
-# answer, your follow-up - which nobody answered
-_w_in(_TRAVELLY, "Your booking 88213 is confirmed", 16,
-      "<wait-b1@demo.example>")
-_w_out(_TRAVELLY, "Change of booking 88213", 15, "<wait-b2@demo.example>",
-       irt="<wait-b1@demo.example>", refs=["<wait-b1@demo.example>"])
-_w_in(_TRAVELLY, "Re: Change of booking 88213", 14, "<wait-b3@demo.example>",
-      irt="<wait-b2@demo.example>",
-      refs=["<wait-b1@demo.example>", "<wait-b2@demo.example>"])
-_w_out(_TRAVELLY, "Re: Change of booking 88213", 12, "<wait-b4@demo.example>",
-       irt="<wait-b3@demo.example>",
-       refs=["<wait-b1@demo.example>", "<wait-b2@demo.example>",
-             "<wait-b3@demo.example>"])
-# their newsletters since are no answer
-for _i, _ago in enumerate([9, 3]):
-    _w_in('"Travelly News" <news@travelly.example>',
-          ["Autumn deals", "Last-minute trips"][_i], _ago,
-          f"<wait-n{_i}@demo.example>", unsub=True)
-# the other open mails of the board
-_w_out('"Alex Doe" <alex@friends.example>', "Saturday dinner - are you in?",
-       6, "<wait-o1@demo.example>")
-_w_out('"City Library" <loans@library.example>',
-       "Extend loan for \u201cThe Long Way\u201d", 4, "<wait-o2@demo.example>")
-_w_out('"Sam Lee" <sam@work.example>', "Draft for Q1 plan", 2,
-       "<wait-o3@demo.example>")
-_w_in('"Bank of Example" <service@bank.example>', "Card replacement", 3,
-      "<wait-o4a@demo.example>")
-_w_out('"Bank of Example" <service@bank.example>', "Re: Card replacement", 1,
-       "<wait-o4@demo.example>", irt="<wait-o4a@demo.example>",
-       refs=["<wait-o4a@demo.example>"])
-# mails that were answered
-_m = _w_out('"Sam Lee" <sam@work.example>', "Meeting notes", 20,
-            "<wait-a1@demo.example>")
-_w_in('"Sam Lee" <sam@work.example>', "Re: Meeting notes", 19,
-      "<wait-a1-a@demo.example>", irt=_m, refs=[_m])
-_m = _w_out('"Pat Roe" <pat@club.example>', "Invoice question", 9,
-            "<wait-a2@demo.example>")
-_w_in('"Pat Roe" <pat@club.example>', "Re: Invoice question", 7,
-      "<wait-a2-a@demo.example>", irt=_m, refs=[_m])
-
-
 
 PROTON = _server({
-    "INBOX": (PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS
-              + WAIT_IN),
-    "Sent": PROTON_TAIL_SENT + PROTON_SENT + WAIT_SENT + [make_msg(
+    "INBOX": PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS,
+    "Sent": PROTON_TAIL_SENT + PROTON_SENT + [make_msg(
         next(_UID), frm="Demo <demo@example.com>",
         subject="Re: Wanderung am Samstag?", msgid=WANDER_R1,
         irt=WANDER_1, refs=WANDER_1, to="anna.weber@mailfox.example",
@@ -1081,30 +955,6 @@ PROTON.mailbox["INBOX"] += mails(
     '"Mixed Mailer" <hello@mixedmailer.example>',
     ["Your receipt {n}", "New deals this week", "Your invoice {n}"], 26,
     newest_days=3, span_days=300, unread=0.5, unsub=True)
-random.setstate(_state)
-
-# Not now (IX112): the Proton account has a `Snoozed` folder - a newsletter
-# that waits until tomorrow, one invoice that waits for a week, and a weekly
-# batch that holds six promotions so far (the store that remembers them is
-# written in generate(), once the inbox is scanned). Added from its own random
-# stream, so every other mail keeps its exact data and uid.
-_state = random.getstate()
-random.seed(112)
-SNOOZED_DIGEST = mails(
-    '"TechDigest" <digest@techdigest.example>',
-    ["Issue #{n}: the quiet side of Rust", "Weekly: self-hosting corner"], 3,
-    newest_days=0.3, span_days=1.5, unread=1.0, unsub=True,
-    html=newsletter_html(click=CLICK_HOST))
-SNOOZED_INVOICE = mails(
-    '"CloudBox" <billing@cloudbox.example>', ["Invoice CB-2026-0412"], 1,
-    newest_days=2, unread=1.0, size=(220000, 480000))
-SNOOZED_BATCH = mails(
-    '"Streamly" <info@streamly.example>',
-    ["New this week on Streamly", "Your watchlist just got better"], 6,
-    newest_days=0.2, span_days=5, unread=1.0, unsub=True,
-    html=newsletter_html("track.streamly-demo.example"))
-PROTON.mailbox["Snoozed"] = SNOOZED_DIGEST + SNOOZED_INVOICE + SNOOZED_BATCH
-PROTON.uv["Snoozed"] = 1
 random.setstate(_state)
 
 
@@ -1378,30 +1228,6 @@ def generate() -> dict:
     # cleaning, so they are in the log and in this month's statistics too
     _tm_rows, _tm_user, _tm_bots = _time_machine(NOW, PROTON, sweep["id"])
     _au.extend(_tm_rows)
-    # "You keep doing this": cleanups the visitor did by hand again and again
-    # (the habit miner reads these; the keys and figures are what a manual
-    # step records). Fixed days and hours - no random draws.
-    _habit_steps = (
-        # sender key, action, label, destination, [(days ago, mails, unread,
-        # youngest mail in days)]
-        ("deals@dealsdaily.example", "trash", "Deals Daily", "",
-         [(43, 14, 14, 8), (36, 18, 18, 9), (22, 21, 21, 8), (15, 16, 16, 7),
-          (1, 22, 22, 10)]),
-        ("service@paybank.example", "move", "PayBank", "Archive",
-         [(50, 3, 1, 12), (39, 4, 2, 20), (20, 2, 0, 15), (9, 3, 1, 11)]),
-        ("notify@chirper.example", "mark_read", "Chirper", "",
-         [(40, 8, 8, 0), (33, 11, 11, 0), (26, 9, 9, 0), (19, 10, 10, 0),
-          (12, 9, 9, 0), (5, 12, 12, 0)]))
-    _habit_rows = []
-    for _key, _act, _lbl, _dest, _rows in _habit_steps:
-        for _d, _n, _unread, _young in _rows:
-            _habit_rows.append(("proton", _act, int(NOW - _d * 86400 - 9 * 3600), _n,
-                        "ok", "user", _lbl, {
-                            "keys": [_key], "unread": _unread,
-                            **({"youngest_days": _young}
-                               if _act != "mark_read" else {}),
-                            **({"dest": _dest} if _dest else {})}))
-    _au.extend(_habit_rows)
     for rule, d, count in ((sweep, 21, 150), (parcels, 14, 60),
                            (lapsed, 9, 48)):
         ts = _t(d)
@@ -1452,11 +1278,6 @@ def generate() -> dict:
                                 int(_month_start + (NOW - _month_start) * _frac),
                                 _n, "ok", "user",
                                 _labels[_action][_i % len(_labels[_action])]))
-        # the habit steps that moved mail to a folder are cleaning too
-        _month["move"] = _month.get("move", 0) + sum(
-            e[3] for e in _habit_rows
-            if e[0] == _acct and e[1] == "move"
-            and time.strftime("%Y-%m", time.gmtime(e[2])) == _ym)
     Path(os.environ["STATS_HISTORY_PATH"]).write_text(json.dumps(history))
     _au.sort(key=lambda e: e[2])
     Path(os.environ["AUDIT_LOG_PATH"]).write_text("".join(
@@ -1516,31 +1337,6 @@ def generate() -> dict:
                      if m["addr"] == "anna.weber@mailfox.example"),
                     key=lambda m: m["uid"])[:3]:
         pinstore.set_pinned(m["msgid"], True, "proton")
-    # What waits in `Snoozed` (see SNOOZED_* above) and the weekly batch the
-    # sender of the six promotions delivers by: the store remembers where each
-    # mail goes back to and when. A UTC clock keeps the seed the same
-    # wherever it is built (a viewer's own zone only moves a new batch's slot).
-    _top = max((m["uid"] for m in accounts.get("proton").index.values()
-                if m["folder"] == "INBOX"), default=0)
-    _day = int(NOW) // 86400 * 86400
-    _until = {"digest": _day + 86400 + 8 * 3600,            # tomorrow 08:00
-              "invoice": _day + 6 * 86400 + 9 * 3600,       # in six days, 09:00
-              "batch": snooze.next_slot("weekly", "UTC", NOW)}
-
-    def _record(msgs, until, batch=""):
-        return {m["msgid"]: {
-            "origin": "INBOX", "until": until, "batch": batch,
-            "addr": re.search(r"<([^>]+)>", m["from"]).group(1),
-            "name": re.search(r'"([^"]+)"', m["from"]).group(1),
-            "subject": m["subject"]} for m in msgs}
-    snoozestore.add_mails({
-        **_record(SNOOZED_DIGEST, _until["digest"]),
-        **_record(SNOOZED_INVOICE, _until["invoice"]),
-        **_record(SNOOZED_BATCH, _until["batch"], "info@streamly.example")},
-        "proton")
-    snoozestore.set_batch("info@streamly.example", {
-        "slot": "weekly", "tz": "UTC", "label": "Streamly",
-        "uv": PROTON.uv["INBOX"], "after": _top}, "proton")
     # Bodies come last: the Proton body index above must not hold them (see
     # fill_bodies).
     for fake in FAKES.values():

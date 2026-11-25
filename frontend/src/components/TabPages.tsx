@@ -1,5 +1,5 @@
-import { AlarmClock, AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
-  Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
+import { AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
+  Ghost, History, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -15,7 +15,7 @@ import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
-  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp }
+  SubscriptionsResp, TrackerReport, WrappedResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
 import { ProposalBadge } from "./Sidebar";
@@ -35,8 +35,8 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
  * a tool whose number needs a run shows "Check" instead. */
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
-  | "junk" | "trash" | "snoozed" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "waiting" | "addresses" | "activity";
+  | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
+  | "subscriptions" | "addresses" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -82,10 +82,8 @@ function Tile({ icon, tone, label, value, sub, disabled, onClick }: {
 
 /** The Clean up tab: Ready to clean, Triage and the tool tiles. */
 export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
-  aiShown, aiDisabled, demoHint, habits = 0, onOpen, onReviewAi }: {
+  aiShown, aiDisabled, demoHint, onOpen, onReviewAi }: {
   account: string;
-  /** Suggestions from what the user does by hand (a count on Rules). */
-  habits?: number;
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
@@ -259,11 +257,9 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<ClipboardList size={18} aria-hidden />}
             tone="bg-new-bg text-new-fg" label={t("Rules")}
-            value={waiting || habits ? <ProposalBadge n={waiting}
-              extra={habits} quiet />
+            value={waiting ? <ProposalBadge n={waiting} quiet />
               : t("n.rules", { n: rules.length })}
             sub={waiting ? t("proposal.badge", { n: waiting })
-              : habits ? t("habit.sub_count", { n: habits })
               : ago ? t("tab.rules_last", { ago }) : t("tab.rules_none")}
             onClick={() => onOpen("rules")} />
         </li>
@@ -275,14 +271,6 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             // The big number is the count: the sub-line adds the size.
             sub={state?.trash_size ? fmtSize(state.trash_size) : undefined}
             onClick={() => onOpen("trash")} />
-        </li>
-        <li className="contents">
-          <Tile icon={<AlarmClock size={18} aria-hidden />}
-            tone="bg-info-bg text-info-fg" label={t("snooze.title")}
-            value={state?.snoozed
-              ? t("n.mails", { n: state.snoozed.count }) : null}
-            sub={t("snooze.tile_sub")}
-            onClick={() => onOpen("snoozed")} />
         </li>
       </ul>
     </div>
@@ -317,16 +305,13 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, subs, waiting, onOpen,
-  onRetryUnsub, onUnsubscribe }: {
+export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
+  onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
   /** The subscriptions found (null while unknown / not scanned). */
   subs?: SubscriptionsResp | null;
-  /** Mails you sent that nobody answered (null while unknown / not scanned /
-   *  tracking off). */
-  waiting?: WaitingSummary | null;
   onOpen: (tool: TabTool) => void;
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
@@ -600,25 +585,6 @@ export function InsightsPage({ groups, state, subs, waiting, onOpen,
             </span>
           ) : <Skeleton className="h-12" />}
         </span>
-      </button>
-
-      <button type="button" onClick={() => onOpen("waiting")}
-        className={CARD_BTN}>
-        <WidgetTitle icon={<Hourglass size={16} />} chevron>
-          {t("waiting.menu")}
-        </WidgetTitle>
-        <span className={`mt-2 block type-meta ${waiting?.overdue
-          ? "font-semibold text-review-fg" : "text-muted"}`}>
-          {waiting == null ? t("tab.waiting_sub")
-            : waiting.overdue > 0 ? t("waiting.sub_phone", { n: waiting.overdue })
-            : t("tab.waiting_none")}
-        </span>
-        {waiting != null && waiting.overdue > 0 && (
-          <span className="block truncate type-meta text-muted">
-            {waiting.people.join(", ")}
-            {waiting.more > 0 ? ` +${waiting.more}` : ""}
-          </span>
-        )}
       </button>
 
       <button type="button" onClick={() => onOpen("addresses")}
