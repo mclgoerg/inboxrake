@@ -875,14 +875,6 @@ export const EN: Record<string, string> = {
     "Reads the latest receipt of each subscription whose subject has no "
     + "amount, on this server only. Only the amount and its currency are "
     + "kept; nothing is sent anywhere.",
-  "waiting.settings_title": "Sent mail",
-  "waiting.settings_track": "Track mails waiting for a reply",
-  "waiting.settings_track_sub":
-    "Reads Message-ID, date, subject and recipients of your sent mail, like "
-    + "the scan does for incoming mail.",
-  "waiting.settings_days": "Waiting counts after",
-  "waiting.settings_days_sub":
-    "Or after the person's usual answer time, if that is longer",
   "auto_scan.align": "Start at minute (0-59)",
   "auto_scan.help":
     "Rescans this account on a timer, independent of any rule schedule - "
@@ -1124,8 +1116,6 @@ export const EN: Record<string, string> = {
   "tab.subs_services": "{n}\u00a0services",
   "tab.subs_services_one": "1\u00a0service",
   "tab.subs_empty": "See what you still pay for",
-  "tab.waiting_sub": "See who hasn't answered you",
-  "tab.waiting_none": "Nobody is keeping you waiting",
   "tab.space_scan": "Scan your mailbox to see the biggest senders.",
   "tab.space_empty": "Nothing to map yet.",
   "tab.year_stories": "{year} in {n}\u00a0stories",
@@ -1346,95 +1336,7 @@ export const EN: Record<string, string> = {
   "sub.ics_note":
     "Expected from the receipts in your mailbox. Inboxrake can't cancel it "
     + "for you.",
-  "waiting.menu": "Waiting for a reply",
-  "waiting.sub": "Mails you sent where the last word is yours",
-  "waiting.sub_phone": "{n}\u00a0longer than usual",
-  "waiting.pane_title": "Waiting for a reply",
-  "waiting.badge": "{n}\u00a0waiting longer than usual",
-  "waiting.kpi_overdue": "waiting longer than usual",
-  "waiting.kpi_recent": "sent in the last 3 days",
-  "waiting.kpi_share": "of your mails got an answer \u00b7 30 days",
-  "waiting.tabs": "Show",
-  "waiting.tab_open": "Open \u00b7 {n}",
-  "waiting.tab_answered": "Answered \u00b7 {n}",
-  "waiting.tab_needed": "Not needed \u00b7 {n}",
-  "waiting.sorted": "Sorted by how overdue",
-  "waiting.newest": "Newest first",
-  "waiting.you_wrote": "you wrote",
-  "waiting.n_days": "{n}\u00a0days",
-  "waiting.n_days_one": "{n}\u00a0day",
-  "waiting.d": "{n}d",
-  "waiting.answered_same": "answered the same day",
-  "waiting.answered_after": "answered in {n}\u00a0days",
-  "waiting.answered_after_one": "answered in 1\u00a0day",
-  "waiting.empty_open": "Nobody is keeping you waiting",
-  "waiting.empty_hint":
-    "A mail you sent shows up here once nobody has answered it. The first scan "
-    + "after you turn this on reads the last 90 days of your Sent folder.",
-  "waiting.empty_answered": "No answered mails in the last 90 days",
-  "waiting.empty_needed": "Nothing is marked as not needing an answer",
-  "waiting.off_title": "Tracking is off for this account",
-  "waiting.off_hint":
-    "Turn on \u201cTrack mails waiting for a reply\u201d in Settings, under "
-    + "the account.",
-  "waiting.off_action": "Open Settings",
-  "waiting.scan_first": "Scan your mailbox first, then this shows who has not answered you.",
-  "waiting.load_failed": "Couldn't load the list.",
-  "waiting.swipe_hint": "Swipe left: No answer needed \u00b7 swipe right: Remind me",
-  "waiting.swipe_needed": "Not needed",
-  "waiting.swipe_remind": "Remind",
-  "waiting.footnote":
-    "Counted: mails to a person (not to a list or a no-reply address) whose "
-    + "conversation has no newer mail from them. Matched by In-Reply-To / "
-    + "References - no mail text is read.",
-  "waiting.conversation": "The conversation",
-  "waiting.you": "You",
-  "waiting.ev_text": "{who}: \u201c{subject}\u201d",
-  "waiting.ev_answered": "answered {date}",
-  "waiting.ev_last": "Last word is yours \u00b7 sent to {n} people, not a list",
-  "waiting.ev_last_one": "Last word is yours \u00b7 sent to 1 person, not a list",
-  "waiting.today": "Today",
-  "waiting.ev_none": "still no answer",
-  "waiting.ev_news": "{n} newsletters from {name} since",
-  "waiting.ev_news_one": "1 newsletter from {name} since",
-  "waiting.notice_head": "No answer for {n}\u00a0days.",
-  "waiting.notice_head_one": "No answer for 1\u00a0day.",
-  "waiting.notice_today": "Sent today, no answer yet.",
-  "waiting.notice_usual":
-    "{name} usually answers you within {n}\u00a0days ({m} earlier conversations).",
-  "waiting.notice_usual_one":
-    "{name} usually answers you within 1\u00a0day ({m} earlier conversations).",
-  "waiting.notice_rule": "Mails count as waiting after {n}\u00a0days.",
-  "waiting.notice_answered": "{name} answered after {n}\u00a0days.",
-  "waiting.notice_answered_one": "{name} answered after 1\u00a0day.",
-  "waiting.notice_answered_same": "{name} answered the same day.",
-  "waiting.notice_needed": "Marked as not needing an answer.",
-  "waiting.remind": "Remind me",
-  "waiting.rem_tomorrow": "Tomorrow",
-  "waiting.rem_pick": "Pick\u2026",
-  "waiting.rem_pick_label": "Remind me on",
-  "waiting.rem_hint":
-    "A push notification, or a line in the digest. Cleared by itself when they answer.",
-  "waiting.rem_set": "Reminder set for {when}",
-  "waiting.rem_cancel": "Cancel reminder",
-  "waiting.open": "Open the conversation",
-  "waiting.no_need": "No answer needed",
-  "waiting.bring_back": "Bring it back",
-  "waiting.never_sends":
-    "Inboxrake never sends mail for you - reply from your mail app. Their "
-    + "newsletters don't count as an answer.",
-  "waiting.toast_needed": "{name}: no answer needed.",
-  "waiting.toast_back": "Back on the list.",
-  "waiting.toast_remind": "Reminder set for {when} ({name}).",
-  "waiting.toast_remind_off": "Reminder cancelled.",
-  "waiting.reminder_n": "{name} hasn't answered for {n} days",
-  "waiting.reminder_n_one": "{name} hasn't answered for 1 day",
-  "waiting.show": "Show",
-  "waiting.next_title": "{n} people haven't answered you",
-  "waiting.next_title_one": "1 person hasn't answered you",
-  "waiting.next_oldest": "oldest {n}\u00a0days",
-  "waiting.next_oldest_one": "oldest 1\u00a0day",
-"addr.menu": "Your addresses",
+  "addr.menu": "Your addresses",
   "addr.title": "Your addresses",
   "addr.sub": "{n}\u00a0addresses received mail",
   "addr.sub_one": "1\u00a0address received mail",

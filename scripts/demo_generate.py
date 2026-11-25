@@ -897,90 +897,10 @@ for _i, _dom in enumerate(["ticketline", "oldclub", "parcelhub", "bankalert",
         ["An update for you", "Still interested?"], 3, 900 - _i * 40,
         3 + _i * 30, original="old.demo@oldmail.example")
 
-# --- Waiting for a reply -----------------------------------------------------
-# Mail the demo user sent that nobody answered (Insights), and the small
-# history behind it: a person who usually answers within a couple of days (four
-# earlier conversations), a conversation with answers, newsletters of that
-# sender that are no answer, and a few answered mails. Deterministic (no random
-# draws, UIDs from a range of their own), so the rest of the demo stays exactly
-# as it was. Everything is dated relative to NOW.
-_WUID = iter(range(800_000, 900_000))
-WAIT_IN: list[dict] = []
-WAIT_SENT: list[dict] = []
-
-
-def _w_in(frm: str, subject: str, days_ago: float, msgid: str, *, irt=None,
-          refs=None, unsub=False, body=None) -> str:
-    WAIT_IN.append(make_msg(
-        next(_WUID), frm=frm, subject=subject, msgid=msgid, irt=irt,
-        refs=refs, seen=True, size=3000, date=_date(days_ago),
-        unsub="<https://unsub.example/u>" if unsub else None,
-        body=body or "Noted - I will write back soon."))
-    return msgid
-
-
-def _w_out(to: str, subject: str, days_ago: float, msgid: str, *, irt=None,
-           refs=None, body=None) -> str:
-    WAIT_SENT.append(make_msg(
-        next(_WUID), frm=ME, subject=subject, msgid=msgid, irt=irt, refs=refs,
-        to=to, seen=True, size=2500, date=_date(days_ago),
-        body=body or "Hello,\n\ncould you let me know? Thank you."))
-    return msgid
-
-
-_TRAVELLY = '"Travelly" <help@travelly.example>'
-# four earlier conversations, each answered after 1-3 days
-for _k, (_ago, _gap) in enumerate([(80, 2), (66, 2), (50, 1), (35, 3)]):
-    _m = _w_out(_TRAVELLY, f"Question about trip {_k + 1}", _ago,
-                f"<wait-t{_k}@demo.example>")
-    _w_in(_TRAVELLY, f"Re: Question about trip {_k + 1}", _ago - _gap,
-          f"<wait-t{_k}-a@demo.example>", irt=_m, refs=[_m])
-# the conversation behind the open mail: confirmation, your question, their
-# answer, your follow-up - which nobody answered
-_w_in(_TRAVELLY, "Your booking 88213 is confirmed", 16,
-      "<wait-b1@demo.example>")
-_w_out(_TRAVELLY, "Change of booking 88213", 15, "<wait-b2@demo.example>",
-       irt="<wait-b1@demo.example>", refs=["<wait-b1@demo.example>"])
-_w_in(_TRAVELLY, "Re: Change of booking 88213", 14, "<wait-b3@demo.example>",
-      irt="<wait-b2@demo.example>",
-      refs=["<wait-b1@demo.example>", "<wait-b2@demo.example>"])
-_w_out(_TRAVELLY, "Re: Change of booking 88213", 12, "<wait-b4@demo.example>",
-       irt="<wait-b3@demo.example>",
-       refs=["<wait-b1@demo.example>", "<wait-b2@demo.example>",
-             "<wait-b3@demo.example>"])
-# their newsletters since are no answer
-for _i, _ago in enumerate([9, 3]):
-    _w_in('"Travelly News" <news@travelly.example>',
-          ["Autumn deals", "Last-minute trips"][_i], _ago,
-          f"<wait-n{_i}@demo.example>", unsub=True)
-# the other open mails of the board
-_w_out('"Alex Doe" <alex@friends.example>', "Saturday dinner - are you in?",
-       6, "<wait-o1@demo.example>")
-_w_out('"City Library" <loans@library.example>',
-       "Extend loan for \u201cThe Long Way\u201d", 4, "<wait-o2@demo.example>")
-_w_out('"Sam Lee" <sam@work.example>', "Draft for Q1 plan", 2,
-       "<wait-o3@demo.example>")
-_w_in('"Bank of Example" <service@bank.example>', "Card replacement", 3,
-      "<wait-o4a@demo.example>")
-_w_out('"Bank of Example" <service@bank.example>', "Re: Card replacement", 1,
-       "<wait-o4@demo.example>", irt="<wait-o4a@demo.example>",
-       refs=["<wait-o4a@demo.example>"])
-# mails that were answered
-_m = _w_out('"Sam Lee" <sam@work.example>', "Meeting notes", 20,
-            "<wait-a1@demo.example>")
-_w_in('"Sam Lee" <sam@work.example>', "Re: Meeting notes", 19,
-      "<wait-a1-a@demo.example>", irt=_m, refs=[_m])
-_m = _w_out('"Pat Roe" <pat@club.example>', "Invoice question", 9,
-            "<wait-a2@demo.example>")
-_w_in('"Pat Roe" <pat@club.example>', "Re: Invoice question", 7,
-      "<wait-a2-a@demo.example>", irt=_m, refs=[_m])
-
-
 
 PROTON = _server({
-    "INBOX": (PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS
-              + WAIT_IN),
-    "Sent": PROTON_TAIL_SENT + PROTON_SENT + WAIT_SENT + [make_msg(
+    "INBOX": PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS,
+    "Sent": PROTON_TAIL_SENT + PROTON_SENT + [make_msg(
         next(_UID), frm="Demo <demo@example.com>",
         subject="Re: Wanderung am Samstag?", msgid=WANDER_R1,
         irt=WANDER_1, refs=WANDER_1, to="anna.weber@mailfox.example",

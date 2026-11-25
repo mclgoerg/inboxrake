@@ -1,5 +1,5 @@
-import { AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass, Layers,
-  LayoutDashboard, LayoutGrid, Mails,
+import { AtSign, BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
+  LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -11,7 +11,7 @@ import { fmtNum } from "../numfmt";
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "waiting" | "addresses" | "activity" | "settings";
+  | "subscriptions" | "addresses" | "activity" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -31,9 +31,6 @@ export interface SidebarProps {
   habits?: number;
   /** Subscriptions found (a count on Subscriptions; none = no count). */
   subscriptions?: number;
-  /** Mails you sent that nobody answered for longer than usual (a badge on
-   *  Waiting for a reply). */
-  waiting?: number;
   /** Addresses that look leaked (a badge on Your addresses). */
   leaked?: number;
   /** Tools that are disabled today stay disabled with the same rule. */
@@ -73,19 +70,6 @@ export function ProposalBadge({ n, extra = 0, quiet = false }: {
   );
 }
 
-/** The count of mails waiting for a reply longer than usual: a warm disc,
- *  with the words for a screen reader. */
-export function WaitingBadge({ n }: { n?: number }) {
-  return !n ? null : (
-    <span className="ml-auto inline-flex min-w-5 items-center justify-center
-      rounded-full bg-review-bg px-1.5 type-caption font-semibold
-      tabular-nums text-review-fg">
-      <span aria-hidden>{fmtNum(n)}</span>
-      <span className="sr-only">{t("waiting.badge", { n })}</span>
-    </span>
-  );
-}
-
 /** The count of leaked addresses: a warm disc, with the words for a screen
  *  reader. */
 export function LeakBadge({ n }: { n?: number }) {
@@ -102,8 +86,7 @@ export function LeakBadge({ n }: { n?: number }) {
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, proposals, habits, subscriptions, waiting,
-  leaked,
+  mailCount, junkCount, trashCount, proposals, habits, subscriptions, leaked,
   disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
@@ -176,8 +159,6 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         subscriptions)}
       {tool("addresses", <AtSign size={16} aria-hidden />, t("addr.menu"),
         undefined, <LeakBadge n={leaked} />)}
-      {tool("waiting", <Hourglass size={16} aria-hidden />, t("waiting.menu"),
-        undefined, <WaitingBadge n={waiting} />)}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

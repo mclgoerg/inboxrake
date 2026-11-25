@@ -32,12 +32,10 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
-import { WaitingPanel } from "./components/WaitingPanel";
 import { showReminderToast, ordinal } from "./subscriptions";
 import { habitDate, habitList, newHabit, useHabits } from "./habits";
 
 const VISIBLE_KEY = "pmc_visible_at";
-const WAIT_VISIBLE_KEY = "pmc_wait_visible_at";
 import { AccountCopyPanel } from "./components/AccountCopy";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
@@ -96,7 +94,7 @@ import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, 
   SameSenderRow,
   KnowledgeStored,
   StatusMsg, SubscriptionsResp, TrashResp, FolderRole, UndoIdent, UndoEntry,
-  AuditBy, WaitingSummary } from "./types";
+  AuditBy } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -298,7 +296,6 @@ export default function App() {
   const [dupsOpen, setDupsOpen] = useState(false);
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
-  const [waitingOpen, setWaitingOpen] = useState(false);
   // The Subscriptions page opened from the Overview's Review: only the unused.
   const [subsOnlyUnused, setSubsOnlyUnused] = useState(false);
   const [addressesOpen, setAddressesOpen] = useState(false);
@@ -336,7 +333,6 @@ export default function App() {
     : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
     : statsOpen ? "stats" : spaceOpen ? "space"
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
-    : waitingOpen ? "waiting"
     : addressesOpen ? "addresses"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
@@ -667,75 +663,6 @@ export default function App() {
       if (document.hidden) return;
       // read BEFORE noting now: "when was this page last seen" is the question
       check(Number(localStorage.getItem(VISIBLE_KEY)) || 0);
-      stamp();
-    };
-    tick();
-    const h = setInterval(tick, REMINDER_POLL_MS);
-    const vis = () => { if (document.hidden) stamp(); else tick(); };
-    document.addEventListener("visibilitychange", vis);
-    return () => {
-      live = false;
-      clearInterval(h);
-      document.removeEventListener("visibilitychange", vis);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, authOk]);
-
-  /* Mails you sent that nobody answered (backend/waiting.py): the sidebar
-     badge, the Overview's "N people haven't answered you" line and the phone
-     Insights widget. Local data like the subscriptions; fetched when the
-     account or its last scan changes, and again after a decision on the page
-     (`loadWaiting`). Null while unknown, not scanned or with tracking off. */
-  const [waiting, setWaiting] = useState<WaitingSummary | null>(null);
-  const loadWaiting = useCallback(() => {
-    Promise.resolve().then(() => api.waiting())
-      .then((d) => setWaiting(d.scanned && d.tracking ? d.summary : null))
-      .catch(() => {});
-  }, []);
-  useEffect(() => {
-    setWaiting(null);
-    if (authOk && state?.status === "done") loadWaiting();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, authOk, state?.scanned_ts, state?.status]);
-
-  /* A "Remind me" on a mail nobody answered fired: the server also pushes it
-     to devices that are not looking at the app; this page shows it once as a
-     toast (see the subscription reminders above for the push / visibility
-     rule). */
-  const openWaitingRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    if (!authOk) return;
-    let live = true;
-    const check = (lastVisible: number) => {
-      Promise.resolve().then(() => api.waitingReminders())
-        .then(({ reminders }) => {
-          if (!live || !reminders.length) return;
-          let seen: string[] = [];
-          try { seen = JSON.parse(localStorage.getItem("pmc_wait_seen") ?? "[]"); }
-          catch { /* start over */ }
-          for (const r of reminders) {
-            const id = `${account}:${r.id}:${r.ts}`;
-            if (seen.includes(id)) continue;
-            seen.push(id);
-            if (!showReminderToast(pushMode(), r.ts, lastVisible)) continue;
-            const text = t("waiting.reminder_n", { name: r.name, n: r.days });
-            toast.show(text, { action: { label: t("waiting.show"),
-              onClick: () => openWaitingRef.current() } });
-            fire(text);
-          }
-          try { localStorage.setItem("pmc_wait_seen", JSON.stringify(seen.slice(-50))); }
-          catch { /* private mode: it may show again */ }
-        }).catch(() => {});
-    };
-    // its own "last seen" stamp: the subscription loop's would already read
-    // "now" by the time this one looks
-    const stamp = () => {
-      try { localStorage.setItem(WAIT_VISIBLE_KEY, String(Math.floor(nowMs() / 1000))); }
-      catch { /* private mode: a late reminder may be missed */ }
-    };
-    const tick = () => {
-      if (document.hidden) return;
-      check(Number(localStorage.getItem(WAIT_VISIBLE_KEY)) || 0);
       stamp();
     };
     tick();
@@ -1249,8 +1176,7 @@ export default function App() {
     setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
-    setSubsOpen(false); setWaitingOpen(false); setAddressesOpen(false);
-    setAuditOpen(false);
+    setSubsOpen(false); setAddressesOpen(false); setAuditOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1324,7 +1250,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || waitingOpen || addressesOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2322,7 +2248,6 @@ export default function App() {
   const openRules = () => openTool("rules");
   openRulesRef.current = openRules;
   openSubsRef.current = () => { setSubsOnlyUnused(false); openTool("subscriptions"); };
-  openWaitingRef.current = () => openTool("waiting");
   const pickEnv = { labels: state?.folders, account: state?.account ?? "",
     onOpenRules: openRules };
 
@@ -2510,7 +2435,6 @@ export default function App() {
     wrapped: () => allMode ? setPickWrapped(true) : setWrappedOpen(true),
     trackers: () => setTrackersOpen(true),
     subscriptions: () => setSubsOpen(true),
-    waiting: () => setWaitingOpen(true),
     addresses: () => setAddressesOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
@@ -3055,22 +2979,6 @@ export default function App() {
           openSettingsSection("notifications", null, true);
         }} />
     )}
-    {toolShown("waiting") && (
-      <WaitingPanel key={account} account={account}
-        scannedTs={state?.scanned_ts ?? null}
-        onClose={() => closeTool(() => setWaitingOpen(false))}
-        onChanged={loadWaiting}
-        onNotifications={() => {
-          setWaitingOpen(false);
-          openTool("settings");
-          openSettingsSection("notifications", null, true);
-        }}
-        onSettings={() => {
-          setWaitingOpen(false);
-          openTool("settings");
-          openSettingsSection("account", account, true);
-        }} />
-    )}
     {toolShown("attachments") && state && (
       <AttachmentsPanel key={account}
         state={state}
@@ -3164,8 +3072,7 @@ export default function App() {
           : state?.trash_count}
         proposals={openProposals(state?.rules).length}
         habits={habits.length}
-        subscriptions={subs?.totals.count} waiting={waiting?.overdue}
-        leaked={leaked}
+        subscriptions={subs?.totals.count} leaked={leaked}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
@@ -3600,7 +3507,6 @@ export default function App() {
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
         <InsightsPage groups={senderGroups} state={state} subs={subs}
-          waiting={waiting}
           onOpen={openTool}
           onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
           onUnsubscribe={(key) => {
@@ -3654,9 +3560,7 @@ export default function App() {
             onReviewSubscriptions={() => {
               setSubsOnlyUnused(true);
               openTool("subscriptions");
-            }}
-            waiting={waiting}
-            onShowWaiting={() => openTool("waiting")} />
+            }} />
         </>)
       ) : flat ? (
         state && (

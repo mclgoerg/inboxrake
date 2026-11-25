@@ -602,33 +602,3 @@ def test_junk_line_counts_mails_from_people_you_replied_to(monkeypatch):
         acc.replied.clear()
     _, text, _ = digestmod.compose("default", 0)
     assert "replied" not in text
-
-
-# ------------------------------------- a reminder that fired (IX111)
-
-def _fired_reminder(monkeypatch, names):
-    from backend import waiting
-    monkeypatch.setattr(waiting, "reminded", lambda acc, now=None: list(names))
-
-
-def test_the_digest_names_the_people_who_have_not_answered(monkeypatch):
-    _configure_account()
-    auditlog.record("trash", account="default", count=2, size=100)
-    _fired_reminder(monkeypatch, ["Travelly", "Alex Doe"])
-    _, text, html = digestmod.compose("default", 0)
-    assert "2 people haven't answered you" in text
-    assert "2 people haven&#x27;t answered you" in html
-    for body in (text, html):
-        assert "Travelly, Alex Doe" in body
-    _fired_reminder(monkeypatch, ["Travelly"])
-    assert "1 person hasn't answered you" in digestmod.compose("default", 0)[1]
-    _, de, _ = digestmod.compose("default", 0, lang="de")
-    assert "1 Person hat dir nicht geantwortet" in de
-
-
-def test_the_digest_has_no_such_line_without_a_reminder(monkeypatch):
-    _configure_account()
-    auditlog.record("trash", account="default", count=2, size=100)
-    _fired_reminder(monkeypatch, [])
-    for body in digestmod.compose("default", 0)[1:]:
-        assert "answered you" not in body

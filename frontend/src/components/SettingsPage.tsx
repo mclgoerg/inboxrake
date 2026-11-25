@@ -22,7 +22,6 @@ import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { SubscriptionsSettings } from "./SubscriptionsSettings";
-import { WaitingSettings } from "./WaitingSettings";
 import { BUILTIN_CATEGORIES, CategoryList,
   parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
@@ -1222,7 +1221,6 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         setWildcards={setWildcards}
         reload={() => discoverFolders(editAcct, true)} />
     )}
-    <WaitingSettings account={editAcct} />
     <SettingsGroup header={t("settings.advanced")} footnote={t("smtp.help")}>
       <SettingsRow label={t("account.smtp_row")} expanded={smtpOpen}
         value={`${smtpHost || t("account.same_as_imap")} · ${f.smtpPort}`}

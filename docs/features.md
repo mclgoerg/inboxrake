@@ -56,7 +56,7 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
 (Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
-(Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply) and, at the bottom,
+(Statistics, Space map, Your year in mail, Trackers, Subscriptions) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
@@ -721,45 +721,6 @@ subscription, on your own server through your own mail connection, and keeps
 only the amount and its currency. Nothing is sent anywhere, and switching it
 off forgets the amounts it found. It is off by default.
 
-### Waiting for a reply
-
-<small class="where">Insights → Waiting for a reply</small>
-
-Lists the mails **you sent** where the last word is yours - nobody has
-answered. The scan reads your Sent folder's headers (Message-ID, date,
-subject, From, To / Cc, In-Reply-To, References; never a mail body) for the
-last 90 days, and only what is new each time; the first scan after this
-exists reads the 90 days. A sent mail is **waiting** when it went to at least
-one person (your own addresses, `no-reply` style addresses and list or
-newsletter senders are not people), it is your **latest** mail of its
-conversation (the same In-Reply-To / References matching as the Conversation
-view) and nothing newer in that conversation came back from one of those
-people. Their newsletters are never an answer. An answer you moved to Trash
-or that landed in Junk still counts. A reply in a folder Inboxrake does not
-scan (for example Gmail's All Mail only) is not seen, so that mail stays
-on the list until you mark it "No answer needed". It turns **orange** after
-the days you choose (2, 3 or 7; Settings · Account) - or later, when that
-person usually takes longer: the usual time is the median over their earlier
-answered conversations, needs at least two of them, and shows in the pane
-("usually answers you within 2 days (4 earlier conversations)").
-
-The page has three figures (waiting longer than usual, sent in the last 3
-days, the share of your mails that got an answer in 30 days) and the list in
-three views: **Open**, **Answered** and **Not needed**, most overdue first.
-The pane tells the conversation as a timeline and offers **Remind me**
-(tomorrow, next Monday or a day you pick, at 09:00; a Web Push through the
-same channel as the other reminders, plus a line in the activity digest; it
-fires once and clears itself when the answer arrives), **Open the
-conversation** and **No answer needed** (takes it off the list; "Bring it
-back" undoes it). On a phone swipe a row left for No answer needed and right
-for Remind me (tomorrow). The sidebar shows how many wait longer than usual,
-and the Overview's Next steps gets the line "3 people haven't answered you".
-
-Inboxrake never sends mail for you - you reply from your own mail app. It is
-all read from headers, with no AI. **Settings · Account → Track mails waiting
-for a reply** (on by default, per account) switches it off: nothing extra is
-read from the Sent folder and the index of it is deleted.
-
 ### Your addresses
 
 <small class="where">Insights → Your addresses</small>
@@ -1200,9 +1161,7 @@ a clean-up (move, delete, mark read), AI review or sorting, attachment
 analysis, bulk unsubscribe - the server sends a real Web Push, so the
 notification arrives with Inboxrake closed. The same goes for a
 [subscription reminder](#subscriptions) you switched on (it names the service,
-the expected date and amount) and a [reminder on an unanswered
-mail](#waiting-for-a-reply) you asked for (it names the person - or just
-"Someone" - and the days it has waited). Automatic scans and rules never
+the expected date and amount). Automatic scans and rules never
 notify, nor does a cancelled job, and a device that is looking at Inboxrake
 right now gets the in-app message instead. The text is short and generic
 (for example "Scan finished", with the account and counts under it) and
