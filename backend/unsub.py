@@ -180,10 +180,16 @@ def unsubscribe_addr(im: dict, addr: str, header: str, one_click: bool,
             return {"status": "link", "method": "open link",
                     "detail": parts["http"], "error": ""}
     except Exception as exc:
-        log.warning("unsubscribe %r failed: %s: %s", addr,
-                    type(exc).__name__, exc)
+        error = classify(exc, mail=mailing)
+        # The type and the code only: the text of e.g. an InvalidURL or an
+        # SMTP refusal can quote the sender's link or address, token and all.
+        # Only the unexpected ones (no network, URL or mail error) keep
+        # their traceback - that is what "unsub_failed" points the admin to.
+        log.warning("unsubscribe %r failed: %s (%s)", addr,
+                    type(exc).__name__, error,
+                    exc_info=error == mailops.UNSUB_FAILED)
         return {"status": "failed", "method": "", "detail": "",
-                "error": classify(exc, mail=mailing)}
+                "error": error}
     return {"status": "failed", "method": "", "detail": "",
             "error": mailops.UNSUB_NO_METHOD}
 

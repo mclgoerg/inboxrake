@@ -2,6 +2,7 @@
 in their language - never raw exception text - and a failed single
 unsubscribe is a handled 4xx whose detail is that code."""
 
+import http.client
 import re
 import smtplib
 import socket
@@ -93,6 +94,34 @@ def test_blocked_address_and_http_status_and_no_method(monkeypatch):
 
     res = unsub.unsubscribe_addr(IM, "a@x.example", "garbage", False)
     assert res["error"] == mailops.UNSUB_NO_METHOD
+
+
+@pytest.mark.parametrize("exc,header,one_click,code", [
+    # http.client quotes the request path, query (token) included
+    (http.client.InvalidURL(
+        "URL can't contain control characters. '/u?t=TOKEN-7f3a\\n' "
+        "(found at least '\\n')"), ONE_CLICK, True, mailops.UNSUB_UNREACHABLE),
+    (smtplib.SMTPRecipientsRefused(
+        {"leave+TOKEN-7f3a@list.example": (550, b"no such user")}),
+     "<mailto:leave+TOKEN-7f3a@list.example>", False,
+     mailops.UNSUB_MAIL_FAILED),
+])
+def test_the_log_never_quotes_the_link_or_address(
+        monkeypatch, caplog, exc, header, one_click, code):
+    with caplog.at_level("WARNING", logger=unsub.log.name):
+        res = _fail(monkeypatch, exc, header, one_click)
+    assert res["error"] == code
+    assert f"{type(exc).__name__} ({code})" in caplog.text
+    assert "TOKEN-7f3a" not in caplog.text
+
+
+def test_an_unexpected_failure_keeps_its_traceback_in_the_log(
+        monkeypatch, caplog):
+    with caplog.at_level("WARNING", logger=unsub.log.name):
+        res = _fail(monkeypatch, KeyError("some surprise"))
+    assert res["error"] == mailops.UNSUB_FAILED
+    assert "KeyError (unsub_failed)" in caplog.text
+    assert "Traceback" in caplog.text and "some surprise" in caplog.text
 
 
 def test_every_unsub_code_has_english_text_and_no_raw_words():
