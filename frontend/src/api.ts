@@ -5,7 +5,7 @@ import type {
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp,
-  LookalikeCount, MailsResp, OverviewResp, Rule, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
+  LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
@@ -504,10 +504,11 @@ export const api = {
   /** `slot`: only the mails that arrive in one slot of the "When mail
    *  arrives" card (a view parameter beside `q`). */
   mails: (p: { offset: number; limit: number; sort: string; dir: string;
-            q: string; slot?: ArrivalSlot | null }) => {
+            q: string; slot?: ArrivalSlot | null; finding?: string }) => {
     const z = userZone();
     return req<MailsResp>(`/api/mails?offset=${p.offset}&limit=${p.limit}`
       + `&sort=${p.sort}&dir=${p.dir}&q=${encodeURIComponent(p.q)}`
+      + (p.finding ? `&finding=${encodeURIComponent(p.finding)}` : "")
       + (p.slot ? `&slot=${p.slot.from}-${p.slot.to}`
         + `&slot_kind=${p.slot.kind}&slot_period=${p.slot.period}`
         + `&slot_days=${p.slot.days.join(",")}`
@@ -547,6 +548,10 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
   runRule: (id: string) => req<RuleRun>(`/api/rules/${id}/run`, {}),
+  /** The Rule checkup (read-only) and Ignore / Show again for one finding. */
+  ruleCheckup: () => req<RuleCheckup>("/api/rules/checkup"),
+  ignoreFinding: (id: string, ignored = true) =>
+    req<{ ok: boolean }>("/api/rules/checkup/ignore", { id, ignored }),
   createPreset: (name: string, query: string) =>
     req<FilterPreset>("/api/presets", { name, query }),
   updatePreset: (id: string, name: string, query: string) =>

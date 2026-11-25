@@ -841,6 +841,159 @@ export const DE: Record<string, string> = {
   "rules.empty_sub": "Regeln räumen nach Plan für dich auf. Fang mit einer davon an:",
   "rules.waiting": "{n}\u00a0Vorschläge warten auf dich",
   "rules.waiting_one": "1\u00a0Vorschlag wartet auf dich",
+  "checkup.title": "Regel-Check \u00b7 {n}\u00a0Hinweise",
+  "checkup.title_one": "Regel-Check \u00b7 1\u00a0Hinweis",
+  "checkup.sub_scan": "gepr\u00fcft nach dem Scan vor {ago} \u00b7 nichts wird von selbst ge\u00e4ndert",
+  "checkup.sub_now": "gerade gepr\u00fcft \u00b7 nichts wird von selbst ge\u00e4ndert",
+  "checkup.what": "Was gepr\u00fcft wird",
+  "checkup.more": "{n} weitere",
+  "checkup.all_fine": "Regel-Check: alles in Ordnung",
+  "checkup.needs_scan":
+    "Regel-Check: Scanne einmal, damit deine Regeln gegen deine Mails gepr\u00fcft werden",
+  "checkup.also": "Au\u00dferdem gepr\u00fcft, nichts gefunden: {what}.",
+  "checkup.needs_scan_note":
+    "\u00dcberschneidungen, Konflikte und ungenutzte Regeln werden gepr\u00fcft, sobald ein Scan fertig ist.",
+  "checkup.phone_sub": "{n}\u00a0Hinweise \u00b7 {kinds}",
+  "checkup.phone_sub_one": "1\u00a0Hinweis \u00b7 {kinds}",
+  "checkup.sheet_title": "Regel-Check",
+  "checkup.k_conflict": "Konflikt",
+  "checkup.k_overlap": "\u00dcberschneidung",
+  "checkup.k_dest_missing": "Ordner fehlt",
+  "checkup.k_only_protected": "Nur Gesch\u00fctztes",
+  "checkup.k_never_matches": "Trifft nie zu",
+  "checkup.k_stale_report": "Alter Bericht",
+  "checkup.s_conflict": "Konflikt",
+  "checkup.s_overlap": "\u00dcberschneidung",
+  "checkup.s_dest_missing": "Ordner weg",
+  "checkup.s_only_protected": "nur Gesch\u00fctztes",
+  "checkup.s_never_matches": "trifft nie zu",
+  "checkup.s_stale_report": "alter Bericht",
+  "checkup.b_conflict": "Konflikt {n}",
+  "checkup.b_overlap": "\u00dcberschneidung {n}",
+  "checkup.b_dest_missing": "Ordner weg",
+  "checkup.b_only_protected": "nur Gesch\u00fctztes",
+  "checkup.b_never_matches": "trifft nie zu",
+  "checkup.b_stale_report": "alter Bericht",
+  "checkup.badge_open": "Regel-Check: {what}",
+  "checkup.c_conflict": "Konflikte (eine Regel archiviert, was eine andere l\u00f6scht)",
+  "checkup.c_overlap": "\u00dcberschneidungen (eine Regel nimmt, was eine andere stehen l\u00e4sst)",
+  "checkup.c_dest_missing": "Zielordner, die es nicht mehr gibt",
+  "checkup.c_only_protected": "Regeln, die nur gesch\u00fctzte Absender oder Mails treffen",
+  "checkup.c_never_matches": "Regeln, die nie zutreffen",
+  "checkup.c_stale_report": "Regeln im Nur-Bericht-Modus mit einem Bericht, der 30+\u00a0Tage alt ist",
+  "checkup.t_conflict":
+    "{a} {main}, die {b} {rel}. Die zuerst angelegte Regel greift zuerst zu.",
+  "checkup.cm_trash": "verschiebt {mails} in den Papierkorb",
+  "checkup.cm_archive": "archiviert {mails}",
+  "checkup.cm_move": "verschiebt {mails} nach „{folder}“",
+  "checkup.cr_trash": "in den Papierkorb verschiebt",
+  "checkup.cr_archive": "archiviert",
+  "checkup.cr_move": "nach „{folder}“ verschiebt",
+  "checkup.t_overlap":
+    "{y} und {x} betreffen beide {senders}. {x} soll einige Mails in Ruhe lassen "
+    + "({ret}), aber {y} nimmt auch diese mit - das gilt f\u00fcr sie also nie.",
+  "checkup.t_overlap_purge":
+    "{y} und {x} l\u00f6schen beide endg\u00fcltig aus diesem Ordner: {folder}. {x} wartet "
+    + "({ret}), aber {y} l\u00f6scht fr\u00fcher ({retw}) - das Warten gilt also nie.",
+  "checkup.t_dest_due":
+    "{rule} verschiebt Mails nach \u201e{folder}\u201c. Diesen Ordner gibt es auf dem "
+    + "Server nicht mehr (umbenannt oder gel\u00f6scht?). Die Regel ist heute f\u00e4llig, "
+    + "der Lauf w\u00fcrde scheitern.",
+  "checkup.t_dest_run":
+    "{rule} verschiebt Mails nach \u201e{folder}\u201c. Diesen Ordner gibt es auf dem "
+    + "Server nicht mehr (umbenannt oder gel\u00f6scht?). Der n\u00e4chste Lauf w\u00fcrde "
+    + "scheitern.",
+  "checkup.t_dest_report":
+    "{rule} verschiebt Mails nach \u201e{folder}\u201c. Diesen Ordner gibt es auf dem "
+    + "Server nicht mehr (umbenannt oder gel\u00f6scht?). Die Regel steht auf \u201eNur "
+    + "Bericht\u201c; sobald sie Aktiv ist, w\u00fcrde der Lauf scheitern.",
+  "checkup.dest_hint":
+    "Mit \u201eBearbeiten\u2026\u201c w\u00e4hlst du einen anderen Ordner. Ein ge\u00e4ndertes Ziel setzt "
+    + "die Regel zur\u00fcck auf \u201eNur Bericht\u201c, wie jede \u00c4nderung an einer Regel.",
+  "checkup.t_prot_both":
+    "{rule} trifft nur gesch\u00fctzte Absender ({p}) und gesch\u00fctzte Mails ({m}), die "
+    + "keine Regel verschiebt - ein Lauf tut nichts.",
+  "checkup.t_prot_senders":
+    "{rule} trifft nur gesch\u00fctzte Absender ({n}), die keine Regel anfasst - ein "
+    + "Lauf tut nichts.",
+  "checkup.t_prot_pinned":
+    "{rule} trifft nur gesch\u00fctzte Mails ({n}), die keine Regel verschiebt - ein "
+    + "Lauf tut nichts.",
+  "checkup.t_never":
+    "{rule} hat in den letzten {n}\u00a0L\u00e4ufen nichts gefunden (seit {date}). Der "
+    + "Filter ist vielleicht enger, als er aussieht.",
+  "checkup.t_stale":
+    "{rule} berichtet nur, und der letzte Bericht ist {n}\u00a0Tage alt. Lass sie "
+    + "noch einmal laufen, um zu sehen, was sie heute t\u00e4te.",
+  "checkup.edit": "Bearbeiten\u2026",
+  "checkup.delete": "L\u00f6schen\u2026",
+  "checkup.edit_rule": "{name} bearbeiten\u2026",
+  "checkup.compare": "Vergleichen",
+  "checkup.show_senders": "Die {n}\u00a0Absender zeigen",
+  "checkup.show_senders_one": "Den Absender zeigen",
+  "checkup.show_mails": "Die {n}\u00a0Mails zeigen",
+  "checkup.show_mails_one": "Die Mail zeigen",
+  "checkup.ignore": "Ignorieren",
+  "checkup.unignore": "Wieder anzeigen",
+  "checkup.ignored": "{n}\u00a0ignoriert",
+  "checkup.ignored_show": "Anzeigen",
+  "checkup.ignored_hide": "Ausblenden",
+  "checkup.cmp_title_senders": "Zwei Regeln, dieselben {n}\u00a0Absender",
+  "checkup.cmp_title_senders_one": "Zwei Regeln, derselbe Absender",
+  "checkup.cmp_title_mails": "Zwei Regeln, dieselben {n}\u00a0Mails",
+  "checkup.cmp_title_mails_one": "Zwei Regeln, dieselbe Mail",
+  "checkup.cmp_title_purge": "Zwei Regeln, ein Ordner",
+  "checkup.cmp_only": "Nur {name}",
+  "checkup.cmp_both": "Beide",
+  "checkup.left": "{n}\u00a0bleiben",
+  "checkup.last": "zuletzt {date}",
+  "checkup.cmp_note_overlap":
+    "Regeln laufen in der Reihenfolge, in der du sie angelegt hast. {y} nimmt die "
+    + "Mails, die {x} in Ruhe l\u00e4sst. Damit sie bleiben, schr\u00e4nke den Filter von "
+    + "{y} ein oder l\u00f6sche eine der beiden.",
+  "checkup.cmp_note_conflict":
+    "Regeln laufen in der Reihenfolge, in der du sie angelegt hast: {first} kommt "
+    + "zuerst an diese Mails, die andere Regel findet danach nichts mehr zu tun. "
+    + "Alles, was verschoben wird, l\u00e4sst sich r\u00fcckg\u00e4ngig machen.",
+  "checkup.cmp_note_purge":
+    "Diese Regeln l\u00f6schen endg\u00fcltig - R\u00fcckg\u00e4ngig holt die Mails nicht zur\u00fcck. "
+    + "Verl\u00e4ngere die k\u00fcrzere Wartezeit oder l\u00f6sche eine der beiden.",
+  "checkup.what_title": "Was der Regel-Check pr\u00fcft",
+  "checkup.what_intro":
+    "Nach jedem Scan und jeder \u00c4nderung an einer Regel, auf deinem Server. "
+    + "Block-Regeln sind dabei; Spam- und Papierkorb-Regeln werden nur "
+    + "untereinander verglichen. Nichts wird von selbst ge\u00e4ndert - jede "
+    + "Korrektur ist ein Knopf, den du dr\u00fcckst.",
+  "checkup.w_overlap":
+    "\u00dcberschneidung: Eine Regel l\u00e4sst Mails mit Absicht in Ruhe (\u201eau\u00dfer den "
+    + "neuesten N\u201c, \u201ewenn \u00e4lter als N Tage\u201c), und eine andere Regel nimmt genau "
+    + "diese.",
+  "checkup.w_conflict":
+    "Konflikt: Zwei Regeln schicken dieselben Mails an verschiedene Orte "
+    + "(archivieren oder Papierkorb, zwei Ordner). Die zuerst angelegte greift "
+    + "zuerst zu.",
+  "checkup.w_dest_missing":
+    "Ordner fehlt: Den Zielordner gibt es auf dem Server nicht mehr, der Lauf "
+    + "w\u00fcrde scheitern.",
+  "checkup.w_only_protected":
+    "Nur Gesch\u00fctztes: Der Filter trifft, aber nur gesch\u00fctzte Absender oder "
+    + "gesch\u00fctzte Mails, die keine Regel anfasst.",
+  "checkup.w_never_matches":
+    "Trifft nie zu: In den letzten L\u00e4ufen nichts (aus der Aktivit\u00e4t, die nur "
+    + "einen begrenzten Verlauf beh\u00e4lt) und jetzt auch nichts.",
+  "checkup.w_stale_report":
+    "Alter Bericht: Eine Regel im Nur-Bericht-Modus, deren letzter Bericht 30 "
+    + "Tage oder \u00e4lter ist.",
+  "checkup.w_real":
+    "Die \u00dcberschneidungspr\u00fcfung z\u00e4hlt, was ein Lauf wirklich anfassen w\u00fcrde: \u201eau\u00dfer "
+    + "den neuesten N\u201c und \u201ewenn \u00e4lter als N Tage\u201c, das Limit pro Lauf, gesch\u00fctzte "
+    + "Absender, gesch\u00fctzte Mails und \u201eSicher behalten\u201c.",
+  "checkup.chip_senders": "{n}\u00a0Absender aus dem Regel-Check",
+  "checkup.chip_senders_one": "1\u00a0Absender aus dem Regel-Check",
+  "checkup.chip_mails": "{n}\u00a0Mails aus dem Regel-Check",
+  "checkup.chip_mails_one": "1\u00a0Mail aus dem Regel-Check",
+  "checkup.chip_clear_senders": "Alle Absender zeigen",
+  "checkup.chip_clear_mails": "Alle Mails zeigen",
   "proposal.tag": "Vorschlag · wartet auf dich",
   "proposal.by": "{name} · vorgeschlagen {when}",
   "proposal.report": "Bericht",

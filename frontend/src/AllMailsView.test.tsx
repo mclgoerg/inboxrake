@@ -486,3 +486,41 @@ test("keep-safe: 20 mails or fewer are never checked; Archive never is",
   await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
   expect(keepSafeCheck).not.toHaveBeenCalled();
 });
+
+test("a Rule checkup finding lists just its mails: the id goes to the server, "
+  + "a chip says so, and Show all mail lifts it", async () => {
+  mails.mockResolvedValue(resp([mk(1), mk(2)], 12));
+  const r = render(<ToastProvider><DialogProvider>
+    <ReaderHostProvider value={{ selfAddrs: [], account: "proton", folders: [] }}>
+      <AllMailsView state={state} onChanged={onChanged}
+        initialFinding={{ id: "0123456789abcdef", n: 12 }} />
+    </ReaderHostProvider>
+  </DialogProvider></ToastProvider>);
+  await screen.findByText("Subject 1");
+  expect(mails).toHaveBeenCalledWith({ offset: 0, limit: 100, sort: "date",
+    dir: "desc", q: "", finding: "0123456789abcdef" });
+  const chip = screen.getByTestId("checkup-chip");
+  expect(chip.textContent!.replace(/ /g, " "))
+    .toContain("12 mails from the Rule checkup");
+  fireEvent.click(screen.getByRole("button", { name: "Show all mail" }));
+  await waitFor(() => expect(mails).toHaveBeenLastCalledWith(
+    { offset: 0, limit: 100, sort: "date", dir: "desc", q: "" }));
+  expect(screen.queryByTestId("checkup-chip")).toBeNull();
+  r.unmount();
+});
+
+test("Load more keeps the finding: the next page is of the same mails", async () => {
+  mails.mockResolvedValueOnce(resp([mk(1), mk(2)], 3));
+  render(<ToastProvider><DialogProvider>
+    <ReaderHostProvider value={{ selfAddrs: [], account: "proton", folders: [] }}>
+      <AllMailsView state={state} onChanged={onChanged}
+        initialFinding={{ id: "0123456789abcdef", n: 3 }} />
+    </ReaderHostProvider>
+  </DialogProvider></ToastProvider>);
+  await screen.findByText("Subject 1");
+  mails.mockResolvedValueOnce({ ...resp([mk(3)], 3), offset: 2 });
+  fireEvent.click(screen.getByText("Load 1 more"));
+  await screen.findByText("Subject 3");
+  expect(mails).toHaveBeenLastCalledWith({ offset: 2, limit: 100, sort: "date",
+    dir: "desc", q: "", finding: "0123456789abcdef" });
+});

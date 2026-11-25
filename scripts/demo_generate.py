@@ -1164,6 +1164,20 @@ def generate() -> dict:
                                 "query": "is:unsub age:>1y unread:>90",
                                 "action": "trash", "schedule": "manual",
                                 "account": "icloud"})
+    # Three more for the Rule checkup: two that clash (the sweep above trashes
+    # what "keep the latest 5" leaves), one whose target folder is not on the
+    # server, one that has found nothing for weeks.
+    keep5 = rules.create_rule({
+        "name": "Keep the latest 5 of every newsletter",
+        "query": "tag:newsletter", "action": "trash", "keep_latest": 5,
+        "schedule": "daily", "account": "proton"})
+    receipts = rules.create_rule({
+        "name": "Receipts into their own folder", "query": "tag:finance age:>3m",
+        "action": "move", "dest": "Receipts", "schedule": "weekly",
+        "account": "proton"})
+    tickets = rules.create_rule({
+        "name": "Archive old event tickets", "query": "tag:travel age:>6m",
+        "action": "archive", "schedule": "weekly", "account": "proton"})
     _ic = ICLOUD.mailbox["INBOX"]
     _icn, _icb = len(_ic), sum(m["size"] for m in _ic)
     history = {"accounts": {"proton": {
@@ -1228,22 +1242,48 @@ def generate() -> dict:
     # cleaning, so they are in the log and in this month's statistics too
     _tm_rows, _tm_user, _tm_bots = _time_machine(NOW, PROTON, sweep["id"])
     _au.extend(_tm_rows)
+    # the three Rule checkup rules draw their times from a generator of their
+    # own, so the stamps of everything above and below stay what they were
+    _hours2 = random.Random(11)
+
+    def _t2(days_ago: float) -> int:
+        return int(NOW - days_ago * 86400 - _hours2.uniform(0, 23) * 3600)
+
+    def _ran(rule, ts, count, groups, created):
+        """The rule is Active and its last run was `ts` (an audit entry is
+        written by the caller)."""
+        with rules._LOCK:
+            stored = rules.load_rules()
+            r = next(x for x in stored if x["id"] == rule["id"])
+            r.update(mode="execute", created=created, edited=created,
+                     report_runs=1, report_sig=rules.definition_sig(r),
+                     report_box=rules.box_sig(r), report_at=ts - 86400,
+                     last_run={"ts": ts, "mode": "execute", "groups": groups,
+                               "mails": count, "acted": count, "capped": 0,
+                               "skipped_protected": 0, "skipped_pinned": 0,
+                               "preview": [], "error": ""})
+            rules._save(stored)
+
     for rule, d, count in ((sweep, 21, 150), (parcels, 14, 60),
                            (lapsed, 9, 48)):
         ts = _t(d)
         _au.append((rule["account"], "rule_execute", ts, count, "ok",
                     f"rule:{rule['id']}", rule["name"]))
-        with rules._LOCK:
-            stored = rules.load_rules()
-            r = next(x for x in stored if x["id"] == rule["id"])
-            r.update(mode="execute", created=ts - 30 * 86400, report_runs=1,
-                     report_sig=rules.definition_sig(r),
-                     report_box=rules.box_sig(r), report_at=ts - 86400,
-                     last_run={"ts": ts, "mode": "execute", "groups": 4,
-                               "mails": count, "acted": count, "capped": 0,
-                               "skipped_protected": 0, "skipped_pinned": 0,
-                               "preview": [], "error": ""})
-            rules._save(stored)
+        _ran(rule, ts, count, 4, ts - 30 * 86400)
+    # keep-latest runs every day; the receipts rule ran a month ago (before
+    # its folder went away); the ticket rule has run weekly and found nothing
+    for rule, d, count, groups, created in (
+            (keep5, 1, 52, 9, _t2(60)), (receipts, 33, 6, 2, _t2(70))):
+        ts = _t2(d)
+        _au.append((rule["account"], "rule_execute", ts, count, "ok",
+                    f"rule:{rule['id']}", rule["name"]))
+        _ran(rule, ts, count, groups, created)
+    _created = _t2(62)
+    for d in (55, 48, 41, 34, 27, 20, 13, 6):
+        ts = _t2(d)
+        _au.append(("proton", "rule_execute", ts, 0, "ok",
+                    f"rule:{tickets['id']}", tickets["name"]))
+    _ran(tickets, ts, 0, 0, _created)
     # "This month" must read the same on Activity (audit log), Statistics
     # (history) and Sign-in & users (history, all accounts). The history above
     # is the figure; the log gets the user's own moves to make up what the
@@ -1254,7 +1294,8 @@ def generate() -> dict:
     _month_start = calendar.timegm(
         time.strptime(_ym + "-01", "%Y-%m-%d"))
     _rule_action = {sweep["name"]: "trash", parcels["name"]: "archive",
-                    lapsed["name"]: "trash"}
+                    lapsed["name"]: "trash", keep5["name"]: "trash",
+                    receipts["name"]: "archive", tickets["name"]: "archive"}
     _labels = {"trash": ["Old newsletters", "Expired promotions",
                          "Past order updates"],
                "archive": ["Receipts to keep", "Travel confirmations"]}

@@ -724,6 +724,39 @@ capped at 500 mails, skips protected senders, and uses the normal
 Trash/undo pipeline - the scheduler is a background loop inside the
 container, no cron needed.
 
+### Rule checkup
+
+<small class="where">Clean up → Rules</small>
+
+A **Rule checkup** card on the Rules page - below the assistants' proposals,
+above your rules - looks at all of a mailbox's rules together after every scan
+and every rule change. It runs on your server, from what is already scanned,
+and only reports: nothing is changed by itself, every fix is a button you
+press. It finds rules that **overlap** (one leaves mails alone on purpose -
+"except the newest N", "if older than N days" - and another takes exactly
+those), rules that **conflict** (two rules send the same mails to different
+places: archive or Trash, two folders - the one created first acts first),
+rules that **point nowhere** (the target folder is gone, so the run would
+fail), rules that **never match** (nothing in their last runs, read from
+Activity, and nothing now), rules that **only meet protected senders or
+mails**, and report-only rules whose last report is **30 days old**. Block
+rules are included; Junk and Trash rules are compared with each other only.
+The overlap check counts what a run would really touch: the newest-N and
+older-than limits, the 500-mail cap, protected senders, protected mails and
+Keep-safe.
+
+Each finding names the rules and the senders and says what happens today.
+**Edit…** opens the rule in the usual editor (a changed target puts a rule
+back in Report only, as every change does), **Delete…** asks first,
+**Compare** shows two rules side by side with the senders they share, **Show
+the N senders** / **Show the N mails** open Senders / All mail narrowed to
+them, and **Ignore** hides a finding until it changes - a rule is edited,
+the missing folder is another one, an old report has been renewed and has aged
+again (a quiet "N ignored" line brings an ignored finding back at any time). Affected rule cards get a small badge
+at the end of the sentence ("overlaps 1", "folder gone") that opens the
+finding; when all is well the card shrinks to one line, "Rule checkup: all
+fine". On a phone the card is one row that opens the same list.
+
 ### Rule recipes
 
 <small class="where">Clean up → Rules → New rule → From a recipe</small>

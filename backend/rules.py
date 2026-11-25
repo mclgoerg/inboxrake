@@ -699,6 +699,9 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
         # account) starts over in report mode, with no report run on record.
         _reset_to_report(rule, "edited" if definition_sig(rule) != before
                          else "account")
+        # when the definition last changed: the Rule checkup counts only the
+        # runs of the current one as "found nothing"
+        rule["edited"] = int(time.time())
     if "mode" in body:
         if body["mode"] not in ("report", "execute"):
             raise ValueError("bad mode")

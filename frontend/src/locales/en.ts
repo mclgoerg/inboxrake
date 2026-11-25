@@ -1478,6 +1478,152 @@ export const EN: Record<string, string> = {
   "rules.empty_sub": "Rules clean up for you on a schedule. Start with one of these:",
   "rules.waiting": "{n}\u00a0proposals waiting for you",
   "rules.waiting_one": "1\u00a0proposal waiting for you",
+  "checkup.title": "Rule checkup \u00b7 {n}\u00a0things to look at",
+  "checkup.title_one": "Rule checkup \u00b7 1\u00a0thing to look at",
+  "checkup.sub_scan": "checked after the scan {ago} ago \u00b7 nothing is changed by itself",
+  "checkup.sub_now": "checked just now \u00b7 nothing is changed by itself",
+  "checkup.what": "What it checks",
+  "checkup.more": "{n} more",
+  "checkup.all_fine": "Rule checkup: all fine",
+  "checkup.needs_scan": "Rule checkup: scan once to check your rules against your mail",
+  "checkup.also": "Also checked, nothing found: {what}.",
+  "checkup.needs_scan_note":
+    "Overlaps, conflicts and idle rules are checked once a scan has finished.",
+  "checkup.phone_sub": "{n}\u00a0things to look at \u00b7 {kinds}",
+  "checkup.phone_sub_one": "1\u00a0thing to look at \u00b7 {kinds}",
+  "checkup.sheet_title": "Rule checkup",
+  "checkup.k_conflict": "Conflict",
+  "checkup.k_overlap": "Overlap",
+  "checkup.k_dest_missing": "Points nowhere",
+  "checkup.k_only_protected": "Only protected mail",
+  "checkup.k_never_matches": "Never matches",
+  "checkup.k_stale_report": "Old report",
+  "checkup.s_conflict": "conflict",
+  "checkup.s_overlap": "overlap",
+  "checkup.s_dest_missing": "folder gone",
+  "checkup.s_only_protected": "only protected mail",
+  "checkup.s_never_matches": "never matches",
+  "checkup.s_stale_report": "old report",
+  "checkup.b_conflict": "conflicts {n}",
+  "checkup.b_overlap": "overlaps {n}",
+  "checkup.b_dest_missing": "folder gone",
+  "checkup.b_only_protected": "only protected",
+  "checkup.b_never_matches": "never matches",
+  "checkup.b_stale_report": "old report",
+  "checkup.badge_open": "Rule checkup: {what}",
+  "checkup.c_conflict": "conflicts (one rule archives what another trashes)",
+  "checkup.c_overlap": "overlaps (one rule takes what another leaves alone)",
+  "checkup.c_dest_missing": "target folders that are gone",
+  "checkup.c_only_protected": "rules that only meet protected senders or mails",
+  "checkup.c_never_matches": "rules that never match",
+  "checkup.c_stale_report": "report-only rules whose report is 30+ days old",
+  "checkup.t_conflict":
+    "{a} {main} that {b} {rel}. The one created first acts first.",
+  "checkup.cm_trash": "moves {mails} to Trash",
+  "checkup.cm_archive": "archives {mails}",
+  "checkup.cm_move": "moves {mails} to “{folder}”",
+  "checkup.cr_trash": "moves to Trash",
+  "checkup.cr_archive": "archives",
+  "checkup.cr_move": "moves to “{folder}”",
+  "checkup.t_overlap":
+    "{y} and {x} both act on {senders}. {x} is meant to leave some mails alone "
+    + "({ret}), but {y} takes those too - so that never holds for them.",
+  "checkup.t_overlap_purge":
+    "{y} and {x} both delete permanently from this folder: {folder}. {x} waits "
+    + "({ret}), but {y} deletes sooner ({retw}) - so that wait never holds.",
+  "checkup.t_dest_due":
+    "{rule} moves mail to \u201c{folder}\u201d, which is no longer on the server "
+    + "(renamed or deleted?). It is due today, and the run would fail.",
+  "checkup.t_dest_run":
+    "{rule} moves mail to \u201c{folder}\u201d, which is no longer on the server "
+    + "(renamed or deleted?). Its next run would fail.",
+  "checkup.t_dest_report":
+    "{rule} moves mail to \u201c{folder}\u201d, which is no longer on the server "
+    + "(renamed or deleted?). It is in Report only; once it is Active, its run "
+    + "would fail.",
+  "checkup.dest_hint":
+    "Edit\u2026 lets you pick another folder. A changed target puts the rule back in "
+    + "Report only, as every change to a rule does.",
+  "checkup.t_prot_both":
+    "{rule} only meets protected senders ({p}) and protected mails ({m}), which "
+    + "no rule ever moves - a run does nothing.",
+  "checkup.t_prot_senders":
+    "{rule} only meets protected senders ({n}), which no rule ever touches - a "
+    + "run does nothing.",
+  "checkup.t_prot_pinned":
+    "{rule} only meets protected mails ({n}), which no rule ever moves - a run "
+    + "does nothing.",
+  "checkup.t_never":
+    "{rule} found nothing in its last {n}\u00a0runs (since {date}). The filter "
+    + "may be narrower than it looks.",
+  "checkup.t_stale":
+    "{rule} only reports, and its last report is {n}\u00a0days old. Run it "
+    + "again to see what it would do today.",
+  "checkup.edit": "Edit\u2026",
+  "checkup.delete": "Delete\u2026",
+  "checkup.edit_rule": "Edit {name}\u2026",
+  "checkup.compare": "Compare",
+  "checkup.show_senders": "Show the {n}\u00a0senders",
+  "checkup.show_senders_one": "Show the sender",
+  "checkup.show_mails": "Show the {n}\u00a0mails",
+  "checkup.show_mails_one": "Show the mail",
+  "checkup.ignore": "Ignore",
+  "checkup.unignore": "Show again",
+  "checkup.ignored": "{n}\u00a0ignored",
+  "checkup.ignored_show": "Show",
+  "checkup.ignored_hide": "Hide",
+  "checkup.cmp_title_senders": "Two rules, the same {n}\u00a0senders",
+  "checkup.cmp_title_senders_one": "Two rules, the same sender",
+  "checkup.cmp_title_mails": "Two rules, the same {n}\u00a0mails",
+  "checkup.cmp_title_mails_one": "Two rules, the same mail",
+  "checkup.cmp_title_purge": "Two rules, one folder",
+  "checkup.cmp_only": "Only {name}",
+  "checkup.cmp_both": "Both",
+  "checkup.left": "{n} left",
+  "checkup.last": "last {date}",
+  "checkup.cmp_note_overlap":
+    "Rules run in the order you created them. {y} takes the mails that {x} "
+    + "leaves alone. To keep them, narrow the filter of {y}, or delete one of "
+    + "the two.",
+  "checkup.cmp_note_conflict":
+    "Rules run in the order you created them, so {first} gets to these mails "
+    + "first; the other rule then finds nothing left to do. Everything that "
+    + "moves can be undone.",
+  "checkup.cmp_note_purge":
+    "These rules delete permanently - Undo cannot bring the mails back. Make "
+    + "the shorter wait longer, or delete one of the two.",
+  "checkup.what_title": "What the Rule checkup looks at",
+  "checkup.what_intro":
+    "After every scan and every rule change, on your server. Block rules are "
+    + "included; Junk and Trash rules are compared with each other. Nothing is "
+    + "changed by itself - every fix is a button you press.",
+  "checkup.w_overlap":
+    "Overlap: one rule leaves mails alone on purpose (\u201cexcept the newest N\u201d, "
+    + "\u201cif older than N days\u201d) and another rule takes exactly those.",
+  "checkup.w_conflict":
+    "Conflict: two rules send the same mails to different places (archive or "
+    + "Trash, two folders). The one created first acts first.",
+  "checkup.w_dest_missing":
+    "Points nowhere: the target folder is no longer on the server, so the run "
+    + "would fail.",
+  "checkup.w_only_protected":
+    "Only protected mail: the filter matches, but only protected senders or "
+    + "protected mails, which no rule touches.",
+  "checkup.w_never_matches":
+    "Never matches: nothing in its last runs (read from Activity, which keeps "
+    + "a limited history) and nothing now.",
+  "checkup.w_stale_report":
+    "Old report: a report-only rule whose last report is 30 days old or more.",
+  "checkup.w_real":
+    "The overlap check counts what a run would really touch: \u201cexcept the "
+    + "newest N\u201d and \u201cif older than N days\u201d, the per-run cap, protected senders, "
+    + "protected mails and Keep-safe.",
+  "checkup.chip_senders": "{n}\u00a0senders from the Rule checkup",
+  "checkup.chip_senders_one": "1\u00a0sender from the Rule checkup",
+  "checkup.chip_mails": "{n}\u00a0mails from the Rule checkup",
+  "checkup.chip_mails_one": "1\u00a0mail from the Rule checkup",
+  "checkup.chip_clear_senders": "Show all senders",
+  "checkup.chip_clear_mails": "Show all mail",
   "proposal.tag": "Proposal · waiting for you",
   "proposal.by": "{name} · proposed {when}",
   "proposal.report": "Report",
