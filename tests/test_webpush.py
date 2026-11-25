@@ -932,45 +932,62 @@ def test_only_the_own_tenant_hears_the_reminder(bridge, network):
 # ------------------------------------ "Remind me" on an unanswered mail (IX111)
 
 def _waiting_params(**over):
-    return {"name": "Travelly", "days": 14,
-            "subject": "Re: Change of booking 88213", "usual": 2, **over}
+    return {"name": "Travelly", "days": 14, "ref": "<q1@self.example>",
+            "usual": 2, **over}
 
 
 def test_the_waiting_reminder_reads_like_the_board_in_both_languages():
     en = webpush._payload("en", "waiting", True, "default", False,
                           params=_waiting_params())
     assert en["title"] == "Travelly hasn't answered for 14 days"
-    assert en["body"] == ("“Re: Change of booking 88213” · "
-                          "they usually answer in 2 days")
+    assert en["body"] == "they usually answer in 2 days"
     assert en["url"] == "/#/waiting"
     de = webpush._payload("de", "waiting", True, "default", False,
                           params=_waiting_params())
     assert de["title"] == "Travelly hat seit 14 Tagen nicht geantwortet"
-    assert de["body"] == ("“Re: Change of booking 88213” · "
-                          "antwortet sonst innerhalb von 2 Tagen")
+    assert de["body"] == "antwortet sonst innerhalb von 2 Tagen"
 
 
 def test_the_waiting_reminder_words_one_day_and_an_unknown_usual_time():
     p = webpush._payload("en", "waiting", True, "work", True,
                          params=_waiting_params(days=1, usual=1))
     assert p["title"] == "Travelly hasn't answered for 1 day"
-    assert p["body"].endswith("they usually answer in 1 day")
-    assert p["body"].startswith("work · ")
+    assert p["body"] == "work · they usually answer in 1 day"
     p = webpush._payload("de", "waiting", True, "a", False,
                          params=_waiting_params(days=1, usual=None))
     assert p["title"] == "Travelly hat seit 1 Tag nicht geantwortet"
-    assert p["body"] == "“Re: Change of booking 88213”"
+    assert p["body"] == ""
 
 
-def test_the_waiting_reminder_has_no_address_and_a_stable_tag():
+def test_the_waiting_reminder_carries_no_address_or_subject():
+    # like the subscription reminder: never a subject or an address, even
+    # when the caller hands them in
     p = webpush._payload("en", "waiting", True, "default", False,
-                         params=_waiting_params(addr="help@travelly.example"))
+                         params=_waiting_params(
+                             addr="help@travelly.example",
+                             subject="Re: Change of booking 88213"))
     assert "@" not in json.dumps(p)
+    assert "booking" not in json.dumps(p) and "88213" not in json.dumps(p)
+
+
+def test_a_waiting_reminder_without_a_name_says_someone():
+    en = webpush._payload("en", "waiting", True, "default", False,
+                          params=_waiting_params(name=""))
+    assert en["title"] == "Someone hasn't answered for 14 days"
+    de = webpush._payload("de", "waiting", True, "default", False,
+                          params=_waiting_params(name=None))
+    assert de["title"] == "Jemand hat seit 14 Tagen nicht geantwortet"
+
+
+def test_the_waiting_reminder_has_a_stable_tag_per_mail():
+    p = webpush._payload("en", "waiting", True, "default", False,
+                         params=_waiting_params())
     again = webpush._payload("de", "waiting", True, "default", False,
                              params=_waiting_params())
     assert p["tag"] == again["tag"] and "Travelly" not in p["tag"]
+    assert "self.example" not in p["tag"]
     other = webpush._payload("en", "waiting", True, "default", False,
-                             params=_waiting_params(subject="Something else"))
+                             params=_waiting_params(ref="<q2@self.example>"))
     assert other["tag"] != p["tag"]
 
 

@@ -51,6 +51,7 @@ def _acc(incoming=(), sent=(), name="acct", sent_folder="Sent"):
     acc = SimpleNamespace(
         name=name, lock=threading.RLock(), tenant=tenants.DEFAULT,
         index={(m["folder"], m["uid"]): m for m in incoming},
+        role_index={},
         state={"groups_rev": 1, "status": "done", "scanned_ts": NOW},
         folder_roles={"sent": sent_folder} if sent_folder else {})
     waitstore.save_index(sent_folder or "Sent", 1, list(sent), name)
@@ -438,8 +439,7 @@ def test_a_reminder_fires_once_when_it_is_due(pushes):
     assert waiting.tick_account(acc, NOW) == 0 and pushes == []
     assert waiting.tick_account(acc, NOW + 3601) == 1
     assert pushes == [("waiting", {"name": "Pat", "days": 14,
-                                   "subject": "Change of plan",
-                                   "usual": None})]
+                                   "usual": None, "ref": mid})]
     assert waiting.tick_account(acc, NOW + 7200) == 0      # once
     assert len(pushes) == 1
 
@@ -827,3 +827,77 @@ def test_renaming_and_deleting_an_account_carry_the_decisions(monkeypatch):
     r = client.post("/api/config", json={"delete_account": "two"})
     assert r.status_code == 200
     assert waitstore.load_account("two")["needed"] == []
+
+
+# ------------------------------------ push name, Trash / Junk, the poll (fixes)
+
+def _unnamed_remind(addr):
+    s = _sent(14, addr, "Change of plan", msgid="<q9@self.example>")
+    s["to"] = [[addr, ""]]
+    acc = _acc(sent=[s])
+    waiting.set_reminder(acc, s["id"], NOW + 60, NOW)
+    return acc
+
+
+def test_a_push_without_a_known_name_names_the_company_not_the_address(pushes):
+    acc = _unnamed_remind("jane.doe@mail.travelly.example")
+    assert waiting.tick_account(acc, NOW + 120) == 1
+    kind, params = pushes[0]
+    assert params["name"] == "Travelly"
+    assert "jane" not in json.dumps(params)         # no part of the address
+    assert "subject" not in params and "plan" not in json.dumps(params)
+
+
+def test_a_push_without_a_name_on_a_freemail_address_says_someone(pushes):
+    acc = _unnamed_remind("jane.doe@gmail.com")
+    assert waiting.tick_account(acc, NOW + 120) == 1
+    assert pushes[0][1]["name"] == ""        # webpush words it "Someone"
+    assert "jane" not in json.dumps(pushes[0][1])
+
+
+def test_a_known_name_still_wins_in_the_push(pushes):
+    acc, mid = _remind_case()
+    waiting.set_reminder(acc, mid, NOW + 60, NOW)
+    waiting.tick_account(acc, NOW + 120)
+    assert pushes[0][1]["name"] == "Pat"
+
+
+@pytest.mark.parametrize("role", ["trash", "junk"])
+def test_an_answer_in_trash_or_junk_still_counts(role):
+    s = _sent(8, "pat@their.example", msgid="<t1@self.example>")
+    acc = _acc(sent=[s])
+    assert _states(acc) == {"Question": "open"}
+    reply = _in(2, "pat@their.example", irt=s["id"], folder=role.title())
+    acc.role_index[role] = {(reply["folder"], reply["uid"]): reply}
+    assert _states(acc) == {"Question": "answered"}
+
+
+def test_a_newsletter_in_junk_is_no_answer():
+    s = _sent(8, "pat@their.example", msgid="<t2@self.example>")
+    acc = _acc([_in(40, "pat@their.example", "Hello")], [s])
+    ad = _in(2, "pat@their.example", irt=s["id"], bulk=True, folder="Junk")
+    acc.role_index["junk"] = {(ad["folder"], ad["uid"]): ad}
+    assert _states(acc) == {"Question": "open"}
+
+
+def test_the_reminder_poll_builds_no_graph_without_a_fired_reminder(
+        monkeypatch, pushes):
+    acc, mid = _remind_case()
+    built = []
+    real = waiting.analyse
+    monkeypatch.setattr(waiting, "analyse",
+                        lambda *a, **k: built.append(1) or real(*a, **k))
+    assert waiting.recent_reminders(acc, NOW) == [] and built == []   # none
+    waiting.set_reminder(acc, mid, NOW + 3600, NOW)
+    built.clear()
+    assert waiting.recent_reminders(acc, NOW + 10) == [] and built == []  # later
+    assert waiting.reminded(acc, NOW + 10) == [] and built == []
+    built.clear()
+    waiting.tick_account(acc, NOW + 3601)
+    assert len(built) >= 1
+    built.clear()
+    assert [r["name"] for r in waiting.recent_reminders(acc, NOW + 3700)] \
+        == ["Pat"] and built
+    built.clear()                           # fired long ago: shown no more
+    assert waiting.recent_reminders(acc, NOW + 3600 + 4 * DAY) == []
+    assert built == []

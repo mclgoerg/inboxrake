@@ -734,7 +734,10 @@ one person (your own addresses, `no-reply` style addresses and list or
 newsletter senders are not people), it is your **latest** mail of its
 conversation (the same In-Reply-To / References matching as the Conversation
 view) and nothing newer in that conversation came back from one of those
-people. Their newsletters are never an answer. It turns **orange** after
+people. Their newsletters are never an answer. An answer you moved to Trash
+or that landed in Junk still counts. A reply in a folder Inboxrake does not
+scan (for example Gmail's All Mail only) is not seen, so that mail stays
+on the list until you mark it "No answer needed". It turns **orange** after
 the days you choose (2, 3 or 7; Settings · Account) - or later, when that
 person usually takes longer: the usual time is the median over their earlier
 answered conversations, needs at least two of them, and shows in the pane
