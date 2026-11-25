@@ -529,13 +529,24 @@ def test_nothing_is_changed_by_a_checkup(box):
     make("Keep the latest 2", "old.example", keep_latest=2)
     make("Sweep the forum", "forum")
     make("Receipts away", "shop", action="move", dest="Gone")
+    with rulesmod._LOCK:                      # Active rules, as in real use
+        rules = rulesmod.load_rules()
+        for r in rules:
+            r.update(mode="execute", report_runs=1,
+                     report_sig=rulesmod.definition_sig(r),
+                     report_box=rulesmod.box_sig(r))
+        rulesmod._save(rules)
+    assert {r["mode"] for r in rulesmod.load_rules()} == {"execute"}
     rules_before = rulesmod._path().read_text()
+    audit_before = auditlog._path().exists() and auditlog._path().read_text()
     mail_before = {f: [m["uid"] for m in ms]
                    for f, ms in box.mailbox.items()}
     commands = len(box.commands)
     res = client.get("/api/rules/checkup").json()
     assert {"overlap", "dest_missing"} <= {f["kind"] for f in res["findings"]}
     assert rulesmod._path().read_text() == rules_before
+    assert (auditlog._path().exists() and auditlog._path().read_text()) \
+        == audit_before                       # not even a log entry
     assert {f: [m["uid"] for m in ms]
             for f, ms in box.mailbox.items()} == mail_before
     assert len(box.commands) == commands             # no IMAP traffic

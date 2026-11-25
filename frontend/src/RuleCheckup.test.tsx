@@ -147,6 +147,21 @@ test("the card sits below the proposals, above the rules, and names every findin
     + "or mails, report-only rules whose report is 30+ days old.");
 });
 
+test("a gone folder reads differently for a report-only rule and for one not due", async () => {
+  checkup = result([{ ...DEST, due: false }]);
+  mount();
+  let c = await card();
+  expect(nb(c.textContent)).toContain("(renamed or deleted?). Its next run "
+    + "would fail.");
+  cleanup();
+  checkup = result([DEST]);
+  mount(RULES.map((r) => r.id === "r3" ? { ...r, mode: "report" } : r));
+  c = await card();
+  expect(nb(c.textContent)).toContain("It is in Report only; once it is Active, "
+    + "its run would fail.");
+  expect(nb(c.textContent)).not.toContain("due today");
+});
+
 test("the buttons per kind: Edit, Delete, Compare, Show, Ignore", async () => {
   mount();
   const c = await card();

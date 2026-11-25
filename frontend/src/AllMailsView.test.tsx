@@ -508,3 +508,19 @@ test("a Rule checkup finding lists just its mails: the id goes to the server, "
   expect(screen.queryByTestId("checkup-chip")).toBeNull();
   r.unmount();
 });
+
+test("Load more keeps the finding: the next page is of the same mails", async () => {
+  mails.mockResolvedValueOnce(resp([mk(1), mk(2)], 3));
+  render(<ToastProvider><DialogProvider>
+    <ReaderHostProvider value={{ selfAddrs: [], account: "proton", folders: [] }}>
+      <AllMailsView state={state} onChanged={onChanged}
+        initialFinding={{ id: "0123456789abcdef", n: 3 }} />
+    </ReaderHostProvider>
+  </DialogProvider></ToastProvider>);
+  await screen.findByText("Subject 1");
+  mails.mockResolvedValueOnce({ ...resp([mk(3)], 3), offset: 2 });
+  fireEvent.click(screen.getByText("Load 1 more"));
+  await screen.findByText("Subject 3");
+  expect(mails).toHaveBeenLastCalledWith({ offset: 2, limit: 100, sort: "date",
+    dir: "desc", q: "", finding: "0123456789abcdef" });
+});
