@@ -3382,6 +3382,17 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
     return entry["id"]
 
 
+def _told_moved(hook, meta: dict, copies: list[dict], account: str) -> None:
+    """Tell a job's `on_moved` hook what moved; a failing hook is logged, it
+    never fails the job."""
+    if hook is None:
+        return
+    try:
+        hook(meta, copies)
+    except Exception:
+        log.exception("[%s] bookkeeping of the moved mails failed", account)
+
+
 def _delete_worker(acc) -> None:
     persisted = False     # the snapshot already reflects every finished job
     by_user = cancelled_any = False      # for the Web Push at the very end
@@ -3471,12 +3482,7 @@ def _delete_worker(acc) -> None:
                 label, meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor,
                 quiet=bool(job.get("quiet"))) or undo_id[0]
-            if job.get("on_moved"):
-                try:
-                    job["on_moved"](meta, copies)
-                except Exception:
-                    log.exception("[%s] action %r: bookkeeping of the moved "
-                                  "mails failed", acc.name, action)
+            _told_moved(job.get("on_moved"), meta, copies, acc.name)
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
