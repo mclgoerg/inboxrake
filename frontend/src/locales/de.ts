@@ -2842,6 +2842,7 @@ export const DE: Record<string, string> = {
   "all.new_week": "+{n} neu diese Woche",
   "all.failed_ago": "vor {ago} · fehlgeschlagen",
   "all.failed": "Scan fehlgeschlagen",
+  "all.job_failed": "Ein Schritt in {account} wurde nicht abgeschlossen: {msg}",
   "all.space_title": "Wo deine {size} liegen",
   "all.by_account": "nach Konto",
   "all.space_bar": "Speicher nach Konto: {parts}",
@@ -2942,8 +2943,9 @@ export const DE: Record<string, string> = {
   "alist.open_in": "In {account} öffnen",
   "alist.show_mails": "Mails anzeigen",
   "alist.detail_note":
-    "Schützen, Blockieren, Labels, Verschieben in einen Ordner und die Details "
-    + "der Note gelten für ein Konto: Öffne den Absender in diesem Konto.",
+    "Blockieren, Labels, Verschieben in einen Ordner und die Details der Note "
+    + "gelten für ein Konto: Öffne den Absender in diesem Konto. Schützen gilt "
+    + "für alle deine Konten – das geht von jedem einzelnen aus.",
   "alist.still_mailing": "schreibt weiter: {n}",
   "alist.line": "{verb} in {account}",
   "alist.account": "Konto",

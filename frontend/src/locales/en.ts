@@ -705,6 +705,7 @@ export const EN: Record<string, string> = {
   "all.new_week": "+{n} new this week",
   "all.failed_ago": "{ago} ago · failed",
   "all.failed": "scan failed",
+  "all.job_failed": "A step in {account} did not finish: {msg}",
   "all.space_title": "Where your {size} are",
   "all.by_account": "by account",
   "all.space_bar": "Space by account: {parts}",
@@ -800,8 +801,9 @@ export const EN: Record<string, string> = {
   "alist.open_in": "Open in {account}",
   "alist.show_mails": "Show the mails",
   "alist.detail_note":
-    "Protect, Block, labels, moving to a folder and the grade's details work "
-    + "on one account: open the sender in that account.",
+    "Block, labels, moving to a folder and the grade's details work on one "
+    + "account: open the sender in that account. Protecting a sender covers "
+    + "all your accounts - do it from any one of them.",
   "alist.still_mailing": "still mailing: {n}",
   "alist.line": "{verb} in {account}",
   "alist.account": "Account",

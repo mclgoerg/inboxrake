@@ -28,12 +28,14 @@ export function PartChips({ parts, className = "" }: {
   );
 }
 
-/** "Which account is this mail in": avatar and name, on the meta line. */
+/** "Which account is this mail in": avatar and name, on the meta line. The
+ *  name truncates (the line also carries folder, sender and size, and the AI
+ *  pill sits beside it); the full name is its tooltip and stays in the text. */
 export function AccountBadge({ account }: { account: string }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1 align-middle">
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1 align-middle">
       <Avatar name={account} />
-      <span className="truncate">{account}</span>
+      <span className="min-w-0 truncate" title={account}>{account}</span>
     </span>
   );
 }

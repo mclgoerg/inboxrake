@@ -12,6 +12,13 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { DATA, mail, SENDERS_RESP } from "./allAccountsFixtures";
 
 let state: any;
+/** An account whose state answer is held back until `release()` (a slow
+ *  load: what a click does while an account is still loading). */
+let hold: { account: string; gate: Promise<void> } | null = null;
+let release: () => void = () => {};
+const holdState = (account: string) => {
+  hold = { account, gate: new Promise<void>((r) => { release = r; }) };
+};
 const calls: { fn: string; account: string; args: unknown[] }[] = [];
 const accountsSenders = vi.fn();
 const accountsMails = vi.fn();
@@ -30,7 +37,11 @@ vi.mock("./api", async (importOriginal) => {
   const known = {
     authProbe: () => Promise.resolve({ mode: "none", authed: true }),
     getConfig: () => Promise.resolve(cfg),
-    state: () => Promise.resolve({ ...state, account: at() || state.account }),
+    state: async () => {
+      const account = at() || state.account;
+      if (hold && hold.account === account) await hold.gate;
+      return { ...state, account };
+    },
     version: () => Promise.resolve({ build: "v1" }),
     accountsOverview: () => Promise.resolve(DATA),
     accountsSummary: () => Promise.resolve({}),
@@ -107,14 +118,14 @@ const media = () => vi.stubGlobal("matchMedia", (q: string) => ({
 }));
 Element.prototype.scrollIntoView = () => {};
 
-const mount = (opts: { wide?: boolean; hash?: string } = {}) => {
+const mount = (opts: { wide?: boolean; hash?: string; scope?: boolean } = {}) => {
   wide = opts.wide ?? true;
   narrow = !wide;
   media();
   cfg = cfgOf(names);
   state = { ...baseState };
   localStorage.setItem("pmc_account", "gmail");
-  localStorage.setItem("pmc_scope", "all");
+  if (opts.scope !== false) localStorage.setItem("pmc_scope", "all");
   window.location.hash = opts.hash ?? "#/senders";
   return render(<ToastProvider><DialogProvider><App /></DialogProvider>
     </ToastProvider>);
@@ -137,7 +148,7 @@ beforeEach(() => {
   deleteGroups.mockReset().mockResolvedValue({ ok: true, queued: 3, skipped: 0 });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear();
-  window.location.hash = ""; });
+  release(); hold = null; window.location.hash = ""; });
 
 test("Senders reads across the accounts: no Pick an account, the single " +
   "account's own list is not shown", async () => {
@@ -192,6 +203,60 @@ test("'Open in proton' switches to that account and opens the sender there",
   await waitFor(() => expect(screen.getByRole("heading", { level: 2,
     name: "Deals Daily" })).toBeTruthy());
   expect(screen.queryByText("Pick an account")).toBeNull();
+});
+
+const pickAccount = async (name: RegExp) => {
+  fireEvent.click(await screen.findByRole("button", { name: /^Account: |All accounts, 4/ }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name }));
+};
+
+test("'Open in proton' also returns the grouping to Sender: after Smart the " +
+  "single account's page shows the detail", async () => {
+  // the single account's grouping is left on Subject ...
+  mount({ scope: false });
+  fireEvent.click(await screen.findByRole("tab", { name: "Subject" }));
+  // ... then All accounts, and a sender opened in proton
+  await pickAccount(/All accounts/);
+  fireEvent.click((await screen.findAllByText("Deals Daily"))[0]);
+  fireEvent.click(await screen.findByRole("button", { name: "Open in proton" }));
+  await waitFor(() => expect(screen.getByRole("heading", { level: 2,
+    name: "Deals Daily" })).toBeTruthy());
+  expect(screen.getByRole("tab", { name: "Sender" })
+    .getAttribute("aria-selected")).toBe("true");
+});
+
+test("a sender still waiting to open is forgotten when another account is " +
+  "picked: it does not pop up when that account is shown later", async () => {
+  mount();
+  fireEvent.click((await screen.findAllByText("Deals Daily"))[0]);
+  holdState("proton");
+  fireEvent.click(await screen.findByRole("button", { name: "Open in proton" }));
+  await waitFor(() => expect(localStorage.getItem("pmc_account")).toBe("proton"));
+  await pickAccount(/icloud/);
+  await waitFor(() => expect(localStorage.getItem("pmc_account")).toBe("icloud"));
+  release();
+  await pickAccount(/proton/);
+  await waitFor(() => expect(localStorage.getItem("pmc_account")).toBe("proton"));
+  await screen.findAllByText("Deals Daily");
+  await new Promise((r) => setTimeout(r, 100));
+  expect(screen.queryByRole("heading", { level: 2, name: "Deals Daily" })).toBeNull();
+});
+
+// (picking All accounts also drops the in-flight load of that account - the
+// view change bumps the account generation - so this holds twice over)
+test("a sender still waiting to open is forgotten when All accounts is " +
+  "picked: the page is not pulled back to Senders", async () => {
+  mount();
+  fireEvent.click((await screen.findAllByText("Deals Daily"))[0]);
+  holdState("proton");
+  fireEvent.click(await screen.findByRole("button", { name: "Open in proton" }));
+  await waitFor(() => expect(localStorage.getItem("pmc_account")).toBe("proton"));
+  await pickAccount(/All accounts/);
+  window.location.hash = "#/overview";
+  await screen.findByText(/All accounts · 4 mailboxes/);
+  release();
+  await new Promise((r) => setTimeout(r, 100));
+  expect(window.location.hash).toBe("#/overview");
 });
 
 test("'Show the mails' opens All mail across accounts for that sender",

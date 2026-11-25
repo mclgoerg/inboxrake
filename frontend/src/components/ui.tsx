@@ -2536,18 +2536,25 @@ export function ShortDate({ iso, className = "", time = false }: {
 /** The one way to join the items of a meta line ("1,623 mails · 227.4 MB").
  *  Empty items are dropped. Every item stays whole and carries its separator
  *  in front of it, so a wrapped line may start with "·" but never ends with
- *  one. `shrink` (an index into the kept items) turns it into one flex line
- *  where only that item truncates with an ellipsis - the others, and so
- *  their separators, always stay visible. */
-export function Meta({ items, shrink, className = "" }: {
-  items: ReactNode[]; shrink?: number; className?: string;
+ *  one. `shrink` (an index into the kept items, or several) turns it into
+ *  one flex line where only those items truncate with an ellipsis - the
+ *  others, and so their separators, always stay visible. */
+export function Meta({ items, shrink, wrap = false, className = "" }: {
+  items: ReactNode[]; shrink?: number | number[];
+  /** With `shrink`, below 640 px the items join the line of the row's
+   *  `wrapMeta` container (see `MailRow`), the shrinking item last, and the
+   *  ones that do not fit move to the next line, instead of running under a
+   *  trailing badge. */
+  wrap?: boolean; className?: string;
 }) {
   const kept = items.filter((x) => x != null && x !== false && x !== "");
   if (shrink != null) {
+    const give = Array.isArray(shrink) ? shrink : [shrink];
     return (
-      <span className={`flex min-w-0 ${className}`}>
+      <span className={`flex min-w-0 ${wrap ? "max-sm:contents" : ""} ${className}`}>
         {kept.map((x, i) => (
-          <span key={i} className={i === shrink ? "min-w-0 truncate"
+          <span key={i} className={give.includes(i)
+            ? `min-w-0 truncate ${wrap ? "max-sm:order-last" : ""}`
             : "shrink-0 whitespace-nowrap"}>
             {i > 0 && <span aria-hidden className="whitespace-pre">{" · "}</span>}{x}
           </span>
@@ -2594,7 +2601,7 @@ export function UnreadSlot({ unread }: { unread: boolean }) {
  *  for rows without selection. */
 export function MailRow({ checked = false, onToggle, unread = false, subject,
   meta, dateIso, dateTime = false, trailing, onOpen, selected = false,
-  pinned = false, selectLabel, spread = false }: {
+  pinned = false, selectLabel, spread = false, wrapMeta = false }: {
   checked?: boolean; onToggle?: () => void; unread?: boolean;
   subject: ReactNode; meta?: ReactNode; dateIso?: string; dateTime?: boolean;
   trailing?: ReactNode;
@@ -2603,6 +2610,9 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
   /** Tablet widths (640-1023 px): date and meta at the right edge on the
    *  subject's line instead of a second line under it. */
   spread?: boolean;
+  /** Below 640 px the date and the `<Meta wrap>` items share one line that
+   *  wraps (a long meta line beside a trailing badge). */
+  wrapMeta?: boolean;
 }) {
   const text = (
     <span className={spread ? "block sm:max-lg:flex sm:max-lg:items-center sm:max-lg:gap-4" : "contents"}>
@@ -2616,7 +2626,8 @@ export function MailRow({ checked = false, onToggle, unread = false, subject,
       </span>
       {(!!dateIso || (meta != null && meta !== "")) && (
         <span className={`mt-0.5 flex min-w-0 items-center gap-1.5 type-meta
-          text-muted ${spread ? "sm:max-lg:mt-0 sm:max-lg:shrink-0" : ""}`}>
+          text-muted ${wrapMeta ? "max-sm:flex-wrap max-sm:gap-y-0.5" : ""} ${
+          spread ? "sm:max-lg:mt-0 sm:max-lg:shrink-0" : ""}`}>
           {!!dateIso && <ShortDate iso={dateIso} time={dateTime} />}
           {!!dateIso && meta != null && meta !== "" && (
             <span aria-hidden>·</span>

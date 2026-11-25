@@ -8,8 +8,9 @@
  * per-account step for each ticked account. There are no keyboard shortcuts
  * here (j / k / x / # belong to a single account's list), so nothing is ever
  * done to an account the user did not see named. What is per account -
- * Move to a folder, Protect, Block, labels, the grade's details, limits - is
- * one click away: "Open in <account>". */
+ * Move to a folder, Block, labels, the grade's details, limits (Protect is
+ * workspace-wide but is done from one account's detail, too) - is one click
+ * away: "Open in <account>". */
 
 import { Archive, BellOff, ListTree, MailOpen, Shield, Trash2, X }
   from "lucide-react";
@@ -289,6 +290,9 @@ export function AllSendersView({ data, failed, onRetry, names, phone,
   useEffect(() => {
     if (only && !names.includes(only)) setOnly(null);
   }, [names, only]);
+  // (a ticked row would stay ticked with only that account's share of it:
+  // the selection starts over with the chip)
+  useEffect(() => { setPicked(new Set()); }, [only]);
   const all = useMemo<AcrossGroup[]>(() => {
     const rows = data?.senders ?? [];
     if (!only) return rows;

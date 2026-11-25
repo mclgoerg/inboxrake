@@ -5,7 +5,7 @@
  * mail), the reader's own calls go to the mail's account - and whatever the
  * app's reader host offers for ONE account is not there. (api mocked.) */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from
   "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mail } from "./allAccountsFixtures";
@@ -112,6 +112,17 @@ test("the same (folder, uid) in two accounts is two rows with their own tick",
   // gmail uid 1 and proton uid 1 are both INBOX / Archive 1: tick one only
   fireEvent.click(boxes[0]);
   expect(screen.getByText("1 selected")).toBeTruthy();
+});
+
+test("a row's meta line wraps on a phone (the account's name makes it long " +
+  "enough to run under the AI pill); the account stays in the line", async () => {
+  renderView();
+  await screen.findByText("Offer one");
+  const meta = document.querySelector(".max-sm\\:flex-wrap")!;
+  expect(meta.textContent).toContain("gmail");
+  // the sender is the item that truncates, and it goes last when wrapped
+  expect(meta.querySelector(".max-sm\\:order-last")?.textContent)
+    .toContain("deals@dealsdaily.example");
 });
 
 test("the account chip asks the server for that account only", async () => {
@@ -242,6 +253,38 @@ test("a row's pin button pins in that mail's account", async () => {
   fireEvent.click(within(row).getByRole("button", { name: /^Protect/ }));
   await waitFor(() => expect(pin).toHaveBeenCalledWith("Archive", 1, true));
   expect(calls.find((c) => c.fn === "pin")!.account).toBe("proton");
+});
+
+/** A touch swipe (the gesture helper of App.gestures.test). */
+function swipeLeft(target: Element) {
+  const fire = (el: Element | Window, name: string, x: number, t: number) => {
+    const ev = new Event(name, { bubbles: true, cancelable: true });
+    Object.defineProperties(ev, { clientX: { value: x }, clientY: { value: 0 },
+      pointerId: { value: 1 }, isPrimary: { value: true },
+      pointerType: { value: "touch" }, timeStamp: { value: t } });
+    act(() => { el.dispatchEvent(ev); });
+  };
+  fire(target, "pointerdown", 350, 0);
+  [250, 150, 40].forEach((x, i) => fire(window, "pointermove", x, (i + 1) * 100));
+  fire(window, "pointerup", 40, 400);
+}
+
+test("a swipe Trash on a row asks the multi-account confirm first - nothing " +
+  "is moved before it", async () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: q.includes("pointer: coarse"), media: q,
+    addEventListener: () => {}, removeEventListener: () => {} }));
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(390);
+  renderView();
+  await screen.findByText("Offer two");
+  await act(async () => {});
+  swipeLeft(screen.getByText("Offer two").closest("[data-swipe-body]")!);
+  await screen.findByText(/Move to Trash: 1 mail in 1 account\?/);
+  expect(deleteMessages).not.toHaveBeenCalled();
+  press(screen.getByRole("button", { name: "Move to Trash (1)" }));
+  await screen.findByText("1 done");
+  expect(calls.filter((c) => c.fn === "deleteMessages")
+    .map((c) => c.account)).toEqual(["proton"]);
 });
 
 test("phone: Senders | All mails switch", async () => {

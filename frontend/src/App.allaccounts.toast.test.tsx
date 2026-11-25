@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { DATA, SENDERS_RESP } from "./allAccountsFixtures";
 
 let state: any;
+let overview: any = DATA;
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -26,7 +27,7 @@ vi.mock("./api", async (importOriginal) => ({
     getConfig: () => Promise.resolve(cfg),
     state: () => Promise.resolve(state),
     version: () => Promise.resolve({ build: "v1" }),
-    accountsOverview: () => Promise.resolve(DATA),
+    accountsOverview: () => Promise.resolve({ ...overview }),
     accountsSummary: () => Promise.resolve({}),
     accountsSenders: () => Promise.resolve(SENDERS_RESP),
     undo: vi.fn().mockResolvedValue({ ok: true }),
@@ -97,6 +98,7 @@ beforeEach(() => {
     addEventListener: () => {}, removeEventListener: () => {} }));
   Element.prototype.scrollIntoView = () => {};
   state = { ...baseState };
+  overview = DATA;
   localStorage.setItem("pmc_account", "gmail");
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear();
@@ -127,3 +129,53 @@ test("control: the same tick in single-account mode toasts with an Undo",
   const msg = await screen.findByText("Moved 12 mails to Trash");
   expect(msg.parentElement!.querySelector("button")!.textContent).toBe("Undo");
 });
+
+/* A step queued in an account can fail later: the Overview's numbers say so
+ * (`job_failed`). The toast names the account, has no Undo, and is said once
+ * per job. */
+const withCard = (name: string, over: object) => ({ ...DATA,
+  accounts: DATA.accounts.map((a) => a.name === name ? { ...a, ...over }
+    // (another account's move keeps the numbers being read again)
+    : a.name === "gmail" ? { ...a, busy: true } : a) });
+
+test("All accounts: a step that fails later in an account is toasted, naming " +
+  "the account, without an Undo - once", async () => {
+  localStorage.setItem("pmc_scope", "all");
+  overview = withCard("proton", { busy: true });       // a move runs there
+  await mount("#/senders");
+  await screen.findAllByText("Deals Daily");
+  expect(screen.queryByText(/did not finish/)).toBeNull();
+  overview = withCard("proton", { busy: false,
+    job_failed: { id: "d7", error: "Connection lost" } });
+  const msg = await screen.findByText(/A step in proton did not finish/,
+    {}, { timeout: 5000 });
+  expect(msg.textContent).toContain("Connection lost");
+  expect(msg.parentElement!.querySelector("button")?.textContent ?? "")
+    .not.toBe("Undo");
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  // the same job is not announced again by the next read
+  await act(async () => { await new Promise((r) => setTimeout(r, 2300)); });
+  expect(screen.getAllByText(/A step in proton did not finish/)).toHaveLength(1);
+}, 15000);
+
+test("All accounts: a failure that was already there when the view opened " +
+  "is no news", async () => {
+  localStorage.setItem("pmc_scope", "all");
+  overview = withCard("proton", { job_failed: { id: "d3", error: "old" } });
+  await mount("#/senders");
+  await screen.findAllByText("Deals Daily");
+  await new Promise((r) => setTimeout(r, 300));
+  expect(screen.queryByText(/did not finish/)).toBeNull();
+});
+
+test("German", async () => {
+  setLang("de");
+  localStorage.setItem("pmc_scope", "all");
+  overview = withCard("proton", { busy: true });
+  await mount("#/senders");
+  await screen.findAllByText("Deals Daily");
+  overview = withCard("proton", { busy: false,
+    job_failed: { id: "d8", error: "Verbindung weg" } });
+  await screen.findByText(/Ein Schritt in proton wurde nicht abgeschlossen/,
+    {}, { timeout: 5000 });
+}, 15000);

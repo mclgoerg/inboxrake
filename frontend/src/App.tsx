@@ -235,6 +235,26 @@ export default function App() {
   const allFollow = (all.data?.accounts ?? [])
     .map((a) => `${a.name}:${a.rev}`).join(",");
   const allSenders = useAllSenders(allScope && page === "senders", allFollow);
+  // A step queued in an account can fail later, while the view is on All
+  // accounts (the single-account toasts are muted there): say which account,
+  // once per job. The first numbers are the baseline - a failure from before
+  // the view was opened is not news. No Undo: nothing was moved by that job
+  // beyond what Activity lists.
+  const seenFailed = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!all.data) { seenFailed.current = null; return; }
+    const prev = seenFailed.current;
+    const next: Record<string, string> = {};
+    for (const a of all.data.accounts) {
+      next[a.name] = a.job_failed?.id ?? "";
+      if (prev && a.job_failed && prev[a.name] !== a.job_failed.id) {
+        notify(t("all.job_failed", { account: a.name,
+          msg: errorText(a.job_failed.error) }), "error");
+      }
+    }
+    seenFailed.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all.data]);
   // Pages the app itself switched (it resets its own state); a hash change
   // from outside (back / forward) gets the same reset below.
   const pageByApp = useRef(false);
@@ -476,6 +496,8 @@ export default function App() {
     clearTimeout(timer.current);
     localStorage.setItem("pmc_account", name);
     if (!keepScope) { setScopeAll(false); saveAllScope(false); }
+    // a sender still waiting to open belonged to the view being left
+    setPendingSender(null);
     apiSetAccount(name);
     // Switching swaps the ENTIRE view: no state may leak across accounts.
     stateRef.current = null;
@@ -498,6 +520,7 @@ export default function App() {
     noteAccountSwitch();
     setScopeAll(true);
     saveAllScope(true);
+    setPendingSender(null);
     setSelected(new Set());
     setSelectMode(false);
     setDetail(null);
@@ -805,7 +828,10 @@ export default function App() {
         || account !== pendingSender.account) return;
     const g = state.groups.sender?.[pendingSender.key];
     setPendingSender(null);
-    if (g) setDetail(g);
+    // (not just the detail: the page may have been left on Smart / Subject /
+    // Thread, where this sender has no row to show)
+    if (g) openSender(g);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSender, state, account]);
   const sheetRun = useRef<number | null>(null);
   useUnsubscribeOpener(setUnsubSheet);
@@ -3690,8 +3716,8 @@ export default function App() {
             names={accountNames} phone={phone} demo={demo}
             exists={(a) => !!cfgRef.current?.accounts[a]}
             onOpenIn={(a, key) => {
+              switchAccount(a);             // (clears what was pending)
               setPendingSender({ account: a, key });
-              switchAccount(a);
             }}
             onShowMails={(key) => openAllMailNewest(`from:${key}`)}
             onPage={(p) => goPage(p)}

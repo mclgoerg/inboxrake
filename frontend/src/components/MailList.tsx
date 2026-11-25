@@ -197,11 +197,14 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
             onToggle={() => onToggle(mailKey(m))} unread={!m.seen}
             subject={mark && m.subject ? mark(subject) : subject}
             // the sender truncates; folder and size (and their dots) stay
-            meta={<Meta items={meta} shrink={multiSender ? meta.length - 2 : 0} />}
+            // (across accounts the line is longer by the account's name: on a
+            // narrow phone it wraps instead of running under the AI pill)
+            meta={<Meta items={meta} wrap={!!m.account}
+              shrink={multiSender ? meta.length - 2 : 0} />}
             dateIso={m.date || ""}
             selectLabel={t("select.named", { subject: m.subject || t("(no subject)") })}
             pinned={!!m.pinned} onOpen={() => onOpen(m)} trailing={trailing}
-            spread={spread} />
+            spread={spread} wrapMeta={!!m.account} />
         );
         return swipe ? (
           <SwipeRow key={mailKey(m)} {...swipeActions(m)}

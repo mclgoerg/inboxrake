@@ -30,7 +30,16 @@ vi.mock("./api", async (importOriginal) => {
     search: rec("search", (...a) => plainSearch(...a)),
     deleteMessages: rec("deleteMessages", (...a) => deleteMessages(...a)),
     message: rec("message", () => Promise.resolve({ from: "x", to: "", date: "d",
-      subject: "s", text: "body text" })),
+      subject: "s", text: "body text", pinnable: true, thread: { count: 2 } })),
+    pin: rec("pin", () => Promise.resolve({ ok: true })),
+    thread: rec("thread", (folder: string, uid: number) => Promise.resolve(
+      { key: "k", label: "Invoice two", notes: [],
+        mails: [uid, uid + 1].map((u) => ({
+          ...mail("", u, { subject: "Invoice two", folder }),
+          account: undefined })) })),
+    messages: rec("messages", (items: [string, number][]) => Promise.resolve(
+      { messages: items.map(([folder, uid]) => ({ folder, uid, from: "x",
+        to: "", date: "d", subject: "Invoice two", text: "thread body" })) })),
   } };
 });
 
@@ -169,6 +178,26 @@ test("opening a hit reads it from its account; its Trash is the same confirm",
   await screen.findByText(/Move to Trash: 1 mail in 1 account\?/);
   expect(within(screen.getByRole("dialog", { name: /Move to Trash/ }))
     .getByRole("checkbox", { name: "Move to Trash in proton" })).toBeTruthy();
+});
+
+test("the reader's own calls - pin, conversation, its mail texts - all go to " +
+  "the hit's account", async () => {
+  renderPanel();
+  await search();
+  fireEvent.click(screen.getByText(hit("Invoice two")));
+  await screen.findByText("body text");
+  fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+  await waitFor(() => expect(calls.some((c) => c.fn === "pin")).toBe(true));
+  expect(calls.find((c) => c.fn === "pin")).toMatchObject({
+    account: "proton", args: ["Archive", 1, true] });
+  fireEvent.click(screen.getByRole("button", { name: "Read conversation" }));
+  // (the open mail came with its text; the other card is fetched on opening)
+  fireEvent.click(await screen.findByRole("button", { name: "Expand all" }));
+  await waitFor(() => expect(calls.some((c) => c.fn === "messages")).toBe(true));
+  expect(calls.find((c) => c.fn === "thread")).toMatchObject({
+    account: "proton", args: ["Archive", 1] });
+  expect(calls.find((c) => c.fn === "messages")).toMatchObject({
+    account: "proton" });
 });
 
 test("German", async () => {

@@ -58,6 +58,17 @@ def _new_since(acc, since: float) -> int:
     return sum(1 for m in acc.index.values() if m["ts"] and m["ts"] >= since)
 
 
+def _job_failed(state: dict) -> dict | None:
+    """The move / unsubscribe job of an account that ended with an error, as
+    `{id, error}` (`id` is the job's sequence number: one toast per job),
+    else None. A job still running is no failure yet."""
+    for kind, key in (("delete", "d"), ("unsub", "u")):
+        job = state[kind]
+        if job["status"] != "running" and job.get("error"):
+            return {"id": f"{key}{job.get('seq', 0)}", "error": job["error"]}
+    return None
+
+
 def _account_row(name: str, im: dict, since: float | None,
                  now: float) -> tuple[dict, list[dict]]:
     """One account's card and its sender candidates for the join."""
@@ -90,6 +101,9 @@ def _account_row(name: str, im: dict, since: float | None,
             "rev": acc.state["groups_rev"],
             "busy": (acc.state["delete"]["status"] == "running"
                      or acc.state["unsub"]["status"] == "running"),
+            # a move / unsubscribe that failed after it was queued (the
+            # client says so once per job, naming the account)
+            "job_failed": _job_failed(acc.state),
         }
         for addr, rec in senders.items():
             if not (rec.get("bulk") or rec.get("unsub")):

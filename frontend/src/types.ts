@@ -1420,6 +1420,9 @@ export interface AllAccountCard {
   rev: number;
   /** A move / unsubscribe job is still running there. */
   busy: boolean;
+  /** The last move / unsubscribe job that ended with an error (`id` = the
+   *  job's number, so it is said once); null / absent when none did. */
+  job_failed?: { id: string; error: string } | null;
 }
 
 /** One account's side of a sender that writes to several accounts. */

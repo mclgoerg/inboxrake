@@ -116,6 +116,27 @@ def test_a_failed_scan_is_flagged_and_keeps_the_last_good_time(three,
     assert not any(a["failed"] for a in body["accounts"] if a["name"] != "two")
 
 
+def test_a_move_or_unsubscribe_that_failed_is_flagged_once_per_job(three):
+    """The client says "a step in <account> did not finish" from this (the
+    job's own sequence number makes it one message per job)."""
+    two = accountsmod.get("two")
+    by = lambda: {a["name"]: a for a in _overview()["accounts"]}   # noqa: E731
+    assert all(a["job_failed"] is None for a in by().values())
+    with two.lock:
+        two.state["delete"].update(status="running", error="", seq=7)
+    assert by()["two"]["busy"] and by()["two"]["job_failed"] is None
+    with two.lock:
+        two.state["delete"].update(status="error", error="Connection lost")
+    row = by()["two"]
+    assert not row["busy"]
+    assert row["job_failed"] == {"id": "d7", "error": "Connection lost"}
+    assert by()["one"]["job_failed"] is None            # per account
+    with two.lock:
+        two.state["delete"].update(status="idle", error="")
+        two.state["unsub"].update(status="error", error="no link", seq=3)
+    assert by()["two"]["job_failed"] == {"id": "u3", "error": "no link"}
+
+
 def test_new_counts_from_the_remembered_visit_else_the_last_week(three):
     soon = time.time() + 400 * 86400        # the mails are a year old by then
     week = {a["name"]: a["new"]

@@ -161,6 +161,20 @@ describe("the list", () => {
 });
 
 describe("a selection acts through the multi-account confirm", () => {
+  it("the account chip starts the selection over (a tick would otherwise " +
+    "silently shrink to that account's share)", () => {
+    mount();
+    const chips = screen.getByRole("group", { name: "Show one account or all" });
+    tick("Deals Daily");
+    expect(sp(bar().textContent)).toContain("306 mails");
+    fireEvent.click(within(chips).getByRole("button", { name: "proton" }));
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
+    expect((within(rowOf("Deals Daily")).getByRole("checkbox") as
+      HTMLInputElement).checked).toBe(false);
+    fireEvent.click(within(chips).getByRole("button", { name: "All" }));
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
+  });
+
   it("Trash: the bar names senders and mails; the confirm lists the accounts; " +
     "one deleteGroups per ticked account; the protected sender stays",
     async () => {
