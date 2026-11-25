@@ -10,13 +10,12 @@ import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
 import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
   unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
 import { fmtMoney, unusedNames } from "../subscriptions";
-import type { AuditEntry, Group, Habit, OverviewResp, Rule,
+import type { AuditEntry, Group, OverviewResp, Rule,
   SubscriptionsResp } from "../types";
-import { HabitWidget } from "./HabitCards";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
 import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex,
-  ProgressBar, Spinner, useMediaQuery } from "./ui";
+  ProgressBar, Spinner } from "./ui";
 
 /** What the page shows: the figures, or the guidance of a mailbox that has
  *  none yet (replaces the old first-run card on the Senders page). */
@@ -69,12 +68,6 @@ export interface OverviewProps {
   subs?: SubscriptionsResp | null;
   /** Review of that line: the Subscriptions page, only the unused ones. */
   onReviewSubscriptions?: () => void;
-  /** "You keep doing this" (backend/habits.py): a line in Next steps, the
-   *  widget on a phone. `onOpenHabit` opens the Rules page at that
-   *  suggestion; `onHabitsChanged` is called after one was made or hidden. */
-  habits?: Habit[];
-  onOpenHabit?: (id: string) => void;
-  onHabitsChanged?: () => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -221,7 +214,6 @@ export function Overview(p: OverviewProps) {
   const { data, cleaned, cleanedFloor, failed, retry } = useOverviewData(
     account, p.rev, p.scannedTs, p.rules, since,
     p.phase === "data" && groups.length > 0);
-  const phone = useMediaQuery("(max-width: 767px)");
   const totals = useMemo(() => totalsOf(groups), [groups]);
   const trend = useMemo(
     () => trendOf(data?.trend ?? null, totals.size, nowMs()),
@@ -248,13 +240,7 @@ export function Overview(p: OverviewProps) {
       ? t("sub.about_month", { amount: fmtMoney(p.subs.totals.unused_monthly,
         p.subs.totals.currency, { whole: true }) }) : "",
     onReview: p.onReviewSubscriptions } : null;
-  const habitList = p.habits ?? [];
-  const habitsLine = habitList.length > 0 && p.onOpenHabit ? {
-    n: habitList.length,
-    names: habitList.slice(0, 3).map((h) => h.label).join(", "),
-    onReview: () => p.onOpenHabit!(habitList[0].id) } : null;
-  const hasNext = cards.length > 0 || !!subsLine
-    || (!!habitsLine && !phone);
+  const hasNext = cards.length > 0 || !!subsLine;
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
     saveDismissed(account, next);
@@ -266,8 +252,7 @@ export function Overview(p: OverviewProps) {
     <div className="pb-6">
       {/* From 1280 two columns that stack on their own (so a short card
           leaves no gap under it); below, one column in the order Balance,
-          Last week, Next steps, Kinds (the wrappers vanish, `order` sorts); the
-          phone-only habit widget goes first, under the title (board 110). */}
+          Last week, Next steps, Kinds (the wrappers vanish, `order` sorts). */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4
         xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-start">
         <div className="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-4">
@@ -275,16 +260,11 @@ export function Overview(p: OverviewProps) {
             mails={totals.mails} senders={totals.senders} trend={trend}
             data={data} cleaned={cleaned} cleanedFloor={cleanedFloor}
             failed={failed} onRetry={retry} />
-          {p.onOpenHabit && (
-            <HabitWidget habits={habitList} onOpen={p.onOpenHabit}
-              onChanged={p.onHabitsChanged ?? (() => {})}
-              className="-order-1" />
-          )}
           {hasNext && (
             <div className="max-xl:order-2">
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
-                onCleanUp={p.onCleanUp} subs={subsLine} habits={habitsLine} />
+                onCleanUp={p.onCleanUp} subs={subsLine} />
             </div>
           )}
         </div>

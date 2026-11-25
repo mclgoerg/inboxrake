@@ -743,32 +743,6 @@ Rules page. A recipe that files mail needs its folder to exist (Inboxrake
 does not create folders): if there is none, the editor opens so you can pick
 one.
 
-### You keep doing this
-
-<small class="where">Clean up → Rules · Overview → Next steps · Settings › General</small>
-
-Every cleanup you do by hand is written to Activity. A small local check
-(on this server, no AI, nothing sent anywhere) looks at the last 60 days for
-**the same action on the same sender, by hand, at least 3 times on at least 3
-different days** - trash, archive, move to the same folder, or mark as read -
-and turns each find into a ready rule: *Deals Daily → move to Trash if older
-than 7 days · weekly*. The age is the youngest mail you moved each time,
-rounded down to 1, 3, 7, 14 or 30 days; the schedule is daily when you did it
-every few days and weekly otherwise. Steps you undid never count, nor do steps
-of rules or assistants, and a protected sender, a sender an existing rule
-already covers, or one you hid is never suggested.
-
-The suggestions sit in a **You keep doing this** section above your rules
-(with a count on the Rules item), as one line in Overview › Next steps and as
-a widget on the phone's Overview. Each card shows what you did, what the rule
-would catch right now and says it starts in **Report only**. **Make it a
-rule** creates an ordinary rule - report mode, its report runs once - and
-**Not this one** hides that sender for good (**Settings › General › Hidden
-suggestions › Show** brings them back). **Why these?** lists the steps each
-suggestion is based on. When a cleanup you just did made a suggestion
-appear, its toast offers **Automate…**. **Settings › General › Suggest
-rules from what I do** switches all of it off.
-
 ### Retention actions
 
 <small class="where">Selection bar → More → Limit to… · Rules</small>

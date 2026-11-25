@@ -30,8 +30,7 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
-import { showReminderToast, ordinal } from "./subscriptions";
-import { habitDate, habitList, newHabit, useHabits } from "./habits";
+import { showReminderToast } from "./subscriptions";
 
 const VISIBLE_KEY = "pmc_visible_at";
 import { AccountCopyPanel } from "./components/AccountCopy";
@@ -66,8 +65,7 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuItem, Meta, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
-  PageHeader, PageSlot, SectionLabel, type ToastOptions, type ToastVariant,
-  useBulkBarHeight }
+  PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
   from "./components/ui";
 import { nowDate, nowMs } from "./clock";
 import { confirmTrash } from "./keepsafe";
@@ -258,8 +256,6 @@ export default function App() {
   // A filter handed to the rules form ("Save as rule" of the AI filter panel).
   const [rulesSeed, setRulesSeed] = useState("");
   const [rulesRecipe, setRulesRecipe] = useState("");
-  // The suggestion the Rules page brings into view ("Automate…", Overview).
-  const [habitFocus, setHabitFocus] = useState("");
   const [aiFilterOpen, setAiFilterOpen] = useState(false);
   const [attsOpen, setAttsOpen] = useState(false);
   const [dupsOpen, setDupsOpen] = useState(false);
@@ -551,18 +547,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, authOk, state?.scanned_ts, state?.status]);
 
-  /* "You keep doing this" (backend/habits.py): the same cleanup done by hand
-     again and again, as ready rules. Mined from this account's Activity on
-     the server; fetched when the account, its mailbox, its rules or the
-     setting change. */
-  const habitsSig = `${state?.groups_rev ?? ""}|${state?.delete?.seq ?? ""}|${
-    (state?.rules ?? []).map((r) => r.id).join(",")}|${
-    cfg?.habits?.suggest ?? ""}`;
-  const habitsApi = useHabits(account,
-    authOk && state?.status === "done", habitsSig);
-  const habits = habitList(habitsApi.data);
-  const openHabit = (id: string) => { setHabitFocus(id); openTool("rules"); };
-
   /* A reminder the user asked for fired (3 days before a subscription's next
      receipt): the server also pushes it to devices that are not looking at the
      app; this page shows it once as a toast (and as a browser notification
@@ -729,7 +713,7 @@ export default function App() {
             && !freshA.length) {
           text = t("toast.moved_trash", { n });
         } else text = t("done_moved", { n });    // also: both lists at once
-        const opts: ToastOptions = {
+        toast.show(text, {
           variant: "success",
           action: mineOnly ? { label: t("Undo"), onClick: () => {
             const i = stateRef.current?.undo.findIndex(
@@ -740,25 +724,7 @@ export default function App() {
               (u) => undoId(u) === undoId(botOnly)) ?? -1;
             if (i >= 0) void undo(i, false, true);
           } } : undefined,
-        };
-        // A step of the user's own that made "You keep doing this" find a new
-        // habit says so, and offers Automate… (it opens that card). Asked
-        // once, briefly: the toast never waits long for it.
-        const before = habitsApi.dataRef.current;
-        if (freshA.length || botName !== null || !before?.enabled) {
-          toast.show(text, opts);
-        } else {
-          const known = new Set(before.suggestions.map((h) => h.id));
-          void newHabit(habitsApi.reload, known).then((h) => {
-            if (!h) { toast.show(text, opts); return; }
-            toast.show(<>
-              <div>{text}</div>
-              <div className="type-meta">{t("habit.toast_sub", {
-                nth: ordinal(h.times), date: habitDate(h.since) })}</div>
-            </>, { ...opts, action2: { label: t("habit.automate"),
-              onClick: () => openHabit(h.id) } });
-          });
-        }
+        });
         if (del.error) notify(t("err.generic", { msg: errorText(del.error) }), "error");
       }
     }
@@ -2868,13 +2834,10 @@ export default function App() {
     {toolShown("rules") && state && (
       <RulesModal key={account}
         state={state} initialQuery={rulesSeed} initialRecipe={rulesRecipe || undefined}
-        habits={habits} habitFocus={habitFocus || undefined}
-        onHabitsChanged={() => { void habitsApi.reload(); }}
         ai={aiEnabled || demo ? { disabled: demo,
           hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {
           setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
-          setHabitFocus("");
         })}
         onChanged={refresh}
       />
@@ -2945,7 +2908,6 @@ export default function App() {
             .reduce((n, g) => n + g.count, 0) : undefined}
         junkCount={state?.junk_count} trashCount={state?.trash_count}
         proposals={openProposals(state?.rules).length}
-        habits={habits.length}
         subscriptions={subs?.totals.count} leaked={leaked}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
@@ -3360,7 +3322,7 @@ export default function App() {
           triageDisabled={triageDisabled} aiShown={aiEnabled || demo}
           aiDisabled={demo || scanning || aiRunning
             || state?.status !== "done"}
-          demoHint={demo ? demoHint() : undefined} habits={habits.length}
+          demoHint={demo ? demoHint() : undefined}
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
         <InsightsPage groups={senderGroups} state={state} subs={subs}
@@ -3395,8 +3357,6 @@ export default function App() {
             onOpenJunk={() => openTool("junk")}
             onOpenAiVerdicts={(w) => openSendersFiltered(`ai:safe in:${w}`)}
             subs={subs}
-            habits={habits} onOpenHabit={openHabit}
-            onHabitsChanged={() => { void habitsApi.reload(); }}
             onReviewSubscriptions={() => {
               setSubsOnlyUnused(true);
               openTool("subscriptions");
@@ -3535,7 +3495,6 @@ export default function App() {
           routeAccount={settingsRoute.account}
           onSection={openSettingsSection}
           onMoveAccount={openMove}
-          onHabitsChanged={() => { void habitsApi.reload(); }}
           controlRef={settingsCtl}
           onClose={closeSettings}
           onAddAccount={() => setWizard({ mode: "add", previous: account })}

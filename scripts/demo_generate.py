@@ -1228,30 +1228,6 @@ def generate() -> dict:
     # cleaning, so they are in the log and in this month's statistics too
     _tm_rows, _tm_user, _tm_bots = _time_machine(NOW, PROTON, sweep["id"])
     _au.extend(_tm_rows)
-    # "You keep doing this": cleanups the visitor did by hand again and again
-    # (the habit miner reads these; the keys and figures are what a manual
-    # step records). Fixed days and hours - no random draws.
-    _habit_steps = (
-        # sender key, action, label, destination, [(days ago, mails, unread,
-        # youngest mail in days)]
-        ("deals@dealsdaily.example", "trash", "Deals Daily", "",
-         [(43, 14, 14, 8), (36, 18, 18, 9), (22, 21, 21, 8), (15, 16, 16, 7),
-          (1, 22, 22, 10)]),
-        ("service@paybank.example", "move", "PayBank", "Archive",
-         [(50, 3, 1, 12), (39, 4, 2, 20), (20, 2, 0, 15), (9, 3, 1, 11)]),
-        ("notify@chirper.example", "mark_read", "Chirper", "",
-         [(40, 8, 8, 0), (33, 11, 11, 0), (26, 9, 9, 0), (19, 10, 10, 0),
-          (12, 9, 9, 0), (5, 12, 12, 0)]))
-    _habit_rows = []
-    for _key, _act, _lbl, _dest, _rows in _habit_steps:
-        for _d, _n, _unread, _young in _rows:
-            _habit_rows.append(("proton", _act, int(NOW - _d * 86400 - 9 * 3600), _n,
-                        "ok", "user", _lbl, {
-                            "keys": [_key], "unread": _unread,
-                            **({"youngest_days": _young}
-                               if _act != "mark_read" else {}),
-                            **({"dest": _dest} if _dest else {})}))
-    _au.extend(_habit_rows)
     for rule, d, count in ((sweep, 21, 150), (parcels, 14, 60),
                            (lapsed, 9, 48)):
         ts = _t(d)
@@ -1302,11 +1278,6 @@ def generate() -> dict:
                                 int(_month_start + (NOW - _month_start) * _frac),
                                 _n, "ok", "user",
                                 _labels[_action][_i % len(_labels[_action])]))
-        # the habit steps that moved mail to a folder are cleaning too
-        _month["move"] = _month.get("move", 0) + sum(
-            e[3] for e in _habit_rows
-            if e[0] == _acct and e[1] == "move"
-            and time.strftime("%Y-%m", time.gmtime(e[2])) == _ym)
     Path(os.environ["STATS_HISTORY_PATH"]).write_text(json.dumps(history))
     _au.sort(key=lambda e: e[2])
     Path(os.environ["AUDIT_LOG_PATH"]).write_text("".join(

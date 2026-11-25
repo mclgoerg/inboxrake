@@ -45,8 +45,6 @@ from . import digest as digestmod
 from . import dupstore
 from . import demo as demomod
 from . import errortext
-from . import habits as habitsmod
-from . import habitstore
 from . import knowledge as knowledgemod
 from . import labels as labelsmod
 from . import labelstore
@@ -2023,35 +2021,6 @@ def post_rule_run(rule_id: str):
         raise HTTPException(409, str(exc))
 
 
-@app.get("/api/habits")
-def get_habits(account: str | None = Query(None)):
-    """"You keep doing this" (backend/habits.py): the same cleanup done by hand
-    again and again, as ready-to-make rules with the steps they are based
-    on. Mined from this account's audit log; local, no AI. `enabled` False =
-    switched off in Settings (nothing is mined)."""
-    return habitsmod.suggestions(_acc(account))
-
-
-class HabitBody(BaseModel):
-    key: str
-
-
-@app.post("/api/habits/dismiss")
-def post_habit_dismiss(body: HabitBody, account: str | None = Query(None)):
-    """"Not this one": never suggest this sender's habit again."""
-    acc = _acc(account)
-    if not habitstore.hide(body.key, acc.name):
-        raise HTTPException(400, "bad sender key")
-    return {"ok": True}
-
-
-@app.post("/api/habits/show")
-def post_habits_show(account: str | None = Query(None)):
-    """Settings > General > Hidden suggestions > Show: the hidden senders may
-    be suggested again."""
-    return {"shown": habitstore.show_all(_acc(account).name)}
-
-
 class PresetBody(BaseModel):
     name: str = ""
     query: str = ""
@@ -2742,7 +2711,6 @@ def get_export_config():
             "protected": cfgmod.normalize_protected(cfg.get("protected")),
             "categories": cfg.get("categories") or {},
             "keep_safe": cfgmod.keep_safe_of(cfg),
-            "habits": cfgmod.habits_of(cfg),
             "ai": cfgmod.strip_ai_secrets(cfg["ai"]),
         },
         "rules": rulesmod.load_rules(),
@@ -2768,7 +2736,7 @@ def post_import_config(body: dict):
     imported rules are forced back to report mode (safety floor)."""
     c = body.get("config") or {}
     update = {k: c[k] for k in ("accounts", "protected", "categories", "keep_safe",
-                         "habits", "ai") if k in c}
+                         "ai") if k in c}
     if isinstance(update.get("accounts"), dict):
         update["accounts"] = {
             n: cfgmod.strip_account_secrets(b) if isinstance(b, dict) else b
@@ -2972,7 +2940,6 @@ def post_config(body: dict, request: Request, response: Response):
         digestmod.drop_account(str(body["delete_account"]))
         knownsenders.drop_account(str(body["delete_account"]))
         pinstore.drop_account(str(body["delete_account"]))
-        habitstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
@@ -3003,7 +2970,6 @@ def post_config(body: dict, request: Request, response: Response):
             digestmod.rename_account(old, new)
             knownsenders.rename_account(old, new)
             pinstore.rename_account(old, new)
-            habitstore.rename_account(old, new)
             substore.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)

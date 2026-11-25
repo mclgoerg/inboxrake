@@ -27,8 +27,6 @@ export interface SidebarProps {
   trashCount?: number | null;
   /** Rules an AI assistant proposed that wait for the user (a badge on Rules). */
   proposals?: number;
-  /** Suggestions from what the user does by hand (counted on Rules, too). */
-  habits?: number;
   /** Subscriptions found (a count on Subscriptions; none = no count). */
   subscriptions?: number;
   /** Addresses that look leaked (a badge on Your addresses). */
@@ -48,24 +46,18 @@ function Count({ n }: { n?: number | null }) {
     : <span className="ml-auto type-meta tabular-nums text-muted">{fmtNum(n)}</span>;
 }
 
-/** The count of things waiting on Rules - proposals of an AI assistant plus
- *  the suggestions from what the user does (`extra`): an accent disc, with
- *  the words for a screen reader. */
-export function ProposalBadge({ n, extra = 0, quiet = false }: {
-  n?: number; extra?: number;
-  /** the surrounding text already says it: no screen-reader words */
+/** The count of proposals waiting: an accent disc, with the words for a
+ *  screen reader. */
+export function ProposalBadge({ n, quiet = false }: {
+  n?: number; /** the surrounding text already says it: no screen-reader words */
   quiet?: boolean;
 }) {
-  const total = (n ?? 0) + extra;
-  return !total ? null : (
+  return !n ? null : (
     <span className="ml-auto inline-flex min-w-5 items-center justify-center
       rounded-full bg-accent px-1.5 type-caption font-semibold tabular-nums
       text-on-accent">
-      {quiet ? fmtNum(total) : <span aria-hidden>{fmtNum(total)}</span>}
-      {!quiet && <span className="sr-only">{[
-        n ? t("proposal.badge", { n }) : "",
-        extra ? t("habit.sub_count", { n: extra }) : "",
-      ].filter(Boolean).join(". ")}</span>}
+      {quiet ? fmtNum(n) : <span aria-hidden>{fmtNum(n)}</span>}
+      {!quiet && <span className="sr-only">{t("proposal.badge", { n })}</span>}
     </span>
   );
 }
@@ -86,7 +78,7 @@ export function LeakBadge({ n }: { n?: number }) {
 /** Fixed left navigation from 1024 px. Pages are real links (hash routes,
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
-  mailCount, junkCount, trashCount, proposals, habits, subscriptions, leaked,
+  mailCount, junkCount, trashCount, proposals, subscriptions, leaked,
   disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
@@ -144,7 +136,7 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("attachments", <Paperclip size={16} aria-hidden />,
         t("Attachments"))}
       {tool("rules", <ClipboardList size={16} aria-hidden />, t("Rules"),
-        undefined, <ProposalBadge n={proposals} extra={habits} />)}
+        undefined, <ProposalBadge n={proposals} />)}
       {tool("junk", <ShieldAlert size={16} aria-hidden />, t("role.junk"),
         junkCount)}
       {tool("trash", <Trash2 size={16} aria-hidden />, t("role.trash"),
