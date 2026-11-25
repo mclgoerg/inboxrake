@@ -4,7 +4,6 @@ and the per-run cap respected), a "move" target that is gone, rules that never
 match / only meet protected mail, old reports, purge rules compared with each
 other, Ignore (per tenant + account), and that nothing is ever changed by it."""
 
-import json
 import time
 
 import pytest
@@ -287,15 +286,33 @@ def write_audit(rule, counts_days, outcome="ok", action="rule_report",
                 r["created"] = int(time.time() - 100 * 86400)
                 r.pop("edited", None)
         rulesmod._save(rules)
-    path = auditlog._path()
-    with path.open("a") as f:
-        for count, days in counts_days:
-            f.write(json.dumps({
-                "ts": int(time.time() - days * 86400), "account":
-                accountsmod.default_name(), "actor": f"rule:{rule['id']}",
-                "action": action, "count": count, "bytes": 0, "label": "",
-                "outcome": outcome, "error": "",
-                **({"kept_safe": kept_safe} if kept_safe else {})}) + "\n")
+    for count, days in counts_days:
+        with _clock(time.time() - days * 86400):
+            auditlog.record(action, actor=f"rule:{rule['id']}",
+                            account=accountsmod.default_name(), count=count,
+                            outcome=outcome, kept_safe=kept_safe)
+
+
+class _At:
+    """Stands in for `auditlog.time`: entries are stamped `ts`."""
+
+    def __init__(self, ts):
+        self.ts = ts
+
+    def time(self):
+        return self.ts
+
+
+class _clock:
+    def __init__(self, ts):
+        self.at = _At(ts)
+
+    def __enter__(self):
+        self.real = auditlog.time
+        auditlog.time = self.at
+
+    def __exit__(self, *exc):
+        auditlog.time = self.real
 
 
 def test_a_rule_that_found_nothing_in_its_last_runs(box):
