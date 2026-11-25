@@ -82,13 +82,13 @@ export function asSameSender(row: AcrossGroup): SameSenderRow {
 const unreadPct = (g: { count: number; unread: number }) =>
   g.count ? Math.round((100 * g.unread) / g.count) : 0;
 
-/** The two pages across accounts that are lists (a phone has no sidebar to
- *  switch between them). */
+/** The two pages across accounts that are lists, as a switch (below 1024 px
+ *  there is no sidebar to go from one to the other). */
 export function AcrossPages({ page, onPage }: {
   page: "senders" | "all"; onPage: (p: "senders" | "all") => void;
 }) {
   return (
-    <div className="mb-2 md:hidden">
+    <div className="mb-2 lg:hidden">
       <Segmented<"senders" | "all"> label={t("view.group_by")} fill
         value={page} onChange={onPage}
         options={[{ value: "senders", label: t("nav.senders") },
@@ -398,7 +398,7 @@ export function AllSendersView({ data, failed, onRetry, names, phone,
 
   return (
     <div>
-      {phone && <AcrossPages page="senders" onPage={onPage} />}
+      <AcrossPages page="senders" onPage={onPage} />
       <div className={FILTER_ROW}>
         <div className="relative min-w-0 flex-1 max-md:basis-full md:min-w-48">
           <FilterField value={filter} onChange={setFilter} token={null}

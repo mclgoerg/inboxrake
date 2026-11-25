@@ -59,13 +59,14 @@ const mountSenders = (over: Partial<Parameters<typeof AcrossSendersConfirm>[0]> 
   return p;
 };
 const mountMails = (mails = [mail("gmail", 1), mail("gmail", 2),
-    mail("proton", 3)], over: Partial<Parameters<typeof AcrossMailsConfirm>[0]> = {}) => {
+    mail("proton", 3)], over: Partial<Omit<Parameters<typeof AcrossMailsConfirm>[0], "onChanged">> = {}) => {
+  const onChanged = vi.fn();
   const p = { mails, action: "trash" as const, order: ORDER,
-    exists: () => true, onOpenActivity: vi.fn(), onChanged: vi.fn(),
+    exists: () => true, onOpenActivity: vi.fn(), onChanged,
     onClose: vi.fn(), ...over };
   render(<ToastProvider><DialogProvider>
     <AcrossMailsConfirm {...p} /></DialogProvider></ToastProvider>);
-  return p;
+  return { ...p, onChanged };
 };
 
 beforeEach(() => {

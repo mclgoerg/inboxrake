@@ -365,9 +365,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
 
   const body = (
     <div>
-      {across && phone && (
-        <AcrossPages page="all" onPage={across.onPage} />
-      )}
+      {across && <AcrossPages page="all" onPage={across.onPage} />}
       {toolbarSlot !== null && (toolbarSlot
         ? createPortal(filterControls, toolbarSlot) : filterRow)}
       {across && (
