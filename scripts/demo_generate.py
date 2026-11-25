@@ -21,7 +21,8 @@ from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, demo, knowledgestore,
-                     mailops, pinstore, rules, unsubstore, verdictstore)
+                     mailops, pinstore, rules, snooze, snoozestore, unsubstore,
+                     verdictstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -1072,6 +1073,30 @@ PROTON.mailbox["INBOX"] += mails(
     newest_days=3, span_days=300, unread=0.5, unsub=True)
 random.setstate(_state)
 
+# Not now (IX112): the Proton account has a `Snoozed` folder - a newsletter
+# that waits until tomorrow, one invoice that waits for a week, and a weekly
+# batch that holds six promotions so far (the store that remembers them is
+# written in generate(), once the inbox is scanned). Added from its own random
+# stream, so every other mail keeps its exact data and uid.
+_state = random.getstate()
+random.seed(112)
+SNOOZED_DIGEST = mails(
+    '"TechDigest" <digest@techdigest.example>',
+    ["Issue #{n}: the quiet side of Rust", "Weekly: self-hosting corner"], 3,
+    newest_days=0.3, span_days=1.5, unread=1.0, unsub=True,
+    html=newsletter_html(click=CLICK_HOST))
+SNOOZED_INVOICE = mails(
+    '"CloudBox" <billing@cloudbox.example>', ["Invoice CB-2026-0412"], 1,
+    newest_days=2, unread=1.0, size=(220000, 480000))
+SNOOZED_BATCH = mails(
+    '"Streamly" <info@streamly.example>',
+    ["New this week on Streamly", "Your watchlist just got better"], 6,
+    newest_days=0.2, span_days=5, unread=1.0, unsub=True,
+    html=newsletter_html("track.streamly-demo.example"))
+PROTON.mailbox["Snoozed"] = SNOOZED_DIGEST + SNOOZED_INVOICE + SNOOZED_BATCH
+PROTON.uv["Snoozed"] = 1
+random.setstate(_state)
+
 
 def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
     """The Time machine's demo history of the Proton account: real undo steps
@@ -1481,6 +1506,31 @@ def generate() -> dict:
                      if m["addr"] == "anna.weber@mailfox.example"),
                     key=lambda m: m["uid"])[:3]:
         pinstore.set_pinned(m["msgid"], True, "proton")
+    # What waits in `Snoozed` (see SNOOZED_* above) and the weekly batch the
+    # sender of the six promotions delivers by: the store remembers where each
+    # mail goes back to and when. A UTC clock keeps the seed the same
+    # wherever it is built (a viewer's own zone only moves a new batch's slot).
+    _top = max((m["uid"] for m in accounts.get("proton").index.values()
+                if m["folder"] == "INBOX"), default=0)
+    _day = int(NOW) // 86400 * 86400
+    _until = {"digest": _day + 86400 + 8 * 3600,            # tomorrow 08:00
+              "invoice": _day + 6 * 86400 + 9 * 3600,       # in six days, 09:00
+              "batch": snooze.next_slot("weekly", "UTC", NOW)}
+
+    def _record(msgs, until, batch=""):
+        return {m["msgid"]: {
+            "origin": "INBOX", "until": until, "batch": batch,
+            "addr": re.search(r"<([^>]+)>", m["from"]).group(1),
+            "name": re.search(r'"([^"]+)"', m["from"]).group(1),
+            "subject": m["subject"]} for m in msgs}
+    snoozestore.add_mails({
+        **_record(SNOOZED_DIGEST, _until["digest"]),
+        **_record(SNOOZED_INVOICE, _until["invoice"]),
+        **_record(SNOOZED_BATCH, _until["batch"], "info@streamly.example")},
+        "proton")
+    snoozestore.set_batch("info@streamly.example", {
+        "slot": "weekly", "tz": "UTC", "label": "Streamly",
+        "uv": PROTON.uv["INBOX"], "after": _top}, "proton")
     # Bodies come last: the Proton body index above must not hold them (see
     # fill_bodies).
     for fake in FAKES.values():

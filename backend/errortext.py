@@ -47,6 +47,12 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "We couldn't confirm that these two accounts are different mailboxes (the server did not answer the check), so nothing was copied. Try again.",
     'copy_folder_reserved':
         '“{folder}” is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.',
+    'snooze_cannot_create':
+        'Could not create the “{folder}” folder on your mail server, so nothing was snoozed.',
+    'snooze_bad_time':
+        'Pick a time in the future (within the next two years).',
+    'snooze_protected':
+        'A protected sender’s mail is never held back - unprotect the sender first.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

@@ -9,6 +9,7 @@ import { confirmTrashItems } from "../mailActions";
 import type { Group, Mail, SearchNote } from "../types";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
+import { useSnooze } from "./snoozeContext";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
   Segmented, Select, Spinner, useOptionalToast } from "./ui";
 
@@ -248,9 +249,20 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashSelected = () => trashMails(
     mails.filter((m) => picked.includes(mailKey(m))));
   // The reader's Trash: the same confirm and call for the one open mail.
+  const snooze = useSnooze();
   const readerActions: ReaderActions = {
     trash: async (m) => {
       if (await trashMails([m], m.subject)) setView(null);
+    },
+    snooze: async (m, until) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setRes((cur) => cur && { ...cur, mails: cur.mails.filter(
+          (x) => mailKey(x) !== mailKey(m)) });
+        setView(null);
+        onDeleted();
+      }
+      return ok;
     },
   };
 

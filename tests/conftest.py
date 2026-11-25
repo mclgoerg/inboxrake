@@ -34,6 +34,7 @@ from backend import mailops                   # noqa: E402
 from backend import pinstore                  # noqa: E402
 from backend import presets as presetsmod     # noqa: E402
 from backend import rules as rulesmod         # noqa: E402
+from backend import snoozestore               # noqa: E402
 from backend import stats as statsmod         # noqa: E402
 from backend import substore                 # noqa: E402
 from backend import tenants as tenantsmod     # noqa: E402
@@ -91,6 +92,7 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(waitstore, "WAITING_PATH", tmp_path / "waiting.json")
     monkeypatch.setattr(waitstore, "SENT_INDEX_PATH",
                         tmp_path / "sent_index.json")
+    monkeypatch.setattr(snoozestore, "SNOOZE_PATH", tmp_path / "snoozed.json")
     monkeypatch.setattr(accountcopy, "ACCOUNT_COPY_PATH",
                         tmp_path / "account_copy.json")
     monkeypatch.setattr(accountcopy, "LEDGER_PATH",
@@ -117,6 +119,7 @@ def isolate(tmp_path, monkeypatch):
     substore._cache.clear()
     waitstore._cache.clear()
     waitstore._index_cache.clear()
+    snoozestore._cache.clear()
     mailops._SENT_CACHE.clear()
     accountsmod.reset()
     yield
@@ -140,6 +143,7 @@ def isolate(tmp_path, monkeypatch):
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
+    snoozestore._cache.clear()
     accountsmod.reset()
 
 

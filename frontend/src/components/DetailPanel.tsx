@@ -22,6 +22,8 @@ import { GradeCard } from "./GradeUi";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { ArrivalStrip } from "./RhythmCard";
 import { MailRows, MessageView } from "./MailList";
+import { NotNow, NotNowSheet } from "./NotNow";
+import { useSnooze } from "./snoozeContext";
 import type { ReaderActions, ReaderNav } from "./MailReader";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
 import { ThreadView } from "./ThreadView";
@@ -157,6 +159,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   }, []);
   // Phone: Sort becomes an icon menu (Unsubscribe stays a visible button).
   const phone = useMediaQuery("(width < 40rem)");
+  const snooze = useSnooze();
+  // The mail a phone swipe asked to snooze (its sheet is open).
+  const [snoozing, setSnoozing] = useState<Mail | null>(null);
 
   // The sender list of a pooled row needs no mails: load them only when the
   // Mails view is open (a pool can hold thousands).
@@ -341,6 +346,19 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     }
   };
 
+  // The ticked mails wait until `until` (the server leaves pinned ones).
+  const snoozeSelected = async (until: number) => {
+    if (!mails || sel.size === 0) return;
+    const chosen = mails.filter((m) => sel.has(mailKey(m)));
+    const items = chosen.map((m) => [m.folder, m.uid] as [string, number]);
+    if (await snooze.mails(items, until)) {
+      setSel(new Set());
+      onDeleted();
+      if (chosen.length === mails.length && !mails.some((m) => m.pinned))
+        (onEmptied ?? onClose)();
+    }
+  };
+
   const act = (action: string, dest = "") => {
     if (!mails || sel.size === 0) return Promise.resolve(false);
     return actOn(mails.filter((m) => sel.has(mailKey(m))), action, dest);
@@ -424,6 +442,16 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     trash: (m) => actOn([liveOf(m)], "trash", "", true),
     move: (m, dest) => actOn([liveOf(m)], "move", dest, true),
     pin: (m, pinned) => togglePin(liveOf(m), pinned),
+    snooze: async (m, until) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setView(null);
+        setReading(null);
+        setMails((cur) => cur && cur.filter((x) => mailKey(x) !== mailKey(m)));
+        onDeleted();
+      }
+      return ok;
+    },
   };
   const readerNav: ReaderNav | undefined = shown
     ? { list: shown, onOpen: (m) => reading ? setReading(m) : setView(m) }
@@ -469,6 +497,23 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     && sel.size === 0 && !hideGroupActions;
   // A swapped-in control resets when it disappears: no picker popping back.
   useEffect(() => { if (!canMove) setMoveOpen(false); }, [canMove]);
+  // Not now: the sender's unread mails (or, for any other group, its unread
+  // mails); a sender (and a one-sender Smart row) can also deliver in batches.
+  const snoozeKey = grouping === "sender" ? group.key
+    : grouping === "smart" && group.kind === "sender" ? group.addr ?? "" : "";
+  const batchSlot = snoozeKey ? snooze.summary?.batches[snoozeKey] ?? null : null;
+  const canSnooze = group.count > 0 && sel.size === 0 && !hideGroupActions;
+  const snoozeGroup = async (until: number) => {
+    if (await snooze.groups(grouping, [group.key], until)) {
+      onDeleted();
+      if (group.unread >= group.count && !group.pinned)
+        (onEmptied ?? onClose)();
+    }
+  };
+  const batchProp = snoozeKey ? { slot: batchSlot,
+    onSet: (slot: "weekly" | "daily" | "off") =>
+      snooze.batch(snoozeKey, group.label, slot).then(() => undefined) }
+    : undefined;
   const aiRate = (aiEnabled || demo) && !busy && sel.size === 0
     && tab === "mails";
   const canRead = grouping === "thread" && !!mails && mails.length > 0;
@@ -624,6 +669,11 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         <ActionButton className={CELL} icon={<FolderInput size={18} />}
           label={t("detail.move")} on={moveOpen}
           onClick={() => setMoveOpen(!moveOpen)} />
+      )}
+      {canSnooze && (
+        <NotNow look="action" className={CELL} scope="unread"
+          n={group.unread} who={group.label} onSnooze={snoozeGroup}
+          batch={batchProp} />
       )}
       {hasMore && (
       <div className={`${CELL} flex justify-center`}>
@@ -905,7 +955,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
             onOpen={setView} onPin={togglePin} pageSize={100} spread
             byMonth={sortBy === "date"}
             swipe={{ trash: (m) => actOn([m], "trash", "", true),
-              read: (m) => actOn([m], "mark_read", "", true) }} />
+              read: (m) => actOn([m], "mark_read", "", true),
+              snooze: (m) => setSnoozing(m) }} />
         )}
       </div>
     </>
@@ -983,6 +1034,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
                         onPick={(f) => act("move", f)}
                         onClose={() => setMoveDest("")} />
                     )}
+                    <NotNow look="reader" scope="selected" n={sel.size}
+                      who={group.label} disabled={busy}
+                      onSnooze={snoozeSelected} />
                     <Button variant="danger" disabled={busy}
                       className="ml-auto shrink-0"
                       onClick={() => act("trash")}>
@@ -1034,6 +1088,12 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     <>
       {inspecting && renderSender!(inspect!, () => setInspect(null))}
       <div className={inspecting ? "hidden" : "contents"}>{list}</div>
+      {snoozing && (
+        <NotNowSheet scope="mail" n={1}
+          who={snoozing.subject || t("(no subject)")}
+          onSnooze={(until) => readerActions.snooze!(snoozing, until)}
+          onClose={() => setSnoozing(null)} />
+      )}
     </>
   );
 
