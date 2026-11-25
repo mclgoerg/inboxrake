@@ -592,7 +592,8 @@ measured against the **last scan**: when you switch a batch on, mail that
 Inboxrake has not scanned yet (arrived since the last scan) counts as
 existing, not as new, and is not held; a changed folder identity on the server
 (UIDVALIDITY) restarts the count from the next scan. A mail Inboxrake
-delivers is never held again, and a mail that shares its Message-ID with one
+delivers is not held again while it stays in the inbox (one you move out
+and, more than a day later, back in counts as new again), and a mail that shares its Message-ID with one
 that is already snoozed stays where it is.
 
 **Clean up → Snoozed** (the sidebar item, or the Clean up tab on a phone) lists

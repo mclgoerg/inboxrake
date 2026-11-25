@@ -576,6 +576,19 @@ def test_a_batch_holds_only_new_inbox_mail_of_that_sender(box):
     assert auditlog.since(acc().name, 0)[-1]["actor"] == "snooze"
 
 
+def test_a_batch_holds_two_new_mails_with_one_message_id_once(box):
+    # every mail in Snoozed has its record: the twin stays in the INBOX
+    scan()
+    set_batch()
+    box.mailbox["INBOX"] += [mail(21, DEALS, msgid="<twin@promo.example>"),
+                             mail(22, DEALS, msgid="<twin@promo.example>")]
+    scan()
+    wait_delete_done()
+    assert len(box.mailbox["Snoozed"]) == len(the_store()["mails"]) == 1
+    assert len([m for m in box.mailbox["INBOX"]
+                if m["subject"] in ("Subject 21", "Subject 22")]) == 1
+
+
 def test_a_batch_skips_pinned_and_protected_mail(box):
     scan()
     set_batch()
@@ -904,6 +917,23 @@ def test_a_full_store_refuses_before_anything_moves(box, monkeypatch):
     snooze.snooze_items(acc(), [["INBOX", 3]], later())          # fits
     wait_delete_done()
     assert len(the_store()["mails"]) == 3
+
+
+def test_mails_still_queued_count_against_the_cap(box, monkeypatch):
+    # two snoozes queued behind a running job must not overfill the store
+    scan()
+    monkeypatch.setattr(snoozestore, "MAX_MAILS", 3)
+    a = acc()
+    with a.lock:
+        a.delete_pending.append({"action": snooze.ACTION,
+                                 "by_folder": {"Archive": {10, 11}}})
+    try:
+        with pytest.raises(ValueError, match="snooze_full"):
+            snooze.snooze_items(a, [["INBOX", 1], ["INBOX", 2]], later())
+        assert the_store()["mails"] == {}
+    finally:
+        with a.lock:
+            a.delete_pending.clear()
 
 
 def test_the_full_store_error_reaches_the_api_coded(box, monkeypatch):
