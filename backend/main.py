@@ -1498,6 +1498,26 @@ def post_pin_group(body: PinGroupBody, account: str | None = Query(None)):
         raise _internal_error(exc, acc)
 
 
+class PinMailsBody(BaseModel):
+    items: list[tuple[str, int]] = Field(min_length=1,
+                                         max_length=keepsafemod.MAX_ITEMS)
+    pinned: bool = True
+
+
+@app.post("/api/pin_mails")
+def post_pin_mails(body: PinMailsBody, account: str | None = Query(None)):
+    """Pin/unpin several mails ([folder, uid] pairs): "Protect these N" of
+    one kind of a sender's mail. Like /api/pin_group for a chosen set."""
+    acc = _acc(account)
+    try:
+        return mailops.set_mail_pins([list(i) for i in body.items],
+                                     body.pinned, acc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
 class KeepSafeBody(BaseModel):
     """The mails a Trash move would act on: a selection (`items`) or groups
     (`grouping` + `keys` and the move's retention / sender limits)."""
@@ -1999,6 +2019,7 @@ class RuleBody(BaseModel):
     mode: str | None = None        # only honoured on update
     keep_latest: int | None = None
     older_than_days: int | None = None
+    only_kind: str | None = None   # the third retention choice (a mail kind)
     # only "auto_empty" (the Trash page's switch) can be set here, on create
     origin: str | None = None
 

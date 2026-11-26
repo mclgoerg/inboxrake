@@ -200,7 +200,9 @@ its date - old sign-in codes, updates of parcels that have arrived,
 reminders of things that are over, ended offers - found from the subject and
 the date, with the receipts kept), five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
-mail reader that loads no remote content, a Filter menu and filter builder,
+mail reader that loads no remote content (a sender that mixes ads, order
+confirmations and shipping updates shows what it sends, so you can trash one
+kind or make a rule for it), a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,
 Attachments, rules and a scheduler (start one from a ready-made recipe) with
 a checkup that finds rules that overlap, clash, point at a folder that is gone

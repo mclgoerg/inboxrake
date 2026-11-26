@@ -1084,3 +1084,123 @@ test("keep-safe: the report sheet shows moved / skipped / kept safe side by "
   expect(screen.getAllByRole("dialog").at(-1)!.textContent)
     .not.toContain("kept safe");
 });
+
+// ---- the third retention choice: only one kind of mail ("What they send")
+
+const KIND_RULE: Rule = { ...rule, id: "k1", name: "ACME: ads to Trash",
+  query: "from:shop@acme.example", schedule: "daily", older_than_days: null,
+  only_kind: "ads", report_runs: 0 };
+
+test("a kind rule reads as a sentence, in the slot of the other two "
+  + "retention choices", () => {
+  expect(sentenceOf({ ...KIND_RULE })).toBe("When Sender groups match "
+    + "from:shop@acme.example then move to Trash only ads and offers · daily");
+  // the other two read as before
+  expect(sentenceOf({ only_kind: null, older_than_days: 30 }))
+    .toContain("then move to Trash if older than 30 days");
+  expect(sentenceOf({ only_kind: null, older_than_days: null,
+    keep_latest: 3 })).toContain("then move to Trash except the newest 3");
+  // a kind this app does not know is shown as it is, never as nothing
+  expect(sentenceOf({ ...KIND_RULE, only_kind: "weird" }))
+    .toContain("then move to Trash only weird");
+});
+
+test("a kind rule reads as a sentence in German", () => {
+  setLang("de");
+  expect(sentenceOf({ ...KIND_RULE })).toContain(
+    "in den Papierkorb verschieben, nur Werbung und Angebote");
+});
+
+test("the editor offers 'only one kind of mail' after the other two, with "
+  + "a kind to pick instead of a number", () => {
+  renderNew();
+  fireEvent.click(popup("Apply to"));
+  expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent))
+    .toEqual(["all mails", "keep newest N, act on the rest",
+      "only mails older than N days", "only one kind of mail"]);
+  fireEvent.click(screen.getByRole("menuitemradio",
+    { name: "only one kind of mail" }));
+  expect(screen.queryByPlaceholderText("N")).toBeNull();
+  expect(popup("Kind of mail").textContent).toContain("Ads and offers");
+  fireEvent.click(popup("Kind of mail"));
+  expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent))
+    .toEqual(["Ads and offers", "Order confirmations", "Shipping updates",
+      "Invoices and receipts", "Appointments and bookings",
+      "Job applications", "Support and inquiries", "Account and security"]);
+});
+
+test("creating a rule for one kind sends only_kind and nulls the other two",
+  () => {
+  renderNew();
+  fireEvent.change(screen.getByLabelText("Name"),
+    { target: { value: "Ads" } });
+  choose("Apply to", "only one kind of mail");
+  choose("Kind of mail", "Order confirmations");
+  fireEvent.click(screen.getByText("Create rule (report only)"));
+  expect(createRule).toHaveBeenCalledWith(expect.objectContaining(
+    { only_kind: "orders", keep_latest: null, older_than_days: null }));
+});
+
+test("the other two choices send no kind, and leaving the kind choice "
+  + "drops it", () => {
+  renderNew();
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "R" } });
+  choose("Apply to", "only one kind of mail");
+  choose("Apply to", "keep newest N, act on the rest");
+  fireEvent.change(screen.getByPlaceholderText("N"),
+    { target: { value: "5" } });
+  fireEvent.click(screen.getByText("Create rule (report only)"));
+  expect(createRule).toHaveBeenLastCalledWith(expect.objectContaining(
+    { keep_latest: 5, older_than_days: null, only_kind: null }));
+  cleanup();
+  renderNew();
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "R" } });
+  fireEvent.click(screen.getByText("Create rule (report only)"));
+  expect(createRule).toHaveBeenLastCalledWith(expect.objectContaining(
+    { keep_latest: null, older_than_days: null, only_kind: null }));
+});
+
+test("editing a kind rule prefills the choice and the kind; saving can "
+  + "change either", () => {
+  render(<RulesModal state={{ ...baseState, rules: [KIND_RULE] }}
+    onClose={() => {}} onChanged={() => {}} />);
+  fireEvent.click(screen.getByText("Edit"));
+  expect(popup("Apply to").textContent).toContain("only one kind of mail");
+  expect(popup("Kind of mail").textContent).toContain("Ads and offers");
+  choose("Kind of mail", "Shipping updates");
+  fireEvent.click(screen.getByText("Save"));
+  expect(updateRule).toHaveBeenCalledWith("k1", expect.objectContaining(
+    { only_kind: "shipping", keep_latest: null, older_than_days: null }));
+  cleanup();
+  updateRule.mockClear();
+  render(<RulesModal state={{ ...baseState, rules: [KIND_RULE] }}
+    onClose={() => {}} onChanged={() => {}} />);
+  fireEvent.click(screen.getByText("Edit"));
+  choose("Apply to", "only mails older than N days");
+  fireEvent.change(screen.getByPlaceholderText("N"),
+    { target: { value: "30" } });
+  fireEvent.click(screen.getByText("Save"));
+  expect(updateRule).toHaveBeenCalledWith("k1", expect.objectContaining(
+    { only_kind: null, older_than_days: 30, keep_latest: null }));
+});
+
+test("a Junk / Trash rule has no kind to pick and never sends one", () => {
+  renderNew();
+  pickScope("junk");
+  expect(screen.queryByRole("button", { name: /^Apply to/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "J" } });
+  fireEvent.click(screen.getByText("Create rule (report only)"));
+  expect(createRule).toHaveBeenCalledWith(expect.objectContaining(
+    { scope: "junk", only_kind: null }));
+});
+
+test("the editor offers the kind choice in German", () => {
+  setLang("de");
+  renderNew();
+  fireEvent.click(popup("Anwenden auf"));
+  expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent))
+    .toContain("nur eine Art von Mail");
+  fireEvent.click(screen.getByRole("menuitemradio",
+    { name: "nur eine Art von Mail" }));
+  expect(popup("Art der Mail").textContent).toContain("Werbung und Angebote");
+});

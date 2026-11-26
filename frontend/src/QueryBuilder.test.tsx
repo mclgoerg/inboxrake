@@ -245,3 +245,38 @@ test("mailOnly: `past its date` is the last of the per-mail flags and writes " +
     onOpenChange={() => {}} />);
   expect(screen.queryByRole("button", { name: "past its date" })).toBeNull();
 });
+
+test("mailOnly: `Kind of mail` is the last row, adds kind:<kind>, and the "
+  + "group-level builder does not offer it", () => {
+  const onChange = vi.fn();
+  const { unmount } = render(<QueryBuilder value="" onChange={onChange}
+    mailOnly open onOpenChange={() => {}} />);
+  const rows = ["Older than", "Size ≥", "Attachments ≥", "Kind of mail"]
+    .map((n) => screen.getByText(n));
+  for (let i = 1; i < rows.length; i++)           // the others keep their order
+    expect(rows[i - 1].compareDocumentPosition(rows[i])
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const adds = screen.getAllByRole("button", { name: "Add" });
+  expect(adds).toHaveLength(4);
+  fireEvent.click(adds[3]);                        // the first kind
+  expect(onChange).toHaveBeenLastCalledWith("kind:ads");
+  fireEvent.click(screen.getByRole("button", { name: "Ads and offers" }));
+  fireEvent.click(screen.getByRole("menuitemradio",
+    { name: "Order confirmations" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Add" })[3]);
+  expect(onChange).toHaveBeenLastCalledWith("kind:orders");
+  unmount();
+  render(<QueryBuilder value="" onChange={onChange} open
+    onOpenChange={() => {}} />);
+  expect(screen.queryByText("Kind of mail")).toBeNull();
+  cleanup();
+  render(<QueryBuilder value="" onChange={onChange} senderOnly open
+    onOpenChange={() => {}} />);
+  expect(screen.queryByText("Kind of mail")).toBeNull();
+});
+
+test("every kind the builder offers is one the server knows", async () => {
+  const { KIND_IDS } = await import("./kinds");
+  expect([...KIND_IDS]).toEqual(["ads", "orders", "shipping", "invoices",
+    "appointments", "jobs", "support", "accounts"]);
+});

@@ -736,6 +736,38 @@ _PD.append(_pd_mail(_HARVEST, "Deal ends tomorrow", 0.2, size=52000,
 PROTON_INBOX += _PD
 
 
+# What they send (the sender pane's box): the Northwind shop also sends ads
+# (with a List-Unsubscribe header, like a mailing list) and shipping updates
+# next to its order confirmations - three kinds from one address. Fixed dates,
+# no random draws and an own UID range, so nothing else in the demo shifts.
+_WS_UID = iter(range(800000, 850000))
+_WS_SHOP = '"Northwind Shop" <shop@northwind.example>'
+
+
+def _ws_mail(subject, days_ago, *, ad=False, seen=True, size=52000):
+    uid = next(_WS_UID)
+    return make_msg(uid, frm=_WS_SHOP, subject=subject,
+                    msgid=f"<demo-ws-{uid}@demo.example>", size=size,
+                    seen=seen, date=_date(days_ago),
+                    unsub="<https://unsub.example/u>" if ad else None)
+
+
+_WS_ADS = ("Weekend offer: 20% off outerwear", "New arrivals just landed",
+           "Last chance: the winter sale ends soon", "Two days only: boots and scarves",
+           "Our best picks for the cold season", "Members get early access")
+_WS = [_ws_mail(_WS_ADS[i % len(_WS_ADS)], 2.5 + i * 4.2, ad=True,
+                seen=i % 7 == 6, size=68000 + i * 900)
+       for i in range(16)]
+_WS += [_ws_mail(s, d, size=31000) for s, d in (
+    ("Your order has shipped", 6),
+    ("Shipping update: tracking number inside", 9),
+    ("Your order has shipped", 21), ("Out for delivery", 33),
+    ("Shipping update: tracking number inside", 47),
+    ("Your order has shipped", 58), ("Out for delivery", 70),
+    ("Your order has shipped", 96))]
+PROTON_INBOX += _WS
+
+
 # --- long tail ------------------------------------------------------------
 # Real mailboxes are 80% senders with < 10 mails. Generated from a separate
 # seeded stream, so the hand-written senders above keep their exact data.

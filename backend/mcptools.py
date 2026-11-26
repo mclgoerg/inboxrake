@@ -631,6 +631,10 @@ def _list_mails(ctx: Ctx, args: ListMailsIn) -> dict:
             raise ToolError(
                 "is:expired reads subject lines, which this token may not "
                 "see.")
+        if not ctx.subjects and parsed["kinds"]:
+            # kind: is decided from the subject line, like is:expired
+            raise ToolError(
+                "kind: reads subject lines, which this token may not see.")
         res = mailops.list_mails(args.offset, args.limit, args.sort, None,
                                  args.query, acc)
         total, page, ignored = res["total"], res["mails"], res["ignored"]

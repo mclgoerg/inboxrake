@@ -9,6 +9,7 @@ import { fmtTs, matchGroup, parseFilter } from "../lib";
 import { isProposal } from "../proposals";
 import type { AppState, CheckupFinding, Grouping, KeepSafeClass, Rule, RuleRun,
   RuleScope } from "../types";
+import { KIND_IDS, kindLabel, kindOnly } from "../kinds";
 import { type Recipe, recipeBody, recipeFolder,
   recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
@@ -29,8 +30,10 @@ const EMPTY = {
   name: "", scope: "mail" as RuleScope, grouping: "sender" as Grouping,
   query: "", action: "trash",
   dest: "", schedule: "manual" as Rule["schedule"],
-  retention: "none" as "none" | "keep_latest" | "older_than_days",
+  retention: "none" as "none" | "keep_latest" | "older_than_days" | "only_kind",
   retentionN: "",
+  /** The kind of "only <kind>" (the third retention choice). */
+  onlyKind: "ads",
 };
 
 /** What a new Junk / Trash purge rule starts with (D8): older than 30 days,
@@ -260,7 +263,9 @@ function RuleSentence({ rule, badges }: { rule: Rule; badges?: ReactNode }) {
             : rule.older_than_days != null
               ? <>{t("rule.ret_pre")}<Part>
                   {t("rule.ret_older", { n: rule.older_than_days })}</Part></>
-              : null,
+              : rule.only_kind
+                ? <>{t("rule.ret_pre")}<Part>{kindOnly(rule.only_kind)}</Part></>
+                : null,
           // the dot travels with the schedule: it never ends a line
           schedule: <span className="whitespace-nowrap">
             <span aria-hidden>{"·\u00a0"}</span>
@@ -675,7 +680,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   const save = async () => {
     setMsg("");
     setFilterErr("");
-    const { retention, retentionN, ...rest } = form;
+    const { retention, retentionN, onlyKind, ...rest } = form;
     const n = Number(retentionN);
     if (purge && !(Number.isInteger(n) && n >= 1 && n <= 36500)) {
       setMsg(t("fp.older_invalid"));
@@ -685,6 +690,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
       ...rest,
       keep_latest: retention === "keep_latest" && n > 0 ? n : null,
       older_than_days: retention === "older_than_days" && n > 0 ? n : null,
+      only_kind: retention === "only_kind" ? onlyKind : null,
     };
     try {
       if (editId) await api.updateRule(editId, body);
@@ -864,8 +870,10 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
       grouping: rule.grouping, query: rule.query,
       action: rule.action, dest: rule.dest, schedule: rule.schedule,
       retention: rule.keep_latest != null ? "keep_latest"
-        : rule.older_than_days != null ? "older_than_days" : "none",
-      retentionN: String(rule.keep_latest ?? rule.older_than_days ?? "") });
+        : rule.older_than_days != null ? "older_than_days"
+        : rule.only_kind ? "only_kind" : "none",
+      retentionN: String(rule.keep_latest ?? rule.older_than_days ?? ""),
+      onlyKind: rule.only_kind || EMPTY.onlyKind });
     setEditing(true);
   };
 
@@ -958,8 +966,13 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
           name={t("rule.f_apply")} options={[
             { value: "none", label: t("rule.apply_none") },
             { value: "keep_latest", label: t("rule.apply_keep") },
-            { value: "older_than_days", label: t("rule.apply_older") }]} />
-        {form.retention !== "none" && (
+            { value: "older_than_days", label: t("rule.apply_older") },
+            { value: "only_kind", label: t("rule.apply_kind") }]} />
+        {form.retention === "only_kind" ? (
+          <PopupSelect value={form.onlyKind} onChange={pick("onlyKind")}
+            name={t("rule.f_kind")}
+            options={KIND_IDS.map((k) => ({ value: k, label: kindLabel(k) }))} />
+        ) : form.retention !== "none" && (
           <Input className="w-24" type="number" min={1}
             aria-label={t("rule.f_retention_n")}
             placeholder={t("retention.n_placeholder")}

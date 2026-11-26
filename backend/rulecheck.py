@@ -94,6 +94,7 @@ def _plan(rule: dict, acc, groups: dict, pinned_all: set[str], ks_enabled
     grouping = rule["grouping"]
     keep_latest = rule.get("keep_latest")
     older = rule.get("older_than_days")
+    only_kind = rule.get("only_kind")
     mark_read = rule["action"] == "mark_read"
     pinned = set() if mark_read else pinned_all
     # Keep-safe: trash runs only, Block rules are never softened
@@ -111,8 +112,15 @@ def _plan(rule: dict, acc, groups: dict, pinned_all: set[str], ks_enabled
             if rec is None:
                 continue
             held = mailops.retained_mails(rec, acc, keep_latest, older, None)
+            # "only <kind>": the other kinds are out of its scope, not mails
+            # it leaves alone on purpose - they are in neither `kept` nor
+            # `acts`
+            out = (mailops.retained_mails(rec, acc, only_kind=only_kind)
+                   if only_kind is not None else {})
             total = sum(len(u) for u in rec["folders"].values())
-            plan["wanted"] += total - sum(len(s) for s in held.values())
+            plan["wanted"] += total - sum(
+                len(held.get(f, set()) | out.get(f, set()))
+                for f in set(held) | set(out))
             if g["protected"]:
                 plan["protected"] += 1
                 continue
@@ -121,6 +129,8 @@ def _plan(rule: dict, acc, groups: dict, pinned_all: set[str], ks_enabled
             ids = []
             for folder, uids in rec["folders"].items():
                 for uid in uids:
+                    if uid in out.get(folder, ()):
+                        continue
                     if uid in held.get(folder, ()):
                         plan["kept"].add((folder, uid))
                     elif uid in pin.get(folder, ()):

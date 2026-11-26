@@ -174,13 +174,14 @@ def pin(scope: dict, classes: list[str], acc=None) -> dict:
 
 def rule_kept(rec: dict, acc, keep_latest: int | None,
               older_than_days: int | None, pinned: set[str],
-              enabled) -> tuple[dict[str, int], set[str]]:
+              enabled, only_kind: str | None = None
+              ) -> tuple[dict[str, int], set[str]]:
     """What keep-safe leaves alone of one group record a rule run would move
     (lock held): ({class: mails}, {Message-ID, ...}) - not pinned, not in
     the retention keep-window. A rule run skips these mails WITHOUT pinning
     them (the caller hands the Message-IDs to `delete_groups(exempt=)`)."""
     held = mailops.retained_mails(rec, acc, keep_latest, older_than_days,
-                                  pinned)
+                                  pinned, only_kind)
     counts: dict[str, int] = {}
     msgids: set[str] = set()
     for folder, uids in rec["folders"].items():

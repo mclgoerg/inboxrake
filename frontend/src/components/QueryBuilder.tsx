@@ -1,6 +1,7 @@
 import { Plus, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { t } from "../i18n";
+import { KIND_IDS, kindLabel } from "../kinds";
 import { Button, Chip, Input, Modal, PopupSelect, SectionLabel, useMediaQuery }
   from "./ui";
 
@@ -72,6 +73,7 @@ export function QueryBuilder({ value, onChange, className = "",
   const [unread, setUnread] = useState("80");
   const [att, setAtt] = useState("10");
   const [size, setSize] = useState("5");
+  const [kind, setKind] = useState<string>("ads");
 
   const add = (tok: string) => {
     const q = value.trim();
@@ -166,6 +168,11 @@ export function QueryBuilder({ value, onChange, className = "",
             value={att} onChange={(e) => setAtt(e.target.value)} />
           <span className="type-meta text-muted">MB</span>
         </>, `att:>${+att || 1}m`)}
+        {mailOnly && row(t("qb.kind"),
+          <PopupSelect<string> className="min-w-0 flex-1" value={kind}
+            onChange={setKind}
+            options={KIND_IDS.map((k) => ({ value: k, label: kindLabel(k) }))}
+          />, `kind:${kind}`)}
       </div>
       {mailOnly && <>
       <SectionLabel className="mb-1.5 mt-4">{t("qb.flags_mail")}</SectionLabel>

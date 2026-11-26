@@ -41,6 +41,7 @@ from . import auditlog
 from . import config as cfgmod
 from . import demo
 from . import keepsafe
+from . import mailkinds
 from . import mailops
 from . import pinstore
 from . import senderchanges
@@ -77,7 +78,8 @@ ORIGIN_MCP = "mcp"
 PROPOSAL_LIMIT = 10             # open proposals per tenant
 PROPOSAL_LIMIT_CODE = "proposal_limit"
 _EDIT_FIELDS = ("name", "scope", "grouping", "query", "action", "dest",
-                "schedule", "keep_latest", "older_than_days", "account")
+                "schedule", "keep_latest", "older_than_days", "only_kind",
+                "account")
 # Not "smart": its rows' membership depends on a per-account threshold and
 # the protected list, so a standing rule on them would shift under it.
 RULE_GROUPINGS = tuple(g for g in mailops.GROUPINGS if g != "smart")
@@ -435,7 +437,15 @@ def definition_sig(rule: dict) -> str:
     """Fingerprint of everything that decides WHAT a rule acts on. A purge
     rule may only execute while the fingerprint of its last report run
     equals the current one: what was previewed is what runs."""
-    blob = json.dumps([rule.get(k) for k in _DEF_FIELDS])
+    parts = [rule.get(k) for k in _DEF_FIELDS]
+    if rule.get("only_kind") is not None:
+        # Only when set, so every rule saved before "only <kind>" keeps its
+        # signature. An older release does not know the field: its signature
+        # of such a rule differs from the one its report recorded, so it
+        # takes the rule back to report mode instead of running it on all the
+        # sender's mail.
+        parts.append(rule["only_kind"])
+    blob = json.dumps(parts)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
@@ -523,6 +533,7 @@ def _normalise(r: dict) -> bool:
     persists that once."""
     r.setdefault("keep_latest", None)    # tolerate pre-retention rules.json
     r.setdefault("older_than_days", None)
+    r.setdefault("only_kind", None)      # tolerate pre-kind rules.json
     r.setdefault("origin", "manual")     # tolerate pre-block rules.json
     if r["origin"] == AUTO_EMPTY and (r.get("scope") != "trash"
                                       or r.get("action") != PURGE_ACTION):
@@ -687,10 +698,16 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
             if val < 1:
                 raise ValueError(f"{field} must be >= 1")
             rule[field] = val
-    if rule.get("keep_latest") is not None \
-            and rule.get("older_than_days") is not None:
+    if "only_kind" in body:
+        kind = body["only_kind"]
+        if kind is not None and not mailkinds.valid(kind):
+            raise ValueError("bad kind")
+        rule["only_kind"] = kind
+    if sum(rule.get(f) is not None for f in (
+            "keep_latest", "older_than_days", "only_kind")) > 1:
         raise ValueError(
-            "keep_latest and older_than_days are mutually exclusive")
+            "keep_latest, older_than_days and only_kind are mutually "
+            "exclusive")
     if not rule["name"]:
         raise ValueError("rule needs a name")
     if purge:
@@ -707,6 +724,8 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
             rule["grouping"] = "sender"
         if rule.get("keep_latest") is not None:
             raise ValueError(mailops.RULE_PURGE_KEEP_LATEST)
+        if rule.get("only_kind") is not None:
+            raise ValueError("a Junk / Trash rule cannot be limited to a kind")
         if rule.get("older_than_days") is None:
             raise ValueError(mailops.RULE_PURGE_NEEDS_AGE)
         if rule.get("origin") != "manual" and not (
@@ -781,7 +800,8 @@ def create_rule(body: dict, lenient_filter: bool = False, *,
             "query": "", "action": "trash", "dest": "",
             "account": accounts.default_name(),
             "schedule": "manual", "mode": "report",   # ALWAYS starts report
-            "keep_latest": None, "older_than_days": None, "origin": "manual",
+            "keep_latest": None, "older_than_days": None, "only_kind": None,
+            "origin": "manual",
             "report_runs": 0, "created": int(time.time()), "last_run": None,
             "report_sig": "", "report_box": "", "report_at": None,
             "reset_reason": ""}
@@ -964,6 +984,7 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
 
         keep_latest = rule.get("keep_latest")
         older_than_days = rule.get("older_than_days")
+        only_kind = rule.get("only_kind")
         # Report counts must reflect the retention restriction: only mails
         # that would ACTUALLY be acted on (i.e. beyond the keep-window) -
         # and pinned mails, which no rule may move (mark_read is
@@ -986,12 +1007,14 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                 if g["key"] in recs:
                     rec = recs[g["key"]]
                     base = mailops.group_act_count(
-                        rec, acc, keep_latest, older_than_days, pinned)
+                        rec, acc, keep_latest, older_than_days, pinned,
+                        only_kind)
                     result["skipped_pinned"] += mailops.group_act_count(
-                        rec, acc, keep_latest, older_than_days) - base
+                        rec, acc, keep_latest, older_than_days,
+                        only_kind=only_kind) - base
                     kept, ids = keepsafe.rule_kept(
                         rec, acc, keep_latest, older_than_days, pinned,
-                        enabled) if enabled else ({}, set())
+                        enabled, only_kind) if enabled else ({}, set())
                     kept_by_key[g["key"]] = (kept, ids)
                     counts[g["key"]] = base - sum(kept.values())
         result["mails"] = sum(counts.values())
@@ -1033,7 +1056,7 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                 rule["action"], rule["dest"], keep_latest=keep_latest,
                 older_than_days=older_than_days, acc=acc,
                 actor=f"rule:{rule_id}", completion=completion,
-                exempt=exempt)
+                exempt=exempt, only_kind=only_kind)
             if demo.enabled():
                 result["queued"] = r["queued"]
                 result["pending"] = True
@@ -1121,7 +1144,8 @@ def _run_purge(rule: dict, acc, result: dict) -> None:
         role = rule["scope"]
         if role not in PURGE_SCOPES or rule.get("action") != PURGE_ACTION \
                 or rule.get("older_than_days") is None \
-                or rule.get("keep_latest") is not None:
+                or rule.get("keep_latest") is not None \
+                or rule.get("only_kind") is not None:
             raise ValueError("not a valid Junk / Trash rule")
         bad = purge_unsupported(rule["query"])
         if bad:

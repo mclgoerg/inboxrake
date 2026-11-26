@@ -436,6 +436,10 @@ export const api = {
   pinGroup: (grouping: Grouping, key: string, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean; changed: number; skipped: number }>(
       "/api/pin_group", { grouping, key, pinned }),
+  /** "Protect these N": pin the given mails (the kind of a sender's mail). */
+  pinMails: (items: [string, number][], pinned: boolean) =>
+    req<{ ok: boolean; pinned: boolean; changed: number; skipped: number }>(
+      "/api/pin_mails", { items, pinned }),
   // `rerate` (with keys): also send groups that already have a verdict and
   // replace it - an explicit second opinion, billed again.
   aiReview: (grouping: Grouping, keys?: string[], rerate = false) =>
