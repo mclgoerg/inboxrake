@@ -112,7 +112,7 @@ NOT_YET_RE = re.compile(
     # on its way, not at the door: a facility, a pickup point, a day to come
     r"facility|depot|\bhub\b|sorting|sortier|warehouse|distribution|"
     r"paketzentrum|verteilzentrum|zustellbasis|zustellst[uü]tzpunkt|"
-    r"zustelldepot|pick-?up|abholstation|pack-?station|paketshop|parcel ?shop|"
+    r"zustelldepot|pick-?up|abholstation|paketshop|parcel ?shop|"
     r"filiale|service ?point|collection point|locker|customs|zoll|"
     r"\btomorrow\b|(?<!guten )\bmorgen\b|[uü]bermorgen|tonight|"
     r"heute abend|\b(is|are|gets?)\s+delivered\b", _I)
