@@ -342,6 +342,21 @@ test("no rules, no checkup; a failed checkup shows nothing", async () => {
   expect(screen.getByText("Sweep old newsletters", { selector: "div" })).toBeTruthy();   // page intact
 });
 
+test("a checkup call that throws instead of failing shows nothing, and is no uncaught error", async () => {
+  vi.useFakeTimers();
+  try {
+    ruleCheckup.mockImplementationOnce(() => { throw new TypeError("not a function"); });
+    mount();
+    // the debounce timer runs the call: a throw must not leave the timer
+    await vi.advanceTimersByTimeAsync(300);
+    expect(ruleCheckup).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(screen.queryByTestId("checkup-card")).toBeNull();
+  expect(screen.getByText("Sweep old newsletters", { selector: "div" })).toBeTruthy();
+});
+
 test("What it checks lists the six checks and what is counted", async () => {
   mount();
   fireEvent.click(await screen.findByRole("button", { name: "What it checks" }));
