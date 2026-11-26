@@ -433,7 +433,9 @@ def search(query: str, body: bool = False, limit: int = 500) -> dict:
                 res = {"mails": mailops.search_mails(query, limit, acc=acc),
                        "notes": []}
         except Exception:
-            log.exception("search failed in account %s", name)
+            # (no account name in the log: this block also reads the
+            # account's settings, and a log line must never be near them)
+            log.exception("search failed in one account")
             notes.append({"key": "account_failed", "params": {},
                           "account": name})
             continue
