@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
+import { AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
@@ -7,7 +7,7 @@ import { api, fmtSize } from "../api";
 import { nowDate } from "../clock";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
-import { fmtAgo } from "../lib";
+import { fmtAgo, fmtSizeGb } from "../lib";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
 import { openProposals } from "../proposals";
@@ -22,6 +22,7 @@ import { ProposalBadge } from "./Sidebar";
 import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
+import { useAllAccounts } from "../useAllAccounts";
 import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
@@ -36,7 +37,7 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "waiting" | "activity";
+  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -305,7 +306,7 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, subs, waiting, onOpen,
+export function InsightsPage({ groups, state, subs, waiting, accounts, onOpen,
   onRetryUnsub, onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
@@ -315,6 +316,9 @@ export function InsightsPage({ groups, state, subs, waiting, onOpen,
   /** Mails you sent that nobody answered (null while unknown / not
    *  scanned). */
   waiting?: WaitingSummary | null;
+  /** The account names when there are two or more: the card that opens the
+   *  All accounts page is offered (the last card). */
+  accounts?: string[];
   onOpen: (tool: TabTool) => void;
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
@@ -686,6 +690,36 @@ export function InsightsPage({ groups, state, subs, waiting, onOpen,
           </span>
         )}
       </button>
+
+      {accounts && accounts.length >= 2 && (
+        <AllAccountsCard names={accounts} onOpen={() => onOpen("accounts")} />
+      )}
     </div>
+  );
+}
+
+/** The last card of the Insights tab: opens the All accounts page. It reads
+ *  the same read-only numbers the page does; it selects nothing. */
+function AllAccountsCard({ names, onOpen }: {
+  names: string[]; onOpen: () => void;
+}) {
+  // read once: no polling behind a card on a tab
+  const { data } = useAllAccounts(names, false);
+  return (
+    <button type="button" onClick={onOpen} className={CARD_BTN}>
+      <WidgetTitle icon={<Boxes size={16} />} chevron>
+        {t("allp.menu")}
+      </WidgetTitle>
+      <span className="mt-2 block type-meta font-semibold text-body">
+        {data ? t("allp.card_line", {
+          boxes: t("allp.mailboxes", { n: data.accounts.length }),
+          size: fmtSizeGb(data.totals.size) }) : t("allp.card_sub")}
+      </span>
+      {data && (
+        <span className="block type-meta text-muted">
+          {t("allp.card_same", { n: data.same_sender.length })}
+        </span>
+      )}
+    </button>
   );
 }

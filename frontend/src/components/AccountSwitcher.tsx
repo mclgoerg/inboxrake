@@ -2,7 +2,7 @@ import { Check, ChevronRight, Plus, ScrollText, Settings as SettingsIcon, Star,
   Power } from "lucide-react";
 import type { ReactNode } from "react";
 import { t } from "../i18n";
-import { fmtAgo, fmtSize } from "../lib";
+import { fmtAgo, fmtSize, fmtSizeGb } from "../lib";
 import type { AccountSummary, Config } from "../types";
 import { demoHint } from "../demoMode";
 import { statusOf, StatusDot } from "./SettingsPage";
@@ -18,7 +18,7 @@ type Appearance = "system" | "light" | "dark";
  *  account's settings (`onFix`) instead of switching to it. */
 export function AccountSwitcher({ menu, cfg, account, summary, appearance,
   onAppearance, onSwitch, onFix, onAdd, onSettings, onActivity, onLogout,
-  identity, admin, demo, version }: {
+  onAllAccounts, identity, admin, demo, version }: {
   /** Inside a `Menu` popover (items need the menu roles). */
   menu: boolean;
   cfg: Config;
@@ -34,6 +34,10 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
   onActivity: () => void;
   /** Present only when a sign-in is configured. */
   onLogout?: () => void;
+  /** Present with two accounts or more: the row after the cards that OPENS
+   *  the All accounts page. It is no card and no mode - the selected account
+   *  stays selected. */
+  onAllAccounts?: () => void;
   /** The signed-in identity (SSO) shown above the cards. */
   identity?: string;
   admin?: boolean;
@@ -126,6 +130,36 @@ export function AccountSwitcher({ menu, cfg, account, summary, appearance,
           );
         })}
       </div>
+      {onAllAccounts && (() => {
+        const names = Object.keys(cfg.accounts);
+        const total = names.reduce((n, a) => n + (summary?.[a]?.size ?? 0), 0);
+        return (
+          <button type="button" role={menu ? "menuitem" : undefined}
+            onClick={onAllAccounts}
+            className="flex min-h-11 w-full items-center gap-3 rounded-card
+              bg-chip p-3 text-left enabled:hover:bg-chiph">
+            <span aria-hidden className="inline-flex shrink-0">
+              {names.slice(0, 4).map((n, i) => (
+                <AccountAvatar key={n} name={n} size="md"
+                  className={`ring-2 ring-panel ${i ? "-ml-2" : ""}`} />
+              ))}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate type-body font-medium">
+                {t("allp.menu")}</span>
+              <span className="block type-meta text-muted">
+                {total > 0 ? t("allp.switch_sub", {
+                  boxes: t("allp.mailboxes", { n: names.length }),
+                  size: fmtSizeGb(total) })
+                  : t("allp.switch_sub_nosize", {
+                    boxes: t("allp.mailboxes", { n: names.length }) })}
+              </span>
+            </span>
+            <ChevronRight size={16} aria-hidden
+              className="shrink-0 text-faint" />
+          </button>
+        );
+      })()}
       <button type="button" role={menu ? "menuitem" : undefined}
         disabled={demo} onClick={onAdd}
         className="flex min-h-11 w-full flex-col items-center justify-center

@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass, Layers,
+import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, Hourglass, Layers,
   LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
@@ -11,7 +11,8 @@ import { fmtNum } from "../numfmt";
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "waiting" | "activity" | "settings";
+  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
+  | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -31,6 +32,9 @@ export interface SidebarProps {
   subscriptions?: number;
   /** Addresses that look leaked (a badge on Your addresses). */
   leaked?: number;
+  /** The user has two accounts or more: the All accounts page is offered
+   *  (the last item under Insights). */
+  allAccounts?: boolean;
   /** Tools that are disabled today stay disabled with the same rule. */
   disabled: Partial<Record<SidebarTool, boolean>>;
 }
@@ -79,7 +83,7 @@ export function LeakBadge({ n }: { n?: number }) {
  *  back/forward work); tools are buttons that open today's panels. */
 export function Sidebar({ page, onPage, onOpen, account, senderCount,
   mailCount, junkCount, trashCount, proposals, subscriptions, leaked,
-  disabled }: SidebarProps) {
+  allAccounts, disabled }: SidebarProps) {
   const pageLink = (p: Page, icon: ReactNode, label: string,
     count?: number) => (
     <a href={hashOf(p)} aria-current={page === p ? "page" : undefined}
@@ -152,6 +156,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("addresses", <AtSign size={16} aria-hidden />, t("addr.menu"),
         undefined, <LeakBadge n={leaked} />)}
       {tool("waiting", <Hourglass size={16} aria-hidden />, t("waiting.menu"))}
+      {allAccounts && tool("accounts", <Boxes size={16} aria-hidden />,
+        t("allp.menu"))}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

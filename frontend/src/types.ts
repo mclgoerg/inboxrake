@@ -1630,3 +1630,76 @@ export interface ConnectDecision {
   expires_days?: 30 | 90 | null;
   daily_cap?: number;
 }
+
+/* ---- the All accounts page (`GET /api/accounts/overview`) ---- */
+
+/** One mailbox's card. `failed`: its newest scan failed (`failed_ts` = when,
+ *  null after a restart); `scanned_ts` stays the last GOOD scan. */
+export interface AllAccountCard {
+  name: string;
+  user: string;
+  status: string;
+  progress: string;
+  scanned_ts: number | null;
+  failed: boolean;
+  failed_ts: number | null;
+  mails: number;
+  size: number;
+  senders: number;
+  junk: number | null;
+  trash: number | null;
+  /** mails newer than the remembered visit (`new_basis` "visit") or the last
+   *  week ("week") */
+  new: number;
+  new_basis: "visit" | "week";
+  /** the account's `groups_rev`: it moves when a scan or a move changed it */
+  rev: number;
+  /** a move / unsubscribe job is still running there */
+  busy: boolean;
+  /** a job that ended with an error (`id` = one message per job) */
+  job_failed: { id: string; error: string } | null;
+  /** its newest Undo steps by the id of the queued job that made them
+   *  ("Undo all N" finds the step of its OWN job, never "the newest") */
+  undo_jobs: Record<string, { id?: string; ts: number; label: string;
+    count: number; action: string }>;
+}
+
+/** One account's part of a sender that writes to several accounts. */
+export interface SameSenderPart {
+  account: string;
+  /** the address that stands for the sender in that account */
+  addr: string;
+  mails: number;
+  size: number;
+  /** pinned mails among `mails` (they never move) */
+  pinned: number;
+  /** this account already blocks the address (a Block rule) */
+  blocked: boolean;
+  /** its mails carry an unsubscribe link / address */
+  unsub: boolean;
+  /** this account's own unsubscribe record */
+  state: "done" | "link" | "failed" | null;
+  /** how THAT account would unsubscribe */
+  via: UnsubVia;
+}
+
+export interface SameSenderRow {
+  /** company domain, or the exact address on freemail / shared hosts */
+  key: string;
+  name: string;
+  match: "address" | "domain";
+  accounts: SameSenderPart[];
+  /** accounts where the sender is protected: never part of a step */
+  left_out: { account: string; addr: string; why: "protected" }[];
+  mails: number;
+  size: number;
+  /** percent of these mails the user opened */
+  opened: number;
+}
+
+export interface AllAccountsResp {
+  now: number;
+  accounts: AllAccountCard[];
+  totals: { mails: number; size: number; senders: number };
+  same_sender: SameSenderRow[];
+}

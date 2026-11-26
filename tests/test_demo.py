@@ -186,7 +186,10 @@ def test_responses_match_the_normal_path(bridge):
     assert headers["content-disposition"] == \
         csv.headers["content-disposition"]
     assert shim_deleted["status"] == deleted.status_code == 200
-    assert jbody(shim_deleted) == deleted.json()
+    # (each run names its queued job with an id of its own)
+    ran, again = jbody(shim_deleted), deleted.json()
+    assert isinstance(ran.pop("job"), str) and isinstance(again.pop("job"), str)
+    assert ran == again
 
 
 def test_adapter_shapes(shim):

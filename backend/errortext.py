@@ -107,6 +107,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "The unsubscribe mail could not be sent - check the account's mail-sending (SMTP) settings.",
     'unsub_pooled':
         "A combined row has no single sender to unsubscribe from - open one of its senders.",
+    'unsub_protected':
+        "This sender is protected, so it was not unsubscribed.",
     'unsub_unknown_group':
         "That group no longer exists - rescan and try again.",
     'unsub_failed':

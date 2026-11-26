@@ -31,6 +31,9 @@ import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
+import { AllAccountsPanel } from "./components/AllAccountsPanel";
+import { canOpenAllAccounts } from "./allAccounts";
+import { useAcrossRuns } from "./useAcrossRuns";
 import { showReminderToast } from "./subscriptions";
 import { shortName } from "./waiting";
 
@@ -286,6 +289,9 @@ export default function App() {
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
   const [waitingOpen, setWaitingOpen] = useState(false);
+  // The All accounts page (a page, never a mode: nothing about the selected
+  // account depends on it).
+  const [allAccountsOpen, setAllAccountsOpen] = useState(false);
   // The Waiting for a reply page opened from a sender pane: select that mail.
   const [waitingFocus, setWaitingFocus] = useState<string | null>(null);
   // The Subscriptions page opened from the Overview's Review: only the unused.
@@ -321,6 +327,7 @@ export default function App() {
     : statsOpen ? "stats" : spaceOpen ? "space"
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
     : addressesOpen ? "addresses" : waitingOpen ? "waiting"
+    : allAccountsOpen ? "accounts"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
   // A focus belongs to the visit it was asked for.
@@ -802,7 +809,10 @@ export default function App() {
         && !prev.aundo.includes(undoId(u)));
     const newJob = del.seq != null && prev.seq != null && del.seq > prev.seq;
     const botName = assistantActorName(del.actor ?? "");
-    if (!staleDel && del.status !== "running" && (fresh.length
+    // (a move the All accounts page started has ONE toast of its own - "Undo
+    // all N" - so this account's own is skipped while the page follows it)
+    if (!staleDel && del.status !== "running"
+        && !across.claimed.current.has(state.account) && (fresh.length
         || freshA.length || newJob
         || (del.seq == null && del.status !== prev.d))) {
       if (del.status === "error") {
@@ -1145,7 +1155,36 @@ export default function App() {
     if (unverified && state?.status === "done")
       api.getConfig().then(setCfg).catch(() => {});
   }, [unverified, state?.status]);
-  const multiAccount = !!cfg && Object.keys(cfg.accounts).length > 1;
+  const accountNames = useMemo(() => Object.keys(cfg?.accounts ?? {}),
+    [cfg]);
+  const multiAccount = !!cfg && canOpenAllAccounts(accountNames);
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  /* The All accounts page's runs that outlive the page: Scan all, and the one
+     toast ("Undo all N") of a Trash / Archive it queued in several accounts.
+     Every call there is pinned to its own account; nothing selects one. */
+  const across = useAcrossRuns({
+    toast: (message, opts) => toast.show(message, opts),
+    names: accountNames,
+    onChanged: (accounts) => {
+      setUndoRev((n) => n + 1);
+      if (accounts.includes(stateRef.current?.account ?? "")) refresh();
+    } });
+  // "Open in <account>" from the page: switch there, then open the sender once
+  // that account's state is loaded. Cleared when the account changes to
+  // another one meanwhile - it must never fire later, on a return.
+  const [pendingOpen, setPendingOpen] =
+    useState<{ account: string; addr: string } | null>(null);
+  useEffect(() => {
+    if (!pendingOpen) return;
+    if (account !== pendingOpen.account) { setPendingOpen(null); return; }
+    if (state?.account !== pendingOpen.account) return;
+    const g = state.groups.sender?.[pendingOpen.addr];
+    setPendingOpen(null);
+    if (g) openSender(g);
+    else notify(t("allp.sender_gone", { account: pendingOpen.account }), "info");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpen, state?.account, account]);
   // While no account is set up, the full-screen Welcome shows (until the
   // user sets up later this session); the wizard opens from it, and again
   // after the OAuth consent redirect that it started.
@@ -1226,7 +1265,7 @@ export default function App() {
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
     setSubsOpen(false); setAddressesOpen(false); setWaitingOpen(false);
-    setAuditOpen(false);
+    setAllAccountsOpen(false); setAuditOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1300,7 +1339,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2484,6 +2523,7 @@ export default function App() {
     subscriptions: () => setSubsOpen(true),
     addresses: () => setAddressesOpen(true),
     waiting: () => setWaitingOpen(true),
+    accounts: () => setAllAccountsOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
       if (navPage !== "settings") settingsFrom.current = navPage;
@@ -2567,6 +2607,9 @@ export default function App() {
       onAdd={() => { close(); setWizard({ mode: "add", previous: account }); }}
       onSettings={() => { close(); openTool("settings"); }}
       onActivity={() => { close(); openTool("activity"); }}
+      // a row that OPENS the page - it is no account and no mode
+      onAllAccounts={multiAccount
+        ? () => { close(); openTool("accounts"); } : undefined}
       onLogout={auth.mode !== "none" ? async () => {
         // this device stops hearing about the account that signs out
         if (pushMode()) await Promise.race([disablePush(),
@@ -3011,6 +3054,37 @@ export default function App() {
           openSender(g);
         }} />
     )}
+    {toolShown("accounts") && cfg && (
+      /* A page, not a mode: no `key={account}` - switching the account does
+         not reload it, and nothing it does selects an account. */
+      <AllAccountsPanel cfg={cfg} names={accountNames} current={account}
+        demo={demo} scanRun={across.scanRun}
+        onScanAll={() => { void across.scanAll(accountNames); }}
+        exists={(a) => !!cfgRef.current?.accounts[a]}
+        onFollow={across.follow} onClaim={across.claim}
+        onAdd={() => { setAllAccountsOpen(false);
+          setWizard({ mode: "add", previous: account }); }}
+        onClose={() => closeTool(() => setAllAccountsOpen(false))}
+        // Open: switch like the switcher does, and look at its Overview
+        onOpen={(name) => {
+          setAllAccountsOpen(false);
+          if (name !== account) switchAccount(name);
+          goPage(DEFAULT_PAGE);
+        }}
+        // Fix it: that account's settings - nothing is switched
+        onFix={(name) => { setAllAccountsOpen(false); void fixAccount(name); }}
+        onOpenSender={(name, addr) => {
+          setAllAccountsOpen(false);
+          if (name === account) {
+            const g = state?.groups.sender?.[addr];
+            if (g) openSender(g);
+            else notify(t("allp.sender_gone", { account: name }), "info");
+            return;
+          }
+          setPendingOpen({ account: name, addr });
+          switchAccount(name);
+        }} />
+    )}
     {toolShown("attachments") && state && (
       <AttachmentsPanel key={account}
         state={state}
@@ -3111,6 +3185,7 @@ export default function App() {
         junkCount={state?.junk_count} trashCount={state?.trash_count}
         proposals={openProposals(state?.rules).length}
         subscriptions={subs?.totals.count} leaked={leaked}
+        allAccounts={multiAccount}
         disabled={{ triage: triageDisabled,
           duplicates: state?.status !== "done",
           space: state?.status !== "done" }} />
@@ -3529,6 +3604,7 @@ export default function App() {
       ) : (
         <InsightsPage groups={senderGroups} state={state} subs={subs}
           waiting={waiting} onOpen={openTool}
+          accounts={multiAccount ? accountNames : undefined}
           onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
           onUnsubscribe={(key) => {
             if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);

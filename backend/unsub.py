@@ -216,12 +216,19 @@ def _newest_unsub(grouping: str, key: str, acc) -> dict:
     return newest
 
 
-def unsubscribe(grouping: str, key: str, acc=None) -> dict:
+def unsubscribe(grouping: str, key: str, acc=None,
+                skip_protected: bool = False) -> dict:
     """Unsubscribe from a group using its newest mail's List-Unsubscribe.
     Synchronous (one sender, triggered from a group's detail view); the
-    outcome is recorded like a bulk run's."""
+    outcome is recorded like a bulk run's. A deliberate click on one sender
+    may act on a protected one; `skip_protected` (the All accounts page, a
+    bulk path) refuses it with the coded UNSUB_PROTECTED, checked now - not
+    when the list was drawn."""
     acc = acc or accounts.get()
     newest = _newest_unsub(grouping, key, acc)
+    if skip_protected and cfgmod.is_protected(newest["addr"],
+            cfgmod.normalize_protected(cfgmod.load_config().get("protected"))):
+        raise RuntimeError(mailops.coded(mailops.UNSUB_PROTECTED))
 
     res = unsubscribe_addr(cfgmod.account_imap(acc.name), newest["addr"],
                            newest["unsub"], newest["unsub_post"], acc.name)

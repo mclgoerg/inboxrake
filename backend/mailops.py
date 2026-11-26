@@ -104,6 +104,8 @@ NO_MESSAGE_ID = "no_message_id"      # set_pin: nothing stable to key a pin on
 PINNED_MAILS = "pinned_mails"        # delete_messages: needs force
 PROTECTED_MAILS = "protected_mails"  # role_move trash: needs force
 ALL_PINNED = "all_pinned"            # delete_groups: nothing but pinned mails
+DELETE_PROTECTED = "delete_protected"   # delete_groups(skip_protected): the
+                                     # selection is nothing but protected
 ROLE_NOT_CANDIDATE = "role_not_candidate"  # set_role_override: not that role's
 ROLE_AMBIGUOUS = "role_ambiguous"    # lookalike_*: choose the role folder first
 NOT_LOOKALIKE = "not_lookalike"      # lookalike_*: no look-alike of a role
@@ -208,11 +210,12 @@ UNSUB_BAD_URL = "unsub_bad_url"
 UNSUB_NO_METHOD = "unsub_no_method"
 UNSUB_MAIL_FAILED = "unsub_mail_failed"  # the unsubscribe mail was not sent
 UNSUB_POOLED = "unsub_pooled"
+UNSUB_PROTECTED = "unsub_protected"      # skip_protected: the sender is protected
 UNSUB_UNKNOWN_GROUP = "unsub_unknown_group"
 UNSUB_FAILED = "unsub_failed"            # anything unexpected (see the log)
 UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
                UNSUB_TIMEOUT, UNSUB_BAD_URL, UNSUB_NO_METHOD,
-               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_UNKNOWN_GROUP,
+               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_PROTECTED, UNSUB_UNKNOWN_GROUP,
                UNSUB_FAILED)
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)
@@ -287,7 +290,7 @@ FOLDER_ERROR_CODES = frozenset({
     ASSISTANT_TOKEN_LEVEL,
     ASSISTANT_TOKEN_LIMIT,
     ASSISTANT_TOKEN_UNKNOWN,
-    NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED,
+    NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED, DELETE_PROTECTED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
     BUSY_PURGE,
@@ -781,6 +784,8 @@ UNDO_SUMMARY_MAX = 100
 def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
+             # the queued job that made the step (absent on older steps)
+             **({"job": u["job"]} if u.get("job") else {}),
              "action": u.get("action", "trash"),
              # the Folders panel toasts these itself; absent = ordinary
              **({"quiet": True} if u.get("quiet") else {}),
@@ -2952,6 +2957,7 @@ def run_scan(acc=None, push: bool = False) -> None:
                                "progress": "", "error": "", "usage": None}
                 acc.state["scanned_ts"] = int(time.time())
                 acc.prev_scan_ts = None
+                acc.scan_failed_ts = None
                 acc.state["groups_rev"] += 1
                 analysed = [m.get("att_size", 0) for m in acc.index.values()
                             if m.get("att_size")]
@@ -3006,6 +3012,7 @@ def run_scan(acc=None, push: bool = False) -> None:
         with acc.lock:
             acc.state["status"] = "error"
             acc.state["error"] = error_text(exc, im["host"], SCAN_FAILED)
+            acc.scan_failed_ts = int(time.time())
         outcome = False
     if push and outcome is not None:        # a scan somebody started
         webpush.job_finished(acc, "scan", outcome)
@@ -3347,12 +3354,15 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                  label_fields: dict | None = None,
                  copies: list[dict] | None = None,
                  audit_id: str = "", token: str = "",
-                 actor: str = "") -> str:
+                 actor: str = "", job: str = "") -> str:
     """Append a move job to the undo log (acc.lock held). A step of an AI
     assistant (`token` = the token's id, `actor` = its audit actor) goes to
     the assistant list instead, never into (or out of) the user's. `audit_id` is the
     id of the audit entry that records the same action, so an undo can say
-    what it undid. `quiet` = the
+    what it undid. `job` = the id `_start_delete` gave the queued
+    job that made this step, so a caller that started it finds exactly its
+    own step (the All accounts page's "Undo all N") and never "the newest".
+    `quiet` = the
     caller shows its own toast (Folders panel), so the UI's generic "moved
     N" toast for new undo entries stays silent. `label_fields`: optional
     structured label (see `_from_role_label`).
@@ -3387,6 +3397,7 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
              "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
              **({"copies": copies} if copies is not None else {"who": who}),
              **({"audit_id": audit_id} if audit_id else {}),
+             **({"job": job} if job else {}),
              **(label_fields or {})}
     if token:
         entry.update(token=token, actor=actor)
@@ -3473,7 +3484,8 @@ def _delete_worker(acc) -> None:
             meta = _apply_removal(moved_uids, acc)
             undo_id[0] = _record_undo(
                 label, meta, action, resolved[0], acc, copies=copies,
-                audit_id=audit_id, token=token, actor=actor) or undo_id[0]
+                audit_id=audit_id, token=token, actor=actor,
+                job=job.get("job", "")) or undo_id[0]
             # after the Undo step: nothing here may lose it
             cleaned_addrs.update(m["addr"] for by_uid in meta.values()
                                  for m in by_uid.values() if m.get("addr"))
@@ -3540,9 +3552,11 @@ def _delete_worker(acc) -> None:
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
-                  token: str = "") -> None:
+                  token: str = "") -> str:
     """Enqueue a background mail action (acc.lock held by caller). `token`
-    (an AI assistant's token id) files the undo step in the assistant list."""
+    (an AI assistant's token id) files the undo step in the assistant list.
+    Returns the id of the queued job - its undo step carries it as `job` - or
+    "" when there was nothing left to queue."""
     if action not in ACTIONS:
         raise ValueError("bad action")
     if action == "move" and not dest:
@@ -3563,10 +3577,12 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
     if not by_folder:
         if completion is not None:
             completion.update(done=True, moved=0, error="")
-        return
+        return ""
+    job_id = f"j{time.time_ns():x}"
     acc.delete_pending.append({"by_folder": by_folder, "label": label,
                             "action": action, "dest": dest, "actor": actor,
-                            "token": token, "completion": completion})
+                            "token": token, "completion": completion,
+                            "job": job_id})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
         # at start, so a stale "done" tick of an earlier job is not mistaken
@@ -3578,6 +3594,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         threading.Thread(target=tenants.call_in,
                          args=(acc.tenant, _delete_worker, acc),
                          daemon=True).start()
+    return job_id
 
 
 def _group_mail_items(rec: dict, acc) -> list[tuple[str, int, int]]:
@@ -3647,8 +3664,14 @@ def delete_groups(grouping: str, keys: list[str],
                   actor: str = "user", completion: dict | None = None,
                   only_addrs: list[str] | None = None,
                   exempt: set[str] | None = None,
-                  only_kind: str | None = None) -> dict:
-    """Queue `action` for the mails of the given groups. `only_addrs` limits
+                  only_kind: str | None = None,
+                  skip_protected: bool = False) -> dict:
+    """Queue `action` for the mails of the given groups. `skip_protected`
+    (a bulk path that must never touch a protected sender: the All accounts
+    page's step per account) leaves protected groups out for EVERY action -
+    `force` is ignored - and refuses with the coded DELETE_PROTECTED when
+    nothing else is left, decided now, not when the list was drawn.
+    `only_addrs` limits
     it to mails from those sender addresses: a caller that decided on a group
     because it held only those senders (the unsubscribe sheet's "also move
     to Trash") is not acting on a mail from anyone else that joined the
@@ -3679,7 +3702,7 @@ def delete_groups(grouping: str, keys: list[str],
         jobs = {k: recs[k] for k in keys if k in recs}
         # Safety floor: trashing protected groups needs an explicit force
         # (the UI sends it only after a dedicated per-group confirmation).
-        if jobs and action == "trash" and not force:
+        if jobs and (skip_protected or (action == "trash" and not force)):
             plist = cfgmod.normalize_protected(
                 cfgmod.load_config().get("protected"))
             paddrs = _protected_addrs(plist, acc)
@@ -3692,7 +3715,8 @@ def delete_groups(grouping: str, keys: list[str],
                 log.info("delete: skipped %d protected group(s): %s",
                          skipped, ", ".join(prot[:5]))
             if not jobs:
-                raise ValueError("all selected groups are protected")
+                raise ValueError(DELETE_PROTECTED if skip_protected
+                                 else "all selected groups are protected")
         by_folder: dict[str, set[int]] = {}
         for rec in jobs.values():
             keep = retained_mails(rec, acc, keep_latest, older_than_days,
@@ -3717,9 +3741,13 @@ def delete_groups(grouping: str, keys: list[str],
             raise RuntimeError("no known groups selected")
         labels = [jobs[k]["label"] for k in list(jobs)[:3]]
         label = ", ".join(labels) + ("…" if len(jobs) > 3 else "")
-        _start_delete(by_folder, label, acc, action, dest, actor, completion)
+        job_id = _start_delete(by_folder, label, acc, action, dest, actor,
+                               completion)
+    # `job`: the queued job's id ("" = everything was queued already); its undo
+    # step carries the same id
     return {"ok": True, "queued": sum(len(s) for s in by_folder.values()),
-            "skipped": skipped, "skipped_pinned": skipped_pinned}
+            "skipped": skipped, "skipped_pinned": skipped_pinned,
+            "job": job_id}
 
 
 def group_move_mails(grouping: str, keys: list[str],
