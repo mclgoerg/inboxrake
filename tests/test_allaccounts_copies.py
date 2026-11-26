@@ -605,6 +605,9 @@ def test_the_live_look_reads_any_order_of_items(data):
     [(b"1 (UID 5 RFC822.SIZE 1000 " + _OPEN, b"Message-ID: <z@x>\r\n\r\n"), b")"],
     [(b"2 (UID 9 RFC822.SIZE 1000 " + _OPEN, _HDR), b")",
      b"1 (UID 5 RFC822.SIZE 1000 BODY[HEADER.FIELDS (MESSAGE-ID)] NIL)"],   # none of its own
+    # a response without a UID, then another response's UID is not its UID
+    [(b"2 (" + _OPEN, _HDR), b" RFC822.SIZE 1000)",
+     b"1 (UID 5 RFC822.SIZE 1000 BODY[HEADER.FIELDS (MESSAGE-ID)] NIL)"],
     [], None,
 ])
 def test_the_live_look_does_not_take_a_half_answer_for_a_twin(data):
