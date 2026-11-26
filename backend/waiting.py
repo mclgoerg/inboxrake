@@ -115,11 +115,42 @@ def update_sent_index(conn, roles: dict, acc, progress_cb=None) -> int | None:
     it all again). Returns the number of mails now indexed, or None when
     nothing was done (watching is off, no Sent folder, a failure - the old
     index stays). With watching off (the default) the index is dropped and
-    nothing extra is read."""
-    from . import mailops
+    nothing extra is read. While watching, the cached Junk and Trash are
+    brought up to date too (`_refresh_answer_folders`)."""
     if not waitstore.load_account(acc.name)["watch"]:
         waitstore.drop_index(acc.name)
         return None
+    count = _read_sent(conn, roles, acc, progress_cb)
+    _refresh_answer_folders(conn, roles, acc)
+    return count
+
+
+def _refresh_answer_folders(conn, roles: dict, acc) -> None:
+    """An answer that went straight to Junk (or that you binned) still counts,
+    so the cached Junk and Trash must be as new as the scan: a reply that sits
+    there unseen would otherwise leave its mail "overdue" - and push. Headers
+    only, incremental, the same refresh the Junk and Trash pages do; nothing
+    is read while there is no sent mail to wait on. A failure leaves the
+    cache as it was."""
+    from . import mailops
+    if not waitstore.load_index(acc.name)["mails"]:
+        return
+    for role in ROLE_FOLDERS:
+        folder = roles.get(role)
+        if not folder:
+            continue
+        try:
+            mailops.refresh_role_index(conn, role, folder, acc)
+        except mailops.Cancelled:
+            raise
+        except Exception as exc:
+            log.warning("%s not refreshed for replies: %s", role,
+                        type(exc).__name__)
+
+
+def _read_sent(conn, roles: dict, acc, progress_cb=None) -> int | None:
+    """The Sent folder's part of `update_sent_index`."""
+    from . import mailops
     target = roles.get("sent")
     if not target:
         return None
@@ -288,9 +319,14 @@ def analyse(acc, now: float | None = None) -> Analysis:
     block = waitstore.load_account(acc.name)
     settings = waitstore.load_settings()
     sent = waitstore.load_index(acc.name)["mails"] if block["watch"] else []
-    incoming = _incoming(acc) if sent else []
     with acc.lock:
         scanned = acc.state.get("scanned_ts") is not None
+    if not sent:
+        # not watching (or nothing sent yet): nothing to match, and neither
+        # the config nor the alias service is asked
+        return Analysis(block, settings, None, [], {}, {}, [], [], scanned,
+                        now)
+    incoming = _incoming(acc)
     own = _own_addresses(acc, sent)
     # list senders: an address that only ever sent bulk mail
     bulk_only = {i.addr for i in incoming if i.bulk} \
@@ -737,19 +773,23 @@ def recent_reminders(acc, now: float | None = None) -> list[dict]:
 
 
 def reminded(acc, now: float | None = None) -> list[str]:
-    """Names of the people behind reminders / announcements that went out and
-    still wait: the digest's line."""
+    """One name per person behind reminders / announcements that went out and
+    still wait: the digest's line. Like the push - the person's name, else the
+    company, else "" (the digest words that "Someone" / "Jemand") - never an
+    address."""
     now = time.time() if now is None else now
     block = waitstore.load_account(acc.name)
     got = _announced(block, now) if block["watch"] else {}
     if not got:
         return []
     a = analyse(acc, now)
+    seen: set[str] = set()
     names: list[str] = []
     for it in a.items:
-        if it["state"] == "open" and it["id"] in got \
-                and it["person"]["name"] not in names:
-            names.append(it["person"]["name"])
+        addr = it["person"]["addr"]
+        if it["state"] == "open" and it["id"] in got and addr not in seen:
+            seen.add(addr)
+            names.append(it["_push_name"])
     return names
 
 

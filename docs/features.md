@@ -810,14 +810,18 @@ switch it on reads nothing more than before. Switched on, the scan also reads
 your Sent folder's headers (Message-ID, date, subject, From, To / Cc,
 In-Reply-To, References; never a mail body) for the last 90 days, and after
 that only what is new each time. **The first scan after switching it on reads
-those 90 days.** Switching it off deletes that index again.
+those 90 days.** Switching it off deletes that index again, together with the
+reminders you set on it.
 
 A sent mail is **open** when it went to at least one person (your own
 addresses, `no-reply` style addresses and list or newsletter senders are not
 people), it is your **latest** mail of its conversation (the same In-Reply-To
 / References matching as the Conversation view) and nothing newer in that
 conversation came back from one of those people. Their newsletters are never
-an answer. An answer you moved to Trash or that landed in Junk still counts. A
+an answer. An answer you moved to Trash or that landed in Junk still counts:
+while it is switched on, each scan also brings the cached Junk and Trash up to
+date (headers only; the first time it reads what is in them, as opening those
+pages does) so a reply that went straight to Junk is seen. A
 reply in a folder Inboxrake does not scan (for example Gmail's All Mail only)
 is not seen, so that mail stays on the list until you mark it "No answer
 needed".

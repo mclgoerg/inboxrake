@@ -1302,3 +1302,166 @@ def test_an_announcement_and_a_firing_are_noted_once_each():
     assert waitstore.mark_fired("<a@s.x>", NOW + 10, "acct") is True
     assert waitstore.mark_fired("<a@s.x>", NOW + 11, "acct") is False
     assert waitstore.mark_fired("<gone@s.x>", NOW, "acct") is False
+
+
+# ------------------------- review fixes: switch-off, old file, Junk, no config
+
+def test_switching_off_forgets_reminders_and_announcements_but_not_decisions(
+        pushes):
+    waitstore.set_watch(True, "acct")
+    waitstore.set_reminder("<a@s.x>", NOW + 5, "acct")
+    waitstore.mark_alerted("<b@s.x>", NOW, "acct")
+    waitstore.set_needed("<c@s.x>", True, "acct")
+    waitstore.set_watch(False, "acct")
+    b = waitstore.load_account("acct")
+    assert b["reminders"] == {} and b["alerted"] == {}
+    assert b["needed"] == ["<c@s.x>"]                    # a decision stays
+    waitstore._cache.clear()                             # and on disk
+    assert waitstore.load_account("acct")["reminders"] == {}
+
+
+def test_an_old_reminder_does_not_wake_up_when_watching_is_switched_on(pushes):
+    acc, mid = _remind_case()
+    waiting.set_reminder(acc, mid, NOW + 60, NOW)
+    waiting.set_watch(acc, False)
+    waiting.set_watch(acc, True)
+    waitstore.save_index("Sent", 1, [_sent(14, "pat@their.example",
+                                           msgid=mid)], "acct")
+    assert waiting.tick_account(acc, NOW + 7200) == 0 and pushes == []
+    assert waitstore.load_account("acct")["reminders"] == {}
+
+
+def test_reminders_of_a_withdrawn_version_file_are_ignored():
+    waitstore.WAITING_PATH.write_text(json.dumps({"accounts": {"acct": {
+        "track": True, "days": 7, "needed": ["<n@x>"],
+        "reminders": {"<r@x>": {"at": 5, "fired": 0}},
+        "alerted": {"<a@x>": 9}}}}))
+    waitstore._cache.clear()
+    b = waitstore.load_account("acct")
+    assert b["reminders"] == {} and b["alerted"] == {}
+    assert b["needed"] == ["<n@x>"]
+    waiting.set_watch(SimpleNamespace(name="acct"), True)   # first time on
+    assert waitstore.load_account("acct")["reminders"] == {}
+    # a block this version wrote keeps its reminders
+    waitstore.set_reminder("<r@x>", NOW + 5, "acct")
+    waitstore._cache.clear()
+    assert "<r@x>" in waitstore.load_account("acct")["reminders"]
+
+
+def test_the_api_switch_off_forgets_the_reminders(sentbox):
+    mailops.run_scan()
+    mid = client.get("/api/waiting").json()["items"][0]["id"]
+    at = int(time.time()) + 3600
+    client.post("/api/waiting/remind", json={"id": mid, "at": at})
+    assert waitstore.load_account("default")["reminders"]
+    client.post("/api/waiting/settings", json={"watch": False})
+    assert waitstore.load_account("default")["reminders"] == {}
+
+
+def _spam_reply(sentbox, uid, to_msgid, bulk=False):
+    sentbox.mailbox["Spam"].append(make_msg(
+        uid, frm="Desk <desk@library.example>", subject="Re: Question",
+        msgid=f"<j{uid}@library.example>", irt=to_msgid, refs=to_msgid,
+        unsub="<https://library.example/u>" if bulk else None,
+        seen=False, date=_stamp(1)))
+
+
+def _question(sentbox):
+    sentbox.mailbox["Sent"].append(make_msg(
+        24, frm="Me <me@self.example>", subject="Question",
+        to="Library <desk@library.example>", msgid="<s24@self.example>",
+        seen=True, date=_stamp(5)))
+
+
+def _by_subject():
+    return {i["subject"]: i for i in
+            waiting.listing(accountsmod.get())["items"]}
+
+
+def test_a_reply_that_went_straight_to_junk_answers_the_mail_after_a_scan(
+        sentbox):
+    """The cached Junk is brought up to date by the scan itself - nobody has to
+    open the Junk page - so the mail is not "overdue" (and never pushed)."""
+    _question(sentbox)
+    _spam_reply(sentbox, 40, "<s24@self.example>")
+    mailops.run_scan()
+    assert accountsmod.get().role_index.get("junk")          # read by the scan
+    assert _by_subject()["Question"]["state"] == "answered"
+
+
+def test_a_reply_in_trash_answers_the_mail_after_a_scan_too(sentbox):
+    _question(sentbox)
+    sentbox.mailbox["Trash"].append(make_msg(
+        41, frm="Desk <desk@library.example>", subject="Re: Question",
+        msgid="<j41@library.example>", irt="<s24@self.example>",
+        refs="<s24@self.example>", seen=True, date=_stamp(1)))
+    mailops.run_scan()
+    assert _by_subject()["Question"]["state"] == "answered"
+
+
+def test_a_newsletter_in_junk_still_answers_nothing(sentbox):
+    _question(sentbox)
+    sentbox.mailbox["INBOX"].append(make_msg(
+        42, frm="Desk <desk@library.example>", subject="Hello", seen=True,
+        date=_stamp(40), msgid="<i42@library.example>"))
+    _spam_reply(sentbox, 43, "<s24@self.example>", bulk=True)
+    mailops.run_scan()
+    assert _by_subject()["Question"]["state"] == "open"
+
+
+@pytest.mark.parametrize("junk_reply", [True, False])
+def test_a_junk_reply_stops_the_overdue_push(sentbox, pushes, junk_reply):
+    waitstore.set_settings(notify=True, now=time.time() - 30 * DAY)
+    _question(sentbox)
+    if junk_reply:
+        _spam_reply(sentbox, 44, "<s24@self.example>")
+    mailops.run_scan()
+    waiting.tick_account(accountsmod.get(), time.time())
+    refs = [p["ref"] for _kind, p in pushes]
+    # the same overdue mail IS announced when nothing answered it
+    assert ("<s24@self.example>" in refs) is (not junk_reply)
+
+
+def test_junk_and_trash_are_not_read_while_not_watching(sentbox):
+    waitstore.set_watch(False, "default")
+    mailops.run_scan()
+    chosen = {c[1] for c in sentbox.commands if c[0] == "SELECT"}
+    assert "Spam" not in chosen and "Trash" not in chosen
+    assert not accountsmod.get().role_index.get("junk")
+
+
+def test_a_failing_junk_refresh_keeps_the_scan_and_the_sent_index(sentbox,
+                                                                  monkeypatch):
+    def boom(*a, **k):
+        raise OSError("down")
+    monkeypatch.setattr(mailops, "refresh_role_index", boom)
+    mailops.run_scan()
+    assert mailops.STATE["status"] == "done"
+    assert waitstore.load_index("default")["mails"]
+
+
+def test_not_watching_asks_neither_the_config_nor_the_alias_service(
+        monkeypatch):
+    from backend import addresses
+    called = []
+    monkeypatch.setattr(addresses, "main_address",
+                        lambda acc: called.append(1) or "x@y.example")
+    monkeypatch.setattr(waiting, "_own_addresses",
+                        lambda *a: called.append(1) or set())
+    acc = _acc(sent=[_sent(5, "pat@their.example")], name="off")
+    waitstore.set_watch(False, "off")
+    out = waiting.listing(acc, NOW)
+    assert out["watching"] is False and out["items"] == []
+    assert out["kpis"] == {"overdue": 0, "open": 0, "typical_days": None}
+    assert called == []
+    r = client.get("/api/waiting")
+    assert r.status_code == 200 and r.json()["watching"] is False
+    assert called == []
+
+
+def test_junk_and_trash_are_not_read_while_there_is_no_mail_sent(bridge):
+    waitstore.set_watch(True, "default")
+    bridge.mailbox["Sent"] = []
+    mailops.run_scan()
+    chosen = {c[1] for c in bridge.commands if c[0] == "SELECT"}
+    assert "Spam" not in chosen and "Trash" not in chosen

@@ -632,3 +632,42 @@ def test_the_digest_has_no_such_line_without_a_reminder(monkeypatch):
     _fired_reminder(monkeypatch, [])
     for body in digestmod.compose("default", 0)[1:]:
         assert "answered you" not in body
+
+
+def test_the_waiting_line_never_puts_an_address_into_the_mail(bridge,
+                                                              monkeypatch):
+    """Not stubbed: the people who have not answered come from a real scan of
+    the Sent folder. Their names are worded as the push words them (the name,
+    else the company, else "Someone" / "Jemand") - never an address."""
+    import time as timemod
+    from backend import accounts as accountsmod
+    from backend import mailops, waiting, waitstore, webpush
+    from conftest import make_msg
+    _configure_account()
+    monkeypatch.setattr(webpush, "job_finished", lambda *a, **k: None)
+    stamp = timemod.strftime("%d-%b-%Y %H:%M:%S +0000",
+                             timemod.gmtime(timemod.time() - 5 * 86400))
+    for uid, who in ((31, "jane.doe@mail.travelly.example"),
+                     (32, "kim.roe@gmail.com"),
+                     (33, "Pat Roe <pat.roe@club.example>")):
+        bridge.mailbox["Sent"].append(make_msg(
+            uid, frm="Me <me@self.example>", subject="A question",
+            to=who, msgid=f"<w{uid}@self.example>", seen=True, date=stamp))
+    waitstore.set_watch(True, "default")
+    mailops.run_scan()
+    acc = accountsmod.get("default")
+    now = timemod.time()
+    for uid in (31, 32, 33):
+        waitstore.set_reminder(f"<w{uid}@self.example>", int(now) - 5,
+                               "default")
+    assert waiting.tick_account(acc, now) == 3
+    assert sorted(waiting.reminded(acc, now)) == ["", "Pat Roe", "Travelly"]
+    auditlog.record("trash", account="default", count=2, size=100)
+    for lang, someone in (("en", "Someone"), ("de", "Jemand")):
+        _, text, html = digestmod.compose("default", 0, lang=lang)
+        for body in (text, html):
+            assert "Travelly" in body and "Pat Roe" in body
+            assert someone in body
+            for leak in ("jane", "kim.roe", "pat.roe", "travelly.example",
+                         "gmail.com", "club.example"):
+                assert leak not in body

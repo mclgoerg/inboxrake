@@ -90,6 +90,7 @@ _EN = {
     "junk_other": "{n} mails in Junk",
     "waiting_one": "{n} person hasn't answered you",
     "waiting_other": "{n} people haven't answered you",
+    "someone": "Someone",
     "ai_one": "The AI says {n} mail can go",
     "ai_other": "The AI says {n} mails can go",
     "btn_block": "Block",
@@ -158,6 +159,7 @@ _DE = {
     "junk_other": "{n} Mails im Junk-Ordner",
     "waiting_one": "{n} Person hat dir nicht geantwortet",
     "waiting_other": "{n} Personen haben dir nicht geantwortet",
+    "someone": "Jemand",
     "ai_one": "Die KI sagt: {n} Mail kann weg",
     "ai_other": "Die KI sagt: {n} Mails können weg",
     "btn_block": "Blockieren",
@@ -370,9 +372,14 @@ def _rows_data(S: dict, d: dict) -> tuple[list[dict], list[dict]]:
             "sub": _fmt_bytes(d["ai_bytes"], lang_size),
             "btn": (S["btn_review"], "senders")})
     if d.get("waiting"):        # asked-for reminders and overdue replies, open
+        # names as the push words them (name, else company); people without
+        # one are "Someone" - an address never reaches the mail
+        named = [n for n in d["waiting"] if n][:3]
+        if len(named) < min(3, len(d["waiting"])):
+            named.append(S["someone"])
         needs.append({"icon": "…", "tone": "warn",
                       "title": _plural(S, "waiting", len(d["waiting"])),
-                      "sub": ", ".join(d["waiting"][:3]),
+                      "sub": ", ".join(named),
                       "btn": (S["btn_show"], "waiting")})
 
     counts = d["counts"]

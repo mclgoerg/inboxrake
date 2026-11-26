@@ -86,13 +86,16 @@ def _block(raw) -> dict:
     needed = [i for i in raw.get("needed") or [] if valid_id(i)] \
         if isinstance(raw.get("needed"), list) else []
     reminders = {}
-    if isinstance(raw.get("reminders"), dict):
+    # reminders and announcements belong to a switch that was on: a block with
+    # no `watch` key is one of the withdrawn first version, whose reminders
+    # must not wake up when the switch is first turned on
+    if "watch" in raw and isinstance(raw.get("reminders"), dict):
         for i, r in raw["reminders"].items():
             if valid_id(i) and isinstance(r, dict) and _int(r.get("at")) > 0:
                 reminders[i] = {"at": _int(r["at"]),
                                 "fired": max(0, _int(r.get("fired")))}
     alerted = {}
-    if isinstance(raw.get("alerted"), dict):
+    if "watch" in raw and isinstance(raw.get("alerted"), dict):
         alerted = {i: _int(ts) for i, ts in raw["alerted"].items()
                    if valid_id(i) and _int(ts) > 0}
     return {"watch": raw.get("watch") is True,
@@ -180,11 +183,17 @@ def _change(account: str, fn) -> bool:
 
 
 def set_watch(watch: bool, account: str | None = None) -> None:
-    """Watch this account's sent mail for replies (off until switched on)."""
+    """Watch this account's sent mail for replies (off until switched on).
+    Off also forgets the reminders and announcements: they are about mails of
+    an index that is gone, and must not fire when the switch goes on again
+    (the "No answer needed" marks are decisions and stay)."""
     account = account or accounts.default_name()
 
     def fn(b):
         b["watch"] = bool(watch)
+        if not watch:
+            b["reminders"] = {}
+            b["alerted"] = {}
     _change(account, fn)
 
 
