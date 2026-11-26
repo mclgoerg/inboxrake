@@ -170,8 +170,7 @@ def update_sent_index(conn, roles: dict, acc, progress_cb=None) -> int | None:
     except mailops.Cancelled:
         raise
     except Exception as exc:
-        log.warning("[%s] sent index not updated: %s", acc.name,
-                    type(exc).__name__)
+        log.warning("sent index not updated: %s", type(exc).__name__)
         return None
 
 
@@ -238,7 +237,7 @@ def _own_addresses(acc, sent: list[dict]) -> set[str]:
         own.add(addresses.main_address(acc))
         own.update(a.lower() for a in aliasservice.cached_aliases())
     except Exception:
-        log.warning("[%s] own addresses unavailable", acc.name, exc_info=True)
+        log.warning("own addresses unavailable", exc_info=True)
     own.discard("")
     return own
 
@@ -763,7 +762,7 @@ def tick(now: float | None = None) -> None:
                 except KeyError:
                     continue                 # account was deleted
                 except Exception:
-                    log.exception("[%s] waiting reminders failed", name)
+                    log.exception("waiting reminders failed")
 
 
 def after_scan(acc) -> None:
@@ -771,7 +770,7 @@ def after_scan(acc) -> None:
     try:
         clear_answered(acc)
     except Exception:
-        log.exception("[%s] could not clear answered reminders", acc.name)
+        log.exception("could not clear answered reminders")
 
 
 _scheduler_started = False

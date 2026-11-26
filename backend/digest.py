@@ -800,7 +800,7 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
     try:
         waiting_names = waiting.reminded(acc, now)
     except Exception:
-        log.exception("[%s] digest: waiting reminders unavailable", account)
+        log.exception("digest: waiting reminders unavailable")
         waiting_names = []
     replied = mailops.load_replied(acc)
     junk_replied = sum(1 for m in mailops.role_mails("junk", acc)
