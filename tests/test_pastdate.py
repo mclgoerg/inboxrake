@@ -62,7 +62,11 @@ CODES = ["Your sign-in code", "Confirm your email address",
          "Dein Code: 4711", "Security code for your sign-in"]
 NOT_CODES = ["Welcome to Shop", "Your 20% discount code", "Weekly digest",
              "Your promo code expires soon", "Password changed",
-             "Booking confirmation code ABC123"]
+             "Booking confirmation code ABC123",
+             "Your code: WELCOME10 for 10% off", "Your code review is ready",
+             "Your code of conduct update", "Dein Code SOMMER10 für 10 % Rabatt",
+             "Your discount code: SAVE20", "Verify your email to get 10% off",
+             "Your code is in the mail", "Ihr Code zum Gewinnspiel"]
 UPDATES = ["Your order #12345 has shipped", "Out for delivery: order #12345",
            "Your parcel is on its way - order 55512",
            "Ihre Sendung ist unterwegs", "Your package is in transit",
@@ -80,7 +84,22 @@ NOT_DELIVERED = ["Out for delivery: order #12345",
                  "Your parcel is being delivered",
                  "Expected delivery: Friday", "Estimated delivery date",
                  "Your parcel arrives tomorrow", "Not delivered: order 12345",
-                 "Return label for order #12345 delivered to us"]
+                 "Return label for order #12345 delivered to us",
+                 # on its way, not at the door
+                 "Your parcel has arrived at the sorting facility",
+                 "Ihr Paket ist im Paketzentrum angekommen",
+                 "Your parcel was delivered to a pickup point",
+                 "Your package is delivered tomorrow",
+                 "Your order is delivered tomorrow",
+                 "Ihr Paket wurde in der Filiale abgegeben",
+                 "Paket in die Pack-Station geliefert",
+                 "Your order has arrived at the depot",
+                 "Ihre Sendung ist am Zustellstützpunkt angekommen",
+                 "Your parcel has arrived at the hub",
+                 "Ihr Paket wird morgen geliefert",
+                 "Your parcel is at the parcel shop",
+                 "Delivered: your parcel is coming tomorrow",
+                 "Geliefert: Ihr Paket kommt morgen"]
 REMINDERS = ["Reminder: your appointment on 12 Nov",
              "Your table on Friday", "Terminerinnerung: 12.11.",
              "Reminder: webinar on 3 Dec", "Erinnerung: Ihr Termin morgen",
@@ -92,6 +111,35 @@ RECEIPTS = ["Order confirmation #12345", "Invoice for order #12345",
             "Your tickets for Friday", "Bestellbestätigung 12345",
             "Thank you for your order", "Your order #12345",
             "Appointment confirmation", "Buchung bestätigt"]
+# Ambiguous: it may be the confirmation of an order or a booking. Never listed,
+# whatever date or "delivered" mail comes later.
+CONFIRMATIONS = [
+    "Your order #12345 has been received and will be shipped soon",
+    "Bestellung 12345 eingegangen - wird bald versendet",
+    "Thanks for your booking - see you tomorrow",
+    "Confirmed: your appointment tomorrow",
+    "Your table on Friday is confirmed",
+    "We received your order #12345",
+    "Your order #12345 is confirmed",
+    "Order placed: #12345 - shipping soon",
+    "Buchung eingegangen: wir freuen uns auf morgen",
+    "Your reservation is confirmed for Friday",
+    "Ihr Termin ist bestätigt - bis Freitag",
+    "Termin morgen bestätigt",
+    "Danke für Ihre Reservierung am Freitag",
+    "Your appointment has been booked for Friday",
+    "Vielen Dank für Ihren Einkauf, Bestellung 12345 wird versendet",
+    "Reservation received - Friday evening",
+    "Bestellung 12345 aufgegeben, Lieferung folgt",
+    "Your flight on Friday is confirmed",
+    "Registration confirmed: Friday workshop",
+    "Ihr Tisch am Freitag ist reserviert",
+    "Appointment scheduled for Friday",
+    "Thanks! Your order #12345 will ship soon",
+    "Termin vereinbart für Freitag",
+    "Confirm your appointment on Friday",
+    "Bitte bestätigen Sie Ihren Termin am Freitag",
+]
 OFFERS = ["Deal ends at midnight", "Only today: flash prices",
           "Sale ends Sunday", "Bis Sonntag: 20% Rabatt",
           "Flash sale ends tomorrow", "Offer valid until 25 Nov"]
@@ -157,6 +205,39 @@ def test_a_receipt_that_also_says_shipped_or_reminder_stays_a_receipt():
               "Order confirmation: shipped 12345",
               "Terminbestätigung und Erinnerung 12.11."]:
         assert pastdate.classify(s) == pastdate.RECEIPT
+
+
+@pytest.mark.parametrize("subject", CONFIRMATIONS)
+def test_whatever_may_confirm_an_order_or_a_booking_is_a_receipt(subject):
+    assert pastdate.classify(subject) == pastdate.RECEIPT
+
+
+@pytest.mark.parametrize("subject", CONFIRMATIONS)
+def test_a_possible_confirmation_is_never_listed_however_old(subject):
+    old = mail(subject, 400)
+    later = mail("Your order #12345 was delivered", 300)
+    res = find([old, later])
+    assert res["flagged"] == {}, subject
+
+
+def test_a_shipping_confirmation_is_still_a_parcel_update():
+    for s in ["Versandbestätigung zu Bestellung 12345",
+              "Shipping confirmation for order #12345",
+              "Delivery confirmation: your parcel is on its way - order 12345"]:
+        assert pastdate.classify(s) == pastdate.SHIPPING, s
+    ship = mail("Shipping confirmation for order #12345", 10)
+    assert len(find([ship, mail("Your order #12345 was delivered", 5)]
+                    )["flagged"]) == 1
+
+
+def test_a_reminder_needs_a_reminder_word_a_bare_tomorrow_may_be_a_booking():
+    assert pastdate.classify("Your appointment tomorrow at 10:00") \
+        != pastdate.EVENT
+    assert pastdate.classify("Ihr Termin morgen um 10 Uhr") != pastdate.EVENT
+    assert pastdate.classify("Reminder: your appointment tomorrow") \
+        == pastdate.EVENT
+    assert pastdate.classify("Erinnerung: Ihr Termin morgen") \
+        == pastdate.EVENT
 
 
 def test_returns_and_refunds_are_no_parcel_updates():

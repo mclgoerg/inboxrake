@@ -82,9 +82,12 @@ BOOKING_RX = _rule("booking")
 # a welcome mail or a password notice has no lifetime, a code does.
 CODE_RE = re.compile(
     r"(sign-?in|log-?in|verification|verify|security|one-?time|single-?use|"
-    r"authentication|2fa|anmelde|anmeldung|sicherheits|verifizierungs|"
+    r"authentication|2fa|otp|anmelde|anmeldung|sicherheits|verifizierungs|"
     r"bestätigungs|einmal)[- ]?(code|pin|passcode|tan|link)\b|"
-    r"\bmagic link\b|\b(your|ihr|dein)\s+code\b|login-?tan|"
+    r"\bmagic link\b|login-?tan|"
+    # a bare "your code" only when what follows is a number (not a coupon)
+    r"\b(your|ihr|dein)\s+code\s*(is|ist|:|-)?\s*\d{4,8}\b|"
+    r"\b\d{4,8}\s+(is|ist)\s+(your|ihr|dein)\s+(\w+\s+)?code\b|"
     r"\b(confirm|verify)\s+your\s+(e-?mail|email address|account|sign-?in|"
     r"login|identity)|"
     r"(e-?mail|account)\s+(address\s+)?confirmation\b|"
@@ -93,7 +96,7 @@ CODE_RE = re.compile(
 
 # A mail that says the parcel HAS arrived ...
 DELIVERED_RE = re.compile(
-    r"\b(has|have|was|were|is|been|got)\s+(been\s+)?delivered\b|"
+    r"\b(has|have|was|were|been|got)\s+(been\s+)?delivered\b|"
     r"\bdelivered\b\s*[:!.\-–]|^\s*delivered\b|\bdelivery complete|"
     r"\bzugestellt\b|\bgeliefert\b|\bangekommen\b|\bhas arrived\b|"
     r"\bwas handed over\b", _I)
@@ -105,7 +108,14 @@ NOT_YET_RE = re.compile(
     r"nicht (zugestellt|geliefert)|wird (heute |morgen |bald |gleich )?"
     r"(zugestellt|geliefert)|werden .{0,20}geliefert|zustellversuch|"
     r"konnte nicht|voraussichtlich|ready for pick-?up|abholbereit|"
-    r"will (arrive|be delivered)|arrives?\b", _I)
+    r"will (arrive|be delivered)|arrives?\b|"
+    # on its way, not at the door: a facility, a pickup point, a day to come
+    r"facility|depot|\bhub\b|sorting|sortier|warehouse|distribution|"
+    r"paketzentrum|verteilzentrum|zustellbasis|zustellst[uü]tzpunkt|"
+    r"zustelldepot|pick-?up|abholstation|pack-?station|paketshop|parcel ?shop|"
+    r"filiale|service ?point|collection point|locker|customs|zoll|"
+    r"\btomorrow\b|(?<!guten )\bmorgen\b|[uü]bermorgen|tonight|"
+    r"heute abend|\b(is|are|gets?)\s+delivered\b", _I)
 
 # More ways a parcel update says "on its way"
 SHIPPING_MORE_RE = re.compile(
@@ -119,7 +129,9 @@ RETURN_RE = re.compile(
     r"refund|erstattung|retoure|r[uü]cksendung|\breturns?\b|r[uü]ckgabe|"
     r"gutschrift|storno|cancel", _I)
 
-# Words that make a mail a receipt, invoice or booking itself
+# Words that make a mail a receipt, invoice or booking itself. Ambiguity goes
+# the safe way: a mail that may be the confirmation of an order or a booking
+# is never listed.
 RECEIPT_RE = re.compile(
     r"order (confirm\w*|received|placed|summary)|"
     r"confirmation of your (order|booking|appointment|reservation|purchase)|"
@@ -127,17 +139,39 @@ RECEIPT_RE = re.compile(
     r"bestellbest[aä]tigung|bestellung (ist |wurde )?(best[aä]tigt|eingegangen|"
     r"aufgegeben)|bestelleingang|(buchungs|termin|reservierungs)best[aä]tigung|"
     r"(buchung|termin|reservierung) (ist |wurde )?best[aä]tigt|"
-    r"thank you for your (order|purchase|booking|reservation)|"
-    r"(danke|vielen dank).{0,24}(bestellung|buchung|reservierung)|"
+    r"\bthank(s| you)\b|\b(danke|vielen dank)\b|"
     r"your (e-?)?tickets?\b|ihre (e-?)?tickets?\b|your boarding pass|"
     r"booking (reference|number)|buchungs(nummer|referenz)", _I)
+
+# What an order, a booking or an appointment is called ...
+BOOKING_WORDS_RE = re.compile(
+    r"\b(order|booking|appointment|reservation|table|ticket|flight|purchase|"
+    r"registration|bestellung|buchung|termin|reservierung|tisch|flug|"
+    r"einkauf|anmeldung)\w*", _I)
+# ... and what a confirmation of one says (a shipping confirmation is a parcel
+# update, not a confirmation of the order: those compounds are taken out first)
+CONFIRM_WORDS_RE = re.compile(
+    r"\b(confirm\w*|booked|reserved|scheduled|registered|received|placed|"
+    r"best[aä]tig\w*|gebucht|reserviert|vereinbart|eingegangen|aufgegeben|"
+    r"angemeldet)\b", _I)
+SHIP_CONFIRM_RE = re.compile(
+    r"(shipping|shipment|delivery|dispatch)\s+confirm\w*|"
+    r"(versand|liefer|zustell)\w*best[aä]tig\w*", _I)
+
+
+def is_confirmation(s: str) -> bool:
+    """The subject confirms (or acknowledges) an order, booking, appointment,
+    reservation, ticket ..., in any word order."""
+    return bool(CONFIRM_WORDS_RE.search(SHIP_CONFIRM_RE.sub(" ", s))
+                and BOOKING_WORDS_RE.search(s))
+
 
 # A reminder (as against the booking itself)
 REMINDER_RE = re.compile(
     r"reminder|erinnerung|erinnern|don.?t forget|vergiss|upcoming|"
     r"bevorstehend|coming up|heads[- ]up|\b(is|are|starts?|begins?)\s+"
     r"(tomorrow|today|soon|tonight)|\b(ist|beginnt|startet|findet)\s+"
-    r"(morgen|heute|bald)\b|(?<!guten )\bmorgen\b|\btomorrow\b|"
+    r"(morgen|heute|bald)\b|"
     r"\byour table\b|\b(ihr|dein)\s+tisch\b", _I)
 # What a reminder can be about
 EVENT_WORDS_RE = re.compile(
@@ -291,7 +325,7 @@ def classify(subject: str) -> str | None:
     if not s:
         return None
     # 1. a receipt, an invoice, a booking confirmation: never a candidate
-    if INVOICE_RX.search(s) or RECEIPT_RE.search(s):
+    if INVOICE_RX.search(s) or RECEIPT_RE.search(s) or is_confirmation(s):
         return RECEIPT
     # 2. the parcel has arrived / is on its way
     if DELIVERED_RE.search(s) and not NOT_YET_RE.search(s) \
@@ -300,8 +334,10 @@ def classify(subject: str) -> str | None:
     if (SHIPPING_RX.search(s) or SHIPPING_MORE_RE.search(s)) \
             and not RETURN_RE.search(s):
         return SHIPPING
-    # 3. a code or a link that was only good for a short while
-    if CODE_RE.search(s):
+    # 3. a code or a link that was only good for a short while (not a coupon
+    #    code, not an offer for signing in)
+    if CODE_RE.search(s) and not OFFER_WORDS_RE.search(s) \
+            and not PROMO_RE.search(s):
         return CODE
     # 4. a reminder for something with a date
     if REMINDER_RE.search(s) and (APPOINTMENT_RX.search(s)

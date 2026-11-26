@@ -191,7 +191,7 @@ export const DE: Record<string, string> = {
     + "diesen Paketen und Terminen.",
   "past.kept_short": "Die {n} Belege und Buchungen zu diesen Bestellungen "
     + "bleiben erhalten.",
-  "past.kept_short_one": "Der 1 Beleg oder die 1 Buchung zu diesen "
+  "past.kept_short_one": "Ein Beleg bzw. eine Buchung zu diesen "
     + "Bestellungen bleibt erhalten.",
   "past.kept_show": "Anzeigen",
   "past.open_all": "In „Alle Mails“ öffnen",
@@ -199,7 +199,7 @@ export const DE: Record<string, string> = {
   "past.undo_note": "Kommt in den Papierkorb - mit „Rückgängig“ ist alles wieder da.",
   "past.nothing": "Es gibt nichts mehr zu verschieben.",
   "past.chip_kept": "{n} Belege und Buchungen, die „Abgelaufene Mails“ behält",
-  "past.chip_kept_one": "1 Beleg oder Buchung, den „Abgelaufene Mails“ behält",
+  "past.chip_kept_one": "1 Beleg/Buchung, die „Abgelaufene Mails“ behält",
   "overview.review_n": "{n} ansehen",
   "overview.check_step": "Bei „Ansehen“ einschließen: {title}",
   "overview.kinds": "Was dein Postfach füllt",
