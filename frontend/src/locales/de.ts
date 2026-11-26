@@ -165,6 +165,41 @@ export const DE: Record<string, string> = {
   "overview.next_hint": "jeder Schritt zeigt dir zuerst, was passiert",
   "overview.subs_title": "{n} Abos, die du vielleicht nicht nutzt",
   "overview.subs_title_one": "1 Abo, das du vielleicht nicht nutzt",
+  // Abgelaufene Mails: die Zeile unter „Nächste Schritte“ und ihr Blatt
+  "overview.past_title": "Abgelaufene Mails",
+  "past.about_codes": "Anmeldecodes",
+  "past.about_parcels": "angekommene Pakete",
+  "past.about_events": "vergangene Termine",
+  "past.about_offers": "beendete Angebote",
+  "past.title": "Abgelaufene Mails",
+  "past.lead": "Gefunden an Betreff und Datum, auf deinem Server · "
+    + "geschützte Mails und geschützte Absender werden nie aufgelistet.",
+  "past.codes": "Anmeldecodes und -links, älter als ein Tag",
+  "past.codes_ex": "„Dein Anmeldecode“, „E-Mail bestätigen“",
+  "past.parcels": "Meldungen zu Paketen, die angekommen sind",
+  "past.parcels_ex": "„Paket in Zustellung“, „Dein Paket ist unterwegs“ "
+    + "- seit mindestens 3 Tagen zugestellt",
+  "past.events": "Termine und Veranstaltungen, die vorbei sind",
+  "past.events_ex": "„Terminerinnerung: dein Termin am 12.11.“, "
+    + "„Dein Tisch am Freitag“",
+  "past.offers": "Angebote, die beendet sind",
+  "past.offers_ex": "„Aktion endet um Mitternacht“, „Nur heute: Blitzpreise“",
+  "past.kept_lead": "Bleibt erhalten:",
+  "past.kept": "die {n} Bestellbestätigungen, Rechnungen und Buchungen zu "
+    + "diesen Paketen und Terminen.",
+  "past.kept_one": "die 1 Bestellbestätigung, Rechnung oder Buchung zu "
+    + "diesen Paketen und Terminen.",
+  "past.kept_short": "Die {n} Belege und Buchungen zu diesen Bestellungen "
+    + "bleiben erhalten.",
+  "past.kept_short_one": "Der 1 Beleg oder die 1 Buchung zu diesen "
+    + "Bestellungen bleibt erhalten.",
+  "past.kept_show": "Anzeigen",
+  "past.open_all": "In „Alle Mails“ öffnen",
+  "past.move": "{n} in den Papierkorb…",
+  "past.undo_note": "Kommt in den Papierkorb - mit „Rückgängig“ ist alles wieder da.",
+  "past.nothing": "Es gibt nichts mehr zu verschieben.",
+  "past.chip_kept": "{n} Belege und Buchungen, die „Abgelaufene Mails“ behält",
+  "past.chip_kept_one": "1 Beleg oder Buchung, den „Abgelaufene Mails“ behält",
   "overview.review_n": "{n} ansehen",
   "overview.check_step": "Bei „Ansehen“ einschließen: {title}",
   "overview.kinds": "Was dein Postfach füllt",
@@ -2634,6 +2669,7 @@ export const DE: Record<string, string> = {
   "qb.mail_unread": "ungelesen",
   "qb.mail_read": "gelesen",
   "qb.mail_pinned": "geschützt",
+  "qb.mail_expired": "abgelaufen",
   "qb.flags": "Nur Gruppen…",
   "qb.is_unsub": "mit Abmeldelink",
   "qb.is_unsubscribed": "vollständig abbestellt",

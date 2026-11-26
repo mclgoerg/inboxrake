@@ -195,7 +195,10 @@ security; you add user and password.
 ## Features
 
 An Overview start page with cleanup suggestions (and which senders got
-louder or came back after months of silence), five views (Sender, Smart
+louder or came back after months of silence; a line for mail that is past
+its date - old sign-in codes, updates of parcels that have arrived,
+reminders of things that are over, ended offers - found from the subject and
+the date, with the receipts kept), five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content, a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,

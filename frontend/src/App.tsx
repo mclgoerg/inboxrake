@@ -39,13 +39,14 @@ import { PullToScan } from "./components/PullToScan";
 import { SortControl } from "./components/SortControl";
 import { FolderPicker } from "./components/FolderPicker";
 import { RulesModal } from "./components/RulesModal";
-import { AllMailsView } from "./components/AllMailsView";
+import { AllMailsView, KEPT_VIEW } from "./components/AllMailsView";
 import { SearchPanel } from "./components/SearchPanel";
 import { SettingsPage, type SettingsControl } from "./components/SettingsPage";
 import { Welcome } from "./components/Welcome";
 import { Wizard, WIZARD_RESUME_KEY, type WizardStep } from "./components/Wizard";
 import { SpaceMapPanel } from "./components/SpaceMapPanel";
 import { ChangesNote } from "./components/SenderChanges";
+import { ExpiredSheet } from "./components/ExpiredSheet";
 import { StatsPanel } from "./components/StatsPanel";
 import type { ArrivalSlot } from "./rhythm";
 import { AiFilterPanel } from "./components/AiFilterPanel";
@@ -84,7 +85,7 @@ import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
 import { DECK_MAX, protectEntry, type TriagePlan } from "./triage";
 import { SenderFiling } from "./components/SenderFiling";
 import type { FileEntry, SenderAction } from "./components/SenderList";
-import type { AccountSummary, AppState, AuthProbe, Config, FilterPreset, Group, Grouping,
+import type { AccountSummary, AppState, AuthProbe, Config, ExpiredResp, FilterPreset, Group, Grouping,
   KnowledgeStored,
   StatusMsg, SubscriptionsResp, TrashResp, FolderRole, UndoIdent, UndoEntry,
   AuditBy } from "./types";
@@ -566,6 +567,27 @@ export default function App() {
     if (authOk && state?.status === "done") loadSubs();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, authOk, state?.scanned_ts, state?.status]);
+
+  /* Mail past its date (backend/pastdate.py): the Overview's extra Next steps
+     line and its sheet. Worked out on the server from subjects and dates;
+     fetched while the Overview is shown, and again when a scan or an action
+     changed the mailbox. */
+  const [expired, setExpired] = useState<ExpiredResp | null>(null);
+  const [expiredOpen, setExpiredOpen] = useState(false);
+  const loadExpired = useCallback(() => {
+    const switched = accountGuard();
+    Promise.resolve().then(() => api.expired())
+      .then((d) => { if (!switched()) setExpired(d); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    setExpired(null);
+    setExpiredOpen(false);
+  }, [account]);
+  useEffect(() => {
+    if (authOk && state?.status === "done" && overview) loadExpired();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, authOk, state?.scanned_ts, state?.status, state?.groups_rev,
+    overview]);
 
   /* A reminder the user asked for fired (3 days before a subscription's next
      receipt): the server also pushes it to devices that are not looking at the
@@ -3423,7 +3445,9 @@ export default function App() {
             onReviewSubscriptions={() => {
               setSubsOnlyUnused(true);
               openTool("subscriptions");
-            }} />
+            }}
+            expired={expired}
+            onReviewExpired={() => setExpiredOpen(true)} />
         )
       ) : flat ? (
         state && (
@@ -3518,6 +3542,24 @@ export default function App() {
           history entry; a tool opened from a tab page / menu pushes its own. */}
       <PageSlot page={wide} parent={shownTool ? backTarget : undefined}
         entry={!routeTool}>{toolPanels}</PageSlot>
+      {/* Mail past its date: a real dialog over whatever page is open (the
+          Overview), not a page of the slot above. */}
+      {expiredOpen && expired && (
+        <ExpiredSheet key={account} data={expired}
+          onClose={() => setExpiredOpen(false)}
+          onOpenAllMail={() => {
+            setExpiredOpen(false);
+            openAllMailNewest("is:expired");
+          }}
+          onShowKept={() => {
+            // the receipts Mail past its date keeps: All mail, narrowed to them
+            setExpiredOpen(false);
+            setAllMailsQuery(""); setAllMailsSlot(null);
+            setAllMailsFinding({ id: KEPT_VIEW, n: expired.kept });
+            setFlat(true);
+          }}
+          onMoved={refresh} />
+      )}
       {/* A real dialog over whatever page is open - not a page of the slot. */}
       {unsubSheet && state && (
         <UnsubscribeSheet key={account} request={unsubSheet}

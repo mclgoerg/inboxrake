@@ -56,6 +56,7 @@ from . import mcpserver
 from . import oauthflow
 from . import oauthserver
 from . import overview as overviewmod
+from . import pastdate
 from . import pinstore
 from . import presets as presetsmod
 from . import rhythm as rhythmmod
@@ -1896,6 +1897,28 @@ def get_overview(since: int | None = Query(None, ge=0),
     return overviewmod.build(_acc(account), since)
 
 
+@app.get("/api/expired")
+def get_expired(account: str | None = Query(None)):
+    """Mail past its date in ONE account: how many mails and bytes per reason
+    (stale codes, parcel updates of parcels that have arrived, reminders of
+    things that are over, offers that have ended), what is kept. Counts only;
+    worked out from subjects and dates on this server, nothing is stored."""
+    return pastdate.summary(_acc(account))
+
+
+@app.get("/api/expired/mails")
+def get_expired_mails(reasons: str | None = Query(None, max_length=100),
+                      account: str | None = Query(None)):
+    """The [folder, uid] pairs of the listed mails of the comma-separated
+    `reasons` (default: all) - what the Overview's sheet hands to the usual
+    move-to-Trash step. Pinned mail and protected senders are never in it."""
+    try:
+        want = [r for r in (reasons or "").split(",") if r] or None
+        return {"items": pastdate.items(_acc(account), want)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.get("/api/sender-changes")
 def get_sender_changes(account: str | None = Query(None)):
     """The senders of ONE account that got louder (more than twice their
@@ -2691,7 +2714,7 @@ def get_mails(offset: int = Query(0, ge=0),
     {total, offset, mails, ignored}. `finding` (a Rule checkup finding's
     id) narrows it to the mails that finding is about. `q` takes plain words plus the
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
-    has:pinned; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
+    has:pinned/is:expired; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
     arrival = None
     if slot:                    # "<from>-<to>": the arrival-rhythm slot
@@ -2705,7 +2728,9 @@ def get_mails(offset: int = Query(0, ge=0),
             raise HTTPException(400, "bad slot")
     acc = _acc(account)
     only = None
-    if finding:                 # "Show the N mails" of a Rule checkup finding
+    if finding == pastdate.KEPT_VIEW:   # "Show them" of Mail past its date
+        only = pastdate.kept_handles(acc)
+    elif finding:               # "Show the N mails" of a Rule checkup finding
         if not rulecheckstore.valid_fingerprint(finding):
             raise HTTPException(400, "bad finding")
         only = rulecheckmod.finding_mails(acc, finding)

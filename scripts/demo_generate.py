@@ -663,6 +663,79 @@ PROTON_INBOX += (
 )
 
 
+# Mail past its date (Overview Next steps, is:expired): sign-in codes, parcel
+# updates whose parcel has arrived, reminders of things that are over and
+# offers that have ended, next to the receipts and bookings that stay. Fixed
+# dates and no random draws (own UID range), so nothing else in the demo
+# shifts. Dates inside subjects are worked out from the mail's own date.
+_PD_UID = iter(range(650000, 700000))
+
+
+def _pd_mail(frm, subject, days_ago, *, size=18000, seen=True):
+    uid = next(_PD_UID)
+    return make_msg(uid, frm=frm, subject=subject,
+                    msgid=f"<demo-pd-{uid}@demo.example>", size=size,
+                    seen=seen, date=_date(days_ago))
+
+
+def _pd_day(days_ago, ahead):
+    """"12 Nov": the day `ahead` days after a mail sent `days_ago` days ago."""
+    d = datetime.datetime.fromtimestamp(NOW - (days_ago - ahead) * 86400,
+                                        datetime.timezone.utc)
+    return f"{d.day} {d.strftime('%b')}"
+
+
+_FJORD = '"Fjord Login" <no-reply@fjord-login.example>'
+_PEBBLE = '"Pebble Account" <security@pebble-account.example>'
+_MEADOW = '"Meadow Shop" <orders@meadow-shop.example>'
+_LINDEN = '"Linden Clinic" <termine@linden-clinic.example>'
+_HARVEST = '"Harvest Deals" <deals@harvest-deals.example>'
+_PD: list[dict] = []
+for _d in (2, 4, 7, 11, 16, 23, 31, 44):
+    _PD.append(_pd_mail(_FJORD, "Your sign-in code", _d, size=9000))
+for _d in (5, 30, 90, 200):
+    _PD.append(_pd_mail(_PEBBLE, "Confirm your email address", _d, size=11000))
+_PD += [_pd_mail(_FJORD, "Your sign-in code", 0.3, seen=False, size=9000),
+        _pd_mail(_PEBBLE, "Your verification code is 482913", 0.6,
+                 seen=False, size=9000)]
+for _no, _ago in ((48211, 21), (48377, 15), (49002, 9)):
+    _PD += [
+        _pd_mail(_MEADOW, f"Order confirmation #{_no}", _ago + 2, size=42000),
+        _pd_mail(_MEADOW, f"Invoice for order #{_no}", _ago + 2, size=61000),
+        _pd_mail(_MEADOW, f"Your order #{_no} has shipped", _ago, size=36000),
+        _pd_mail(_MEADOW, f"Your parcel is on its way - order #{_no}",
+                 _ago - 1, size=36000),
+        _pd_mail(_MEADOW, f"Out for delivery: order #{_no}", _ago - 2,
+                 size=36000),
+        _pd_mail(_MEADOW, f"Your order #{_no} was delivered", _ago - 3,
+                 size=30000),
+    ]
+# an order that is still on its way: nothing of it is listed
+_PD += [_pd_mail(_MEADOW, "Order confirmation #50110", 3, size=42000),
+        _pd_mail(_MEADOW, "Your order #50110 has shipped", 2, size=36000)]
+for _ago in (40, 33, 26):
+    _PD.append(_pd_mail(_LINDEN, "Reminder: your appointment on "
+                        + _pd_day(_ago, 3), _ago, size=24000))
+_PD += [_pd_mail(_LINDEN, "Booking confirmed: " + _pd_day(40, 3), 48,
+                 size=26000),
+        _pd_mail(_LINDEN, "Reminder: your appointment", 52, size=24000),
+        _pd_mail(_LINDEN, "Terminbestätigung " + _pd_day(26, 3), 34,
+                 size=26000),
+        _pd_mail(_LINDEN, "Reminder: your appointment on " + _pd_day(0.5, 6),
+                 0.5, size=24000)]
+for _ago in (9, 16, 30):
+    _PD.append(_pd_mail(_HARVEST, "Deal ends at midnight", _ago, size=52000))
+for _ago in (6, 13, 21):
+    _PD.append(_pd_mail(_HARVEST, "Only today: flash prices", _ago,
+                        size=48000))
+for _ago in (24, 38):
+    _PD.append(_pd_mail(_HARVEST, "Sale ends Sunday: 20% off", _ago,
+                        size=55000))
+_PD.append(_pd_mail(_HARVEST, "Deal ends tomorrow", 0.2, size=52000,
+                    seen=False))
+PROTON_INBOX += _PD
+
+
 # --- long tail ------------------------------------------------------------
 # Real mailboxes are 80% senders with < 10 mails. Generated from a separate
 # seeded stream, so the hand-written senders above keep their exact data.

@@ -496,9 +496,13 @@ export function CheckupBadges({ checkup, ruleId, onOpen }: {
 }
 
 /** The chip above a list that was opened from a finding: what it is
- *  narrowed to, and the way back to everything. */
-export function CheckupChip({ n, mails, onClear, className = "" }: {
+ *  narrowed to, and the way back to everything. `label` / `clear` replace the
+ *  Rule checkup's wording for another list of the same kind (the receipts
+ *  Mail past its date keeps). */
+export function CheckupChip({ n, mails, onClear, className = "", label,
+  clear }: {
   n: number; mails: boolean; onClear: () => void; className?: string;
+  label?: string; clear?: string;
 }) {
   return (
     <div data-testid="checkup-chip" className={`flex flex-wrap items-center
@@ -506,11 +510,13 @@ export function CheckupChip({ n, mails, onClear, className = "" }: {
       <span className="inline-flex items-center gap-1.5 rounded-full bg-chip
         px-2 py-0.5 text-body">
         <Stethoscope size={14} aria-hidden />
-        {t(mails ? "checkup.chip_mails" : "checkup.chip_senders", { n })}
+        {label ?? t(mails ? "checkup.chip_mails" : "checkup.chip_senders",
+          { n })}
       </span>
       <button type="button" className={`${LINK_ACCENT} coarse:min-h-11`}
         onClick={onClear}>
-        {t(mails ? "checkup.chip_clear_mails" : "checkup.chip_clear_senders")}
+        {clear ?? t(mails ? "checkup.chip_clear_mails"
+          : "checkup.chip_clear_senders")}
       </button>
     </div>
   );

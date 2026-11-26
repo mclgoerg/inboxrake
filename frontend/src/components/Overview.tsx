@@ -7,10 +7,11 @@ import { t } from "../i18n";
 import { fmtSize } from "../lib";
 import { biggestSenders, loadVisit, saveVisit, storageSegments, totalsOf,
   trendOf, visitSince } from "../overview";
-import { computeQuickWins, isDismissed, loadDismissed, saveDismissed,
-  unionTotals, type Dismissed, type QuickWinCard } from "../quickwins";
+import { computeQuickWins, isDismissed, loadDismissed, MIN_BYTES, MIN_MAILS,
+  saveDismissed, unionTotals, type Dismissed, type QuickWinCard }
+  from "../quickwins";
 import { fmtMoney, unusedNames } from "../subscriptions";
-import type { AuditEntry, Group, OverviewResp, Rule,
+import type { AuditEntry, ExpiredResp, Group, OverviewResp, Rule,
   SubscriptionsResp } from "../types";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
@@ -71,6 +72,11 @@ export interface OverviewProps {
   subs?: SubscriptionsResp | null;
   /** Review of that line: the Subscriptions page, only the unused ones. */
   onReviewSubscriptions?: () => void;
+  /** Mail past its date (null while unknown): when there is enough of it,
+   *  Next steps gets one more line AFTER the subscriptions line. */
+  expired?: ExpiredResp | null;
+  /** Review of that line: the sheet with the reasons. */
+  onReviewExpired?: () => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -243,7 +249,17 @@ export function Overview(p: OverviewProps) {
       ? t("sub.about_month", { amount: fmtMoney(p.subs.totals.unused_monthly,
         p.subs.totals.currency, { whole: true }) }) : "",
     onReview: p.onReviewSubscriptions } : null;
-  const hasNext = cards.length > 0 || !!subsLine;
+  // Mail past its date: a line of its own after the subscriptions line, with
+  // the same "not worth showing" floor as the cards; it never joins the cards
+  // (so TOP_CARDS, the sort, "Review N" and "Show all" do not know about it)
+  const pastLine = p.expired && p.onReviewExpired
+    && (p.expired.mails >= MIN_MAILS || p.expired.size >= MIN_BYTES) ? {
+      mails: p.expired.mails, size: p.expired.size,
+      // the first three reasons that have mail (the line stays one thought)
+      about: p.expired.reasons.filter((r) => r.mails > 0).slice(0, 3)
+        .map((r) => t(`past.about_${r.id}`)).join(", "),
+      onReview: p.onReviewExpired } : null;
+  const hasNext = cards.length > 0 || !!subsLine || !!pastLine;
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
     saveDismissed(account, next);
@@ -267,7 +283,7 @@ export function Overview(p: OverviewProps) {
             <div className="max-xl:order-2">
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
-                onCleanUp={p.onCleanUp} subs={subsLine} />
+                onCleanUp={p.onCleanUp} subs={subsLine} past={pastLine} />
             </div>
           )}
         </div>

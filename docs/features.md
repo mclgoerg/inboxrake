@@ -44,7 +44,8 @@ mails you cleaned (lighter bars are estimates from the mails still in the
 mailbox). Beside it a **Last week | Since last visit** card (new mails, new
 senders, senders still mailing after you unsubscribed, mails in Junk, new AI
 verdicts and - only when there is one - which [senders got louder or came
-back](#sender-changes)), "Next steps" (the [Suggestions](#suggestions)), "Biggest
+back](#sender-changes)), "Next steps" (the [Suggestions](#suggestions), and a line
+for [mail past its date](#mail-past-its-date)), "Biggest
 senders" with a storage bar and "What fills your inbox" (the last 30 days by
 kind). Everything else is one click away in the sidebar (on screens 1024 px
 and wider) or the tab bar at the bottom (phones and tablets: Overview,
@@ -447,6 +448,44 @@ that for the steps you ticked); Clean up goes straight to the
 usual Trash confirm (protected senders skipped, Undo afterwards); the x
 ("Not now" on phones, in the More menu) hides a step until a later scan finds
 25 % more.
+
+### Mail past its date
+
+<small class="where">Overview → Next steps (one more line) · All mail → `is:expired`</small>
+
+Some mail is only useful until a date. Under the suggestions, Next steps gets
+one more line, **Mail past its date** (like the subscriptions line: only a
+**Review** button, outside the top three and outside "Review N"; it is shown
+from 10 mails or 5 MB, like the cards). Review opens a sheet with one ticked
+row per reason:
+
+- **Sign-in codes and links, older than a day** ("Your sign-in code",
+  "Confirm your email address").
+- **Updates for parcels that have arrived** - a shipping update whose order
+  (the order number in the subject) has a *later* "delivered" mail of the same
+  sender, delivered 3 or more days ago. "Out for delivery" or "will be
+  delivered" is not "delivered".
+- **Appointments and events that are over** - a reminder whose date in the
+  subject has passed ("on 12 Nov", "12.11.", a weekday, "tomorrow"); a reminder
+  without a date counts after 30 days.
+- **Offers that have ended** ("Deal ends at midnight", "Sale ends Sunday") -
+  **unticked** by default, because a coupon code in it may still be wanted.
+
+It is found from the subject and the date, on your server, with no AI; English
+and German. The receipt, invoice or booking of the same order or appointment is
+never listed - the sheet says how many it keeps ("Kept: N", **Show them** opens
+All mail on them). Protected mails and mail from protected senders are never
+listed either. **Move N to Trash…** is the same per-mail step as All mail's
+"Trash selected": the usual confirm (with the Keep-safe box on a big move - the
+"Account & security mails" class stays off by default), the background job and
+Undo. **Open in All mail** shows the list with the filter word `is:expired`
+(every reason, ticked or not; it narrows with other per-mail words, see
+[Filter syntax](filters.md)). Nothing is stored: every answer is worked out from
+the scan, so a later scan or a new pin changes it at once.
+
+It sits next to the recipe "Only the newest shipping update": that one keeps
+each sender's newest shipping mail, delivered or not; this one only lists
+updates whose parcel has arrived, across senders, and keeps the receipts.
 
 ### Swipe triage
 
