@@ -543,15 +543,20 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                           <span className="block truncate type-meta
                             text-muted">{mark(g.key)}</span>
                         </span>
-                        <span className="shrink-0 type-meta text-muted
-                          tabular-nums">
-                          {t("search.sender_stats",
-                            { n: g.count, size: fmtSize(g.size) })}
-                        </span>
-                        <span className="inline-flex shrink-0 items-center
-                          gap-1 rounded-full bg-chip py-0.5 pl-0.5 pr-2
-                          type-caption text-muted">
-                          <Avatar name={g.account} />{g.account}
+                        {/* the account chip over the figures: a phone's row
+                            keeps room for the sender's address */}
+                        <span className="flex shrink-0 flex-col items-end
+                          gap-1">
+                          <span className="inline-flex max-w-32 items-center
+                            gap-1 rounded-full bg-chip py-0.5 pl-0.5 pr-2
+                            type-caption text-muted">
+                            <Avatar name={g.account} />
+                            <span className="truncate">{g.account}</span>
+                          </span>
+                          <span className="type-meta tabular-nums text-muted">
+                            {t("search.sender_stats",
+                              { n: g.count, size: fmtSize(g.size) })}
+                          </span>
                         </span>
                         <ChevronRight size={16} aria-hidden
                           className="shrink-0 text-faint" />
