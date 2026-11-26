@@ -487,6 +487,73 @@ It sits next to the recipe "Only the newest shipping update": that one keeps
 each sender's newest shipping mail, delivered or not; this one only lists
 updates whose parcel has arrived, across senders, and keeps the receipts.
 
+### What they send
+
+<small class="where">Senders → a sender → What they send · Rules → Apply to → only one kind of mail · All mail → `kind:`</small>
+
+Many senders mix mail you need with mail you don't: the same shop sends order
+confirmations, shipping updates and ads. The sender pane gets a **What they
+send** box - between the arrival strip and the Mails list - for a single sender
+(a Sender row, or a Smart row that is one sender; not a pooled Smart row) that
+sends **two kinds or more**. One row per kind, with its mails, size and how much
+you open (for shipping updates: when the last one came).
+
+The kind is read from the subject, on your server, with no AI, by the patterns
+Smart and Keep-safe already use, and stored with the scan:
+
+- **Order confirmations**, **Shipping updates**, **Invoices and receipts**,
+  **Appointments and bookings**, **Job applications**, **Support and
+  inquiries**, **Account and security** - the purposes of the Smart patterns
+  (a shipping update is the shipping pattern; a return or a refund is none).
+- **Ads and offers** - newsletter-style mail that has no purpose at all and a
+  promotional subject ("20% off", "New arrivals", "Deal ends at midnight").
+  The List-Unsubscribe header alone is not enough: shops, banks and travel sites
+  send receipts and codes through the same system.
+
+A mail has one kind or none. Where it is not clear, it has none: a subject that
+matches two purposes, mail from a freemail address (people, not shops), and
+anything that talks about an order, a parcel, a payment, a booking, a trip, a
+code, a contract or an account never becomes an ad - an ad that says "order
+now" is left unclassified. A pickup code or a PIN is never a shipping update. Mails of
+no kind are not in any row (they are the gap in the bar above the rows).
+
+Each row has:
+
+- **Show** - narrows the Mails list below to that kind, as a chip next to the
+  heading that you can remove (the same button again turns it off).
+- **Trash N** - the same step as "Trash selected": the usual confirm, the
+  Keep-safe box above 20 mails, the background job, Undo and the Activity log.
+  Protected (pinned) mails are never counted or moved.
+- **⋯** - **Archive these N**, **Move these N…**, **Mark these as read** and
+  **Protect these N** (they pin the mails of the kind; the same shield as
+  everywhere), all through the usual confirm and Undo; and, apart,
+  **Always trash their <kind>…** (see below).
+
+On a phone a row is one button with a chevron that opens a sheet with the same
+actions.
+
+**Always trash their ads…** asks first, then makes an ordinary rule: *When Sender
+groups match `from:<address>` then move to Trash, only ads and offers, daily*. It
+starts in **Report only** like every rule (nothing moves until you have seen
+its report and switched it on). The rule editor has a third choice in the slot
+where "keep newest N" and "only mails older than N days" sit: **only one kind of
+mail**, with the kind to pick. The three are exclusive. A rule limited to a kind
+acts on the mails of that kind only, takes protected senders, pinned mails and
+Keep-safe like any other trash rule, and is compared by the
+[Rule checkup](#rule-checkup) on the mails it really acts on. A kind a rule does
+not find (the sender never sent it) shows up there as "never matches".
+
+The filter word `kind:ads` (also `orders`, `shipping`, `invoices`,
+`appointments`, `jobs`, `support`, `accounts`) narrows **All mail** to one kind;
+see [Filter syntax](filters.md). It is not a group word and not a rule word.
+
+Rolling back to an older version is safe: it ignores the kind in the index (the
+next scan reads it afresh). A rule limited to a kind is stored - and exported -
+with an action an older version does not know, so that version refuses to run,
+arm or edit it ("bad action", nothing is queued) instead of running it on all of
+the sender's mail, and skips it when you import a backup. After a rollback,
+delete such rules or leave them off; this version reads them as before.
+
 ### Swipe triage
 
 <small class="where">Clean up → Triage</small>
@@ -858,7 +925,8 @@ one.
 Restrict a bulk action or a rule to "keep the
 newest N mails" or "only mails older than N days" per group instead of
 the whole group - mutually exclusive, computed against the real mail
-list rather than just the group count.
+list rather than just the group count. A rule has a third choice, "only one
+kind of mail" ([What they send](#what-they-send)); it excludes the other two.
 
 ### Block a sender or domain
 

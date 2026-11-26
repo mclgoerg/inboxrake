@@ -9,16 +9,20 @@ import { demoHint, useDemo } from "../demoMode";
 import { openUnsubPage } from "../unsub";
 import { t } from "../i18n";
 import { fmtPct } from "../numfmt";
-import { actionVerb, planMailAction } from "../mailActions";
+import { actionVerb, itemsOf, planMailAction } from "../mailActions";
+import { hasKinds, kindLabel, kindOnly, kindRows, kindShort, type KindId,
+  type KindRow } from "../kinds";
 import { nowDate } from "../clock";
 import { getLang } from "../i18n";
 import { fmtDate, fmtSize, fmtUsd, mailKey, olderThan, shortcutTarget, sieveSnippet,
   type SieveAction } from "../lib";
 import { isPooled, smartContent, smartWhy } from "../smart";
-import type { AppState, Group, Grouping, GroupUnsub, Mail } from "../types";
+import type { AppState, Group, Grouping, GroupUnsub, Mail, Rule }
+  from "../types";
 import { EditLabels } from "./EditLabels";
 import { FolderPicker, type PickEnv } from "./FolderPicker";
 import { RowAvatar, localizedSub } from "./GroupTable";
+import { KindChip, KindsBox, type KindActions } from "./KindsBox";
 import { ArrivalStrip } from "./RhythmCard";
 import { arrivalChangeLines } from "./SenderChanges";
 import { MailRows, MessageView } from "./MailList";
@@ -30,7 +34,7 @@ import { ACTION_BTN, ActionButton, ActionFace, AiTag, Button, cap, Chip,
   LINK_ACCENT, Loading, Menu, MenuGroup, MenuItem, Modal, Notice, PanelHeader, PinButton,
   PopupSelect, ProtectButton, RatingChips, Segmented, Spinner, StatTile,
   PageScope, stillMailingText, Tag, tabPanelProps, TrackerBadge,
-  useBackLayer, useMediaQuery }
+  useBackLayer, useMediaQuery, useOptionalToast }
   from "./ui";
 
 // Rating filter chips: same green/yellow/red/unrated buckets as the
@@ -140,6 +144,11 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const [sortBy, setSortBy] = useState<"date" | "size">("date");
   const [moveDest, setMoveDest] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);   // whole-group Move picker
+  // "What they send": the kind the Mails list is narrowed to, and the kind
+  // whose mails the folder picker is choosing a folder for
+  const [kindFilter, setKindFilter] = useState<KindId | null>(null);
+  const [kindMove, setKindMove] = useState<KindId | null>(null);
+  const toast = useOptionalToast();
   const [vFilter, setVFilter] = useState("all");
   const [sieveOpen, setSieveOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
@@ -177,13 +186,15 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
 
   const shown = useMemo(() => {
     if (!mails) return null;
-    const filtered = vFilter === "all" ? mails
+    const rated = vFilter === "all" ? mails
       : vFilter === "unrated" ? mails.filter((m) => !m.ai)
       : mails.filter((m) => m.ai === vFilter);
+    const filtered = kindFilter
+      ? rated.filter((m) => m.kind === kindFilter) : rated;
     return sortBy === "size"
       ? [...filtered].sort((a, b) => b.size - a.size)
       : filtered;
-  }, [mails, sortBy, vFilter]);
+  }, [mails, sortBy, vFilter, kindFilter]);
 
   // Pinned mails are never part of a bulk selection (select-all, "older
   // than", AI picks) - they can only be ticked by hand, and acting on them
@@ -415,6 +426,95 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     else if (v === "ai_review") aiSelect();
     else if (v) act(v);
   };
+
+  // ---- What they send: a sender that sends two kinds of mail or more gets
+  // the box. Every action runs the path the checked mails use (`actOn`:
+  // confirm, Keep-safe above 20 mails, the background job, Undo, Activity);
+  // protected (pinned) mails are never part of a bulk move, as there.
+  const kinds = useMemo(() => kindRows(mails ?? []), [mails]);
+  const showKinds = !!mails && (grouping === "sender" || grouping === "smart")
+    && !isPooled(group) && hasKinds(kinds);
+  const mailsHead = useRef<HTMLDivElement>(null);
+  // another sender, or a kind that is gone (all its mails moved): no filter
+  useEffect(() => setKindFilter(null), [grouping, group.key]);
+  useEffect(() => {
+    if (kindFilter && !kinds.some((k) => k.id === kindFilter)) {
+      setKindFilter(null);
+    }
+  }, [kinds, kindFilter]);
+  const movable = (r: KindRow) => r.mails.filter((m) => !m.pinned);
+  const actKind = (list: Mail[], action: string, dest = "") =>
+    list.length > 0 ? void actOn(list, action, dest) : undefined;
+  const protectKind = async (r: KindRow) => {
+    const todo = movable(r);
+    if (!todo.length) return;
+    try {
+      const res = await api.pinMails(itemsOf(todo), true);
+      // fresh from the server: a mail without a Message-ID stays unprotected
+      setMails(await api.group(grouping, group.key));
+      setSel(new Set());
+      setNote(t("kind.protected", { n: res.changed })
+        + (res.skipped > 0 ? ` ${t("pin.group_skipped", { n: res.skipped })}`
+          : ""));
+      onDeleted();
+    } catch (e: any) {
+      setNote(`${t("pin.error")}: ${e.message ?? e}`);
+    }
+  };
+  // The one sender address the rule is about (a Sender row, or a Smart row
+  // that stands for exactly one)
+  const senderAddr = grouping === "sender" ? group.key
+    : grouping === "smart" && group.kind === "sender" ? group.addr ?? "" : "";
+  const ruleKind = async (r: KindRow) => {
+    const query = `from:${senderAddr}`;
+    const short = kindShort(r.id);
+    const lead = t("kind.rule_title", { kind: short });
+    if (!await confirmDialog({ title: lead, confirmLabel: t("kind.rule_create"),
+      body: t("kind.rule_body", { sender: group.label,
+        kind: t(`kind.lc_${r.id}`) }) })) return;
+    const say = (text: string, withRules = false) => toast
+      ? toast.show(text, { variant: "success", action: withRules
+        && pickEnv?.onOpenRules ? { label: t("folder.open_rules"),
+          onClick: pickEnv.onOpenRules } : undefined })
+      : setNote(text);
+    try {
+      const { rules } = await api.rules();
+      // clicked twice, or made before: one rule is enough
+      if (rules.some((x) => (x.scope ?? "mail") === "mail"
+          && x.grouping === "sender" && x.action === "trash"
+          && x.only_kind === r.id && x.query.trim().toLowerCase() === query
+          && (!x.account || !pickEnv?.account || x.account === pickEnv.account)
+          )) {
+        say(t("kind.rule_exists", { sender: group.label, kind: short }), true);
+        return;
+      }
+      await api.createRule({
+        name: t("kind.rule_name", { sender: group.label, kind: short }),
+        scope: "mail", grouping: "sender", query, action: "trash", dest: "",
+        schedule: "daily", only_kind: r.id,
+        ...(pickEnv?.account ? { account: pickEnv.account } : {}),
+      } as Partial<Rule>);
+      say(t("kind.rule_made", { sender: group.label, kind: short }), true);
+    } catch (e: any) {
+      const msg = t("kind.rule_failed", { msg: e?.message ?? String(e) });
+      toast ? toast.show(msg, { variant: "error" }) : setNote(msg);
+    }
+  };
+  const kindActions: KindActions = {
+    show: (r) => {
+      setKindFilter((cur) => (cur === r.id ? null : r.id));
+      setSel(new Set());
+      // the list sits below the box: on a phone it may be out of sight
+      if (phone) mailsHead.current?.scrollIntoView?.({ block: "start" });
+    },
+    trash: (r) => actKind(movable(r), "trash"),
+    archive: (r) => actKind(movable(r), "archive"),
+    move: (r) => setKindMove(r.id),
+    markRead: (r) => actKind(r.mails.filter((m) => !m.seen), "mark_read"),
+    protect: (r) => void protectKind(r),
+    rule: senderAddr ? (r) => void ruleKind(r) : undefined,
+  };
+  const moving = kinds.find((k) => k.id === kindMove) ?? null;
 
   // Message-scoped reader actions (toolbar of the reader / thread view): the
   // same confirm / pinned flow as the checked-mails bar. The pin state is
@@ -813,6 +913,12 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       {header}
       {actionRow}
       {movePicker}
+      {moving && (
+        <FolderPicker count={movable(moving).length} folders={folders}
+          labels={pickEnv?.labels} account={pickEnv?.account ?? ""}
+          onPick={(dest) => actOn(movable(moving), "move", dest)}
+          onClose={() => setKindMove(null)} />
+      )}
       {note && <div className="px-4 pt-2 type-meta text-muted">{note}</div>}
       <div className="grid grid-cols-3 gap-2 px-4 pt-4">
         <StatTile label={t("detail.mails")} value={group.count} />
@@ -828,6 +934,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       )}
       {sievePanel}
       {poolBox}
+      {showKinds && (
+        <KindsBox mails={mails!} shown={kindFilter} actions={kindActions}
+          busy={busy} phone={phone} />
+      )}
     </>
   );
 
@@ -835,8 +945,15 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // (sort, build-a-selection), rating filter, then the rows.
   const mailsSection = (
     <>
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-4">
+      <div ref={mailsHead}
+        className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-4">
         <h3 className="type-heading">{t("detail.mails")}</h3>
+        {kindFilter && (
+          <KindChip kind={kindFilter} onClear={() => {
+            setKindFilter(null);
+            setSel(new Set());
+          }} />
+        )}
         {shown && mails && shown.length !== mails.length && (
           <span className="type-meta text-muted">
             {shown.length} / {t("n.mails", { n: mails.length })}

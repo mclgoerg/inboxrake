@@ -488,6 +488,8 @@ export type RuleScope = "mail" | "junk" | "trash";
 export interface Rule {
   id: string;
   name: string;
+  /** The account the rule runs on (absent: the default account). */
+  account?: string;
   scope: RuleScope;
   grouping: Grouping;
   query: string;
@@ -497,6 +499,9 @@ export interface Rule {
   mode: "report" | "execute";
   keep_latest: number | null;
   older_than_days: number | null;
+  /** The third retention choice, exclusive with the two above: act only on
+   *  the mails of this kind (`ads`, ...). Absent on older rules. */
+  only_kind?: string | null;
   /** "auto_empty": the Trash page's "Empty automatically" switch made it.
    *  "mcp": an AI assistant proposed it (a proposal while it is in report
    *  mode; still "mcp" once the user approved it, "manual" after an edit). */
@@ -678,6 +683,9 @@ export interface Mail {
   seen: boolean;
   ai: Verdict | null;
   pinned?: boolean;   // absent in search/attachment lists
+  /** What kind of mail it is (`ads`, `orders`, ... - see kinds.ts); "" = no
+   *  kind. Sent with a group's mails only. */
+  kind?: string;
   msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
 }

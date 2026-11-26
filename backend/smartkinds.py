@@ -292,12 +292,12 @@ def sender_hint(addr: str, unsub: bool = False) -> str:
 
 
 @functools.lru_cache(maxsize=65536)
-def message_purposes(subject: str, hint: str = "") -> frozenset[str]:
-    """Every purpose whose evidence appears in this subject, read with the
-    sender's `hint` (see sender_hint): a bare invoice from a biller - or any
-    subject that says so itself - is a bill, not an order; a ticket seller's
-    orders are bookings; weak account words in promotional mail are not
-    account evidence; a request to review or rate carries none at all."""
+def message_rule_hits(subject: str, hint: str = "") -> frozenset[tuple[str, str]]:
+    """Every (purpose, rule id) whose evidence appears in this subject, read
+    with the sender's `hint` (see sender_hint): a bare invoice from a biller -
+    or any subject that says so itself - is a bill, not an order; a ticket
+    seller's orders are bookings; weak account words in promotional mail are
+    not account evidence; a request to review or rate carries none at all."""
     s = subject or ""
     if SURVEY_RE.search(s):
         return frozenset()
@@ -311,8 +311,15 @@ def message_purposes(subject: str, hint: str = "") -> frozenset[str]:
             continue
         if not (STRONG_ACCOUNT_RE if soft and rid == "account" else rx).search(s):
             continue
-        out.add("appointments" if p == "orders" and "t" in hint else p)
+        out.add(("appointments" if p == "orders" and "t" in hint else p, rid))
     return frozenset(out)
+
+
+@functools.lru_cache(maxsize=65536)
+def message_purposes(subject: str, hint: str = "") -> frozenset[str]:
+    """Every purpose whose evidence appears in this subject (the purposes of
+    `message_rule_hits`)."""
+    return frozenset(p for p, _rid in message_rule_hits(subject, hint))
 
 
 def message_purpose(subject: str) -> str | None:

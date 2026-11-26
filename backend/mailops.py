@@ -40,6 +40,7 @@ from . import dupstore
 from . import demo
 from . import knownsenders
 from . import labelstore
+from . import mailkinds
 from . import pastdate
 from . import pinstore
 from . import rhythm
@@ -607,6 +608,8 @@ def save_snapshot(acc) -> None:
             "trash_count": acc.state["trash_count"],
             "junk_count": acc.state["junk_count"],
             "index": list(acc.index.values()),
+            # the patterns the stored `kind` of every record was read with
+            "kinds_version": mailkinds.VERSION,
             "label_copies": list(acc.label_copies.values()),
             "role_index": {r: list(ix.values())
                            for r, ix in acc.role_index.items() if ix},
@@ -670,6 +673,10 @@ def load_snapshot(acc) -> bool:
                 return False              # never clobber live state
             acc.index.update({ikey(m["folder"], m["uid"]): m
                               for m in data["index"]})
+            if data.get("kinds_version") != mailkinds.VERSION:
+                # stored kinds of other patterns (or none): read them again
+                for m in acc.index.values():
+                    m.pop("kind", None)
             acc.label_copies.update({
                 ikey(m["folder"], m["uid"]): m
                 for m in data.get("label_copies") or []})
@@ -2906,6 +2913,7 @@ def run_scan(acc=None, push: bool = False) -> None:
             if new_replied - replied:
                 replied |= new_replied
                 save_replied(acc)
+            mailkinds.stamp(messages)            # what kind of mail each is
             knownsenders.update_scan(acc.name, {m["addr"] for m in messages})
             # Re-read: the threshold/protected list may have changed during
             # a long scan.
@@ -3579,15 +3587,26 @@ def _group_mail_items(rec: dict, acc) -> list[tuple[str, int, int]]:
 
 def retained_mails(rec: dict, acc, keep_latest: int | None = None,
                    older_than_days: int | None = None,
-                   pinned: set[str] | None = None) -> dict[str, set[int]]:
+                   pinned: set[str] | None = None,
+                   only_kind: str | None = None) -> dict[str, set[int]]:
     """{folder: {uid, …}} of mails in `rec` that are EXEMPT from the action:
     the retention keep-window plus every mail whose Message-ID is in
     `pinned`. Pinned mails are kept regardless of age or keep-latest
     ordering and don't use up a keep-latest slot. Empty when neither
     restriction nor a pin applies, meaning today's "act on everything"
     behavior. Mails sort newest-first by `ts` (ts == 0 counts as oldest;
-    ties break by folder+uid for determinism)."""
+    ties break by folder+uid for determinism). `only_kind` (the third
+    retention choice, exclusive with the other two) exempts every mail that
+    is not of that kind - one that is not in the index is exempt too, and a
+    kind that does not exist (or is "") selects no mail at all."""
     out: dict[str, set[int]] = {}
+    if only_kind is not None:
+        for folder, uids in rec["folders"].items():
+            for uid in uids:
+                m = acc.index.get(ikey(folder, uid))
+                if m is None or not mailkinds.valid(only_kind) \
+                        or mailkinds.of(m) != only_kind:
+                    out.setdefault(folder, set()).add(uid)
     if keep_latest or older_than_days:
         items = sorted(_group_mail_items(rec, acc),
                        key=lambda it: (-it[2], it[0], it[1]))
@@ -3605,11 +3624,13 @@ def retained_mails(rec: dict, acc, keep_latest: int | None = None,
 
 def group_act_count(rec: dict, acc, keep_latest: int | None = None,
                     older_than_days: int | None = None,
-                    pinned: set[str] | None = None) -> int:
+                    pinned: set[str] | None = None,
+                    only_kind: str | None = None) -> int:
     """How many of this group's mails a retention restriction (and any
     pinned mails) leaves to act on (i.e. its count minus the exempted
     keep-set)."""
-    keep = retained_mails(rec, acc, keep_latest, older_than_days, pinned)
+    keep = retained_mails(rec, acc, keep_latest, older_than_days, pinned,
+                          only_kind)
     total = sum(len(uids) for uids in rec["folders"].values())
     return total - sum(len(s) for s in keep.values())
 
@@ -3620,18 +3641,23 @@ def delete_groups(grouping: str, keys: list[str],
                   older_than_days: int | None = None, acc=None,
                   actor: str = "user", completion: dict | None = None,
                   only_addrs: list[str] | None = None,
-                  exempt: set[str] | None = None) -> dict:
+                  exempt: set[str] | None = None,
+                  only_kind: str | None = None) -> dict:
     """Queue `action` for the mails of the given groups. `only_addrs` limits
     it to mails from those sender addresses: a caller that decided on a group
     because it held only those senders (the unsubscribe sheet's "also move
     to Trash") is not acting on a mail from anyone else that joined the
     group since. `exempt` is a set of Message-IDs left alone like pinned
-    mails, without being pinned (a rule run's keep-safe mails)."""
+    mails, without being pinned (a rule run's keep-safe mails). `only_kind`
+    acts on the mails of that kind alone (see `retained_mails`); it is one of
+    the three retention choices, so it excludes the other two."""
     acc = acc or accounts.get()
     only = {a.lower() for a in only_addrs} if only_addrs is not None else None
-    if keep_latest is not None and older_than_days is not None:
+    if sum(x is not None for x in (keep_latest, older_than_days,
+                                   only_kind)) > 1:
         raise ValueError(
-            "keep_latest and older_than_days are mutually exclusive")
+            "keep_latest, older_than_days and only_kind are mutually "
+            "exclusive")
     skipped = 0
     skipped_pinned = 0
     # Pinned mails are exempt from every action that moves a mail out of
@@ -3664,7 +3690,8 @@ def delete_groups(grouping: str, keys: list[str],
                 raise ValueError("all selected groups are protected")
         by_folder: dict[str, set[int]] = {}
         for rec in jobs.values():
-            keep = retained_mails(rec, acc, keep_latest, older_than_days)
+            keep = retained_mails(rec, acc, keep_latest, older_than_days,
+                                  only_kind=only_kind)
             pins = pinned_uids(rec, acc, pinned)
             for folder, uids in rec["folders"].items():
                 held = keep.get(folder, set())
@@ -3694,7 +3721,7 @@ def group_move_mails(grouping: str, keys: list[str],
                      keep_latest: int | None = None,
                      older_than_days: int | None = None,
                      only_addrs: list[str] | None = None,
-                     acc=None) -> list[dict]:
+                     acc=None, only_kind: str | None = None) -> list[dict]:
     """The index entries a Trash move of these groups would act on, decided
     the way `delete_groups` decides it (protected groups dropped, the
     retention keep-window and pinned mails left out, `only_addrs` limiting
@@ -3713,7 +3740,7 @@ def group_move_mails(grouping: str, keys: list[str],
             if not rec or _group_protected(rec, paddrs, acc):
                 continue
             keep = retained_mails(rec, acc, keep_latest, older_than_days,
-                                  pinned)
+                                  pinned, only_kind)
             for folder, uids in rec["folders"].items():
                 held = keep.get(folder, set())
                 for uid in uids:
@@ -3785,6 +3812,31 @@ def set_group_pin(grouping: str, key: str, pinned: bool, acc=None) -> dict:
     if changed:
         with acc.lock:
             acc.state["groups_rev"] += 1
+    return {"ok": True, "pinned": pinned, "changed": changed,
+            "skipped": skipped}
+
+
+def set_mail_pins(items: list, pinned: bool, acc=None) -> dict:
+    """Pin/unpin the mails of ([folder, uid], ...) pairs - "Protect these N"
+    of one kind of a sender's mail. Like `set_group_pin`: only mails the
+    index knows, the Message-ID is resolved server-side, and a mail without
+    one cannot be pinned (counted in `skipped`)."""
+    acc = acc or accounts.get()
+    msgids: set[str] = set()
+    skipped = 0
+    with acc.lock:
+        for it in items:
+            if not (isinstance(it, (list, tuple)) and len(it) == 2):
+                continue
+            m = acc.index.get(ikey(str(it[0]), int(it[1])))
+            if m and m["msgid"]:
+                msgids.add(m["msgid"])
+            elif m:
+                skipped += 1
+    changed = pinstore.set_many(msgids, pinned, acc.name) if msgids else 0
+    if changed:
+        with acc.lock:
+            acc.state["groups_rev"] += 1     # group "pinned" counts changed
     return {"ok": True, "pinned": pinned, "changed": changed,
             "skipped": skipped}
 
@@ -6762,7 +6814,7 @@ def search_body(query: str, limit: int = 500, acc=None,
 
 MAIL_SORTS = ("date", "size", "sender")
 _MQ_RE = re.compile(r"^(age|size|att|from|domain|folder|is|has|"
-                    r"tag|ai|unread|eng|in):(.*)$")
+                    r"tag|ai|unread|eng|in|kind):(.*)$")
 _MQ_IN_RE = re.compile(r"^(\d+)(min|h|d)$")
 _MQ_IN_UNIT = {"min": 60, "h": 3600, "d": 86400}
 _MQ_AGE_RE = re.compile(r"^>?(\d+)(d|m|y)$")
@@ -6779,7 +6831,10 @@ def parse_mail_query(q: str) -> dict:
     `folder:text`, `is:unread|read`, `is:expired` (mail past its date: a
     stale code, a parcel update of a parcel that has arrived, a reminder of
     something over, an offer that has ended - see pastdate.py; a per-mail
-    word only, no group or rule word), `has:pinned`, `in:7d|12h|90min`
+    word only, no group or rule word), `kind:ads|orders|shipping|invoices|
+    appointments|jobs|support|accounts` (what kind of mail it is, read from
+    its subject - see mailkinds.py; a per-mail word only, no group or rule
+    word; two different kinds match nothing), `has:pinned`, `in:7d|12h|90min`
     (arrived within that window - the same term the group filter takes).
     Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`,
     `is:unsub|protected|replied|new|...`, `has:` other than pinned) have no
@@ -6789,7 +6844,8 @@ def parse_mail_query(q: str) -> dict:
     out: dict = {"text": [], "age_days": None, "size_min": None,
                  "att_min": None, "from_addr": None, "domain": None,
                  "folder": None, "read": None, "pinned": False,
-                 "in_seconds": None, "expired": False, "ignored": []}
+                 "in_seconds": None, "expired": False, "kinds": set(),
+                 "ignored": []}
     for tok in (q or "").strip().lower().split():
         m = _MQ_RE.match(tok)
         if not m:
@@ -6813,6 +6869,8 @@ def parse_mail_query(q: str) -> dict:
             out["read"] = val == "read"
         elif kind == "is" and val == "expired":
             out["expired"] = True
+        elif kind == "kind" and mailkinds.valid(val):
+            out["kinds"].add(val)
         elif kind == "has" and val == "pinned":
             out["pinned"] = True
         elif kind == "in" and (a := _MQ_IN_RE.match(val)):
@@ -6877,6 +6935,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                 continue
             if f["read"] is not None and m["seen"] != f["read"]:
                 continue
+            if f["kinds"] and not f["kinds"] <= {mailkinds.of(m)}:
+                continue
             if f["pinned"] and m["msgid"] not in pinned:
                 continue
             if f["size_min"] is not None and m["size"] < f["size_min"]:
@@ -6927,7 +6987,8 @@ def group_mails(grouping: str, key: str,
                              "subject": m["subject"], "addr": m["addr"],
                              "size": m["size"], "seen": m["seen"],
                              "ai": verdict_of(m),
-                             "pinned": m["msgid"] in pinned}
+                             "pinned": m["msgid"] in pinned,
+                             "kind": mailkinds.of(m)}
                     if with_msgid:
                         entry["msgid"] = m["msgid"]
                     out.append(entry)

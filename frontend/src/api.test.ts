@@ -208,3 +208,18 @@ test("forget / remove unused / import are POSTs of just that, and saveBlob "
   saveBlob("k.json", new Blob(["{}"]));
   expect(clicked).toEqual(["blob:x|k.json"]);
 });
+
+test("pinMails posts the mails to protect to the active account", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true,
+    json: () => Promise.resolve({ ok: true, pinned: true, changed: 2,
+      skipped: 0 }) });
+  vi.stubGlobal("fetch", fetchMock);
+  setAccount("work");
+  await api.pinMails([["INBOX", 1], ["INBOX", 2]], true);
+  const [url, init] = fetchMock.mock.calls[0];
+  expect(url).toBe("/api/pin_mails?account=work");
+  expect(init?.method).toBe("POST");
+  expect(JSON.parse(init?.body as string)).toEqual({
+    items: [["INBOX", 1], ["INBOX", 2]], pinned: true });
+  setAccount("");
+});
