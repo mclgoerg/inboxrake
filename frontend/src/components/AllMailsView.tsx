@@ -25,6 +25,8 @@ const SORTS: { k: MailSort; label: string }[] = [
   { k: "sender", label: "mails.sort_sender" },
 ];
 const PAGE = 100;
+/** The `finding` that lists the receipts Mail past its date keeps. */
+export const KEPT_VIEW = "past-kept";
 // Sender reads A→Z first; date and size biggest/newest first.
 const naturalDir = (k: MailSort): "asc" | "desc" =>
   k === "sender" ? "asc" : "desc";
@@ -313,6 +315,8 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       {slot && <SlotChip slot={slot} onClear={() => setSlot(null)} />}
       {finding && (
         <CheckupChip n={total} mails className="mb-2"
+          label={finding.id === KEPT_VIEW
+            ? t("past.chip_kept", { n: total }) : undefined}
           onClear={() => setFinding(null)} />
       )}
       {ignored.length > 0 && (

@@ -619,11 +619,18 @@ def _list_mails(ctx: Ctx, args: ListMailsIn) -> dict:
         total = len(mails)
         page = mails[args.offset:args.offset + args.limit]
     else:
-        if not ctx.subjects and mailops.parse_mail_query(args.query)["text"]:
+        parsed = mailops.parse_mail_query(args.query)
+        if not ctx.subjects and parsed["text"]:
             raise ToolError(
                 "Free-text search looks into subject lines, which this token "
                 "may not see. Use from:, domain:, age:, size:, folder:, "
                 "is:unread|read or has:pinned.")
+        if not ctx.subjects and parsed["expired"]:
+            # is:expired is decided from the subject line: its answer would
+            # tell this token what the subjects say
+            raise ToolError(
+                "is:expired reads subject lines, which this token may not "
+                "see.")
         res = mailops.list_mails(args.offset, args.limit, args.sort, None,
                                  args.query, acc)
         total, page, ignored = res["total"], res["mails"], res["ignored"]

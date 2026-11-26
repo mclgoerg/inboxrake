@@ -4,7 +4,7 @@ import type {
   AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
-  Mail, MessageDetail, SubReminder, SubscriptionsResp,
+  ExpiredResp, Mail, MessageDetail, SubReminder, SubscriptionsResp,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SenderChangesResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
@@ -594,6 +594,12 @@ export const api = {
   overview: (since?: number | null) =>
     req<OverviewResp>("/api/overview"
       + (since == null ? "" : `?since=${Math.floor(since)}`)),
+  /** Mail past its date: counts per reason (the Overview line and sheet), and
+   *  the [folder, uid] pairs of the ticked reasons for the Trash step. */
+  expired: () => req<ExpiredResp>("/api/expired"),
+  expiredMails: (reasons: string[]) =>
+    req<{ items: [string, number][] }>(
+      `/api/expired/mails?reasons=${encodeURIComponent(reasons.join(","))}`),
   /** The Statistics card: senders that got louder / came back (30 days). */
   senderChanges: () => req<SenderChangesResp>("/api/sender-changes"),
   audit: (offset = 0, limit = 50, by: AuditBy = "all") =>

@@ -40,6 +40,7 @@ from . import dupstore
 from . import demo
 from . import knownsenders
 from . import labelstore
+from . import pastdate
 from . import pinstore
 from . import rhythm
 from . import aisortstore
@@ -6775,8 +6776,11 @@ def parse_mail_query(q: str) -> dict:
     Per-mail qualifiers: `age:>6m|2y|30d` (older than), `size:>1m` (at
     least), `att:>1m` (attachment bytes - only for mails the attachment
     analysis has covered), `from:addr` (exact), `domain:example.com`,
-    `folder:text`, `is:unread|read`, `has:pinned`, `in:7d|12h|90min` (arrived
-    within that window - the same term the group filter takes).
+    `folder:text`, `is:unread|read`, `is:expired` (mail past its date: a
+    stale code, a parcel update of a parcel that has arrived, a reminder of
+    something over, an offer that has ended - see pastdate.py; a per-mail
+    word only, no group or rule word), `has:pinned`, `in:7d|12h|90min`
+    (arrived within that window - the same term the group filter takes).
     Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`,
     `is:unsub|protected|replied|new|...`, `has:` other than pinned) have no
     per-mail meaning here: they are NOT applied and are reported back in
@@ -6785,7 +6789,7 @@ def parse_mail_query(q: str) -> dict:
     out: dict = {"text": [], "age_days": None, "size_min": None,
                  "att_min": None, "from_addr": None, "domain": None,
                  "folder": None, "read": None, "pinned": False,
-                 "in_seconds": None, "ignored": []}
+                 "in_seconds": None, "expired": False, "ignored": []}
     for tok in (q or "").strip().lower().split():
         m = _MQ_RE.match(tok)
         if not m:
@@ -6807,6 +6811,8 @@ def parse_mail_query(q: str) -> dict:
             out["folder"] = val
         elif kind == "is" and val in ("unread", "read"):
             out["read"] = val == "read"
+        elif kind == "is" and val == "expired":
+            out["expired"] = True
         elif kind == "has" and val == "pinned":
             out["pinned"] = True
         elif kind == "in" and (a := _MQ_IN_RE.match(val)):
@@ -6845,6 +6851,9 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
     pinned = pinstore.load_account(acc.name)
     verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
         cfgmod.load_config().get("protected")))
+    # `is:expired`: the handles pastdate lists (pinned mail and protected
+    # senders are never among them); worked out before the lock is taken
+    expired = pastdate.expired_handles(acc) if f["expired"] else None
     with acc.lock:
         in_slot = rhythm.slot_matcher(
             slot, acc.state["groups"].get("sender") or {}, time.time()) \
@@ -6854,6 +6863,9 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
             if in_slot and not in_slot(m):
                 continue
             if only is not None and (m["folder"], m["uid"]) not in only:
+                continue
+            if expired is not None \
+                    and (m["folder"], m["uid"]) not in expired:
                 continue
             if f["from_addr"] is not None and m["addr"] != f["from_addr"]:
                 continue

@@ -1240,6 +1240,19 @@ export interface SubscriptionsResp {
   totals: SubTotals;
   items: Subscription[];
 }
+/** `GET /api/expired`: Mail past its date (backend/pastdate.py). */
+export type ExpiredReasonId = "codes" | "parcels" | "events" | "offers";
+export interface ExpiredReason {
+  id: ExpiredReasonId; mails: number; size: number;
+  /** the server's suggestion: offers that have ended start unticked */
+  ticked: boolean;
+}
+export interface ExpiredResp {
+  mails: number; size: number;
+  /** receipts, invoices and bookings of the same orders / appointments */
+  kept: number;
+  reasons: ExpiredReason[];
+}
 export interface SubReminder {
   key: string; ts: number; name: string; next: number;
   amount: number | null; currency: string;

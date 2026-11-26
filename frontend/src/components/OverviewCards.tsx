@@ -1,4 +1,5 @@
-import { Check, ChevronRight, Ghost, Hourglass, Info, Mail, MoreHorizontal,
+import { CalendarX, Check, ChevronRight, Ghost, Hourglass, Info, Mail,
+  MoreHorizontal,
   Newspaper, Paperclip, RotateCcw, ShieldAlert, Sparkles, BellOff,
   TrendingDown, TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
 import type { ReactNode } from "react";
@@ -462,12 +463,17 @@ const CARD_TILE: Record<string, { icon: ReactNode; tone: TagTone }> = {
  *  confirm, the cross hides a row until it grows - nothing here touches the
  *  mailbox itself. */
 export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
-  onCleanUp, subs }: {
+  onCleanUp, subs, past }: {
   cards: QuickWinCard[];
   /** The "N subscriptions you may not use" line (backend/subscriptions.py);
    *  absent while there is nothing that looks unused. Its Review opens the
    *  Subscriptions page - it is not one of the checked clean-up steps. */
   subs?: { n: number; names: string; about: string; onReview: () => void }
+    | null;
+  /** The "Mail past its date" line (backend/pastdate.py), built like the
+   *  subscriptions line and AFTER it: only a Review (the sheet), outside the
+   *  top-3 cap and outside "Review N". Absent while there is too little. */
+  past?: { mails: number; size: number; about: string; onReview: () => void }
     | null;
   /** Mails + size the union of all cards could free. */
   canGo: { mails: number; size: number };
@@ -593,6 +599,32 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
             </div>
             <Button variant="tinted" size="sm" className="shrink-0"
               onClick={subs.onReview}>{t("qw.review")}</Button>
+          </li>
+        )}
+        {past && (
+          <li data-testid="past-step"
+            className={`${ROW_LINE} flex items-center gap-3 py-2`}>
+            {/* decorative, like the subscriptions line: not part of
+                "Review N" */}
+            <span aria-hidden className="inline-flex size-8 shrink-0
+              items-center justify-center">
+              <span className="inline-flex size-5 items-center justify-center
+                rounded-full bg-accent text-on-accent">
+                <Check size={14} /></span>
+            </span>
+            <span className="shrink-0"><IconTile tone="attach">
+              <CalendarX size={16} /></IconTile></span>
+            <div className="min-w-0 flex-1">
+              <div className="type-body font-medium">
+                {t("overview.past_title")}</div>
+              <div className="line-clamp-2 type-meta text-muted">
+                {[t("qw.card_meta", { mails: past.mails,
+                  size: fmtSize(past.size) }), past.about]
+                  .filter(Boolean).join(" · ")}</div>
+            </div>
+            <Button variant="tinted" size="sm" className="shrink-0"
+              aria-label={`${t("qw.review")}: ${t("overview.past_title")}`}
+              onClick={past.onReview}>{t("qw.review")}</Button>
           </li>
         )}
       </ul>

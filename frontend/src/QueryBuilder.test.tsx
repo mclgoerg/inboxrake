@@ -226,3 +226,22 @@ test("mailOnly offers only what the per-mail parser applies", () => {
   fireEvent.click(screen.getAllByRole("button", { name: "Add" })[1]);   // size
   expect(onChange).toHaveBeenLastCalledWith("size:>5m");
 });
+
+test("mailOnly: `past its date` is the last of the per-mail flags and writes " +
+  "is:expired; the group-level builder does not offer it", () => {
+  const onChange = vi.fn();
+  const { unmount } = render(<QueryBuilder value="" onChange={onChange}
+    mailOnly open onOpenChange={() => {}} />);
+  const flags = ["unread", "read", "protected", "past its date"].map((n) =>
+    screen.getByRole("button", { name: n }));
+  // the existing flags keep their order; the new one comes after them
+  for (let i = 1; i < flags.length; i++)
+    expect(flags[i - 1].compareDocumentPosition(flags[i])
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(flags[3]);
+  expect(onChange).toHaveBeenLastCalledWith("is:expired");
+  unmount();
+  render(<QueryBuilder value="" onChange={onChange} open
+    onOpenChange={() => {}} />);
+  expect(screen.queryByRole("button", { name: "past its date" })).toBeNull();
+});

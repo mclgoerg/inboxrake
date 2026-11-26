@@ -81,6 +81,20 @@ the same.
 > qualifiers in a rule and refused unless they are valid ones. The AI filter writer validates strictly
 > and retries when the filter it wrote contains a bad token.
 
+## Words only the All mail list knows
+
+The flat **All mail** list reads a smaller language, per mail: free words,
+`age:`, `size:`, `att:`, `from:`, `domain:`, `folder:`, `is:unread|read`,
+`has:pinned` and `in:`. One word is only known there:
+
+| Qualifier | Meaning | Example |
+|---|---|---|
+| `is:expired` | The mail is past its date: a sign-in code older than a day, a shipping update whose parcel has arrived, a reminder for something that is over, an offer that has ended - every reason of [Mail past its date](features.md#mail-past-its-date), ticked or not. Receipts, invoices and bookings, protected mails and mail from protected senders are never in it. It narrows with the other words. | `is:expired from:shop@example.org` |
+
+It is not a group word and not a rule word: in the Senders filter box it reads as
+a free word and finds nothing, and a rule refuses it (rules match groups, not
+single mails).
+
 ## Combining
 
 ```text
