@@ -124,6 +124,13 @@ describe("the box", () => {
     expect(ship.textContent).not.toMatch(/you open/);
   });
 
+  it("puts the biggest kind first, whatever the order of the kinds",
+    async () => {
+    renderPanel([mk(1, "ads"), mk(2, "orders"), mk(3, "orders"),
+      mk(4, "orders"), mk(5, "shipping"), mk(6, "shipping")]);
+    expect(await rowsOf()).toEqual(["orders", "shipping", "ads"]);
+  });
+
   it("is between the tiles / arrival strip and the Mails list", async () => {
     renderPanel(MIXED());
     const b = await box();
@@ -285,6 +292,7 @@ describe("Trash N", () => {
     const dlg = await findDialog();
     expect(within(dlg).getByText("Move to Trash")).toBeTruthy();
     expect(within(dlg).getByText("3 selected mails")).toBeTruthy();
+    expect(dlg.textContent).not.toMatch(/skipped/);
     await pressDialog("Move to Trash (3)");
     await waitFor(() => expect(deleteMessages).toHaveBeenCalledWith(
       [["INBOX", 1], ["INBOX", 2], ["INBOX", 3]], "trash", "", false));
@@ -316,6 +324,8 @@ describe("Trash N", () => {
     const r = await row("ads");
     expect(within(r).getByText("Trash 2")).toBeTruthy();       // not 3
     fireEvent.click(within(r).getByText("Trash 2"));
+    // the two the confirm names are the two that move: no "skipped" bullet
+    expect((await findDialog()).textContent).not.toMatch(/skipped/);
     await pressDialog("Move to Trash (2)");
     await waitFor(() => expect(deleteMessages).toHaveBeenCalledOnce());
     expect(deleteMessages.mock.calls[0][0]).toEqual(

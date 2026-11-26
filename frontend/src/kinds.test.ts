@@ -19,9 +19,10 @@ afterEach(() => setLang("en"));
 describe("kindRows", () => {
   it("counts per kind, the biggest first, ties in KIND_IDS order", () => {
     const rows = kindRows([mk(1, "shipping"), mk(2, "ads"), mk(3, "orders"),
-      mk(4, "orders"), mk(5, "ads"), mk(6, "invoices")]);
+      mk(4, "orders"), mk(5, "ads"), mk(6, "invoices"), mk(7, "orders")]);
+    // orders (3) come before ads (2) although ads is listed first in KIND_IDS
     expect(rows.map((r) => [r.id, r.n])).toEqual([
-      ["ads", 2], ["orders", 2], ["shipping", 1], ["invoices", 1]]);
+      ["orders", 3], ["ads", 2], ["shipping", 1], ["invoices", 1]]);
   });
 
   it("adds up the size and the open share, and names the newest mail",

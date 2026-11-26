@@ -751,3 +751,12 @@ def test_a_kind_rule_survives_an_export_and_comes_back_in_report_mode(
     data["rules"][0].update(only_kind="ads", keep_latest=2)
     assert client.post("/api/import_config", json=data).status_code == 200
     assert rulesmod.load_rules() == []
+
+
+def test_a_mail_the_index_lost_is_left_alone_by_a_kind_rule(monkeypatch):
+    shop_box(monkeypatch)
+    acc = accountsmod.get()
+    rec = acc.state["groups"]["sender"][SHOP]
+    del acc.index[mailops.ikey("INBOX", 1)]          # still listed by the group
+    held = mailops.retained_mails(rec, acc, only_kind="ads")
+    assert 1 in held["INBOX"] and {2, 3}.isdisjoint(held["INBOX"])
