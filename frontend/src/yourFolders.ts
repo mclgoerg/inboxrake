@@ -6,6 +6,11 @@ import type { FolderCheck, FolderRule, FolderWhy, YourFolderRow,
  * authority: the page only shows what it says and asks it again before it
  * acts). */
 
+/** A folder's name as the page shows it: the inbox in the user's language
+ *  (the server calls it INBOX), every other folder as it is called. */
+export const folderLabel = (row: Pick<YourFolderRow, "name" | "lock">):
+    string => row.lock === "inbox" ? t("Inbox") : row.name;
+
 /** The last part of a folder's readable path ("Receipts" of "Work/Receipts"):
  *  what Rename edits - a folder stays below its parent. */
 export const leafName = (row: Pick<YourFolderRow, "name" | "delim">): string =>

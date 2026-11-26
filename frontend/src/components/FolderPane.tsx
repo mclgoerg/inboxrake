@@ -5,7 +5,7 @@ import { fmtSize } from "../api";
 import { t } from "../i18n";
 import { dayMonth } from "../subscriptions";
 import type { FolderWhy, YourFolderRow } from "../types";
-import { quietSince, unreadPct, whyText } from "../yourFolders";
+import { folderLabel, quietSince, unreadPct, whyText } from "../yourFolders";
 import { Avatar, Button, IconTile, Notice, Switch } from "./ui";
 
 /** A pane button: icon and label on one line (a `Button` is a plain block). */
@@ -67,7 +67,8 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
       <div className="flex items-center gap-3">
         <IconTile tone="info">{folderIcon(row)}</IconTile>
         <div className="min-w-0 flex-1">
-          <div className="truncate type-title2" title={row.name}>{row.name}</div>
+          <div className="truncate type-title2" title={row.name}>
+            {folderLabel(row)}</div>
           <div className="type-meta text-muted">{meta}</div>
         </div>
         {onClose && (
@@ -80,7 +81,7 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
           first (it is the one Merge answers) */}
       {row.hints.includes("look") && twin && (
         <Notice icon={<Copy size={16} aria-hidden />}>
-          {t("yf.pane.look", { name: twin.name, n: twin.mails ?? 0 })}
+          {t("yf.pane.look", { name: folderLabel(twin), n: twin.mails ?? 0 })}
         </Notice>
       )}
       {row.hints.includes("empty") && (
@@ -121,7 +122,10 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
       <div className="-mt-2 space-y-1 type-meta text-muted">
         {reasons.map((why) => <p key={why}>{whyText(why)}</p>)}
         {nothing && <p>{t("yf.why.nothing")}</p>}
-        {!reasons.length && <p>{t("yf.delete_hint")}</p>}
+        {row.can.delete === "not_empty" && <p>{t("yf.delete_hint")}</p>}
+        {!row.can.delete && row.mails === null && (
+          <p>{t("yf.delete_hint_unknown")}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-3 rounded-control bg-panel2
@@ -132,7 +136,8 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
             <span className="block type-meta text-muted">
               {t("yf.scan_pattern", { pattern: row.pattern })}{" "}
               <button type="button" onClick={onSettings}
-                className="cursor-pointer text-accent underline">
+                className="inline-flex cursor-pointer items-center text-accent
+                  underline coarse:min-h-11">
                 {t("yf.footer_link")}</button>
             </span>
           )}

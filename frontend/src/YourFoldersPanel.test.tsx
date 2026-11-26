@@ -143,7 +143,7 @@ test("one chip per row: look-alike, empty, quiet, not scanned, excluded by a pat
 test("the inbox and the archive are locked rows; the footer names the special folders", async () => {
   show();
   await screen.findAllByTestId("folder-row");
-  expect(within(row("INBOX")).getByLabelText("Locked: no rename, merge or delete here")).toBeTruthy();
+  expect(within(row("Inbox")).getByLabelText("Locked: no rename, merge or delete here")).toBeTruthy();
   expect(within(row("Archive")).getByLabelText("Locked: no rename, merge or delete here")).toBeTruthy();
   expect(within(row("Travel")).queryByLabelText("Locked: no rename, merge or delete here")).toBeNull();
   expect(screen.getByText(
@@ -222,7 +222,7 @@ test("the pane of a look-alike: the notice, the actions, the rule and the sender
 
 test("the pane of a locked folder gives the reason in words and offers no operation", async () => {
   show();
-  await open("INBOX");
+  await open("Inbox");
   const p = pane();
   for (const name of [/Merge into/, /Rename/, /Delete folder/])
     expect((within(p).getByRole("button", { name }) as HTMLButtonElement)
@@ -641,6 +641,174 @@ test("phone: a card per folder, the pane opens as a sheet, New folder… sits on
   expect(within(sheet).getByText("Old receipts to their folder")).toBeTruthy();
 });
 
+/* ---------------------------- review round: the details ------------------------- */
+
+test("the inbox is called Inbox, not INBOX, wherever the page names it", async () => {
+  yourFolders.mockResolvedValue(resp({ hints: [
+    { kind: "look", folders: ["INBOX", "Receipts"] }] }));
+  folderCheck.mockResolvedValue(mergeCheck({ target: "INBOX",
+    target_name: "INBOX", rules: [] }));
+  mergeFolder.mockResolvedValue({ moved: 41, undo: null, rules: [],
+    deleted: false, kept: "" });
+  show();
+  await screen.findAllByTestId("folder-row");
+  expect(within(row("Inbox")).getByText("Inbox")).toBeTruthy();
+  expect(screen.queryByText("INBOX")).toBeNull();
+  // the pane title
+  fireEvent.click(within(row("Inbox")).getByRole("button"));
+  expect(within(pane()).getByText("Inbox")).toBeTruthy();
+  expect(screen.queryByText("INBOX")).toBeNull();
+  // as a merge target and in the toast
+  await open("Receipts 2019");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Merge into/ }));
+  const dlg = await findDialog();
+  const radio = within(dlg).getAllByRole("radio")
+    .find((r) => r.textContent?.startsWith("Inbox"))!;
+  expect(radio).toBeTruthy();
+  expect(within(dlg).queryByText("INBOX")).toBeNull();
+  fireEvent.click(radio);
+  expect(await within(dlg).findByText(/41\smails move to Inbox as one step/))
+    .toBeTruthy();
+  await pressDialog(/^Move 41\smails$/);
+  expect(await screen.findByText(/Moved 41\smails to “Inbox”\./)).toBeTruthy();
+  // the filter of Open in All mail still names the folder as the server does
+  fireEvent.click(within(row("Inbox")).getByRole("button"));
+  fireEvent.click(within(pane()).getByRole("button", { name: /Open in All mail/ }));
+  expect(onOpenAllMail).toHaveBeenLastCalledWith('folder:"INBOX"');
+  setLang("de");
+  cleanup();
+  show();
+  await screen.findAllByTestId("folder-row");
+  expect(within(row("Posteingang")).getByText("Posteingang")).toBeTruthy();
+});
+
+test("the delete hint is said where it is true: with mail, and where the scan has no count", async () => {
+  show();
+  await open("Receipts");                                   // has mail
+  expect(within(pane()).getByText("Delete is only offered for empty folders."))
+    .toBeTruthy();
+  fireEvent.click(within(row("receipts-old")).getByRole("button"));   // empty
+  expect(within(pane()).queryByText("Delete is only offered for empty folders."))
+    .toBeNull();
+  expect(within(pane()).queryByText(/The scan has no count/)).toBeNull();
+  fireEvent.click(within(row("Old phone backup")).getByRole("button"));   // no numbers
+  expect(within(pane()).getByText(
+    "The scan has no count for it: the server counts the mail in it right before it is deleted."))
+    .toBeTruthy();
+  expect(within(pane()).queryByText("Delete is only offered for empty folders."))
+    .toBeNull();
+});
+
+test("the pattern note names Settings once, and its link is a real target", async () => {
+  show();
+  await open("Labels/Family");
+  const note = within(pane()).getByText(/Excluded by the pattern Labels\/\*/);
+  expect(note.textContent).toBe(
+    "Excluded by the pattern Labels/* - change it in Settings › Account");
+  const link = within(pane()).getByRole("button", { name: "Settings › Account" });
+  expect(link.className).toContain("coarse:min-h-11");
+  // the footer link of the page, too (the pane's and the footer's)
+  const links = screen.getAllByRole("button", { name: "Settings › Account" });
+  expect(links).toHaveLength(2);
+  for (const l of links) expect(l.className).toContain("coarse:min-h-11");
+});
+
+test("a folder with a special folder below it says why nothing can be done to it", async () => {
+  yourFolders.mockResolvedValue(resp({ rows: [INBOX, { ...TRAVEL, children: 1,
+    can: { rename: "locked_child", merge: "locked_child",
+      delete: "locked_child" } }] }));
+  show();
+  await open("Travel");
+  for (const name of [/Merge into/, /Rename/, /Delete folder/])
+    expect((within(pane()).getByRole("button", { name }) as HTMLButtonElement)
+      .disabled).toBe(true);
+  expect(within(pane()).getByText(/A special folder \(Trash, Sent, Junk, \.\.\.\) sits below it/))
+    .toBeTruthy();
+});
+
+test("Rename…: a taken name is said in the prompt, which keeps what was typed", async () => {
+  folderCheck.mockResolvedValue(renameCheck({ rules: [] }));
+  renameFolder.mockResolvedValue({ raw: "Trips", name: "Trips", rules: [],
+    failed: [] });
+  show();
+  await open("Taxes");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Rename/ }));
+  const prompt = await findDialog();
+  typeInto(prompt, "travel");                              // Travel, any case
+  await new Promise((r) => setTimeout(r, 600));
+  fireEvent.click(within(prompt).getByRole("button", { name: "Rename" }));
+  expect(await within(prompt).findByText(
+    "A folder called “travel” already exists.")).toBeTruthy();
+  expect((within(prompt).getByRole("textbox") as HTMLInputElement).value)
+    .toBe("travel");                                       // still there
+  expect(folderCheck).not.toHaveBeenCalled();
+  // the inbox and the special folders are taken, too
+  typeInto(prompt, "inbox");
+  fireEvent.click(within(prompt).getByRole("button", { name: "Rename" }));
+  expect(await within(prompt).findByText(/already exists/)).toBeTruthy();
+  typeInto(prompt, "Trash");
+  fireEvent.click(within(prompt).getByRole("button", { name: "Rename" }));
+  expect(await within(prompt).findByText(/already exists/)).toBeTruthy();
+  // a free name goes on in the same prompt
+  typeInto(prompt, "Trips");
+  fireEvent.click(within(prompt).getByRole("button", { name: "Rename" }));
+  await waitFor(() => expect(renameFolder).toHaveBeenCalledWith("Taxes",
+    "Trips", [], "proton"));
+});
+
+test("after merge-and-delete the target is selected, not the first row", async () => {
+  folderCheck.mockResolvedValue(mergeCheck({ rules: [] }));
+  mergeFolder.mockResolvedValue({ moved: 41, undo: null, rules: [],
+    deleted: true, kept: "" });
+  show();
+  await open("Receipts 2019");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Merge into/ }));
+  const dlg = await findDialog();
+  await within(dlg).findByText(/41\smails move to Receipts/);
+  fireEvent.click(within(dlg).getByRole("checkbox"));
+  yourFolders.mockResolvedValue(resp({
+    rows: ROWS.filter((x) => x.raw !== "Receipts 2019") }));
+  await pressDialog(/^Move 41\smails$/);
+  await screen.findByText(/and deleted “Receipts 2019”/);
+  await waitFor(() => expect(within(pane()).getByText("Receipts")).toBeTruthy());
+  expect(within(pane()).queryByText("Inbox")).toBeNull();
+});
+
+test("phone: what the merge does is above the folder list, which is short", async () => {
+  viewport(390);
+  folderCheck.mockResolvedValue(mergeCheck({ pinned: 1, protected: 1 }));
+  show();
+  await screen.findAllByTestId("folder-row");
+  fireEvent.click(within(row("Receipts 2019")).getByRole("button"));
+  const sheet = await screen.findByRole("dialog", { name: "Receipts 2019" });
+  fireEvent.click(within(sheet).getByRole("button", { name: /Merge into/ }));
+  const dlg = await findDialog();
+  const rule = await within(dlg).findByText(/will point at “Receipts”/);
+  const note = within(dlg).getByText(/Undo in Activity puts them back/);
+  const held = within(dlg).getByText(/pinned and 1 protected/);
+  const group = within(dlg).getByRole("radiogroup");
+  for (const el of [note, held, rule])
+    expect(el.compareDocumentPosition(group)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // ... the tick ("then delete") is above it, too, and the list is capped
+  expect(group.querySelector(".max-h-32")).toBeTruthy();
+  expect(within(dlg).getByRole("checkbox").compareDocumentPosition(group)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("wide: the list stays first, as drawn", async () => {
+  folderCheck.mockResolvedValue(mergeCheck());
+  show();
+  await open("Receipts 2019");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Merge into/ }));
+  const dlg = await findDialog();
+  const note = await within(dlg).findByText(/Undo in Activity puts them back/);
+  const group = within(dlg).getByRole("radiogroup");
+  expect(group.compareDocumentPosition(note)
+    & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(group.querySelector(".max-h-72")).toBeTruthy();
+});
+
 /* ------------------------------------ German ---------------------------------- */
 
 test("German: the page, the pane and the merge dialog", async () => {
@@ -669,6 +837,8 @@ test("German: the page, the pane and the merge dialog", async () => {
     .toBeTruthy();
   expect(within(dlg).getByRole("button", { name: /^41\sMails verschieben$/ }))
     .toBeTruthy();
+  expect(within(dlg).getByRole("checkbox", {
+    name: "Danach den leeren Ordner „Receipts 2019“ löschen" })).toBeTruthy();
 });
 
 /* ---------------- everything of the Clean up pages stays reachable --------- */
@@ -676,7 +846,7 @@ test("German: the page, the pane and the merge dialog", async () => {
 test("the page shows every folder of the account: nothing is hidden by a hint filter at the start", async () => {
   show();
   await screen.findAllByTestId("folder-row");
-  const names = ROWS.map((x) => x.name);
+  const names = ROWS.map((x) => x.lock === "inbox" ? "Inbox" : x.name);
   for (const n of names)
     expect(rows().some((r) => within(r).queryByText(n, { exact: true })),
       n).toBe(true);

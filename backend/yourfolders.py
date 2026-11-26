@@ -48,6 +48,7 @@ from collections import Counter
 from contextlib import contextmanager
 
 from . import accountcopy
+from . import accounts as accountsmod
 from . import auditlog
 from . import config as cfgmod
 from . import mailops
@@ -166,23 +167,54 @@ def _refuse(code: str, **params) -> RuntimeError:
 
 # --------------------------------------------------------------------- busy
 
-def _busy(acc) -> str | None:
-    """The code of what keeps the account from a folder operation now."""
-    with acc.lock:
-        if acc.state["status"] == "scanning":
-            return mailops.BUSY_SCAN
-        if (acc.delete_pending or acc.inflight or acc.undo_busy
-                or acc.state["delete"]["status"] == "running"
-                or acc.state["restore"]["status"] == "running"):
+def _twins(acc) -> list:
+    """The account states that reach this account's mailbox: `acc` first, then
+    every account with the same host and login under another name. A folder
+    changed through one of them is changed for all."""
+    out = [acc]
+    try:
+        names = accountsmod.names()
+    except Exception:
+        names = []
+    for name in names:
+        if name != acc.name and accountcopy.same_mailbox_configured(
+                acc.name, name):
+            try:
+                out.append(accountsmod.get(name))
+            except KeyError:
+                pass
+    return out
+
+
+def _names(acc) -> set[str]:
+    return {t.name for t in _twins(acc)}
+
+
+def _busy(acc, own_held: bool = False) -> str | None:
+    """The code of what keeps the account - or an account that is the same
+    mailbox - from a folder operation now. `own_held`: the caller holds this
+    account's folder lock."""
+    twins = _twins(acc)
+    for t in twins:
+        with t.lock:
+            if t.state["status"] == "scanning":
+                return mailops.BUSY_SCAN
+            if (t.delete_pending or t.inflight or t.undo_busy
+                    or t.state["delete"]["status"] == "running"
+                    or t.state["restore"]["status"] == "running"):
+                return mailops.BUSY_ACTION
+        if t.purge_lock.locked():
+            return mailops.BUSY_PURGE
+        if t.folder_lock.locked() and not (own_held and t is acc):
             return mailops.BUSY_ACTION
-    if acc.purge_lock.locked():
-        return mailops.BUSY_PURGE
     try:
         job = accountcopy.status().get("job") or {}
     except Exception:
         job = {}
-    if job.get("status") in ("running", "paused") \
-            and acc.name in (job.get("source"), job.get("target")):
+    # a copy that stopped on an error can be resumed: still a copy
+    if job.get("status") in ("running", "paused", "error") \
+            and {t.name for t in twins} & {job.get("source"),
+                                           job.get("target")}:
         return mailops.COPY_BUSY
     return None
 
@@ -194,7 +226,7 @@ def _operation(acc, mails: bool = True):
     if not acc.folder_lock.acquire(blocking=False):
         raise _refuse(mailops.BUSY_ACTION)
     try:
-        why = _busy(acc) if mails else None
+        why = _busy(acc, own_held=True) if mails else None
         if why:
             raise _refuse(why)
         yield
@@ -261,6 +293,10 @@ def _scan_off(im: dict, raw: str) -> tuple[str | None, str]:
 def _can(ctx: _Ctx, raw: str, why: str | None, mails: int | None,
          rules: list, kids: list) -> dict:
     """The reason (a stable code) each operation is off, None = allowed."""
+    # a locked folder below it (Trash flagged "Mail/Bin") goes along with a
+    # rename and is not ours to touch
+    why = why or ("locked_child" if any(ctx.lock_why(k) for k in kids)
+                  else None)
     merge = why or ("label" if ctx.is_label(raw) else None) \
         or (None if ctx.move_ok else "move_unsafe")
     delete = why or ("children" if kids else None) \
@@ -284,8 +320,8 @@ def overview(acc) -> dict:
     with acc.lock:
         scanned = set(acc.state.get("folders_raw") or [])
         done = bool(scanned) or acc.state.get("scanned_ts") is not None
-    move_rules = rulesmod.moving_into(acc.name, lambda d: True)
-    archive_rules = rulesmod.moving_into(acc.name, lambda d: True,
+    move_rules = rulesmod.moving_into(_names(acc), lambda d: True)
+    archive_rules = rulesmod.moving_into(_names(acc), lambda d: True,
                                          action="archive")
     rows: list[dict] = []
     special: list[dict] = []
@@ -440,6 +476,13 @@ def _require_unlocked(ctx: _Ctx, raw: str) -> None:
     why = ctx.lock_why(raw)
     if why:
         raise _refuse(mailops.FOLDER_LOCKED, folder=_name(raw), why=why)
+    # RENAME carries every folder below along: a special folder in there
+    # (Trash flagged "Mail/Bin") would be renamed with it
+    for kid in ctx.children(raw):
+        kid_why = ctx.lock_why(kid)
+        if kid_why:
+            raise _refuse(mailops.FOLDER_LOCKED, folder=_name(kid),
+                          why=kid_why)
 
 
 def _require_target(ctx: _Ctx, raw: str) -> None:
@@ -468,7 +511,7 @@ def _prepare_merge(conn, ctx: _Ctx, acc, folder: str, target: str) -> list:
         raise _refuse(mailops.MOVE_UNSAFE)
     if _same_folder(conn, folder, target):
         raise _refuse(mailops.FOLDER_SAME)
-    return rulesmod.moving_into(acc.name, lambda d: d == folder)
+    return rulesmod.moving_into(_names(acc), lambda d: d == folder)
 
 
 def _new_name(conn, ctx: _Ctx, acc, parent: str, typed: str,
@@ -544,7 +587,7 @@ def check(acc, op: str, folder: str = "", target: str = "",
                 r for r in (im.get("excluded_folders") or [])
                 if str(r).strip().endswith("*")]}, raw)[0]
             rules = rulesmod.moving_into(
-                acc.name, lambda d: _mapper(ctx, folder, raw)(d) != d)
+                _names(acc), lambda d: _mapper(ctx, folder, raw)(d) != d)
             return {"folder": folder, "name": _name(folder), "new": raw,
                     "new_name": _name(raw), "rules": [_public_rule(r)
                                                       for r in rules],
@@ -581,10 +624,9 @@ def _held_in(acc, folder: str) -> tuple[int, int]:
 
 def _confirmed(affected: list[dict], ids) -> None:
     """The rules the confirm named must be the rules that are there now (more
-    is refused: a rule would change that nobody was told about)."""
-    if ids is None:
-        return
-    if {r["id"] for r in affected} - set(ids):
+    is refused: a rule would change that nobody was told about). A call that
+    names none stands for "no rule" - with a rule there, it is refused."""
+    if {r["id"] for r in affected} - set(ids or ()):
         raise _refuse(mailops.FOLDER_RULES_CHANGED)
 
 
@@ -766,7 +808,7 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
             raw, leaf = _new_name(conn, ctx, acc, _parent(ctx, folder), name,
                                   current=folder)
             fn = _mapper(ctx, folder, raw)
-            affected = rulesmod.moving_into(acc.name, lambda d: fn(d) != d)
+            affected = rulesmod.moving_into(_names(acc), lambda d: fn(d) != d)
             _confirmed(affected, rules)
             status, _ = conn.rename(mailops.quote_folder(folder),
                                     mailops.quote_folder(raw))
@@ -774,6 +816,7 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
                 raise _refuse(mailops.FOLDER_RENAME_FAILED,
                               folder=_name(folder))
             _subscribe(conn, raw)
+            _subscribe(conn, folder, on=False)
         finally:
             _logout(conn)
         # the server did it: from here on every step is bookkeeping, none of
@@ -782,7 +825,7 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
         for step, run in (
                 ("config", lambda: _rename_config(acc, ctx, folder, raw, fn)),
                 ("state", lambda: _rename_state(acc, fn)),
-                ("rules", lambda: rulesmod.repoint_dest(acc.name, fn))):
+                ("rules", lambda: rulesmod.repoint_dest(_names(acc), fn))):
             try:
                 run()
             except Exception:
@@ -791,11 +834,23 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
         auditlog.record("folder_rename", account=acc.name,
                         label=f"{_name(folder)} → {_name(raw)}",
                         count=len(affected), entry_id=auditlog.new_id())
-        mailops._rescan_after_restore(acc, 1, "folder_renamed", {
-            "from": _name(folder), "to": _name(raw)})
-        return {"raw": raw, "name": _name(raw),
-                "rules": [_public_rule(r) for r in affected],
-                "failed": failed}
+    # (start_scan refuses while a folder operation holds its lock)
+    _rescan(acc, "folder_renamed", 1, {"from": _name(folder),
+                                       "to": _name(raw)})
+    return {"raw": raw, "name": _name(raw),
+            "rules": [_public_rule(r) for r in affected],
+            "failed": failed}
+
+
+def _rescan(acc, key: str, n: int, params: dict) -> None:
+    """A scan for the account (with its notice) and for every account that is
+    the same mailbox under another name - their numbers are stale too."""
+    mailops._rescan_after_restore(acc, n, key, params)
+    for t in _twins(acc)[1:]:
+        try:
+            mailops.start_scan(t)
+        except RuntimeError:
+            pass                    # busy: its next scan will do
 
 
 def _prepare_delete(conn, ctx: _Ctx, acc, folder: str) -> int:
@@ -803,15 +858,45 @@ def _prepare_delete(conn, ctx: _Ctx, acc, folder: str) -> int:
     _require_unlocked(ctx, folder)
     if ctx.children(folder):
         raise _refuse(mailops.FOLDER_HAS_CHILDREN, folder=_name(folder))
-    used = rulesmod.moving_into(acc.name, lambda d: d == folder)
+    used = rulesmod.moving_into(_names(acc), lambda d: d == folder)
     if used:
         raise _refuse(mailops.FOLDER_USED_BY_RULES, folder=_name(folder),
                       n=len(used))
     return _assert_empty(conn, folder)
 
 
+def _entry_sources(entry: dict) -> set[str]:
+    """The folders the mails of an Undo step go back to."""
+    out = {f for f, _ in entry.get("items", [])}
+    out |= {c["folder"] for c in entry.get("copies") or []}
+    for p in entry.get("parts") or []:
+        out |= {m[0] for m in p.get("mails", [])}
+    return out
+
+
+def _mark_recreate(acc, raw: str) -> None:
+    """Every older Undo step that would put mail back into `raw` learns it
+    may have to create the folder again (an emptied folder that is deleted
+    would otherwise strand them: "cannot open"). Written to disk before the
+    folder goes."""
+    for t in _twins(acc):
+        changed = False
+        with t.lock:
+            for lst in (t.undo_log, t.assistant_undo):
+                for i, e in enumerate(lst):
+                    have = e.get("recreate") or []
+                    if raw in _entry_sources(e) and raw not in have:
+                        lst[i] = {**e, "recreate": [*have, raw]}
+                        changed = True
+            if changed:
+                mailops._sync_undo(t)
+        if changed:
+            mailops.flush_undo(t)
+
+
 def _drop(conn, acc, raw: str) -> None:
     """DELETE the (just checked) empty folder and forget it."""
+    _mark_recreate(acc, raw)                 # the Undo records come first
     status, _ = conn.delete(mailops.quote_folder(raw))
     if status != "OK":
         raise _refuse(mailops.FOLDER_DELETE_FAILED, folder=_name(raw))
@@ -823,13 +908,16 @@ def _drop(conn, acc, raw: str) -> None:
 
 
 def delete(acc, folder: str, uv: int = 0) -> dict:
-    """DELETE an empty folder - the server's own count decides, right now."""
+    """DELETE an empty folder - the server's own count decides, right now,
+    and the UIDVALIDITY the confirm saw must still be the folder's."""
+    if uv <= 0:
+        raise _refuse(mailops.COUNT_REQUIRED)
     with _operation(acc):
         conn = _connect(acc)
         try:
             ctx = _Ctx(conn, acc)
             now = _prepare_delete(conn, ctx, acc, folder)
-            if uv and now != uv:
+            if now != uv:
                 raise _refuse(mailops.FOLDER_CHANGED, folder=_name(folder))
             _drop(conn, acc, folder)
         finally:
@@ -846,17 +934,24 @@ def merge(acc, folder: str, target: str, uv: int, max_uid: int,
     else, the rules next, the delete last (and only on a fresh count of 0)."""
     if uv <= 0:
         raise _refuse(mailops.COUNT_REQUIRED)
-    with _operation(acc):
-        conn = _connect(acc)
-        try:
-            return _merge_locked(conn, acc, folder, target, uv, max_uid,
-                                 delete_after, rules)
-        finally:
-            _logout(conn)
+    rescan: list = []
+    try:
+        with _operation(acc):
+            conn = _connect(acc)
+            try:
+                return _merge_locked(conn, acc, folder, target, uv, max_uid,
+                                     delete_after, rules, rescan)
+            finally:
+                _logout(conn)
+    finally:
+        # after the folder lock is gone (start_scan refuses during it) - and
+        # also after a part-way failure: the mails that did move are elsewhere
+        if rescan:
+            _rescan(acc, "folder_merged", rescan[0][0], rescan[0][1])
 
 
 def _merge_locked(conn, acc, folder, target, uv, max_uid, delete_after,
-                  rules) -> dict:
+                  rules, rescan: list) -> dict:
     moved = 0
     copies: list[dict] = []
     failure: Exception | None = None
@@ -891,6 +986,11 @@ def _merge_locked(conn, acc, folder, target, uv, max_uid, delete_after,
     if moved:
         undo = _record_merge(acc, folder, target, copies, moved, audit_id,
                              affected, delete_after, failure)
+        # what moved is no longer in the folder the index says: also after a
+        # failure part-way
+        _after_merge(acc, folder, copies)
+        rescan.append((moved, {"n": moved, "from": _name(folder),
+                               "to": _name(target)}))
     if failure is not None:
         if moved:
             raise _refuse(mailops.MOVED_THEN_FAILED, n=moved,
@@ -900,7 +1000,6 @@ def _merge_locked(conn, acc, folder, target, uv, max_uid, delete_after,
     deleted, kept = False, ""
     if delete_after:
         deleted, kept = _delete_emptied(conn, ctx, acc, folder)
-    _after_merge(acc, folder, copies, moved, target)
     return {"moved": moved, "target": _name(target), "undo": undo,
             "rules": [{k: r[k] for k in ("id", "name", "mode")}
                       for r in changed],
@@ -944,7 +1043,7 @@ def _record_merge(acc, folder, target, copies, moved, audit_id, affected,
 def _repoint(acc, folder: str, target: str) -> list[dict]:
     try:
         return rulesmod.repoint_dest(
-            acc.name, lambda d: target if d == folder else d)
+            _names(acc), lambda d: target if d == folder else d)
     except Exception:
         log.exception("merge: could not repoint the rules")
         return []
@@ -957,7 +1056,7 @@ def _delete_emptied(conn, ctx: _Ctx, acc, folder: str) -> tuple[bool, str]:
     try:
         if ctx.children(folder):
             return False, "children"
-        if rulesmod.moving_into(acc.name, lambda d: d == folder):
+        if rulesmod.moving_into(_names(acc), lambda d: d == folder):
             return False, "rules"
         _assert_empty(conn, folder)
         _drop(conn, acc, folder)
@@ -967,25 +1066,24 @@ def _delete_emptied(conn, ctx: _Ctx, acc, folder: str) -> tuple[bool, str]:
         return False, text.partition(":")[0] or "failed"
 
 
-def _after_merge(acc, folder: str, copies: list[dict], moved: int,
-                 target: str) -> None:
+def _after_merge(acc, folder: str, copies: list[dict]) -> None:
     """The moved mails leave the scan index (they live in another folder under
     new UIDs): a scan brings them back where they are now."""
     gone = {c["source_uid"] for c in copies}
     if gone:
         with acc.lock:
             mailops._apply_removal({folder: gone}, acc)
-    mailops._rescan_after_restore(acc, moved, "folder_merged", {
-        "n": moved, "from": _name(folder), "to": _name(target)})
 
 
 def undo_rules(acc, entry: dict) -> None:
     """After the Undo of a merge: the rules it had repointed go back to the
     folder they moved mail into - only those still at the target (one the user
-    edited since is theirs) and still Report only."""
+    edited since is theirs) and still in Report only (one the user switched
+    on again since is theirs, too)."""
     by_pair: dict[tuple[str, str], set[str]] = {}
     for r in entry.get("folder_rules") or []:
         by_pair.setdefault((r["from"], r["to"]), set()).add(r["id"])
     for (src, tgt), ids in by_pair.items():
         rulesmod.repoint_dest(
-            acc.name, lambda d, s=src, t=tgt: s if d == t else d, ids=ids)
+            _names(acc), lambda d, s=src, t=tgt: s if d == t else d, ids=ids,
+            only_report=True)

@@ -94,7 +94,7 @@ test("things to tidy are the hint cards; every reason has its words in both lang
   expect(tidyCount(resp())).toBe(3);
   expect(tidyCount(null)).toBe(0);
   for (const why of ["inbox", "role", "provider", "noselect", "label",
-    "move_unsafe", "children", "rules", "not_empty"] as const) {
+    "move_unsafe", "children", "rules", "not_empty", "locked_child"] as const) {
     setLang("en");
     const en = whyText(why);
     setLang("de");

@@ -3071,6 +3071,7 @@ def start_scan(acc=None, notice: dict | None = None,
     acc = acc or accounts.get()
     with acc.lock:
         if acc.state["status"] == "scanning" \
+                or acc.folder_lock.locked() \
                 or acc.state["ai"]["status"] == "running" \
                 or acc.state["delete"]["status"] == "running" \
                 or acc.state["restore"]["status"] == "running" \
@@ -3364,10 +3365,12 @@ def _apply_seen(folder: str, uids: list[int], acc) -> None:
 
 
 def _job_running(acc) -> bool:
-    """A move / deletion job or a Time machine restore is running (acc.lock
-    held): nothing else may change the mailbox meanwhile."""
+    """A move / deletion job, a Time machine restore or a folder operation
+    (Your folders) is running (acc.lock held): nothing else may change the
+    mailbox meanwhile."""
     return (acc.state["delete"]["status"] == "running"
-            or acc.state["restore"]["status"] == "running")
+            or acc.state["restore"]["status"] == "running"
+            or acc.folder_lock.locked())
 
 
 def _from_role_label(n: int, role: str) -> tuple[str, dict]:

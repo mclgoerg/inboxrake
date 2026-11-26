@@ -65,7 +65,7 @@ def test_merge_over_http_and_its_check(box):
 def test_refusals_are_409_with_a_stable_code(box):
     for path, body, code in (
             ("rename", dict(folder="INBOX", name="X"), "folder_locked"),
-            ("delete", dict(folder="Travel"), "folder_not_empty"),
+            ("delete", dict(folder="Travel", uv=1), "folder_not_empty"),
             ("create", dict(name="travel"), "folder_exists"),
             ("merge", dict(folder="Trash", target="Travel", uv=1,
                            max_uid=9), "folder_locked"),

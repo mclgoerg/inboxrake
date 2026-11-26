@@ -1753,7 +1753,7 @@ export interface CopiesResp {
 export type FolderLock = "inbox" | "role" | "provider" | "noselect";
 /** The reason one operation is off for a folder (null = allowed). */
 export type FolderWhy = FolderLock | "label" | "move_unsafe" | "children"
-  | "rules" | "not_empty";
+  | "rules" | "not_empty" | "locked_child";
 export type FolderHint = "look" | "empty" | "stale";
 
 /** A rule as a folder row names it. */

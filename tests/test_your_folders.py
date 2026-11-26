@@ -175,7 +175,7 @@ def test_special_folders_cannot_be_renamed_or_deleted(box, folder, op):
         if op == "rename":
             yf.rename(acc(), folder, "Elsewhere")
         else:
-            yf.delete(acc(), folder)
+            yf.delete(acc(), folder, 1)
     assert err(e) == "folder_locked"
     assert folder in box.mailbox
 
@@ -225,7 +225,7 @@ def test_noselect_and_special_use_flags_lock(monkeypatch):
     mailops.run_scan()
     for name in ("Parent", "Notes"):
         with pytest.raises(RuntimeError) as e:
-            yf.delete(acc(), name)
+            yf.delete(acc(), name, 1)
         assert err(e) == "folder_locked", name
 
 
@@ -302,7 +302,7 @@ def test_delete_asks_the_server_not_the_scan_index(box):
     # the scan saw receipts-old empty; a mail arrived since
     box.mailbox["receipts-old"].append(_mails("late", 1, first=77)[0])
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "receipts-old")
+        yf.delete(acc(), "receipts-old", 1)
     assert err(e) == "folder_not_empty"
     assert "n=1" in str(e.value)
     assert "receipts-old" in box.mailbox
@@ -311,7 +311,7 @@ def test_delete_asks_the_server_not_the_scan_index(box):
 
 def test_delete_refuses_a_folder_with_mail(box):
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "Travel")
+        yf.delete(acc(), "Travel", 1)
     assert err(e) == "folder_not_empty"
     assert len(box.mailbox["Travel"]) == 2
 
@@ -325,7 +325,7 @@ def test_delete_needs_status_select_and_search_to_agree(box, monkeypatch):
         "OK", [b'"x" (MESSAGES 0 UIDNEXT 2 UIDVALIDITY 1)']
         if q.strip('"') == "receipts-old" else real(q, w)[1]))
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "receipts-old")
+        yf.delete(acc(), "receipts-old", 1)
     assert err(e) == "folder_not_empty"
 
 
@@ -343,11 +343,11 @@ def test_delete_refuses_a_folder_with_subfolders_or_rules(box):
     _add(box, "Projects/Alpha")
     mailops.run_scan()
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "Projects")
+        yf.delete(acc(), "Projects", 1)
     assert err(e) == "folder_has_children"
     r = rule("receipts-old")
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "receipts-old")
+        yf.delete(acc(), "receipts-old", 1)
     assert err(e) == "folder_used_by_rules" and "n=1" in str(e.value)
     assert rule_of(r["id"])["dest"] == "receipts-old"      # untouched
 
@@ -357,17 +357,17 @@ def test_delete_is_allowed_for_an_empty_label_too(monkeypatch):
                      "Used label": _mails("U", 1, first=5)}, gmail=True)
     monkeypatch.setattr(mailops, "connect", lambda cfg, name=None: fake)
     mailops.run_scan()
-    yf.delete(acc(), "Empty label")
+    yf.delete(acc(), "Empty label", 1)
     assert "Empty label" not in fake.mailbox
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "Used label")
+        yf.delete(acc(), "Used label", 1)
     assert err(e) == "folder_not_empty"
 
 
 def test_a_delete_that_the_server_refuses_is_reported(box, monkeypatch):
     monkeypatch.setattr(box, "delete", lambda name: ("NO", [b"no"]))
     with pytest.raises(RuntimeError) as e:
-        yf.delete(acc(), "receipts-old")
+        yf.delete(acc(), "receipts-old", 1)
     assert err(e) == "folder_delete_failed"
     assert "receipts-old" in mailops.STATE["folders_raw"]
 

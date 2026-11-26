@@ -3,9 +3,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { FolderCheck, YourFolderRow } from "../types";
-import { anyActive, ruleSentences, whyText } from "../yourFolders";
+import { anyActive, folderLabel, ruleSentences, whyText } from "../yourFolders";
 import { Button, Checkbox, Loading, Modal, Notice, RadioRow, SettingsGroup,
-  useArmed } from "./ui";
+  useArmed, useMediaQuery } from "./ui";
 
 /** What the merge dialog resolves with: the target, the live numbers the
  *  merge is bound to, the rules it named and whether to delete the emptied
@@ -18,7 +18,11 @@ export interface MergeAnswer {
 
 /** "Merge “X” into…": pick the folder, read what happens, then Move N mails.
  *  The count, the rules and the refusals are the server's, asked again for
- *  every folder picked (a look-alike is suggested, never chosen for you). */
+ *  every folder picked (a look-alike is suggested, never chosen for you).
+ *  On a phone the sheet is short: what the move does (the rules that go back
+ *  to Report only, pinned and protected mail, the Undo) comes BEFORE the
+ *  folder list (with the "then delete" tick), which is capped, so it is in
+ *  view beside the button. */
 export function FolderMerge({ row, targets, account, onResult }: {
   row: YourFolderRow;
   /** the folders it may go into (`mergeTargets`) */
@@ -31,6 +35,7 @@ export function FolderMerge({ row, targets, account, onResult }: {
   const [chk, setChk] = useState<FolderCheck | null>(null);
   const [error, setError] = useState("");
   const [del, setDel] = useState(false);
+  const phone = useMediaQuery("(max-width: 639px)");
   const armed = useArmed();
   const safe = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -48,6 +53,7 @@ export function FolderMerge({ row, targets, account, onResult }: {
   }, [chosen, row.raw, account]);
 
   const target = targets.find((r) => r.raw === chosen);
+  const targetName = target ? folderLabel(target) : chosen;
   const n = chk?.count ?? 0;
   const rules = chk?.rules ?? [];
   const canDelete = chk ? chk.can_delete ?? null : "children";
@@ -62,60 +68,61 @@ export function FolderMerge({ row, targets, account, onResult }: {
     if (!chk || !chosen || n === 0 || !armed(e.detail === 0)) return;
     onResult({ target: chosen, check: chk, deleteAfter: deleteNow });
   };
+
+  const notices = error ? (
+    <Notice tone="danger" role="alert">{error}</Notice>
+  ) : !chk ? (
+    <Loading />
+  ) : (
+    <div className="space-y-3">
+      <Notice icon={<Info size={16} aria-hidden />}>
+        {n === 0 ? t("yf.merge_none")
+          : t("yf.merge_note", { n, target: targetName, name: row.name })}
+      </Notice>
+      {(chk.pinned ?? 0) + (chk.protected ?? 0) > 0 && n > 0 && (
+        <Notice icon={<Info size={16} aria-hidden />}>
+          {t("yf.merge_held", { p: chk.pinned ?? 0, q: chk.protected ?? 0 })}
+        </Notice>
+      )}
+      {rules.length > 0 && (
+        <Notice tone="warn" icon={<ListChecks size={16} aria-hidden />}>
+          <ul className="space-y-1">
+            {ruleSentences(rules, targetName).map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+          {anyActive(rules) && <p className="mt-1">{t("yf.rules_tail")}</p>}
+        </Notice>
+      )}
+    </div>
+  );
+  const list = (
+    <SettingsGroup header={t("yf.merge_pick")} radioGroup className="mb-0">
+      <div className={`${phone ? "max-h-32" : "max-h-72"} divide-y
+        divide-line overflow-y-auto`}>
+        {targets.map((r) => (
+          <RadioRow key={r.raw} label={folderLabel(r)} sub={sub(r)}
+            checked={r.raw === chosen} onSelect={() => setChosen(r.raw)} />
+        ))}
+      </div>
+    </SettingsGroup>
+  );
+  const tick = chk && (
+    <div>
+      <Checkbox checked={deleteNow} disabled={canDelete !== null}
+        label={t("yf.merge_delete", { name: row.name })}
+        onChange={(e) => setDel(e.target.checked)} />
+      {canDelete !== null && (
+        <p className="ml-7 type-meta text-muted">{whyText(canDelete)}</p>
+      )}
+    </div>
+  );
   return (
     <Modal size="sm" labelledBy={titleId} onClose={() => onResult(null)}>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
         <div id={titleId} className="type-heading">
           {t("yf.merge_title", { name: row.name })}</div>
-        <SettingsGroup header={t("yf.merge_pick")} radioGroup>
-          <div className="max-h-72 divide-y divide-line overflow-y-auto">
-            {targets.map((r) => (
-              <RadioRow key={r.raw} label={r.name} sub={sub(r)}
-                checked={r.raw === chosen}
-                onSelect={() => { setChosen(r.raw); setDel(false); }} />
-            ))}
-          </div>
-        </SettingsGroup>
-        {error ? (
-          <Notice tone="danger" role="alert">{error}</Notice>
-        ) : !chk ? (
-          <Loading />
-        ) : (
-          <>
-            <Notice icon={<Info size={16} aria-hidden />}>
-              {n === 0 ? t("yf.merge_none")
-                : t("yf.merge_note", { n, target: target?.name ?? chosen,
-                  name: row.name })}
-            </Notice>
-            {(chk.pinned ?? 0) + (chk.protected ?? 0) > 0 && n > 0 && (
-              <Notice icon={<Info size={16} aria-hidden />}>
-                {t("yf.merge_held", { p: chk.pinned ?? 0,
-                  q: chk.protected ?? 0 })}
-              </Notice>
-            )}
-            {rules.length > 0 && (
-              <Notice tone="warn" icon={<ListChecks size={16} aria-hidden />}>
-                <ul className="space-y-1">
-                  {ruleSentences(rules, target?.name ?? chosen).map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-                {anyActive(rules) && (
-                  <p className="mt-1">{t("yf.rules_tail")}</p>
-                )}
-              </Notice>
-            )}
-            <div>
-              <Checkbox checked={deleteNow} disabled={canDelete !== null}
-                label={t("yf.merge_delete", { name: row.name })}
-                onChange={(e) => setDel(e.target.checked)} />
-              {canDelete !== null && (
-                <p className="ml-7 type-meta text-muted">
-                  {whyText(canDelete)}</p>
-              )}
-            </div>
-          </>
-        )}
+        {phone ? <>{notices}{tick}{list}</> : <>{list}{notices}{tick}</>}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-line
         px-4 py-3 max-sm:flex-col-reverse max-sm:items-stretch sm:px-5">

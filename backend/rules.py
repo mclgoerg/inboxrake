@@ -823,8 +823,11 @@ def drop_account(name: str) -> None:
                      len(mine))
 
 
-def _on_account(rule: dict, account: str) -> bool:
-    return (rule.get("account") or accounts.default_name()) == account
+def _on_account(rule: dict, account) -> bool:
+    """`account`: one name, or a collection of names (an account and the
+    accounts that are the same mailbox)."""
+    mine = rule.get("account") or accounts.default_name()
+    return mine == account if isinstance(account, str) else mine in account
 
 
 def moving_into(account: str, match, action: str = "move") -> list[dict]:
@@ -846,11 +849,14 @@ def moving_into(account: str, match, action: str = "move") -> list[dict]:
             and match(r.get("dest", ""))]
 
 
-def repoint_dest(account: str, remap, ids=None) -> list[dict]:
+def repoint_dest(account, remap, ids=None, only_report: bool = False
+                 ) -> list[dict]:
     """Point the move rules of `account` at the folder `remap(dest)` names
     instead (a folder was renamed or merged away), and send each one that
     changes back to Report only, exactly as an edit of its target does: what
-    was previewed is what runs. `ids` limits it to those rules. Returns
+    was previewed is what runs. `ids` limits it to those rules, `only_report`
+    leaves the Active ones alone (the user's own switch); `account` is a name
+    or a collection of names. Returns
     `{id, name, mode, from, to}` per rule changed (`mode`: what it had)."""
     changed: list[dict] = []
     with _LOCK:
@@ -859,7 +865,8 @@ def repoint_dest(account: str, remap, ids=None) -> list[dict]:
             if not _on_account(r, account) \
                     or r.get("scope", "mail") != "mail" \
                     or r.get("action") != "move" \
-                    or (ids is not None and r["id"] not in ids):
+                    or (ids is not None and r["id"] not in ids) \
+                    or (only_report and r.get("mode") == "execute"):
                 continue
             old = r.get("dest") or ""
             new = remap(old) if old else old
@@ -868,8 +875,8 @@ def repoint_dest(account: str, remap, ids=None) -> list[dict]:
             changed.append({"id": r["id"], "name": r.get("name", ""),
                             "mode": r.get("mode", "report"),
                             "from": old, "to": new})
-            if r.get("origin") == ORIGIN_MCP:
-                r["origin"] = "manual"   # the user's edit: theirs from now on
+            if r.get("origin") == ORIGIN_MCP and r.get("mode") == "execute":
+                r["origin"] = "manual"   # an approved rule edited: theirs now
             r["dest"] = new
             _reset_to_report(r, "edited")
             r["edited"] = int(time.time())

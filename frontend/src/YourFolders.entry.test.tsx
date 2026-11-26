@@ -20,9 +20,11 @@ import { CleanupPage } from "./components/TabPages";
 import { setLang } from "./i18n";
 import { TOOL_PAGES, TOOL_TAB, isToolPage, parseHash } from "./nav";
 import type { AppState, Group } from "./types";
+import { forgetFolders } from "./yourFoldersCache";
 import { resp } from "./yourFoldersFixtures";
 
 beforeEach(() => {
+  forgetFolders();
   yourFolders.mockResolvedValue(resp());
   duplicates.mockRejectedValue(new Error("x"));
 });
@@ -111,12 +113,43 @@ test("Clean up: the tile is the last one, shows the folders and the things to ti
   expect(p.onOpen).toHaveBeenCalledWith("yourfolders");
 });
 
-test("Clean up: before the answer it counts the folders it already knows", () => {
+test("Clean up: no number until the answer is there (no 8 that turns into 10)", () => {
   yourFolders.mockReturnValue(new Promise(() => {}));
   cleanup_();
   const tile = screen.getByRole("button", { name: /^Your folders/ });
-  expect(tile.textContent).toMatch(/2\sfolders/);
+  expect(tile.textContent).not.toMatch(/\d/);
   expect(tile.textContent).toContain("See and tidy them");
+  expect(tile.querySelector("[aria-hidden].rounded-control.bg-panel2")).toBeTruthy();
+});
+
+test("Clean up: the mail server is asked once per scan, not on every visit", async () => {
+  const s = state({ scanned_ts: 1000 });
+  cleanup_({ state: s });
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Your folders/ })
+    .textContent).toMatch(/10\sfolders/));
+  expect(yourFolders).toHaveBeenCalledTimes(1);
+  cleanup();
+  // the tab again (a new mount): the kept answer is there at once
+  cleanup_({ state: s });
+  expect(screen.getByRole("button", { name: /^Your folders/ }).textContent)
+    .toMatch(/10\sfolders/);
+  expect(yourFolders).toHaveBeenCalledTimes(1);
+  cleanup();
+  // another account, or the next scan: asked again
+  cleanup_({ state: s, account: "b" });
+  await waitFor(() => expect(yourFolders).toHaveBeenCalledTimes(2));
+  cleanup();
+  cleanup_({ state: state({ scanned_ts: 2000 }) });
+  await waitFor(() => expect(yourFolders).toHaveBeenCalledTimes(3));
+});
+
+test("Clean up: a failed answer leaves the tile without a number", async () => {
+  yourFolders.mockRejectedValue(new Error("down"));
+  cleanup_();
+  await waitFor(() => expect(yourFolders).toHaveBeenCalled());
+  await new Promise((r) => setTimeout(r, 30));
+  expect(screen.getByRole("button", { name: /^Your folders/ }).textContent)
+    .not.toMatch(/\d/);
 });
 
 test("Clean up: nothing to tidy says so; before a scan the server is not asked", async () => {

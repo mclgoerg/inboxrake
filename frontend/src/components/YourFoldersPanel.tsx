@@ -9,8 +9,9 @@ import { useSplitPane } from "../splitPane";
 import { dayMonth } from "../subscriptions";
 import type { FolderHint, FolderRule, YourFolderRow, YourFoldersResp }
   from "../types";
-import { folderFilter, leafName, mergeTargets, quietSince, renameNotes,
-  ruleSentences, anyActive, unreadPct } from "../yourFolders";
+import { rememberFolders } from "../yourFoldersCache";
+import { folderFilter, folderLabel, leafName, mergeTargets, quietSince,
+  renameNotes, ruleSentences, anyActive, unreadPct } from "../yourFolders";
 import { FolderMerge, type MergeAnswer } from "./FolderMerge";
 import { FolderPane, folderIcon } from "./FolderPane";
 import { Button, EmptyState, IconTile, Loading, Modal, Notice, PanelHeader,
@@ -94,12 +95,13 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
     try {
       const d = await api.yourFolders(account);
       if (!alive.current) return;
+      rememberFolders(account, scannedTs, d);
       setData(d);
       setError("");
     } catch (e: any) {
       if (alive.current) setError(String(e.message ?? e));
     }
-  }, [account]);
+  }, [account, scannedTs]);
 
   useEffect(() => {
     alive.current = true;
@@ -140,10 +142,17 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
 
   const rename = (row: YourFolderRow) => run(async () => {
     const leaf = leafName(row);
+    // a name that is taken is said in the prompt, which keeps what was typed
+    const parent = row.name.slice(0, row.name.length - leaf.length);
+    const taken = new Set([...rows.map((r) => r.name),
+      ...(data?.special ?? []).map((s) => s.name)]
+      .map((n) => n.toLowerCase()));
     const asked = await promptDialog({ title: t("yf.rename_title",
       { name: row.name }), label: t("yf.rename_label"), initial: leaf,
     confirmLabel: t("yf.rename_btn"),
-    validate: (v) => v.trim() ? null : t("yf.name_required") });
+    validate: (v) => !v.trim() ? t("yf.name_required")
+      : v.trim() !== leaf && taken.has((parent + v.trim()).toLowerCase())
+        ? t("ferr.folder_exists", { folder: parent + v.trim() }) : null });
     const typed = asked?.trim();
     if (!typed || typed === leaf) return;
     const chk = await api.folderCheck({ op: "rename", folder: row.raw,
@@ -175,7 +184,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
     const r = await api.mergeFolder({ folder: row.raw, target: answer.target,
       uv: c.uv ?? 0, max_uid: c.max_uid ?? 0, delete_after: answer.deleteAfter,
       rules: (c.rules ?? []).map((x) => x.id) }, account);
-    const to = target?.name ?? r.target ?? answer.target;
+    const to = target ? folderLabel(target) : r.target ?? answer.target;
     const kept = answer.deleteAfter && !r.deleted ? r.kept : "";
     const text = [t(r.deleted ? "yf.merged_deleted" : "yf.merged",
       { n: r.moved, target: to, name: row.name }),
@@ -190,7 +199,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
           await changed();
         }).catch(fail);
       } } : undefined });
-    if (r.deleted) { setSel(null); setSheet(false); }
+    if (r.deleted) { setSel(answer.target); setSheet(false); }
     await changed();
   });
 
@@ -255,10 +264,10 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
           .filter((r): r is YourFolderRow => !!r);
         const Icon = HINT_ICON[h.kind];
         const detail = h.kind === "stale" && named.length === 1
-          ? t("yf.hint.stale_detail", { name: named[0].name,
+          ? t("yf.hint.stale_detail", { name: folderLabel(named[0]),
             mails: t("n.mails", { n: named[0].mails ?? 0 }),
             pct: unreadPct(named[0]), year: quietSince(named[0]) ?? "" })
-          : named.map((r) => r.name).join(", ");
+          : named.map(folderLabel).join(", ");
         const title = t(`yf.hint.${h.kind}`, { n: h.folders.length });
         return (
           <li key={h.kind}>
@@ -297,7 +306,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
         <span className="shrink-0 text-muted">{folderIcon(r, true)}</span>
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <span className={`truncate type-body font-medium
-            ${numbers(r) ? "" : "text-muted"}`}>{r.name}</span>
+            ${numbers(r) ? "" : "text-muted"}`}>{folderLabel(r)}</span>
           {r.lock && (
             <Lock size={14} aria-label={t("yf.locked")} className="shrink-0
               text-faint" />
@@ -323,7 +332,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className={`truncate type-body-mobile font-medium
-            ${numbers(r) ? "" : "text-muted"}`}>{r.name}</span>
+            ${numbers(r) ? "" : "text-muted"}`}>{folderLabel(r)}</span>
           {r.lock && <Lock size={14} aria-label={t("yf.locked")}
             className="shrink-0 text-faint" />}
         </span>
@@ -370,7 +379,8 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
         <Lock size={14} aria-hidden />
         <span>{t("yf.footer")}</span>
         <button type="button" onClick={onSettings}
-          className="cursor-pointer text-accent underline">
+          className="inline-flex cursor-pointer items-center text-accent
+            underline coarse:min-h-11">
           {t("yf.footer_link")}</button>
       </div>
     </div>
@@ -443,7 +453,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
         {content()}
       </div>
       {sheet && !split && cur && (
-        <Modal size="md" onClose={() => setSheet(false)} label={cur.name}>
+        <Modal size="md" onClose={() => setSheet(false)} label={folderLabel(cur)}>
           <PanelHeader title={t("yf.pane.title")}
             onClose={() => setSheet(false)} />
           <div className="min-h-0 flex-1 overflow-y-auto">{pane(cur)}</div>

@@ -161,8 +161,11 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
   const [always, setAlways] = useState(false);
   // folders made from this picker: listed (last) and chosen right away
   const [made, setMade] = useState<{ raw: string; name: string }[]>([]);
-  // a prompt is open above the picker: its clicks and Esc are not ours
+  // a prompt is open above the picker: its clicks and Esc are not ours, and
+  // the popover is inert meanwhile (nothing behind it can be reached)
   const asking = useRef(false);
+  const [askingUi, setAskingUi] = useState(false);
+  const newRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(openerNow());
   const pop = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ top?: number; bottom?: number;
@@ -209,6 +212,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
 
   const newFolder = async () => {
     asking.current = true;
+    setAskingUi(true);
     try {
       const name = await promptDialog({ title: t("yf.create_title"),
         label: t("yf.create_label"), confirmLabel: t("yf.create_btn"),
@@ -222,7 +226,12 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
       toast?.show(String(e?.message ?? e), { variant: "error" });
     } finally {
       // after the dialog's own closing clicks have passed
-      setTimeout(() => { asking.current = false; }, 0);
+      setTimeout(() => {
+        asking.current = false;
+        setAskingUi(false);
+        requestAnimationFrame(() => newRef.current?.focus(
+          { preventScroll: true }));
+      }, 0);
     }
   };
 
@@ -434,7 +443,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
                   </div>
                 ))}
               {/* the last row: a new folder, chosen as soon as it exists */}
-              <button type="button" data-folder-row=""
+              <button type="button" data-folder-row="" ref={newRef}
                 onClick={() => void newFolder()}
                 className="flex min-h-11 w-full items-center gap-3 px-4 py-1.5
                   text-left text-accent transition-colors hover:bg-panel2">
@@ -472,7 +481,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     );
   }
   return createPortal(
-    <div ref={pop} role="dialog" aria-label={title}
+    <div ref={pop} role="dialog" aria-label={title} inert={askingUi}
       style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
         left: place?.left ?? 0, width: POP_W, maxHeight: place?.maxH,
         opacity: place ? 1 : 0 }}

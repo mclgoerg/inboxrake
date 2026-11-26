@@ -58,7 +58,8 @@ def test_rename_points_rules_at_the_new_name_and_back_to_report(box):
     active = arm(rule("Receipts 2019"))
     assert active["mode"] == "execute"
     other = rule("Travel", name="Trips")
-    out = yf.rename(acc(), "Receipts 2019", "Receipts 2020")
+    out = yf.rename(acc(), "Receipts 2019", "Receipts 2020",
+                    rules=[active["id"]])
     _wait()
     assert [r["id"] for r in out["rules"]] == [active["id"]]
     got = rule_of(active["id"])
@@ -94,7 +95,7 @@ def test_a_rule_of_another_account_or_tenant_is_left_alone(box):
         if r["id"] == theirs["id"]:
             r["account"] = "other"          # another account's rule
     rulesmod._save(data)
-    yf.rename(acc(), "Receipts 2019", "Receipts 2020")
+    yf.rename(acc(), "Receipts 2019", "Receipts 2020", rules=[mine["id"]])
     _wait()
     assert rule_of(mine["id"])["dest"] == "Receipts 2020"
     assert rule_of(theirs["id"])["dest"] == "Receipts 2019"
@@ -154,7 +155,7 @@ def test_rename_follows_a_folder_with_subfolders(box):
     r = rule("Projects/Alpha", name="Alpha rule")
     cfgmod.update_config({"account": acc().name, "excluded_folders": [
         "Projects/Alpha", "Trash", "Spam", "Sent"]})
-    out = yf.rename(acc(), "Projects", "Work")
+    out = yf.rename(acc(), "Projects", "Work", rules=[r["id"]])
     _wait()
     assert "Work/Alpha" in box.mailbox and "Projects/Alpha" not in box.mailbox
     assert rule_of(r["id"])["dest"] == "Work/Alpha"
@@ -188,7 +189,7 @@ def test_a_failed_rename_changes_nothing_locally(box, monkeypatch):
     r = rule("Receipts 2019")
     monkeypatch.setattr(box, "rename", lambda a, b: ("NO", [b"nope"]))
     with pytest.raises(RuntimeError) as e:
-        yf.rename(acc(), "Receipts 2019", "Receipts 2020")
+        yf.rename(acc(), "Receipts 2019", "Receipts 2020", rules=[r["id"]])
     assert err(e) == "folder_rename_failed"
     assert rule_of(r["id"])["dest"] == "Receipts 2019"
     assert "Receipts 2019" in mailops.STATE["folders_raw"]
@@ -200,7 +201,7 @@ def test_a_local_step_that_fails_does_not_stop_the_next(box, monkeypatch):
     def boom(*a):
         raise ZeroDivisionError
     monkeypatch.setattr(yf, "_rename_config", boom)
-    out = yf.rename(acc(), "Receipts 2019", "Receipts 2020")
+    out = yf.rename(acc(), "Receipts 2019", "Receipts 2020", rules=[r["id"]])
     _wait()
     assert out["failed"] == ["config"]
     assert rule_of(r["id"])["dest"] == "Receipts 2020"
@@ -211,7 +212,7 @@ def test_a_local_step_that_fails_does_not_stop_the_next(box, monkeypatch):
 def test_nothing_runs_while_a_move_job_is_queued_or_running(box):
     ops = (lambda: yf.rename(acc(), "Receipts 2019", "X1"),
            lambda: yf.merge(acc(), "Receipts 2019", "Receipts", 1, 99),
-           lambda: yf.delete(acc(), "receipts-old"),
+           lambda: yf.delete(acc(), "receipts-old", 1),
            lambda: yf.check(acc(), "delete", "receipts-old"))
     for op in ops:
         acc().delete_pending.append({"by_folder": {"INBOX": {1}}})

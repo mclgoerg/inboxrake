@@ -26,6 +26,7 @@ import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
 import { useAllAccounts } from "../useAllAccounts";
 import { useCopies } from "../useCopies";
+import { cachedFolders, rememberFolders } from "../yourFoldersCache";
 import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
@@ -126,19 +127,25 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
       .catch(() => alive && setDups("failed"));
     return () => { alive = false; };
   }, [account, done]);
-  // Your folders: how many there are and how many things look worth tidying
-  // (one connection to the mail server; fetched on mount, account change and
-  // scan done, like Duplicates).
-  const [yf, setYf] = useState<YourFoldersResp | null>(null);
+  // Your folders: how many there are and how many things look worth tidying.
+  // It takes a connection to the mail server, so it is asked once per scan
+  // (the answer is kept, see yourFoldersCache) - not on every visit of this
+  // tab - and the tile shows no number until the answer is there.
+  const scan = state?.scanned_ts ?? null;
+  const [yf, setYf] = useState<YourFoldersResp | "failed" | null>(
+    () => cachedFolders(account, scan));
   useEffect(() => {
     if (!done) { setYf(null); return; }
+    const hit = cachedFolders(account, scan);
+    if (hit) { setYf(hit); return; }
+    setYf(null);
     let alive = true;
     Promise.resolve().then(() => api.yourFolders(account))
-      .then((r) => alive && setYf(r))
-      .catch(() => alive && setYf(null));
+      .then((r) => { rememberFolders(account, scan, r); if (alive) setYf(r); })
+      .catch(() => alive && setYf("failed"));
     return () => { alive = false; };
-  }, [account, done]);
-  const yfRows = yf ? yf.rows.length : null;
+  }, [account, done, scan]);
+  const yfData = yf != null && yf !== "failed" ? yf : null;
   const dupReady = dups != null && dups !== "failed";
   const dupCompare = dupReady ? dups.versions + dups.possible : 0;
   const compareText = t("tab.dup_compare", { n: fmtNum(dupCompare) });
@@ -294,12 +301,11 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
         <li className="contents">
           <Tile icon={<FolderTree size={18} aria-hidden />}
             tone="bg-info-bg text-info-fg" label={t("yf.menu")}
-            value={yfRows != null ? t("n.folders", { n: yfRows })
-              : state?.folders_raw?.length
-                ? t("n.folders", { n: state.folders_raw.length }) : null}
-            sub={yf == null ? t("yf.tile_sub_open")
-              : yf.hints.length > 0
-                ? t("yf.tile_sub", { n: yf.hints.length })
+            value={yfData ? t("n.folders", { n: yfData.rows.length })
+              : done && yf == null ? <Skeleton className="h-6 w-14" /> : null}
+            sub={!yfData ? t("yf.tile_sub_open")
+              : yfData.hints.length > 0
+                ? t("yf.tile_sub", { n: yfData.hints.length })
                 : t("yf.tile_sub_none")}
             onClick={() => onOpen("yourfolders")} />
         </li>

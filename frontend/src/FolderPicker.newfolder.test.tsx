@@ -172,10 +172,16 @@ test("on a wide screen (a popover) the prompt's own presses and Esc leave it ope
   fireEvent.mouseDown(within(prompt).getByRole("textbox"));
   fireEvent.keyDown(within(prompt).getByRole("textbox"), { key: "a" });
   expect(onClose).not.toHaveBeenCalled();
+  // nothing of the popover can be reached while the prompt is open
+  expect(dlg.hasAttribute("inert")).toBe(true);
   await pressDialog("Create");
   await within(dlg).findByRole("button", { name: /^Warranty/ });
   expect(onClose).not.toHaveBeenCalled();
-  // ... and once the prompt is gone an outside press closes it again
+  // ... and once the prompt is gone it is usable again, with the focus back
+  // on the row that opened it; an outside press closes it again
+  await waitFor(() => expect(dlg.hasAttribute("inert")).toBe(false));
+  await waitFor(() => expect(document.activeElement)
+    .toBe(within(dlg).getByRole("button", { name: "New folder…" })));
   await new Promise((r) => setTimeout(r, 30));
   fireEvent.mouseDown(document.body);
   expect(onClose).toHaveBeenCalled();

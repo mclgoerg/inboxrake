@@ -680,6 +680,8 @@ lock; Sent, Drafts, Junk, Trash and the mail provider's own folders (Gmail's
 `[Gmail]/…`, All Mail, Starred, Proton Bridge's Folders / Labels parents) are
 named in the footer and cannot be changed here - set them in Settings →
 Account.
+A folder with a special folder below it (a Trash folder inside "Mail") is
+locked too: renaming it would rename the special folder with it.
 
 A folder's pane has four actions and the scan switch:
 
@@ -696,7 +698,8 @@ A folder's pane has four actions and the scan switch:
   machine's points follow the new name, and a scan starts.
 - **Delete folder** is only offered for empty folders. The mail server is
   asked at that moment (not the scan): any mail left, a subfolder or a rule
-  that moves mail into it refuses the delete.
+  that moves mail into it refuses the delete. Undo steps that would put mail
+  back into the deleted folder recreate it first.
 - **Open in All mail** shows the folder's mails (`folder:"…"`, see
   [filters](filters.md#words-only-the-all-mail-list-knows)).
 - **Part of the cleanup scan** is the same setting as Settings → Account →
@@ -713,8 +716,10 @@ goes back to **Report only**, as every change of a target does, and Undo of a
 merge points it back. **Labels** (Gmail labels, Proton Bridge `Labels/…`) can
 be renamed, created and - when empty - deleted, but not merged: a mail can
 carry several labels and a merge could take the others away, so the page says
-so instead of guessing. Nothing runs while a move job, a scan or an Undo is
-running, and every folder action is in Activity.
+so instead of guessing. Nothing runs while a move job, a scan, an Undo or a
+copy to another account is running - for the account and for any account that
+is the same mailbox under another name - and none of those starts while a
+folder is being changed. Every folder action is in Activity.
 
 ### Unsubscribe
 

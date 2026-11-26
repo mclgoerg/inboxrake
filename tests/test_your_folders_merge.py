@@ -18,6 +18,8 @@ from test_your_folders import (_add, _mails, acc, arm, box, err,  # noqa: F401
 
 def merge(folder="Receipts 2019", target="Receipts", **kw):
     chk = yf.check(acc(), "merge", folder, target)
+    # the rules the confirm names are the rules the call confirms
+    kw.setdefault("rules", [r["id"] for r in chk["rules"]])
     return yf.merge(acc(), folder, target, chk["uv"], chk["max_uid"], **kw)
 
 
@@ -222,6 +224,34 @@ def test_a_part_way_failure_keeps_the_undo_and_touches_nothing_else(
     assert auditlog.load(acc().name)["entries"][0]["outcome"] == "partial"
     mailops.undo_last()
     assert uids(box, "Receipts 2019") == [10, 11]
+
+
+def test_after_a_part_way_failure_the_index_no_longer_holds_what_moved(
+        box, monkeypatch):
+    """The mails that did move are not where the index says: with no scan
+    able to start they leave the index at once, and the notice says to rescan."""
+    def busy(*a, **k):
+        raise RuntimeError("busy")
+    monkeypatch.setattr(mailops, "MOVE_CHUNK", 1)
+    real = mailops._uid_move
+    calls = []
+
+    def flaky(conn, uidstr, dest, src="", receipt=None):
+        calls.append(uidstr)
+        if len(calls) == 2:
+            return False
+        return real(conn, uidstr, dest, src, receipt)
+
+    monkeypatch.setattr(mailops, "_uid_move", flaky)
+    monkeypatch.setattr(mailops, "start_scan", busy)
+    chk = yf.check(acc(), "merge", "Receipts 2019", "Receipts")
+    with pytest.raises(RuntimeError):
+        yf.merge(acc(), "Receipts 2019", "Receipts", chk["uv"],
+                 chk["max_uid"], rules=[])
+    left = {m["uid"] for m in mailops.INDEX.values()
+            if m["folder"] == "Receipts 2019"}
+    assert left == {11}                       # uid 10 moved, 11 did not
+    assert mailops.STATE["notice"]["key"] == "folder_merged_rescan"
 
 
 # ---------------------------------------------------------------- refusals
