@@ -524,7 +524,7 @@ def prepare(acc, job: dict, progress_cb, strips: dict, skipped: list
     ready: dict[str, set[int]] = {}
     total = sum(len(u) for u in job["by_folder"].values())
     done = 0
-    sweep(acc)          # copies a crashed earlier run may have left
+    sweep(acc, in_job=True)     # copies a crashed earlier run left
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         srv = _Server(conn, acc)
@@ -819,8 +819,11 @@ def finish(acc, strips: dict, moved: dict[str, set[int]]) -> None:
 
 def _sweep_one(conn, e: dict) -> bool:
     """Settle one journal line of a run that did not finish: True when it is
-    settled (clear it). Deletes a copy only if its original is still in the
-    folder, the copy is above the recorded UIDNEXT and carries our header."""
+    settled (clear it). A copy is deleted only if its original is still in
+    the folder (the original may itself be a lighter copy of an earlier
+    removal), the copy is at or above the recorded UIDNEXT, is not the
+    original, carries our header - and, when the line knows the copy's UID,
+    ONLY that exact UID."""
     folder, orig, msgid = e["folder"], e["orig"], e.get("msgid", "")
     status, _ = conn.select(mailops.quote_folder(folder), readonly=False)
     if status != "OK":
@@ -828,30 +831,33 @@ def _sweep_one(conn, e: dict) -> bool:
     uv = e.get("uv")
     if uv and mailops.uidvalidity(conn) != uv:
         return True             # a new generation: the UIDs mean nothing
-    if not msgid or mailops._fetch_msgid_map(conn, [orig]).get(orig) != msgid \
-            or orig in mailops._removed_marked(conn, [orig]):
+    if not msgid or mailops._fetch_msgid_map(conn, [orig]).get(orig) != msgid:
         return True             # the original moved on: the copy is the mail
-    hits = [int(u) for u in mailops._search_message_id(conn, msgid)
-            if int(u) >= e["floor"] and int(u) != orig]
+    floor = e["floor"]
+    if isinstance(e.get("uid"), int):
+        # the copy was identified: that UID and no other
+        uid = e["uid"]
+        if uid < floor or uid == orig:
+            return True
+        hits = [uid] if mailops._fetch_msgid_map(
+            conn, [uid]).get(uid) == msgid else []
+    else:
+        hits = [int(u) for u in mailops._search_message_id(conn, msgid)
+                if int(u) >= floor and int(u) != orig]
     for uid in sorted(set(hits) & mailops._removed_marked(conn, hits)):
         mailops._expunge_one(conn, uid)
     return True
 
 
-def sweep(acc, startup: bool = False) -> None:
-    """Take out the copies a crashed run left behind (see removejournal):
-    at the start of the next removal and, with `startup`, after a restart
-    (then only lines of an earlier boot - never one of a run in progress).
-    Never raises; a line that cannot be settled now stays."""
+def _sweep_lines(acc, startup: bool) -> None:
+    """The journal lines of the account, settled one by one (no lock here:
+    see `sweep`)."""
     base, tenant = mailops.SNAPSHOT_DIR, acc.tenant
-    try:
-        lines = [e for e in removejournal.load(acc.name, tenant, base)
-                 if not startup or e.get("boot") != removejournal.BOOT]
-        if not lines:
-            return
-        conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
-    except Exception:
+    lines = [e for e in removejournal.load(acc.name, tenant, base)
+             if not startup or e.get("boot") != removejournal.BOOT]
+    if not lines:
         return
+    conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         for e in lines:
             try:
@@ -869,6 +875,37 @@ def sweep(acc, startup: bool = False) -> None:
             pass
 
 
+def sweep(acc, startup: bool = False, in_job: bool = False) -> bool:
+    """Take out the copies a crashed run left behind (see removejournal).
+    Returns False when it could not run now (something else is changing the
+    mailbox), True otherwise; never raises, a line that cannot be settled
+    now stays.
+
+    Nothing else may move mail meanwhile - and a removal may not make its
+    copies meanwhile: a copy of a RETRY of the same mail would look like a
+    leftover. So outside a removal it holds the folder lock of the account
+    and of every account that is the same mailbox, exactly like a folder
+    operation: a removal, move, Undo or scan then refuses to start, and the
+    sweep itself waits for a running job. `in_job`: the removal that calls it
+    already owns the mailbox. `startup`: after a restart, only the lines of an
+    earlier boot."""
+    try:
+        if in_job:
+            _sweep_lines(acc, startup)
+        else:
+            with yourfolders._operation(acc):
+                _sweep_lines(acc, startup)
+        return True
+    except RuntimeError as exc:
+        if mailops.is_coded(str(exc)):
+            return False                    # busy: later
+        log.warning("remove files: the sweep failed", exc_info=True)
+        return True
+    except Exception:
+        log.warning("remove files: the sweep failed", exc_info=True)
+        return True
+
+
 def start_sweep() -> None:
     """At start-up: a thread that settles what a crashed run left - only
     when some account has a journal at all (a normal start starts nothing)."""
@@ -883,21 +920,30 @@ def start_sweep() -> None:
                     acc.name, acc.tenant, mailops.SNAPSHOT_DIR))
     if found:
         import threading
-        threading.Thread(target=sweep_startup, daemon=True).start()
+        threading.Thread(target=sweep_startup, args=(20, 30.0),
+                         daemon=True).start()
 
 
-def sweep_startup() -> None:
+def sweep_startup(rounds: int = 1, pause: float = 0.0) -> None:
     """After a restart: settle what a crashed run left, for every account that
-    has a journal (a thread of its own - the servers may be slow)."""
+    has a journal. An account that is busy (a scan, a job) is tried again
+    after `pause` seconds, `rounds` times in all; one still busy then is
+    settled by its next removal."""
     from . import accounts as accountsmod
     from . import tenants
-    for tenant in tenants.known():
-        with tenants.use(tenant):
-            for name in accountsmod.names():
-                acc = accountsmod.get(name)
-                if removejournal.load(acc.name, acc.tenant,
-                                      mailops.SNAPSHOT_DIR):
-                    sweep(acc, startup=True)
+    for n in range(max(1, rounds)):
+        busy = False
+        for tenant in tenants.known():
+            with tenants.use(tenant):
+                for name in accountsmod.names():
+                    acc = accountsmod.get(name)
+                    if removejournal.load(acc.name, acc.tenant,
+                                          mailops.SNAPSHOT_DIR):
+                        busy = (not sweep(acc, startup=True)) or busy
+        if not busy:
+            return
+        if n + 1 < rounds:
+            time.sleep(pause)
 
 
 def skipped_notice(left: list[tuple[str, int, str]]) -> dict:

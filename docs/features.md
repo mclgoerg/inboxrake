@@ -658,8 +658,9 @@ A mail is cut only of the files the confirm listed for it, and the feature waits
 while a scan, a move or a folder operation runs. A copy that does not pass the
 check is taken out again so the original is the only one - and so is a copy a
 crash left behind (Inboxrake writes down each copy before it makes it and
-settles what is left at the next start or the next removal, only ever a copy
-whose original is still there). The copy carries an `X-Inboxrake-Removed` header
+settles what is left at the next start or the next removal - holding the
+mailbox like a folder operation, so no removal can start meanwhile - and only ever
+a copy whose original is still there). The copy carries an `X-Inboxrake-Removed` header
 (one line per file): that - not the shared Message-ID - is how Undo, the Time
 machine and Duplicates tell the copy from the original (a copy never counts as
 an identical copy; Duplicates tags it **Files removed**). A Time machine restore
