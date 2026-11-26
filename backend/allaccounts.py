@@ -34,6 +34,7 @@ from __future__ import annotations
 import email
 import imaplib
 import logging
+import re
 import time
 
 from . import accountcopy
@@ -382,19 +383,38 @@ def _still_there(conn, wanted: dict[tuple[str, int], dict]) -> set:
                 "(UID RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
             if status != "OK":
                 continue
-            for item in data or []:
-                if not (isinstance(item, tuple) and len(item) >= 2):
-                    continue
-                um = mailops._UID_RE.search(item[0])
-                sm = mailops._SIZE_RE.search(item[0])
+            for meta, header in _fetch_records(data):
+                um = mailops._UID_RE.search(meta)
+                sm = mailops._SIZE_RE.search(meta)
                 key = uids.get(int(um.group(1))) if um else None
                 if key is None or not sm:
                     continue
                 mid = mailops.header_text(email.message_from_bytes(
-                    item[1]).get("Message-ID")).strip()[:300]
+                    header).get("Message-ID")).strip()[:300]
                 if (mid, int(sm.group(1))) == key:
                     found.add(key)
     return found
+
+
+_RESPONSE_START = re.compile(rb"\s*\d+ \(")
+
+
+def _fetch_records(data) -> list[tuple[bytes, bytes]]:
+    """One `(the response's item text, the header literal)` per FETCH
+    response of an imaplib answer. The order of the items is the server's: UID
+    and RFC822.SIZE may come before the header block, after it (the closing
+    part of the response, a plain bytes item) or one on each side - so the
+    text of a response is its opening part and its closing part together."""
+    records: list[list[bytes]] = []
+    for item in data or []:
+        if isinstance(item, tuple) and len(item) >= 2:
+            records.append([bytes(item[0]), bytes(item[1])])
+        elif isinstance(item, (bytes, bytearray)):
+            if _RESPONSE_START.match(item) or not records:
+                records.append([bytes(item), b""])    # a response of its own
+            else:
+                records[-1][0] += b" " + bytes(item)  # the closing part
+    return [(meta, header) for meta, header in records]
 
 
 def _verify_live(keep: str, drop: str, free: list[dict],

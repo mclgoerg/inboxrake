@@ -521,6 +521,96 @@ def test_the_look_at_the_keeping_account_only_reads(pair):
     assert len(keeper.mailbox["INBOX"]) == 14 and not keeper.mailbox["Trash"]
 
 
+def _items_after_the_header(server):
+    """Make `server` answer a FETCH the other way round: the header block
+    first, UID and RFC822.SIZE in the closing part of each response (the order
+    of the items is the server's to choose)."""
+    real = server.uid
+
+    def uid(cmd, *args):
+        status, data = real(cmd, *args)
+        if cmd != "FETCH" or "RFC822.SIZE" not in args[1] or status != "OK":
+            return status, data
+        out = []
+        for item in data:
+            if isinstance(item, tuple):
+                seq = item[0].split(b" ", 1)[0]
+                uid_ = mailops._UID_RE.search(item[0]).group(1)
+                size = mailops._SIZE_RE.search(item[0]).group(1)
+                out.append((seq + b" (BODY[HEADER.FIELDS (MESSAGE-ID)] {%d}"
+                            % len(item[1]), item[1]))
+                out.append(b" UID " + uid_ + b" RFC822.SIZE " + size + b")")
+        return status, out
+    server.uid = uid
+
+
+def test_uid_and_size_are_read_wherever_the_server_puts_them(pair):
+    """A server that answers the header block first and UID / RFC822.SIZE after
+    it (Proton Bridge may) must not make every copy look gone: the step still
+    moves what is there."""
+    _items_after_the_header(pair["host-proton"])
+    _items_after_the_header(pair["host-old"])
+    r = _trash("proton", "old")
+    assert r.status_code == 200 and r.json()["queued"] == 5
+    _wait(accountsmod.get("old"))
+    assert len(pair["host-old"].mailbox["Trash"]) == 5
+
+
+def test_a_changed_twin_is_still_left_out_when_the_items_come_the_other_way(pair):
+    _items_after_the_header(pair["host-proton"])
+    _server_side(pair, "host-proton", "<c2@x.example>")["size"] = 999
+    r = _trash("proton", "old")
+    assert r.json()["queued"] == 4
+    _wait(accountsmod.get("old"))
+    assert "<c2@x.example>" in {m["msgid"] for m in
+                                pair["host-old"].mailbox["INBOX"]}
+
+
+class _Scripted:
+    """A connection that answers every FETCH with the given imaplib data."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def select(self, name, readonly=False):
+        return "OK", [b"1"]
+
+    def uid(self, cmd, uids, spec):
+        return "OK", self.data
+
+
+_HDR = b"Message-ID: <c1@x.example>\r\n\r\n"
+_OPEN = b"BODY[HEADER.FIELDS (MESSAGE-ID)] {%d}" % len(_HDR)
+_WANT = {("<c1@x.example>", 1000): {"folder": "INBOX", "uid": 5}}
+
+
+@pytest.mark.parametrize("data", [
+    [(b"1 (UID 5 RFC822.SIZE 1000 " + _OPEN, _HDR), b")"],            # all first
+    [(b"1 (" + _OPEN, _HDR), b" UID 5 RFC822.SIZE 1000)"],            # all after
+    [(b"1 (UID 5 " + _OPEN, _HDR), b" RFC822.SIZE 1000)"],            # one each side
+    [(b"1 (RFC822.SIZE 1000 " + _OPEN, _HDR), b" UID 5)"],            # the other way
+    [(b"1 (" + _OPEN, _HDR), b" RFC822.SIZE 1000 UID 5)"],            # reversed
+    [(b"2 (UID 9 RFC822.SIZE 7 " + _OPEN, b"Message-ID: <o@x>\r\n\r\n"), b")",
+     (b"1 (" + _OPEN, _HDR), b" UID 5 RFC822.SIZE 1000)"],            # two mails
+])
+def test_the_live_look_reads_any_order_of_items(data):
+    assert allaccounts._still_there(_Scripted(data), _WANT) == set(_WANT)
+
+
+@pytest.mark.parametrize("data", [
+    [(b"1 (" + _OPEN, _HDR), b" UID 5 RFC822.SIZE 999)"],             # other size
+    [(b"1 (" + _OPEN, _HDR), b" UID 6 RFC822.SIZE 1000)"],            # other UID
+    [(b"1 (" + _OPEN, _HDR), b" UID 5)"],                             # no size at all
+    [(b"1 (" + _OPEN, _HDR), b" RFC822.SIZE 1000)"],                  # no UID at all
+    [(b"1 (UID 5 RFC822.SIZE 1000 " + _OPEN, b"Message-ID: <z@x>\r\n\r\n"), b")"],
+    [(b"2 (UID 9 RFC822.SIZE 1000 " + _OPEN, _HDR), b")",
+     b"1 (UID 5 RFC822.SIZE 1000 BODY[HEADER.FIELDS (MESSAGE-ID)] NIL)"],   # none of its own
+    [], None,
+])
+def test_the_live_look_does_not_take_a_half_answer_for_a_twin(data):
+    assert allaccounts._still_there(_Scripted(data), _WANT) == set()
+
+
 @pytest.mark.parametrize("who,field", [
     ("proton", "pending"), ("proton", "inflight"), ("proton", "running"),
     ("proton", "restore"), ("old", "pending"), ("old", "running")])
