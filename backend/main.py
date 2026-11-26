@@ -74,6 +74,7 @@ from . import tenants
 from . import timemachine
 from . import trackers
 from . import webguard
+from . import yourfolders
 from . import unsub
 from . import unsubstore
 from . import verdictstore
@@ -2592,6 +2593,78 @@ def post_move_lookalike(body: LookalikeBody,
         raise HTTPException(409, str(exc))
     except Exception as exc:
         raise _internal_error(exc, acc)
+
+
+@app.get("/api/your_folders")
+def get_your_folders(account: str | None = Query(None)):
+    """The Your folders page: every folder with what the last scan knows of
+    it, the rules that use it, hints and what each operation may do."""
+    acc = _acc(account)
+    try:
+        return yourfolders.overview(acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class YourFolderBody(BaseModel):
+    folder: str = ""
+    target: str = ""
+    name: str = ""
+    op: Literal["merge", "rename", "delete"] = "merge"
+    uv: int = 0
+    max_uid: int = 0
+    delete_after: bool = False
+    rules: list[str] | None = None       # the rule ids the confirm named
+
+
+def _folder_call(acc, fn, *args, **kw):
+    """Run a Your folders operation: its coded refusals are 409s."""
+    try:
+        return fn(acc, *args, **kw)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.post("/api/your_folders/check")
+def post_your_folders_check(body: YourFolderBody,
+                            account: str | None = Query(None)):
+    """Live numbers + the rules an operation would change, for its confirm
+    (nothing is changed)."""
+    acc = _acc(account)
+    return _folder_call(acc, yourfolders.check, body.op, body.folder,
+                        body.target, body.name)
+
+
+@app.post("/api/your_folders/create")
+def post_your_folders_create(body: YourFolderBody,
+                             account: str | None = Query(None)):
+    acc = _acc(account)
+    return _folder_call(acc, yourfolders.create, body.name)
+
+
+@app.post("/api/your_folders/rename")
+def post_your_folders_rename(body: YourFolderBody,
+                             account: str | None = Query(None)):
+    acc = _acc(account)
+    return _folder_call(acc, yourfolders.rename, body.folder, body.name,
+                        body.rules)
+
+
+@app.post("/api/your_folders/merge")
+def post_your_folders_merge(body: YourFolderBody,
+                            account: str | None = Query(None)):
+    acc = _acc(account)
+    return _folder_call(acc, yourfolders.merge, body.folder, body.target,
+                        body.uv, body.max_uid, body.delete_after, body.rules)
+
+
+@app.post("/api/your_folders/delete")
+def post_your_folders_delete(body: YourFolderBody,
+                             account: str | None = Query(None)):
+    acc = _acc(account)
+    return _folder_call(acc, yourfolders.delete, body.folder, body.uv)
 
 
 class CancelBody(BaseModel):

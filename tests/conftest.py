@@ -688,6 +688,58 @@ class FakeIMAP:
         self.uv[name] = 1
         return "OK", [b"Create completed"]
 
+    def rename(self, old, new):
+        """RENAME: the folder and every folder below it (`old` + delimiter)
+        move to the new name with their mail, UIDVALIDITY and flags; INBOX
+        cannot be renamed and the new name must be free."""
+        old, new = old.strip('"'), new.strip('"')
+        self._log("RENAME", old, new)
+        if old not in self.mailbox or old.upper() == "INBOX":
+            return "NO", [b"[NONEXISTENT] no such folder"]
+        if new in self.mailbox:
+            return "NO", [b"[ALREADYEXISTS] Mailbox exists"]
+        if self.namespace_prefix and not new.startswith(self.namespace_prefix):
+            return "NO", [b"[CANNOT] Invalid mailbox name"]
+        below = old + (self.delimiter or "\0")
+        for name in [n for n in list(self.mailbox)
+                     if n == old or n.startswith(below)]:
+            to = new + name[len(old):]
+            self.mailbox[to] = self.mailbox.pop(name)
+            self.uv[to] = self.uv.pop(name, 1)
+            if name in self._high:
+                self._high[to] = self._high.pop(name)
+            if name in self.flags:
+                self.flags[to] = self.flags.pop(name)
+            if name in self.noselect:
+                self.noselect[to] = self.noselect.pop(name)
+            if self.selected == name:
+                self.selected = to
+        return "OK", [b"Rename completed"]
+
+    def delete(self, name):
+        """DELETE: the folder goes with whatever mail it holds (like a real
+        server - the caller must have checked); INBOX cannot be deleted."""
+        name = name.strip('"')
+        self._log("DELETE", name)
+        if name not in self.mailbox or name.upper() == "INBOX":
+            return "NO", [b"[NONEXISTENT] no such folder"]
+        del self.mailbox[name]
+        self.uv.pop(name, None)
+        self.flags.pop(name, None)
+        self.noselect.pop(name, None)
+        if self.selected == name:
+            self.selected = None
+        return "OK", [b"Delete completed"]
+
+    def unsubscribe(self, qname):
+        self._log("UNSUBSCRIBE", qname.strip('"'))
+        return "OK", [b"Unsubscribe completed"]
+
+    def close(self):
+        self._log("CLOSE")
+        self.selected = None
+        return "OK", [b"Close completed"]
+
     def namespace(self):
         self._log("NAMESPACE")
         if not self.namespace_prefix:

@@ -823,6 +823,64 @@ def drop_account(name: str) -> None:
                      len(mine))
 
 
+def _on_account(rule: dict, account: str) -> bool:
+    return (rule.get("account") or accounts.default_name()) == account
+
+
+def moving_into(account: str, match, action: str = "move") -> list[dict]:
+    """The mail rules of `account` that move mail into a folder `match(dest)`
+    accepts (Your folders: which rules a rename / merge / delete touches),
+    as `{id, name, mode, schedule, dest}`. `action="archive"`: the rules that
+    archive (their folder is the account's Archive, they have no `dest`).
+    Read only."""
+    with _LOCK:
+        rules = load_rules()
+    return [{"id": r["id"], "name": r.get("name", ""),
+             "mode": r.get("mode", "report"),
+             "schedule": r.get("schedule", "manual"),
+             "dest": r.get("dest", "")}
+            for r in rules
+            if _on_account(r, account) and r.get("scope", "mail") == "mail"
+            and r.get("action") == action
+            and (action != "move" or r.get("dest"))
+            and match(r.get("dest", ""))]
+
+
+def repoint_dest(account: str, remap, ids=None) -> list[dict]:
+    """Point the move rules of `account` at the folder `remap(dest)` names
+    instead (a folder was renamed or merged away), and send each one that
+    changes back to Report only, exactly as an edit of its target does: what
+    was previewed is what runs. `ids` limits it to those rules. Returns
+    `{id, name, mode, from, to}` per rule changed (`mode`: what it had)."""
+    changed: list[dict] = []
+    with _LOCK:
+        rules = load_rules()
+        for r in rules:
+            if not _on_account(r, account) \
+                    or r.get("scope", "mail") != "mail" \
+                    or r.get("action") != "move" \
+                    or (ids is not None and r["id"] not in ids):
+                continue
+            old = r.get("dest") or ""
+            new = remap(old) if old else old
+            if not old or new == old:
+                continue
+            changed.append({"id": r["id"], "name": r.get("name", ""),
+                            "mode": r.get("mode", "report"),
+                            "from": old, "to": new})
+            if r.get("origin") == ORIGIN_MCP:
+                r["origin"] = "manual"   # the user's edit: theirs from now on
+            r["dest"] = new
+            _reset_to_report(r, "edited")
+            r["edited"] = int(time.time())
+        if changed:
+            _save(rules)
+    if changed:
+        log.info("%d rule(s) of %r pointed at another folder", len(changed),
+                 account)
+    return changed
+
+
 def create_rule(body: dict, lenient_filter: bool = False, *,
                 proposed_by: dict | None = None) -> dict:
     """`proposed_by` ({token_id, name, at}) is for the MCP `propose_rule`
