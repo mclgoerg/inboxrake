@@ -1,15 +1,17 @@
-import { Boxes, ChevronRight, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeftRight, Boxes, ChevronRight, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useCoarsePointer } from "../gestures";
-import { t } from "../i18n";
+import { getLang, t } from "../i18n";
 import { fmtAgo, fmtSizeGb } from "../lib";
 import { fmtNum } from "../numfmt";
 import { useSplitPane } from "../splitPane";
 import { useAllAccounts } from "../useAllAccounts";
+import { useCopies } from "../useCopies";
 import type { Follow, ScanAllRun } from "../useAcrossRuns";
-import type { AllAccountCard, AllAccountsResp, Config, SameSenderRow }
-  from "../types";
+import type { AllAccountCard, AllAccountsResp, Config, CopiesPair,
+  SameSenderRow } from "../types";
 import type { SameAction } from "../sameSender";
+import { CopiesReview } from "./CopiesReview";
 import { SameSenderConfirm } from "./SameSenderConfirm";
 import { SameSenderPane } from "./SameSenderPane";
 import { statusOf } from "./SettingsPage";
@@ -83,7 +85,7 @@ function Chips({ row }: { row: SameSenderRow }) {
  *  that account. */
 export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
   onScanAll, onClose, onOpen, onFix, onOpenSender, onFollow, onClaim, onAdd,
-  exists }: {
+  onShowCopies, exists }: {
   cfg: Config;
   /** The accounts of this workspace, in order. */
   names: string[];
@@ -104,11 +106,16 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
   onFollow: (follow: Follow) => void;
   /** Quiet / restore the selected account's own "moved" toast around them. */
   onClaim: (accounts: string[], on: boolean) => void;
+  /** "Just show them": All mail in `account`, filtered to its exact copies of
+   *  what `other` holds (the app switches there like Open does). */
+  onShowCopies: (account: string, other: string) => void;
   /** Add account (the page needs two). */
   onAdd: () => void;
   exists: (account: string) => boolean;
 }) {
   const { data, failed, reload } = useAllAccounts(names);
+  const copies = useCopies(names);
+  const [review, setReview] = useState<CopiesPair | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [paneOff, setPaneOff] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -130,6 +137,14 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
     ?? (split && !paneOff ? rows[0] : undefined);
   const scanning = !!scanRun;
   const busy = !!data?.accounts.some((a) => a.busy || a.status === "scanning");
+  // a move or a scan that just ended changed what the accounts hold: the
+  // copies are counted again
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy) void copies.reload();
+    wasBusy.current = busy;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
 
   const pick = (r: SameSenderRow) => {
     setSel(r.key);
@@ -306,6 +321,53 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
     </section>
   );
 
+  const since = (ts: number): string => ts ? new Intl.DateTimeFormat(
+    getLang(), { month: "short", year: "numeric" }).format(new Date(ts * 1000))
+    : "";
+  const copiesCard = copies.data ? (
+    <section aria-label={t("allp.copies_card")} data-testid="copies-card"
+      className={`overflow-hidden rounded-card ${card}`}>
+      <div className="px-4 pb-2 pt-3.5">
+        <h2 className="type-body font-semibold">{t("allp.copies_card")}</h2>
+        <div className="type-meta text-muted">{t("allp.copies_card_sub")}</div>
+      </div>
+      {copies.data.pairs.length === 0 ? (
+        <p className="px-4 pb-3 type-body text-muted">
+          {t("allp.copies_card_none")}</p>
+      ) : (
+        <ul className="border-t border-line">
+          {copies.data.pairs.map((c) => (
+            <li key={`${c.a}\u0000${c.b}`} data-testid="copies-row"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t
+                border-line px-4 py-2.5 first:border-0">
+              <span className="inline-flex items-center gap-1.5 text-muted">
+                <Avatar name={c.a} />
+                <ArrowLeftRight size={14} aria-hidden />
+                <Avatar name={c.b} />
+              </span>
+              <span className="min-w-0 flex-1 basis-48">
+                <span className="block type-body font-medium">
+                  {t("allp.copies_row", { n: c.mails, size: fmtSizeGb(c.size),
+                    a: c.a, b: c.b })}</span>
+                <span className="block type-meta text-muted">
+                  {t("allp.copies_hint", { date: since(c.first) })}</span>
+              </span>
+              <Button variant="tinted" size="sm" className="coarse:min-h-11"
+                onClick={() => setReview(c)}
+                aria-label={t("allp.copies_review_of", { a: c.a, b: c.b })}>
+                {t("allp.copies_review")}</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="border-t border-line px-4 py-2.5 type-meta text-muted">
+        {copies.data.left_out > 0
+          ? t("allp.copies_left_out", { n: copies.data.left_out })
+          : t("allp.copies_dups")}
+      </p>
+    </section>
+  ) : null;
+
   const content = () => {
     if (!data) {
       return failed ? (
@@ -324,6 +386,7 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
           {cards(data)}
           {space(data)}
           {same}
+          {copiesCard}
         </div>
         {split && cur && !paneOff && (
           <aside aria-label={t("allp.pane_title")} data-testid="same-pane"
@@ -376,6 +439,12 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
             onClose={() => setSheet(false)} />
           <div className="min-h-0 flex-1 overflow-y-auto">{pane(cur)}</div>
         </Modal>
+      )}
+      {review && (
+        <CopiesReview pair={review} exists={exists} onFollow={onFollow}
+          onClaim={onClaim} onShow={onShowCopies}
+          onChanged={() => { void reload(); void copies.reload(); }}
+          onClose={() => setReview(null)} />
       )}
       {ask && (
         <SameSenderConfirm row={ask.row} action={ask.action} exists={exists}

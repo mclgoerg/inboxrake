@@ -14,6 +14,7 @@ from backend import accountcopy
 from backend import accounts as accountsmod
 from backend import auditlog
 from backend import config as cfgmod
+from backend import copystore
 from backend import mailops
 from backend import pinstore
 from backend import tenants
@@ -243,6 +244,35 @@ def test_the_reply_may_put_flags_and_date_after_the_literal():
     run.s = Conn()
     assert run._fetch("INBOX", [7]) == {
         7: ("\\Seen", "01-Jan-2024 00:00:00 +0000", b"abc")}
+
+
+def test_a_finished_copy_leaves_a_lasting_record_in_both_accounts(env):
+    """The ledger keeps the LAST job only; the record of what was copied lives
+    on, for both sides, so the All accounts page never offers those copies
+    for removal."""
+    assert copystore.load_account("gmail") == set()
+    _start()
+    assert _wait()["status"] == "done"
+    copied = {m["msgid"] for m in _folder(env)}
+    assert len(copied) == 7
+    assert copystore.load_account("gmail") == copied
+    assert copystore.load_account("proton") == copied
+    # the next job rewrites the ledger - the record is not the ledger
+    accountcopy._ledger_reset("another-job")
+    assert accountcopy._ledger_read("job-that-ran") == {}
+    assert copystore.load_account("gmail") == copied
+    assert copystore.job_known("anything") is False      # not folded: it ran live
+
+
+def test_a_mail_the_target_already_had_is_not_recorded_as_a_copy(env):
+    """Only what the job itself appended counts as made by the user."""
+    first = env["host-g"].mailbox["INBOX"][0]
+    env["host-p"].mailbox["INBOX"].append(dict(first, uid=900))
+    mailops.run_scan(accountsmod.get("proton"))
+    _start()
+    assert _wait()["status"] == "done"
+    assert first["msgid"] not in copystore.load_account("gmail")
+    assert len(copystore.load_account("gmail")) == 6
 
 
 def test_the_source_is_only_ever_read(env):

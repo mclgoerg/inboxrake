@@ -39,6 +39,7 @@ from pathlib import Path
 from . import accounts
 from . import auditlog
 from . import config as cfgmod
+from . import copystore
 from . import demo
 from . import mailops
 from . import pinstore
@@ -1278,6 +1279,12 @@ def _work() -> None:
                 else:
                     job["missing"] += 1
             _ledger_append(rows)        # on disk BEFORE the counters say so
+            # the lasting record of what was copied (the ledger keeps the
+            # last job only): both accounts remember these Message-IDs
+            copystore.record(job["source"], job["target"],
+                             [k for k, st in rows
+                              if st in ("ok", "unchecked")
+                              and not k.startswith("fp:")])
             now = time.monotonic()
             took, last = now - last, now
             job["active_s"] += took
@@ -1316,6 +1323,25 @@ def _work() -> None:
         _audit(job)
     if job["status"] == "done":
         _rescan_target(job["target"])
+
+
+def fold_last_job() -> None:
+    """Fold the copies of the job on file (the ledger belongs to it alone) into
+    the lasting record once - for a job that ran before the record existed,
+    or whose chunk hook never ran. A job that is still going is folded as far
+    as it got and again later."""
+    with _LOCK:
+        job = _read()["job"]
+    if not job or not job.get("id") or copystore.job_known(job["id"]):
+        return
+    if job.get("source") not in accounts.names() \
+            or job.get("target") not in accounts.names():
+        return
+    done = [k for k, st in _ledger_read(job["id"]).items()
+            if st in ("ok", "unchecked") and not k.startswith("fp:")]
+    copystore.record(job["source"], job["target"], done)
+    if job.get("status") in ("done", "cancelled", "error"):
+        copystore.mark_job(job["id"])
 
 
 def _audit(job: dict) -> None:

@@ -63,7 +63,7 @@ export function acrossTitle(items: { status: StepOutcome["status"] }[]): string 
 
 /** The Keep-safe result of one account under its line: "6 look worth keeping
  *  - they stay", with a Show that lists them. */
-function KeepSafeLine({ found }: { found: KeepSafeCheck | "failed" }) {
+export function KeepSafeLine({ found }: { found: KeepSafeCheck | "failed" }) {
   const [open, setOpen] = useState(false);
   if (found === "failed") {
     return <span className="text-muted">{t("keepsafe.check_failed")}</span>;

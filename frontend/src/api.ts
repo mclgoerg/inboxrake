@@ -1,5 +1,6 @@
 import { t } from "./i18n";
 import type {
+  AcrossSearchResp, CopiesResp,
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
   AccountSummary, AllAccountsResp, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
@@ -88,6 +89,7 @@ const ERROR_CODES: Record<string, string> = {
   protected_mails: "fp.protected_refused",
   all_pinned: "toast.all_pinned",
   delete_protected: "toast.delete_protected",
+  copies_none: "toast.copies_none",
   // private sender knowledge (backend/knowledgestore.py)
   knowledge_bad_request: "know.err.bad_request",
   knowledge_bad_key: "know.err.bad_key",
@@ -429,9 +431,12 @@ export const api = {
       { knowledge: section }),
   protectMany: (entries: string[], on: boolean) =>
     req<{ protected: string[] }>("/api/protect", { entries, on }),
+  /** `account`: run it in that account, not the selected one. */
   deleteMessages: (items: [string, number][], action = "trash", dest = "",
-                   force = false) =>
-    req<{ ok: boolean; queued: number }>("/api/delete_messages",
+                   force = false, account?: string) =>
+    req<{ ok: boolean; queued: number;
+      /** the queued job; its Undo step carries the same id */
+      job?: string }>(forAccount("/api/delete_messages", account),
       { items, action, dest, force }),
   pin: (folder: string, uid: number, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean }>("/api/pin",
@@ -545,6 +550,18 @@ export const api = {
   search: (q: string, body = false) =>
     req<SearchResp>(`/api/search?q=${encodeURIComponent(q)}`
       + (body ? "&scope=body" : "")),
+  /** Search over every account of the workspace (read-only, selects
+   *  nothing): hits with their account, matching senders, per-account notes. */
+  accountsSearch: (q: string, body = false) =>
+    req<AcrossSearchResp>(`/api/accounts/search?q=${encodeURIComponent(q)}`
+      + (body ? "&scope=body" : "")),
+  /** The exact copies between the accounts (read-only, no mail server). */
+  accountsCopies: () => req<CopiesResp>("/api/accounts/copies"),
+  /** Move the copies in `drop` of the mails `keep` holds to Trash: ONE step
+   *  in `drop`, worked out again on the server; `keep` is never touched. */
+  trashCopies: (keep: string, drop: string) =>
+    req<{ ok: boolean; queued: number; job?: string; held: number }>(
+      "/api/accounts/copies/trash", { keep, drop }),
   folders: (account?: string) =>
     req<FoldersResp>(account
       ? `/api/folders?account=${encodeURIComponent(account)}`

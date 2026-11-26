@@ -5,7 +5,7 @@ import { api, fmtSize, mailKey } from "../api";
 import { groupByDate, monthHeading } from "../dayGroups";
 import type { Mail, MessageDetail } from "../types";
 import { t } from "../i18n";
-import { AiTag, Button, MailRow, Meta, PinButton, SwipeRow, useBackLayer,
+import { AiTag, Avatar, Button, MailRow, Meta, PinButton, SwipeRow, useBackLayer,
   type SwipeAction } from "./ui";
 import { BodyState, MailChips, MailHeader, MailText, RawHeaders, ReaderFrame,
   UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
@@ -168,6 +168,16 @@ export function MailRows({ mails, sel, onToggle, onOpen, onPin, detailed,
   const multiFolder = !!detailed || variesFolder;
   const renderRow = (m: Mail) => {
         const meta: ReactNode[] = [];
+        // Search across accounts: which account the mail is in (the name is
+        // in the text - the avatar's colour is never the only signal)
+        if (m.account) {
+          meta.push(
+            <span className="inline-flex max-w-full min-w-0 items-center
+              gap-1 align-middle" title={m.account}>
+              <Avatar name={m.account} />
+              <span className="min-w-0 truncate">{m.account}</span>
+            </span>);
+        }
         if (multiFolder) meta.push(m.folder);
         if (multiSender) meta.push(mark ? mark(m.addr) : m.addr);
         meta.push(fmtSize(m.size));

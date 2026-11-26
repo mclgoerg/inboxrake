@@ -9,10 +9,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const overviewCall = vi.fn();
+const copiesCall = vi.fn();
 const stats = vi.fn();
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   api: { accountsOverview: (...a: unknown[]) => overviewCall(...a),
+    accountsCopies: () => copiesCall(),
     stats: () => stats(),
     trackers: () => Promise.resolve({ usable: false, checked: 0, pixel: 0, senders: 0 }),
     wrapped: () => Promise.reject(new Error("x")),
@@ -47,6 +49,11 @@ const summary = {
 
 beforeEach(() => {
   overviewCall.mockResolvedValue(overview());
+  copiesCall.mockResolvedValue({ left_out: 0, pairs: [
+    { a: "a", b: "b", mails: 412, size: 1, first: 1, last: 2, in_a: { trash: 1, size: 1, held: 0 },
+      in_b: { trash: 1, size: 1, held: 0 } },
+    { a: "a", b: "c", mails: 96, size: 1, first: 1, last: 2, in_a: { trash: 1, size: 1, held: 0 },
+      in_b: { trash: 1, size: 1, held: 0 } }] });
   stats.mockResolvedValue({ mails: 1, months: [] });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); setLang("en"); });
@@ -209,6 +216,25 @@ test("Insights: the card reads the numbers once - it does not poll while an acco
     await vi.advanceTimersByTimeAsync(10_000);
     expect(overviewCall.mock.calls.length).toBe(n);
   } finally { vi.useRealTimers(); }
+});
+
+test("Insights: the card also says how many copies the accounts hold, and reads them once", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    insights(["a", "b", "c"]);
+    const card = await screen.findByRole("button", { name: /^All accounts/ });
+    await waitFor(() => expect((card.textContent ?? "").replace(/\u00a0/g, " "))
+      .toContain("4 senders in several accounts · 508 copies"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(copiesCall).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); }
+  cleanup();
+  copiesCall.mockResolvedValue({ left_out: 3, pairs: [] });
+  insights(["a", "b"]);
+  const plain = await screen.findByRole("button", { name: /^All accounts/ });
+  await waitFor(() => expect((plain.textContent ?? "").replace(/\u00a0/g, " "))
+    .toContain("4 senders in several accounts"));
+  expect(plain.textContent).not.toContain("copies");
 });
 
 test("Insights: before the numbers arrive it still has its place", async () => {

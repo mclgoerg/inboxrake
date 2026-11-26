@@ -686,6 +686,11 @@ export interface Mail {
   /** What kind of mail it is (`ads`, `orders`, ... - see kinds.ts); "" = no
    *  kind. Sent with a group's mails only. */
   kind?: string;
+  /** Search across accounts only: the account the mail is in. */
+  account?: string;
+  /** Search across accounts only: from a protected sender (a Trash leaves it
+   *  out; `pinned` says the same for a pinned mail). */
+  protected?: boolean;
   msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
 }
@@ -932,6 +937,17 @@ export interface TrackerReport {
 export interface SearchNote {
   key: string;
   params: Record<string, string | number>;
+  /** Search across accounts: the account the note is about. */
+  account?: string;
+}
+
+/** Search across accounts (`GET /api/accounts/search`): the hits with their
+ *  account, the senders that match, the notes of each account's search. */
+export interface AcrossSearchResp {
+  mails: Mail[];
+  notes: SearchNote[];
+  senders: { account: string; key: string; label: string; count: number;
+    size: number }[];
 }
 
 export interface SearchResp {
@@ -1702,4 +1718,29 @@ export interface AllAccountsResp {
   accounts: AllAccountCard[];
   totals: { mails: number; size: number; senders: number };
   same_sender: SameSenderRow[];
+}
+
+/* ---- "Same mails in several accounts" (`GET /api/accounts/copies`) ---- */
+
+/** What a move of ONE account's copies to Trash would take: `trash` mails of
+ *  `size` bytes, `held` left out (pinned, or from a protected sender). */
+export interface CopiesSide { trash: number; size: number; held: number }
+
+/** The exact copies (same Message-ID and size) between two accounts. */
+export interface CopiesPair {
+  a: string;
+  b: string;
+  mails: number;
+  size: number;
+  /** oldest / newest of them (epoch seconds) */
+  first: number;
+  last: number;
+  in_a: CopiesSide;
+  in_b: CopiesSide;
+}
+
+export interface CopiesResp {
+  pairs: CopiesPair[];
+  /** copies "Move to another account" made: never offered */
+  left_out: number;
 }

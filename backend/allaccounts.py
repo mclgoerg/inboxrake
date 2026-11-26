@@ -33,8 +33,10 @@ from __future__ import annotations
 import logging
 import time
 
+from . import accountcopy
 from . import accounts as accountsmod
 from . import config as cfgmod
+from . import copystore
 from . import mailops
 from . import pinstore
 from . import rules as rulesmod
@@ -43,6 +45,10 @@ from . import unsub
 from . import unsubstore
 
 log = logging.getLogger("inboxrake.allaccounts")
+
+# All mail's `finding` for "Just show them": `copies:<account>` lists the mails
+# that have an exact copy in that account.
+COPIES_VIEW = "copies:"
 
 # Rows of "Same sender, several accounts" the answer carries (the UI shows the
 # first few and "All N").
@@ -246,3 +252,210 @@ def build(since: dict[str, float] | None = None,
                        "size": sum(r["size"] for r in rows),
                        "senders": sum(r["senders"] for r in rows)},
             "same_sender": same_sender(cands)}
+
+
+# ------------------------------------------------ the same mails in several
+
+# Exact copies are looked for by the pair (Message-ID, size) and by nothing
+# else. The finder is built to LEAVE OUT whatever it is not sure about - the
+# only thing that ever follows from it is a move to Trash (reversible, with
+# Undo) of the copies in ONE account, never of the account that keeps them:
+#  - a mail without a Message-ID is never matched;
+#  - a Message-ID that is in an account more than once (the same mail in
+#    Inbox and Archive, or two sizes) is left to that account's Duplicates;
+#  - a Message-ID that "Move to another account" copied (copystore.py, kept
+#    for good) is never a copy to remove;
+#  - a pinned mail and a mail of a protected sender is taken out of the
+#    account it would be trashed in.
+
+
+def _snapshot(name: str) -> tuple[dict[tuple[str, int], dict], set[str]]:
+    """One account's mails by (Message-ID, size): only keys that occur ONCE in
+    the account, plus the Message-IDs that occur more than once there."""
+    acc = accountsmod.get(name)
+    seen: dict[str, int] = {}
+    by_key: dict[tuple[str, int], dict] = {}
+    with acc.lock:
+        for m in acc.index.values():
+            mid = m.get("msgid")
+            if not mid:
+                continue
+            seen[mid] = seen.get(mid, 0) + 1
+            by_key[(mid, m["size"])] = {
+                "folder": m["folder"], "uid": m["uid"], "addr": m["addr"],
+                "ts": m["ts"], "size": m["size"], "msgid": mid}
+    repeated = {mid for mid, n in seen.items() if n > 1}
+    return ({k: v for k, v in by_key.items() if k[0] not in repeated},
+            repeated)
+
+
+def _pairs(names: list[str]) -> tuple[dict, dict]:
+    """(snapshots, protection info) of the accounts, read once."""
+    accountcopy.fold_last_job()
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    snaps: dict[str, dict] = {}
+    for n in names:
+        snap, _repeated = _snapshot(n)
+        snaps[n] = snap
+    info = {"plist": plist,
+            "copied": {n: copystore.load_account(n) for n in names},
+            "pinned": {n: pinstore.load_account(n) for n in names}}
+    return snaps, info
+
+
+def _shared(a: str, b: str, snaps: dict, info: dict) -> tuple[list, int]:
+    """The (Message-ID, size) keys that are in both accounts and were not made
+    by "Move to another account", and how many that record left out."""
+    keys = snaps[a].keys() & snaps[b].keys()
+    made = info["copied"][a] | info["copied"][b]
+    left_out = sum(1 for k in keys if k[0] in made)
+    return sorted(k for k in keys if k[0] not in made), left_out
+
+
+def _movable(name: str, keys: list, snaps: dict, info: dict) -> list[dict]:
+    """The mails of `name` among `keys` that may be trashed there: not pinned
+    in it, not from a protected sender."""
+    out = []
+    for k in keys:
+        m = snaps[name][k]
+        if k[0] in info["pinned"][name] \
+                or cfgmod.is_protected(m["addr"], info["plist"]):
+            continue
+        out.append(m)
+    return out
+
+
+def copies() -> dict:
+    """The exact copies across the accounts of the workspace, per pair:
+    `{pairs: [{a, b, mails, size, first, last, in_a: {trash, size, held},
+    in_b: {...}}], left_out}`. `trash` = what a move of THAT account's copies
+    to Trash would take (pinned and protected taken out), `held` = how many
+    that left out; `left_out` = the copies "Move to another account" made.
+    Read-only, one account at a time under its own lock, no mail server."""
+    names = accountsmod.names()
+    snaps, info = _pairs(names)
+    out, made_total = [], 0
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            keys, made = _shared(a, b, snaps, info)
+            made_total += made
+            if not keys:
+                continue
+            row = {"a": a, "b": b, "mails": len(keys),
+                   "size": sum(k[1] for k in keys),
+                   "first": min((snaps[a][k]["ts"] for k in keys
+                                 if snaps[a][k]["ts"]), default=0),
+                   "last": max((snaps[a][k]["ts"] for k in keys), default=0)}
+            for side, n in (("in_a", a), ("in_b", b)):
+                free = _movable(n, keys, snaps, info)
+                row[side] = {"trash": len(free),
+                             "size": sum(m["size"] for m in free),
+                             "held": len(keys) - len(free)}
+            out.append(row)
+    out.sort(key=lambda r: (-r["mails"], r["a"], r["b"]))
+    return {"pairs": out, "left_out": made_total}
+
+
+def copy_handles(name: str, other: str) -> frozenset[tuple[str, int]]:
+    """The (folder, uid) of the mails of `name` that have an exact copy in
+    `other` (the same list "Review" counts, pinned ones included): what All
+    mail shows for "Just show them". A name that is not one of the
+    workspace's raises KeyError."""
+    accountsmod.get(name)
+    accountsmod.get(other)
+    if name == other:
+        return frozenset()
+    snaps, info = _pairs([name, other])
+    keys, _made = _shared(name, other, snaps, info)
+    return frozenset((snaps[name][k]["folder"], snaps[name][k]["uid"])
+                     for k in keys)
+
+
+def trash_copies(keep: str, drop: str) -> dict:
+    """Move the copies in `drop` that are exact copies of mails in `keep` to
+    Trash - ONE step in `drop` with its own Undo (the ordinary move job). The
+    answer is worked out again HERE, from the two accounts as they are now:
+    nothing the caller saw is trusted. The account that keeps them is never
+    touched. Raises KeyError for an account that is not the workspace's,
+    ValueError(COPIES_NONE) when nothing is left, RuntimeError when a scan
+    is not finished in either account."""
+    if keep == drop:
+        raise ValueError("same account")
+    kacc, dacc = accountsmod.get(keep), accountsmod.get(drop)
+    for acc in (kacc, dacc):
+        with acc.lock:
+            if acc.state["status"] != "done":
+                raise RuntimeError("No completed scan")
+    snaps, info = _pairs([keep, drop])
+    keys, _made = _shared(keep, drop, snaps, info)
+    free = _movable(drop, keys, snaps, info)
+    if not free:
+        raise ValueError(mailops.COPIES_NONE)
+    res = mailops.delete_messages([[m["folder"], m["uid"]] for m in free],
+                                  "trash", acc=dacc)
+    return {**res, "keep": keep, "drop": drop, "held": len(keys) - len(free)}
+
+
+# ------------------------------------------------- Search across accounts
+
+SEARCH_SENDERS_MAX = 8
+
+
+def search(query: str, body: bool = False, limit: int = 500) -> dict:
+    """Search over every account: the newest `limit` hits with their account
+    (and whether the mail is pinned / from a protected sender, so a selection
+    can leave those out before anything runs), the senders that match, and the
+    notes of each search tagged with their account. Mail-text search follows
+    each account's own setting (off there = the metadata hits and a note); one
+    account failing is a note, not a failure of the others."""
+    names = accountsmod.names()
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    terms = [t for t in query.lower().split() if t]
+    found: list[dict] = []
+    notes: list[dict] = []
+    senders: list[dict] = []
+    for name in names:
+        acc = accountsmod.get(name)
+        try:
+            mode = cfgmod.account_imap(name).get("body_search")
+            if body and mode == "disabled":
+                notes.append({"key": "body_off", "params": {},
+                              "account": name})
+                res = {"mails": mailops.search_mails(query, limit, acc=acc),
+                       "notes": []}
+            elif body and mode == "local":
+                res = mailops.search_local(query, limit, acc=acc)
+            elif body:
+                res = mailops.search_body(
+                    query, limit, acc=acc,
+                    budget=mailops.BODY_SEARCH_BUDGET_S / len(names))
+            else:
+                res = {"mails": mailops.search_mails(query, limit, acc=acc),
+                       "notes": []}
+        except Exception:
+            log.exception("search failed in account %s", name)
+            notes.append({"key": "account_failed", "params": {},
+                          "account": name})
+            continue
+        pins = pinstore.load_account(name)
+        with acc.lock:
+            for m in res["mails"]:
+                idx = acc.index.get(mailops.ikey(m["folder"], m["uid"]))
+                found.append({**m, "account": name,
+                              "pinned": bool(idx and idx["msgid"] in pins),
+                              "protected": cfgmod.is_protected(
+                                  m["addr"], plist)})
+            if terms:
+                for key, rec in (acc.state["groups"].get("sender")
+                                 or {}).items():
+                    label = (rec.get("label") or "").lower()
+                    if all(t in key or t in label for t in terms):
+                        senders.append({"account": name, "key": key,
+                                        "label": rec.get("label") or key,
+                                        "count": rec["count"],
+                                        "size": rec["size"]})
+        notes += [{**n, "account": name} for n in res["notes"]]
+    found.sort(key=lambda m: -m["ts"])
+    senders.sort(key=lambda s: (-s["count"], s["account"], s["key"]))
+    return {"mails": found[:limit], "notes": notes,
+            "senders": senders[:SEARCH_SENDERS_MAX]}

@@ -6,8 +6,10 @@ import { nowDate, nowMs } from "../clock";
 import { t } from "../i18n";
 import { matchGroup, olderThan, parseFilter } from "../lib";
 import { confirmTrashItems } from "../mailActions";
-import type { Group, Mail, SearchNote } from "../types";
+import type { AcrossSearchResp, Group, Mail, SearchNote } from "../types";
+import type { Follow } from "../useAcrossRuns";
 import { MailRows, MessageView } from "./MailList";
+import { SearchTrashConfirm } from "./SearchTrashConfirm";
 import type { ReaderActions } from "./MailReader";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
   Segmented, Select, Spinner, useOptionalToast } from "./ui";
@@ -17,6 +19,8 @@ const RECENT_MAX = 8;
 const SENDER_MAX = 5;
 
 type Scope = "meta" | "body";
+/** Where it searches: the selected account (as ever) or every account. */
+type Where = "this" | "all";
 type When = "any" | "30d" | "year" | "old";
 
 /** Last searches on this device (localStorage only, never sent anywhere). */
@@ -70,7 +74,24 @@ const inWindow = (m: Mail, when: When): boolean => {
 };
 
 export function SearchPanel({ bodySearch = false, bodyMode = "server",
-  groups, onClose, onDeleted, onOpenSender, onOpenFiltered }: {
+  groups, onClose, onDeleted, onOpenSender, onOpenFiltered, across }: {
+  /** With two accounts or more: "This account | All accounts" (default: this
+   *  account). All accounts = hits of every account with an account chip;
+   *  opening one switches to ITS account (like the switcher does), and a
+   *  selection's Trash runs one step per account through one confirm. */
+  across?: {
+    /** The selected account. */
+    account: string;
+    names: string[];
+    exists: (account: string) => boolean;
+    /** Open a hit of another account: switch there (the panel stays). */
+    onSwitchAccount: (account: string) => void;
+    /** A sender of another account: switch and open it there. */
+    onOpenSender: (account: string, addr: string) => void;
+    /** The Trash steps queued: the app follows the jobs (ONE toast). */
+    onFollow: (follow: Follow) => void;
+    onClaim: (accounts: string[], on: boolean) => void;
+  };
   /** The account's body_search mode is "server" or "local": the "Also mail
    *  text" scope is on offer (otherwise it is disabled, with the reason). */
   bodySearch?: boolean;
@@ -87,7 +108,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const [q, setQ] = useState("");
   const [scope, setScope] = useState<Scope>("meta");
   const [res, setRes] = useState<{ q: string; mails: Mail[];
-    notes: SearchNote[] } | null>(null);
+    notes: SearchNote[]; senders?: AcrossSearchResp["senders"] } | null>(null);
+  const [where, setWhere] = useState<Where>("this");
+  const everywhere = !!across && where === "all";
+  // the trash confirm of a selection across accounts (the mails as drawn)
+  const [acting, setActing] = useState<Mail[] | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -114,17 +139,19 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     });
   };
 
-  const run = async (query: string, body: boolean, remember = false) => {
+  const run = async (query: string, body: boolean, remember = false,
+      all = everywhere) => {
     const s = query.trim();
     if (s.length < 2) return;
     const mine = ++seq.current;
-    last.current = `${body}:${s}`;
+    last.current = `${all ? "all" : "this"}:${body}:${s}`;
     setBusy(true);
     setNote("");
     try {
-      const r = await api.search(s, body);
+      const r = all ? await api.accountsSearch(s, body)
+        : { ...(await api.search(s, body)), senders: undefined };
       if (mine !== seq.current) return;   // a newer search superseded this one
-      setRes({ q: s, mails: r.mails, notes: r.notes });
+      setRes({ q: s, mails: r.mails, notes: r.notes, senders: r.senders });
       setSel(new Set());
       setNote(r.mails.length === 500
         ? t("Showing the newest 500 matches.") : "");
@@ -151,10 +178,38 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     }
     if (scope === "body") return;
     const h = setTimeout(() => {
-      if (last.current !== `false:${s}`) run(s, false);
+      if (last.current !== `${everywhere ? "all" : "this"}:false:${s}`) {
+        run(s, false);
+      }
     }, 250);
     return () => clearTimeout(h);
-  }, [q, scope]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, scope, where]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A switch of the selected account the panel did not ask for (the account
+  // menu) starts it over, as it always did; the one it asked for (opening a
+  // hit of another account) keeps the results.
+  const asked = useRef<string | null>(null);
+  const was = useRef(across?.account);
+  useEffect(() => {
+    const now = across?.account;
+    if (was.current === now) return;
+    was.current = now;
+    if (asked.current === now) { asked.current = null; return; }
+    asked.current = null;
+    seq.current++;
+    last.current = "";
+    setQ(""); setRes(null); setSel(new Set()); setView(null); setNote("");
+    setWhere("this"); setScope("meta"); setActing(null); setBusy(false);
+  }, [across?.account]);
+  /** Open a hit in the reader; a hit of another account switches to it first
+   *  (the reader reads in the selected account). */
+  const openMail = (m: Mail) => {
+    if (across && m.account && m.account !== across.account) {
+      asked.current = m.account;
+      across.onSwitchAccount(m.account);
+    }
+    setView(m);
+  };
 
   // A query that stays put for ~2 s with hits counts as committed.
   useEffect(() => {
@@ -166,6 +221,14 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const pickScope = (v: Scope) => {
     setScope(v);
     if (v === "body") run(q, true, true);
+  };
+  const pickWhere = (v: Where) => {
+    setWhere(v);
+    setSel(new Set());
+    if (q.trim().length >= 2) {
+      // (body search asks the servers: only on Enter / when picked, as ever)
+      run(q, bodyOn && scope === "body", false, v === "all");
+    }
   };
   const bodyOn = bodySearch && scope === "body";
 
@@ -196,12 +259,12 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const mark = useMemo(() => highlighter(terms), [res?.q]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const senders = useMemo(() => {
-    if (!res || !groups || terms.length === 0) return [];
+    if (!res || !groups || terms.length === 0 || everywhere) return [];
     return Object.values(groups)
       .filter((g) => terms.every((x) => g.key.includes(x)
         || g.label.toLowerCase().includes(x)))
       .sort((a, b) => b.count - a.count).slice(0, SENDER_MAX);
-  }, [res?.q, groups]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [res?.q, groups, everywhere]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const tries = useMemo(() => TRY.map((p) => {
     const f = parseFilter(p.query);
@@ -216,6 +279,11 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashMails = async (go: Mail[], subject?: string):
       Promise<boolean> => {
     if (!res || go.length === 0) return false;
+    if (everywhere) {
+      // One step per account, asked and run in one confirm.
+      setActing(go);
+      return false;
+    }
     try {
       // (one mail: its subject is named, not "1 mail"; a big move carries
       // the keep-safe box - the mails kept safe are protected and stay)
@@ -283,7 +351,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
       {view && (
         <MessageView mail={view} onBack={() => setView(null)}
           actions={readerActions} backLabel={t("Search")}
-          nav={{ list: mails, onOpen: setView }} />
+          nav={{ list: mails, onOpen: openMail }} />
       )}
       {/* Stays mounted behind a mail so Back keeps the scroll position. */}
       {(
@@ -323,6 +391,13 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                       disabled: !bodySearch,
                       describedBy: reason ? "search-body-off" : undefined },
                   ]} />
+                {across && (
+                  <Segmented<Where> value={where} label={t("search.where")}
+                    role="radio" phoneFill onChange={pickWhere}
+                    options={[
+                      { value: "this", label: t("search.where_this") },
+                      { value: "all", label: t("search.where_all") }]} />
+                )}
                 {typed && !!res?.mails.length && (
                   <span className="ml-auto flex flex-wrap gap-2">
                     <Select aria-label={t("search.time")} value={when}
@@ -356,8 +431,10 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 </p>
               )}
               {res?.notes.map((n) => (
-                <p key={n.key + JSON.stringify(n.params)}
+                <p key={n.key + JSON.stringify(n.params) + (n.account ?? "")}
                   className="mt-2 type-meta text-muted">
+                  {n.account && <strong className="font-semibold">
+                    {n.account}: </strong>}
                   {t(`search.note.${n.key}`, n.params)}
                 </p>
               ))}
@@ -395,7 +472,7 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                     </ul>
                   </section>
                 )}
-                {tries.length > 0 && onOpenFiltered && (
+                {tries.length > 0 && onOpenFiltered && !everywhere && (
                   <section className="px-4 pt-5">
                     <SectionLabel className="mb-1">{t("search.try")}</SectionLabel>
                     <ul className="rounded-card border border-line bg-panel">
@@ -434,12 +511,55 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                     </p>
                   </section>
                 )}
-                {!recent.length && !(tries.length && onOpenFiltered) && (
+                {!recent.length && !(tries.length && onOpenFiltered
+                    && !everywhere) && (
                   <EmptyState icon={<Search size={18} />}
                     title={t("search.empty_title")}
                     hint={t("search.empty_hint")} />
                 )}
               </>
+            )}
+
+            {typed && res && everywhere && (res.senders?.length ?? 0) > 0 && (
+              <section className="px-4 pt-5">
+                <SectionLabel className="mb-1">
+                  {t("search.senders")} · {res.senders!.length}
+                </SectionLabel>
+                <ul className="rounded-card border border-line bg-panel">
+                  {res.senders!.map((g) => (
+                    <li key={`${g.account}\u0000${g.key}`}
+                      className="border-b border-line/60 last:border-b-0">
+                      <button type="button"
+                        className="flex min-h-14 w-full items-center gap-3
+                          px-3 py-2 text-left hover:bg-panel2"
+                        onClick={() => {
+                          commit(res.q);
+                          across!.onOpenSender(g.account, g.key);
+                        }}>
+                        <Avatar name={g.label || g.key} size="md" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate type-body
+                            font-medium">{mark(g.label || g.key)}</span>
+                          <span className="block truncate type-meta
+                            text-muted">{mark(g.key)}</span>
+                        </span>
+                        <span className="shrink-0 type-meta text-muted
+                          tabular-nums">
+                          {t("search.sender_stats",
+                            { n: g.count, size: fmtSize(g.size) })}
+                        </span>
+                        <span className="inline-flex shrink-0 items-center
+                          gap-1 rounded-full bg-chip py-0.5 pl-0.5 pr-2
+                          type-caption text-muted">
+                          <Avatar name={g.account} />{g.account}
+                        </span>
+                        <ChevronRight size={16} aria-hidden
+                          className="shrink-0 text-faint" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
 
             {typed && res && senders.length > 0 && (
@@ -502,9 +622,14 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
                 <div className="mx-4 overflow-hidden rounded-card border
                   border-line bg-panel">
                   <MailRows mails={mails} sel={new Set(picked)} onToggle={toggle}
-                    onOpen={(m) => { commit(res?.q ?? ""); setView(m); }} mark={mark} />
+                    onOpen={(m) => { commit(res?.q ?? ""); openMail(m); }} mark={mark} />
                 </div>
               </section>
+            )}
+
+            {typed && res && everywhere && mails.length > 0 && (
+              <p className="px-4 pt-2 type-meta text-muted">
+                {t("search.across_hint")}</p>
             )}
 
             {typed && res && mails.length === 0 && (
@@ -514,6 +639,21 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
             {typed && moreText}
           </div>
         </div>
+      )}
+      {acting && across && (
+        <SearchTrashConfirm mails={acting} order={across.names}
+          exists={across.exists} onFollow={across.onFollow}
+          onClaim={across.onClaim}
+          onActed={(done) => {
+            const gone = new Set(done.map(mailKey));
+            setRes((cur) => cur && { ...cur,
+              mails: cur.mails.filter((m) => !gone.has(mailKey(m))) });
+            setSel((cur) => new Set([...cur].filter((k) => !gone.has(k))));
+            if (view && gone.has(mailKey(view))) setView(null);
+            setNote(t("note.background", { verb: t("Move to Trash") }));
+            onDeleted();
+          }}
+          onClose={() => setActing(null)} />
       )}
     </Modal>
   );

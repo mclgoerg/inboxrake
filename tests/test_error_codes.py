@@ -439,6 +439,7 @@ def test_every_new_code_has_an_english_text():
     ours = set(mailops.FOLDER_ERROR_CODES) - {
         mailops.NO_MESSAGE_ID, mailops.PINNED_MAILS, mailops.PROTECTED_MAILS,
         mailops.ALL_PINNED, mailops.DELETE_PROTECTED,
+        mailops.COPIES_NONE,
         mailops.ROLE_NOT_CANDIDATE, mailops.ROLE_AMBIGUOUS,
         mailops.NOT_LOOKALIKE, mailops.MOVE_UNSAFE}
     assert set(errortext.TEXT) == ours

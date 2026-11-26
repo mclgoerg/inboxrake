@@ -61,6 +61,7 @@ os.environ.update(
     TENANTS_DIR=str(DATA / "tenants"),
     SESSION_SECRET_PATH=str(DATA / "session_secret"),
     PINS_PATH=str(DATA / "pinned_mails.json"),
+    COPIED_PATH=str(DATA / "copied_mails.json"),
     ADDRESSES_PATH=str(DATA / "addresses.json"),
     ALIAS_SERVICE_PATH=str(DATA / "alias_service.json"),
     LABELS_PATH=str(DATA / "sender_labels.json"),
@@ -313,8 +314,8 @@ def _forget_the_last_visitor() -> None:
     """What a "Reset demo" must not keep: files the seed does not have
     (pins, known senders, ...) and the stores' in-memory copies of them."""
     import shutil
-    from backend import (addresses, addressstore, dupstore, labelstore,
-                         pinstore, rulecheckstore, senderchanges, substore,
+    from backend import (addresses, addressstore, copystore, dupstore,
+                         labelstore, pinstore, rulecheckstore, senderchanges, substore,
                          unsubstore, verdictstore, waitstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
@@ -322,6 +323,7 @@ def _forget_the_last_visitor() -> None:
         shutil.rmtree(p) if p.is_dir() else p.unlink()
     labelstore._cache.clear()
     pinstore._cache.clear()
+    copystore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
     rulecheckstore._cache.clear()
