@@ -106,7 +106,7 @@ function KeepSafeLine({ found }: { found: KeepSafeCheck | "failed" }) {
 }
 
 export function SameSenderConfirm({ row, action, exists, demo, onFollow,
-  onChanged, onClose }: {
+  onClaim, onChanged, onClose }: {
   row: SameSenderRow;
   action: SameAction;
   /** Is this account still in the workspace? Asked right before its step:
@@ -116,6 +116,10 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
   /** A Trash / Archive was queued in these accounts: the app follows the
    *  jobs and shows ONE toast with "Undo all N". */
   onFollow: (follow: Follow) => void;
+  /** The moves are about to start in these accounts (`on`), or did not
+   *  start: the app keeps the selected account's own "moved" toast quiet
+   *  meanwhile - asked BEFORE the first step, so it never speaks twice. */
+  onClaim: (accounts: string[], on: boolean) => void;
   /** Something was changed: the page reads its numbers again. */
   onChanged: () => void;
   onClose: () => void;
@@ -234,6 +238,7 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
         return null;
       }
     }
+    if (moveKind) onClaim(accounts, true);
     let i = 0;
     const outcomes = await runPerAccount(accounts, async (account) => {
       const p = by[account];
@@ -269,6 +274,8 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
       const went = outcomes.filter((o) => o.status === "done"
         && (queued.current[o.account] ?? 0) > 0).map((o) => o.account);
       if (went.length) onFollow({ kind: moveKind, accounts: went, before });
+      // the ones that never queued a move have nothing to announce
+      onClaim(accounts.filter((a) => !went.includes(a)), false);
     }
     return outcomes;
   };

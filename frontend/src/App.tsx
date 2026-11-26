@@ -3061,7 +3061,7 @@ export default function App() {
         demo={demo} scanRun={across.scanRun}
         onScanAll={() => { void across.scanAll(accountNames); }}
         exists={(a) => !!cfgRef.current?.accounts[a]}
-        onFollow={across.follow}
+        onFollow={across.follow} onClaim={across.claim}
         onAdd={() => { setAllAccountsOpen(false);
           setWizard({ mode: "add", previous: account }); }}
         onClose={() => closeTool(() => setAllAccountsOpen(false))}

@@ -44,12 +44,14 @@ const found = (kept: number): KeepSafeCheck => ({ total: 100, kept,
       ts: 1_700_000_000 }] }] });
 
 const onFollow = vi.fn();
+const onClaim = vi.fn();
 const onChanged = vi.fn();
 const onClose = vi.fn();
 const mount = (action: SameAction, props: Record<string, unknown> = {}) =>
   render(<ToastProvider><DialogProvider>
     <SameSenderConfirm row={deals()} action={action} exists={() => true}
-      demo={false} onFollow={onFollow} onChanged={onChanged} onClose={onClose}
+      demo={false} onFollow={onFollow} onClaim={onClaim} onChanged={onChanged}
+      onClose={onClose}
       {...props} />
   </DialogProvider></ToastProvider>);
 
@@ -72,7 +74,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   for (const f of [overviewCall, keepCheck, keepPin, unsubscribe, deleteGroups,
-    block, deleteRule, ack, onFollow, onChanged, onClose]) f.mockReset();
+    block, deleteRule, ack, onFollow, onClaim, onChanged, onClose])
+    f.mockReset();
   localStorage.clear();
   setLang("en");
 });
@@ -148,6 +151,39 @@ test("one step per ticked account, each pinned to its own account and the server
   const follow = onFollow.mock.calls[0][0];
   expect(follow.kind).toBe("trash");
   expect(follow.accounts).toEqual(["work", "proton", "old"]);
+});
+
+test("the selected account's own 'moved' toast is quieted BEFORE the first step", async () => {
+  mount("trash");
+  await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
+  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(onClaim).toHaveBeenCalledWith(["work", "proton", "old"], true);
+  expect(onClaim.mock.invocationCallOrder[0])
+    .toBeLessThan(deleteGroups.mock.invocationCallOrder[0]);
+  // nothing failed: nothing to let go of
+  expect(onClaim.mock.calls.filter((c) => c[1] === false)
+    .every((c) => c[0].length === 0)).toBe(true);
+});
+
+test("an account whose move never queued is let go of again", async () => {
+  deleteGroups.mockImplementation((...a: unknown[]) => a[9] === "proton"
+    ? Promise.reject(new Error("down")) : Promise.resolve({ ok: true, queued: 5, skipped: 0 }));
+  mount("archive");
+  await screen.findAllByRole("checkbox");
+  fireEvent.click(confirm(/^Archive\s\d+\sin\s3\saccounts$/));
+  await screen.findByText("2 done · 1 failed");
+  expect(onClaim).toHaveBeenCalledWith(["proton"], false);
+  expect(onFollow.mock.calls[0][0].accounts).toEqual(["work", "old"]);
+});
+
+test("a protection that failed claims nothing: no step ran", async () => {
+  keepPin.mockRejectedValue(new Error("disk full"));
+  mount("trash");
+  await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
+  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  await screen.findByText(/nothing was moved\./);
+  expect(onClaim).not.toHaveBeenCalled();
 });
 
 test("an unticked account is never called, and the button follows the ticks", async () => {

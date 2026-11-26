@@ -108,6 +108,14 @@ test("an account whose Undo fails is named; the others are still undone", async 
   expect(undoCall).toHaveBeenCalledTimes(2);
 });
 
+test("claim quiets and restores the selected account's own toast", () => {
+  const { result } = hook();
+  act(() => result.current.claim(["work", "proton"], true));
+  expect([...result.current.claimed.current]).toEqual(["work", "proton"]);
+  act(() => result.current.claim(["proton"], false));
+  expect([...result.current.claimed.current]).toEqual(["work"]);
+});
+
 test("the step an earlier move made is not mistaken for this one", async () => {
   const { result } = hook();
   // proton's newest step is the same as before: its job moved nothing

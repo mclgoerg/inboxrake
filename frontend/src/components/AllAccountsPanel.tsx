@@ -82,7 +82,8 @@ function Chips({ row }: { row: SameSenderRow }) {
  *  account switcher does); the actions run one step per account, pinned to
  *  that account. */
 export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
-  onScanAll, onClose, onOpen, onFix, onOpenSender, onFollow, onAdd, exists }: {
+  onScanAll, onClose, onOpen, onFix, onOpenSender, onFollow, onClaim, onAdd,
+  exists }: {
   cfg: Config;
   /** The accounts of this workspace, in order. */
   names: string[];
@@ -101,6 +102,8 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
   onOpenSender: (account: string, addr: string) => void;
   /** A Trash / Archive was queued: the app follows the jobs. */
   onFollow: (follow: Follow) => void;
+  /** Quiet / restore the selected account's own "moved" toast around them. */
+  onClaim: (accounts: string[], on: boolean) => void;
   /** Add account (the page needs two). */
   onAdd: () => void;
   exists: (account: string) => boolean;
@@ -376,7 +379,8 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
       )}
       {ask && (
         <SameSenderConfirm row={ask.row} action={ask.action} exists={exists}
-          demo={demo} onFollow={onFollow} onChanged={() => void reload()}
+          demo={demo} onFollow={onFollow} onClaim={onClaim}
+          onChanged={() => void reload()}
           onClose={() => setAsk(null)} />
       )}
     </Modal>

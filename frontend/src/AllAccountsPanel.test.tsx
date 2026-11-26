@@ -42,7 +42,8 @@ const viewport = (width: number, coarse = false) =>
 
 const cb = {
   onScanAll: vi.fn(), onClose: vi.fn(), onOpen: vi.fn(), onFix: vi.fn(),
-  onOpenSender: vi.fn(), onFollow: vi.fn(), onAdd: vi.fn() };
+  onOpenSender: vi.fn(), onFollow: vi.fn(), onClaim: vi.fn(),
+  onAdd: vi.fn() };
 
 const NAMES = ["proton", "icloud", "work", "old"];
 const show = (props: Record<string, unknown> = {}) => render(

@@ -127,6 +127,16 @@ export function useAcrossRuns({ toast, names, onChanged }: {
     changedRef.current(scanned);
   }, []);
 
+  /** Quiet the selected account's own "moved N mails" toast for these
+   *  accounts (`on`), or let it speak again: asked BEFORE the steps run, so a
+   *  job that finishes first is never announced twice. */
+  const claim = useCallback((accounts: string[], on: boolean): void => {
+    for (const a of accounts) {
+      if (on) claimed.current.add(a);
+      else claimed.current.delete(a);
+    }
+  }, []);
+
   /* ---- Undo all N ---- */
   const undoAll = useCallback(async (
       steps: { account: string; ident: StepIdent }[]): Promise<void> => {
@@ -199,5 +209,5 @@ export function useAcrossRuns({ toast, names, onChanged }: {
     setTimeout(() => { void tick(); }, 0);
   }, [undoAll]);
 
-  return { scanRun, scanAll, follow, undoAll, claimed };
+  return { scanRun, scanAll, follow, undoAll, claim, claimed };
 }
