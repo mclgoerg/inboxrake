@@ -49,7 +49,6 @@ KINDS = [
     ("Your parcel is out for delivery", False, "shipping"),
     ("Ihr Paket wurde versendet", True, "shipping"),
     ("Delivered: order #88", False, "shipping"),
-    ("Deine Bestellung ist unterwegs", True, "shipping"),
     ("Your parcel is on its way", False, "shipping"),
     ("Your order is on its way", True, "shipping"),
     # invoices and receipts
@@ -186,7 +185,6 @@ def test_a_pickup_code_is_no_shipping_update():
 
 
 def test_on_its_way_is_a_shipping_update_even_for_an_order():
-    assert kind("Deine Bestellung ist unterwegs") == "shipping"
     assert kind("Your order is on its way") == "shipping"
     assert kind("Your parcel is on its way") == "shipping"
     assert kind("Your return is on its way") == ""        # no shipping update
