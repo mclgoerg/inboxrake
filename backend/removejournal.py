@@ -17,11 +17,10 @@ unknown file is ignored. An older release never reads it.
 
 from __future__ import annotations
 
-import hashlib
+import base64
 import json
 import logging
 import os
-import re
 import threading
 import time
 from pathlib import Path
@@ -35,9 +34,10 @@ BOOT = f"{os.getpid()}-{time.time_ns():x}"
 
 
 def _path(name: str, tenant, base: Path) -> Path:
-    slug = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:40]
-    h = hashlib.sha1(name.encode()).hexdigest()[:8]
-    return tenant.dir(base) / f"removals_{slug}_{h}.json"
+    """One file per account; the name is encoded (not hashed), so two
+    accounts never share a file and nothing is lost to a collision."""
+    code = base64.urlsafe_b64encode(name.encode("utf-8")).decode().rstrip("=")
+    return tenant.dir(base) / f"removals_{code}.json"
 
 
 def _read(name: str, tenant, base: Path) -> list[dict]:
