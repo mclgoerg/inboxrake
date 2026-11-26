@@ -316,6 +316,20 @@ def test_the_first_scan_seeds_from_the_mailbox_and_keeps_numbers_only():
     assert sc.load_account("acct")["since"] == NOW
 
 
+def test_a_missing_address_in_a_moved_mail_cannot_lose_the_undo_step(bridge):
+    mailops.run_scan()
+    acc = accountsmod.get()
+    with acc.lock:
+        for m in acc.index.values():
+            if m["addr"] == "noreply@dhl.example":
+                m.pop("addr")             # a mail record without its sender
+                break
+    mailops.delete_groups("sender", ["noreply@dhl.example"])
+    d = wait_delete_done()
+    assert d["moved"] >= 1
+    assert acc.undo_log                   # the step was recorded
+
+
 def test_a_scan_that_breaks_the_store_does_not_raise(monkeypatch):
     monkeypatch.setattr(sc, "_persist", lambda d: 1 / 0)
     sc.record_scan("acct", [], None, [mail(1, L)], now=NOW)
@@ -378,12 +392,16 @@ def test_counts_are_per_account_and_per_tenant():
         assert set(sc.load_account("one")["last"]) == {B}
     assert set(sc.load_account("one")["last"]) == {L}
     assert (alice.root / "sender_changes.json").is_file()
-    # the evaluation is per tenant, too
-    acc = acc_of([mail(d, L) for d in (462, 6)], name="one")
-    sc.reset_cache()
-    assert sc.changes(acc, NOW)["back"] == {}
+    # the evaluation is per tenant, too: the same mailbox against another
+    # tenant's counts (which know of no comeback) must not see this one's
+    mails = [mail(d, B) for d in (462, 6)]
+    sc.record_scan("cmp", [], None, mails, now=NOW)
+    acc = acc_of(mails, name="cmp")
+    assert B in sc.changes(acc, NOW)["back"]
     with tenants.use(alice):
-        assert sc.changes(acc_of([mail(1, B)], name="one"), NOW)["back"] == {}
+        sc.record_scan("cmp", [], None, [], now=NOW)
+        assert sc.changes(acc, NOW)["back"] == {}
+    assert B in sc.changes(acc, NOW)["back"]
 
 
 # -------------------------------------------------- through the real scan
@@ -607,6 +625,9 @@ def test_the_card_marks_protected_and_already_unsubscribed_senders(monkeypatch):
     unsubstore.record(L, "done", "list-unsubscribe", account=acc.name)
     row = overview.changes_card(acc, NOW)["louder"][0]
     assert row["unsub"] is False                 # nothing left to unsubscribe
+    assert row["replied"] is False
+    acc.state["groups"]["sender"][L]["replied"] = True
+    assert overview.changes_card(acc, NOW)["louder"][0]["replied"] is True
     cfgmod.update_config({"protected": [L]})
     assert overview.changes_card(acc, NOW)["louder"][0]["protected"] is True
 

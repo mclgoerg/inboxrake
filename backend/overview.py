@@ -210,7 +210,8 @@ def changes_card(acc, now: float | None = None) -> dict:
     """The Statistics card "Changes in the last 30 days" (GET
     /api/sender-changes): the senders that got louder (loudest first) and
     those that came back (newest first), with what the card needs to offer
-    the fitting action - `unsub` (an unsubscribe is open), `protected`."""
+    the fitting action - `unsub` (an unsubscribe is open), `protected`,
+    `replied` (you have written to the sender)."""
     now = now if now is not None else time.time()
     changed = senderchanges.changes(acc, now)
     entries = unsubstore.load_account(acc.name)
@@ -221,12 +222,13 @@ def changes_card(acc, now: float | None = None) -> dict:
     with acc.lock:
         recs = acc.state["groups"].get("sender") or {}
         unsub = {a: bool((recs.get(a) or {}).get("unsub")) for a in wanted}
+        replied = {a for a in wanted if (recs.get(a) or {}).get("replied")}
     protected = {a for a in wanted if cfgmod.is_protected(a, plist)}
 
     def extra(addr: str) -> dict:
         done = (entries.get(addr) or {}).get("status") == "done"
         return {"key": addr, "unsub": unsub[addr] and not done,
-                "protected": addr in protected}
+                "protected": addr in protected, "replied": addr in replied}
 
     louder = [{**extra(a), "label": r["label"], "n": r["n"],
                "usual": r["usual"], "factor": r["factor"],

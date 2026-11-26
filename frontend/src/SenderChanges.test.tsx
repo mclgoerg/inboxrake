@@ -383,20 +383,26 @@ const CHANGES: SenderChangesResp = {
   days: 30, since: NOW - 90 * DAY,
   louder: [
     { key: "n@x.example", label: "Northwind News", unsub: true,
-      protected: false, n: 4, usual: 1, factor: 4, start: NOW - 7 * DAY,
+      protected: false, replied: false, n: 4, usual: 1, factor: 4, start: NOW - 7 * DAY,
       end: NOW },
     { key: "c@x.example", label: "Chirper", unsub: false, protected: false,
+      replied: false,
       n: 15, usual: 6, factor: 2.5, start: NOW - 14 * DAY,
       end: NOW - 7 * DAY },
     { key: "p@x.example", label: "Pinned Shop", unsub: true, protected: true,
+      replied: false,
       n: 6, usual: 1, factor: 6, start: NOW - 7 * DAY, end: NOW }],
   back: [
     { key: "h@x.example", label: "Harbor Books", unsub: true,
-      protected: false, ts: NOW - 5 * DAY, gap_days: 456, n: 3 },
+      protected: false, replied: false, ts: NOW - 5 * DAY, gap_days: 456, n: 3 },
     { key: "b@x.example", label: "Blocked Co", unsub: false,
-      protected: false, ts: NOW - 6 * DAY, gap_days: 300, n: 1 },
+      protected: false, replied: false, ts: NOW - 6 * DAY, gap_days: 300, n: 1 },
     { key: "q@x.example", label: "Kept Friend", unsub: false,
-      protected: true, ts: NOW - 4 * DAY, gap_days: 400, n: 2 }],
+      protected: true, replied: false, ts: NOW - 4 * DAY, gap_days: 400,
+      n: 2 },
+    { key: "w@x.example", label: "Old Colleague", unsub: false,
+      protected: false, replied: true, ts: NOW - 3 * DAY, gap_days: 500,
+      n: 1 }],
 };
 const RHYTHM = (daily: string[] = []) => {
   const blank = () => Array.from({ length: 7 }, () => Array(24).fill(0));
@@ -457,6 +463,11 @@ test("the Statistics card: rows, figures and the fitting action", async () => {
   expect(friend.queryByRole("button", { name: "Block…" })).toBeNull();
   fireEvent.click(friend.getByRole("button", { name: "Show mails" }));
   expect(acts.onShowMails).toHaveBeenLastCalledWith("q@x.example");
+  // so is someone you have written to: a correspondent is never offered Block
+  const colleague = within(c.getByText("Old Colleague").closest("li")!);
+  expect(colleague.queryByRole("button", { name: "Block…" })).toBeNull();
+  fireEvent.click(colleague.getByRole("button", { name: "Show mails" }));
+  expect(acts.onShowMails).toHaveBeenLastCalledWith("w@x.example");
   expect(c.getByText(
     "Senders already named in “What stands out” are left out here."))
     .toBeTruthy();

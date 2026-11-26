@@ -186,13 +186,13 @@ export function QueryBuilder({ value, onChange, className = "",
         {flag("is:protected", t("qb.is_protected"))}
         {flag("is:new", t("qb.is_new"))}
         {flag("is:still-mailing", t("qb.is_still_mailing"))}
-        {flag("is:louder", t("qb.is_louder"))}
-        {flag("is:back", t("qb.is_back"))}
         {flag("has:pinned", t("qb.has_pinned"))}
         {flag("has:tracker", t("qb.has_tracker"))}
         {flag("eng:low", t("qb.eng_low"))}
         {flag("eng:medium", t("qb.eng_medium"))}
         {flag("eng:high", t("qb.eng_high"))}
+        {flag("is:louder", t("qb.is_louder"))}
+        {flag("is:back", t("qb.is_back"))}
       </div>
       </>}
     </>

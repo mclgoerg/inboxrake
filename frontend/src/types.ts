@@ -1151,8 +1151,9 @@ export interface OverviewWindow {
 /** GET /api/sender-changes: the Statistics card (last 30 days). */
 export interface ChangeRow {
   key: string; label: string;
-  /** an unsubscribe is open for it / it is on the protected list */
-  unsub: boolean; protected: boolean;
+  /** an unsubscribe is open for it / it is on the protected list / you
+   *  have written to it */
+  unsub: boolean; protected: boolean; replied: boolean;
 }
 export interface LouderRow extends ChangeRow {
   n: number; usual: number; factor: number; start: number; end: number;

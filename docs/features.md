@@ -353,7 +353,7 @@ list says why they are there, and the sender's arrival strip gets one line ("Las
 7 days: 4 mails - more than twice its usual week"). **Statistics** gets a card
 **Changes in the last 30 days** after When mail arrives, with the fitting action
 per sender - Unsubscribe…, Block… (asks first, as everywhere) or Show mails
-(protected senders only get Show mails); senders already named in What stands out
+(protected senders and people you have written to only get Show mails); senders already named in What stands out
 are left out, and without a change there is no card. "Went quiet" is left out on
 purpose - Inactive, the quiet-senders card and Subscriptions' "Looks unused"
 cover it. Nothing changes by itself; there is no AI in it. An older release

@@ -3457,11 +3457,12 @@ def _delete_worker(acc) -> None:
             if not moved_uids:
                 return
             meta = _apply_removal(moved_uids, acc)
-            cleaned_addrs.update(m["addr"] for by_uid in meta.values()
-                                 for m in by_uid.values())
             undo_id[0] = _record_undo(
                 label, meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor) or undo_id[0]
+            # after the Undo step: nothing here may lose it
+            cleaned_addrs.update(m["addr"] for by_uid in meta.values()
+                                 for m in by_uid.values() if m.get("addr"))
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()

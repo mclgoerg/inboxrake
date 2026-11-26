@@ -139,8 +139,9 @@ function Heading({ icon, children }: { icon: ReactElement; children: string }) {
  *  (sender keys) are the senders "What stands out" already speaks of; they
  *  are left out. Returns null when nothing is left: no change, no card.
  *  Each row offers the fitting action - Unsubscribe… (an unsubscribe is
- *  open), Block… (came back), else Show mails; protected senders only get
- *  Show mails. */
+ *  open), Block… (came back), else Show mails; protected senders and people
+ *  you have written to only get Show mails (a correspondent is never offered
+ *  a Block). */
 export function ChangesRows({ data, named, nowS, blocked, onUnsubscribe,
   onBlock, onShowMails }: {
   data: SenderChangesResp; named: ReadonlySet<string>; nowS: number;
@@ -157,7 +158,8 @@ export function ChangesRows({ data, named, nowS, blocked, onUnsubscribe,
   const louderAct = (r: LouderRow) => !r.protected && r.unsub && onUnsubscribe
     ? { label: t("rhythm.unsub"), go: () => onUnsubscribe(r.key) }
     : { label: t("changes.show_mails"), go: show(r) };
-  const backAct = (r: BackRow) => !r.protected && !blocked.has(r.key) && onBlock
+  const backAct = (r: BackRow) => !r.protected && !r.replied
+    && !blocked.has(r.key) && onBlock
     ? { label: t("changes.block"), go: () => onBlock(r.key) }
     : { label: t("changes.show_mails"), go: show(r) };
   return (

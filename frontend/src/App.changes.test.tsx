@@ -37,10 +37,10 @@ vi.mock("./api", () => ({
         orders: kind() }, daily: [] }),
     senderChanges: () => Promise.resolve({ days: 30, since: NOW - 90 * DAY,
       louder: [{ key: "n@x.example", label: "Northwind News", unsub: false,
-        protected: false, n: 4, usual: 1, factor: 4, start: NOW - 7 * DAY,
+        protected: false, replied: false, n: 4, usual: 1, factor: 4, start: NOW - 7 * DAY,
         end: NOW }],
       back: [{ key: "h@x.example", label: "Harbor Books", unsub: false,
-        protected: false, ts: NOW - 5 * DAY, gap_days: 456, n: 3 }] }),
+        protected: false, replied: false, ts: NOW - 5 * DAY, gap_days: 456, n: 3 }] }),
     block: (...a: unknown[]) => block(...a),
   },
   downloadFile: () => Promise.resolve(),
@@ -102,14 +102,21 @@ const baseState: AppState = {
   presets: [],
 };
 
-const setup = () => {
+const blockRule = {
+  id: "rule1", name: "Harbor Books", scope: "mail" as const,
+  grouping: "sender" as const, query: "from:h@x.example", action: "trash",
+  dest: "", schedule: "daily" as const, mode: "execute" as const,
+  keep_latest: null, older_than_days: null, origin: "block" as const,
+  report_runs: 1, created: 0, last_run: null,
+};
+const setup = (hash = "#/stats", rules: unknown[] = []) => {
   localStorage.setItem("pmc_account", "proton");
   const groups = [mk("n@x.example", { label: "Northwind News" }),
     mk("h@x.example", { label: "Harbor Books", count: 0 })];
   state = { ...baseState, groups: { sender: Object.fromEntries(
     groups.map((g) => [g.key, g])), smart: {}, domain: {}, subject: {},
-    thread: {} } };
-  window.location.hash = "#/stats";
+    thread: {} }, rules };
+  window.location.hash = hash;
   render(<ToastProvider><DialogProvider><App /></DialogProvider></ToastProvider>);
 };
 
@@ -147,4 +154,15 @@ test("Show mails opens All mail on that sender", async () => {
   fireEvent.click(c.getByRole("button", { name: "Show mails" }));
   await waitFor(() => expect(window.location.hash).toBe("#/all"));
   expect(await screen.findByDisplayValue("from:n@x.example")).toBeTruthy();
+});
+
+test("a sender that has a block rule is offered no second Block…, " +
+  "whichever grouping Senders was left on", async () => {
+  setup("#/senders", [blockRule]);
+  fireEvent.click(await screen.findByRole("tab", { name: "Subject" }));
+  window.location.hash = "#/stats";
+  const c = await card();
+  const harbor = within(c.getByText("Harbor Books").closest("li")!);
+  expect(harbor.queryByRole("button", { name: "Block…" })).toBeNull();
+  expect(harbor.getByRole("button", { name: "Show mails" })).toBeTruthy();
 });

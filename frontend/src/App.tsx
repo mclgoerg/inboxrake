@@ -2772,7 +2772,7 @@ export default function App() {
           setStatsOpen(false);
           openAllMailNewest(`from:${key}`);
         }}
-        blockedKeys={new Set(blockedRules.keys())}
+        blockedKeys={blockedAddrs}
         onOpenRecipe={(id) => {
           setStatsOpen(false); setRulesRecipe(id); openTool("rules");
         }} />
