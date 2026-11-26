@@ -68,7 +68,7 @@ export function FolderMerge({ row, targets, account, onResult }: {
         <div id={titleId} className="type-heading">
           {t("yf.merge_title", { name: row.name })}</div>
         <SettingsGroup header={t("yf.merge_pick")} radioGroup>
-          <div className="max-h-64 divide-y divide-line overflow-y-auto">
+          <div className="max-h-72 divide-y divide-line overflow-y-auto">
             {targets.map((r) => (
               <RadioRow key={r.raw} label={r.name} sub={sub(r)}
                 checked={r.raw === chosen}

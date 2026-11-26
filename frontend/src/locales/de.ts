@@ -3726,6 +3726,7 @@ export const DE: Record<string, string> = {
   "yf.why.children": "Er hat Unterordner: Lösche oder verschiebe sie zuerst.",
   "yf.why.rules": "Regeln verschieben Mails hierher: Ändere zuerst diese Regeln.",
   "yf.why.not_empty": "Löschen gibt es nur für leere Ordner.",
+  "yf.why.nothing": "Es gibt nichts zusammenzuführen: Der Ordner enthält keine Mails.",
   "yf.merge_title": "„{name}“ zusammenführen in\u2026",
   "yf.merge_pick": "Ordner, in den zusammengeführt wird",
   "yf.merge_suggested": "{mails} \u00b7 Vorschlag, ähnlicher Name",

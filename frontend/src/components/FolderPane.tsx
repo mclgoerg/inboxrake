@@ -60,6 +60,8 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
     if (why && why !== "not_empty" && !reasons.includes(why)) reasons.push(why);
   }
   const off = (why: FolderWhy | null) => busy || !!why;
+  // a folder the scan saw empty has nothing to merge (Delete is its way out)
+  const nothing = row.mails === 0 && !row.can.merge;
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
       <div className="flex items-center gap-3">
@@ -94,7 +96,8 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
 
       <div className="flex flex-wrap gap-2">
         <Button variant={row.hints.includes("look") && !off(row.can.merge)
-          ? "primary" : "secondary"} disabled={off(row.can.merge)}
+          && !nothing ? "primary" : "secondary"}
+          disabled={off(row.can.merge) || nothing}
           onClick={onMerge}>
           <span className={ROW_BTN}><GitMerge size={16} aria-hidden />
             {t("yf.merge")}</span>
@@ -117,6 +120,7 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
       </div>
       <div className="-mt-2 space-y-1 type-meta text-muted">
         {reasons.map((why) => <p key={why}>{whyText(why)}</p>)}
+        {nothing && <p>{t("yf.why.nothing")}</p>}
         {!reasons.length && <p>{t("yf.delete_hint")}</p>}
       </div>
 

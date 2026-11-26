@@ -270,6 +270,19 @@ def test_a_folder_never_merges_into_itself_or_its_alias(box):
     assert uids(box, "Receipts") == [1, 2, 3]
     # two different folders that merely look alike are not the same
     assert not yf._same_folder(box, "Receipts", "Receipts 2019")
+    # the inbox has one name whatever its case; an empty folder equals only
+    # itself (a fresh folder that happens to share counts is not an alias)
+    assert yf._same_folder(box, "Inbox", "INBOX")
+    assert yf._same_folder(box, "Receipts", "Receipts")
+    _add(box, "Fresh A")
+    _add(box, "Fresh B")
+    assert yf._same_folder(box, "Fresh A", "Fresh B")      # cannot be told apart
+    # ... which is why a merge of empty folders moves nothing and deletes
+    # nothing: the folder is refused as "the same"
+    with pytest.raises(RuntimeError) as e:
+        yf.merge(acc(), "Fresh A", "Fresh B", 1, 1, delete_after=True)
+    assert err(e) == "folder_same"
+    assert {"Fresh A", "Fresh B"} <= set(box.mailbox)
 
 
 def test_a_merge_needs_a_server_that_can_move_safely(monkeypatch):

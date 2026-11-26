@@ -3502,6 +3502,7 @@ export const EN: Record<string, string> = {
   "yf.why.children": "It has subfolders: delete or move them first.",
   "yf.why.rules": "Rules move mail into it: change those rules first.",
   "yf.why.not_empty": "Delete is only offered for empty folders.",
+  "yf.why.nothing": "There is nothing to merge: the folder holds no mail.",
   "yf.merge_title": "Merge \u201c{name}\u201d into\u2026",
   "yf.merge_pick": "Folder to merge into",
   "yf.merge_suggested": "{mails} \u00b7 suggested, similar name",

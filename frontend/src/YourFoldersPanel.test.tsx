@@ -255,6 +255,11 @@ test("an empty folder and a quiet one say so", async () => {
   expect(within(pane()).getByText("This folder is empty.")).toBeTruthy();
   expect((within(pane()).getByRole("button", { name: /Delete folder/ }) as
     HTMLButtonElement).disabled).toBe(false);
+  // nothing to merge in a folder the scan saw empty - Delete is its way out
+  expect((within(pane()).getByRole("button", { name: /Merge into/ }) as
+    HTMLButtonElement).disabled).toBe(true);
+  expect(within(pane()).getByText(
+    "There is nothing to merge: the folder holds no mail.")).toBeTruthy();
   fireEvent.click(within(row("Newsletters 2019")).getByRole("button"));
   expect(within(pane()).getByText("Nothing new since 2021: 120 mails, 98% unread."))
     .toBeTruthy();
