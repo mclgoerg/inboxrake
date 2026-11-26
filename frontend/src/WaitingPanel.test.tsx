@@ -115,9 +115,9 @@ test("desktop: the three tiles, the counts, the rows of the board", async () => 
 test("desktop: the third tile has no figure before there are two answers", async () => {
   waiting.mockResolvedValue(resp({ kpis: { overdue: 3, open: 5, typical_days: null } }));
   show();
-  await screen.findByText("your contacts usually answer within");
-  expect(screen.queryByText(/days$/)).toBeNull();
-  expect(screen.getByText("—")).toBeTruthy();
+  const tile = (await screen.findByText("your contacts usually answer within"))
+    .parentElement!;
+  expect(tile.textContent).toBe("—your contacts usually answer within");
 });
 
 test("desktop: overdue rows read orange with the hourglass, young ones plain", async () => {
