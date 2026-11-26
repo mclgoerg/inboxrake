@@ -306,3 +306,45 @@ test("Review N: the union of the checked next steps, protected skipped, no " +
   expect((await screen.findByPlaceholderText("Search or filter…") as
     HTMLInputElement).value).toBe("eng:low age:>1y");
 });
+
+test("Sender changes: the rows open Senders with is:louder / is:back over " +
+  "the window, one line says why, and the rows stay as they are", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const loud = mk("n@x.example", { label: "Northwind News", louder: {
+    addr: "n@x.example", label: "Northwind News", n: 4, usual: 1, factor: 4,
+    ts: [now - 3600, now - 86400, now - 2 * 86400, now - 3 * 86400] } });
+  const came = mk("h@x.example", { label: "Harbor Books", back: {
+    addr: "h@x.example", label: "Harbor Books", ts: now - 2 * 86400,
+    gap_days: 456, n: 3, never_opened: true } });
+  const groups = [news, quiet, loud, came];
+  withWeek({ louder: 1, louder_top: { label: "Northwind News", n: 4, usual: 1 },
+    back: 1, back_top: { label: "Harbor Books", months: 14,
+      never_opened: true } });
+  const filter = async () => (await screen.findByPlaceholderText(
+    "Search or filter…") as HTMLInputElement).value;
+  setup({}, groups);
+  fireEvent.click(await screen.findByText("1 sender got louder"));
+  expect(await filter()).toBe("is:louder in:7d");
+  expect(window.location.hash).toBe("#/senders");
+  const note = (await screen.findAllByTestId("changes-note"))[0];
+  expect(note.textContent).toBe("Got louder: their last 7 days vs their usual"
+    + " week · Northwind News ×4");
+  // only the louder sender is listed, as an ordinary row - nothing was added
+  expect(screen.getAllByText("Northwind News").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Harbor Books")).toBeNull();
+  expect(screen.queryByText("Label news")).toBeNull();
+  cleanup();
+
+  window.location.hash = "";
+  setup({}, groups);
+  fireEvent.click(await screen.findByText("1 came back after 14 months"));
+  expect(await filter()).toBe("is:back in:7d");
+  expect((await screen.findAllByTestId("changes-note"))[0].textContent).toBe(
+    "Came back after 6+ months of silence: first mail in the last 7 d"
+    + " · Harbor Books (14 months)");
+  expect(screen.queryByText("Northwind News")).toBeNull();
+  // clearing the filter takes the line away
+  fireEvent.change(await screen.findByPlaceholderText("Search or filter…"),
+    { target: { value: "" } });
+  await waitFor(() => expect(screen.queryByTestId("changes-note")).toBeNull());
+});

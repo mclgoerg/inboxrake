@@ -68,6 +68,35 @@ test("still-mailing flag emits the is:still-mailing DSL token", () => {
   expect(parseFilter(s.get()).stillMailing).toBe(true);
 });
 
+test("louder and came-back flags emit the is:louder / is:back tokens", () => {
+  const s = setup();
+  fireEvent.click(screen.getByText("got louder"));
+  expect(s.get()).toBe("is:louder");
+  expect(parseFilter(s.get()).louder).toBe(true);
+  cleanup();
+  const b = setup();
+  fireEvent.click(screen.getByText("came back after 6+ months"));
+  expect(b.get()).toBe("is:back");
+  expect(parseFilter(b.get()).back).toBe(true);
+  // the flags that were there stay
+  expect(screen.getByText("still mailing after unsubscribe")).toBeTruthy();
+  expect(screen.getByText("new senders")).toBeTruthy();
+});
+
+test("the new flags come last: every flag that was there keeps its place", () => {
+  setup();
+  const order = ["with unsubscribe link", "new senders",
+    "still mailing after unsubscribe", "with protected mails",
+    "that track opens or clicks", "rarely engaged with",
+    "sometimes engaged with", "often engaged with", "got louder",
+    "came back after 6+ months"];
+  const labels = [...document.querySelectorAll("button")]
+    .map((b) => b.textContent);
+  const idx = order.map((name) => labels.indexOf(name));
+  expect(idx.every((i) => i >= 0)).toBe(true);
+  expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+});
+
 test("tokens are never added twice", () => {
   const s = setup("is:unsub");
   fireEvent.click(screen.getByText("with unsubscribe link"));

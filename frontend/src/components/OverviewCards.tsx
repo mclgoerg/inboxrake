@@ -1,6 +1,6 @@
 import { Check, ChevronRight, Ghost, Hourglass, Info, Mail, MoreHorizontal,
-  Newspaper, Paperclip, ShieldAlert, Sparkles, BellOff, TrendingDown,
-  TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
+  Newspaper, Paperclip, RotateCcw, ShieldAlert, Sparkles, BellOff,
+  TrendingDown, TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLang, t } from "../i18n";
@@ -9,7 +9,7 @@ import { fmtSize } from "../lib";
 import { WEEK_S } from "../activity";
 import { categoryHues, categoryName } from "../categories";
 import { nowMs } from "../clock";
-import { kindShares, type Trend, windowTerm } from "../overview";
+import { kindShares, louderWindow, type Trend, windowTerm } from "../overview";
 import { TOP_CARDS, type QuickWinCard } from "../quickwins";
 import type { OverviewResp } from "../types";
 import { Button, Checkbox, hueFillAt, IconTile, Menu, MenuItem, Segmented,
@@ -315,7 +315,8 @@ export type WeekRange = "week" | "since";
 
 /** The numbers of a window as rows; a row whose count is 0 is left out. */
 export function LastWeekCard({ data, since, range, onRange, junk, failed,
-  onRetry, onOpenAllMail, onOpenNew, onOpenStill, onOpenJunk, onOpenAi }: {
+  onRetry, onOpenAllMail, onOpenNew, onOpenStill, onOpenJunk, onOpenAi,
+  onOpenLouder, onOpenBack }: {
   data: OverviewResp | null;
   /** Start of the previous visit (ms); null = there is none yet. */
   since: number | null;
@@ -332,6 +333,10 @@ export function LastWeekCard({ data, since, range, onRange, junk, failed,
   onOpenStill: (window: string) => void;
   onOpenJunk: () => void;
   onOpenAi: (window: string) => void;
+  /** Senders that got louder / came back: Senders with `is:louder` /
+   *  `is:back` over the window (louder never wider than the last 7 days). */
+  onOpenLouder?: (window: string) => void;
+  onOpenBack?: (window: string) => void;
 }) {
   const showSince = since !== null;
   const mode: WeekRange = showSince ? range : "week";
@@ -385,6 +390,33 @@ export function LastWeekCard({ data, since, range, onRange, junk, failed,
           : t("overview.verdicts_none_safe")}
         // the list is the safe ones: with none there is nothing to open
         onClick={w.verdicts_safe > 0 ? () => onOpenAi(win()) : undefined} />);
+  }
+  // the two sender-change rows come after today's rows, each only when there
+  // is something
+  if (w && (w.louder ?? 0) > 0 && w.louder_top && onOpenLouder) {
+    const win7 = louderWindow(mode, since, nowMs());
+    const top = w.louder_top;
+    rows.push(
+      <OverviewRow key="louder" testId="ov-row-louder"
+        icon={<TrendingUp size={16} />} tone="review"
+        title={t("overview.row_louder", { n: w.louder! })}
+        sub={t("overview.row_louder_sub", { name: top.label,
+          n: top.n, usual: fmtNum(top.usual),
+          when: t(win7 === "7d" ? "overview.when_week" : "overview.when_since") })}
+        onClick={() => onOpenLouder(win7)} />);
+  }
+  if (w && (w.back ?? 0) > 0 && w.back_top && onOpenBack) {
+    const top = w.back_top;
+    const n = w.back!;
+    rows.push(
+      <OverviewRow key="back" testId="ov-row-back"
+        icon={<RotateCcw size={16} />} tone="attach"
+        title={t("overview.row_back", { n, months: top.months })}
+        sub={n > 1 ? t("overview.row_back_more", { name: top.label, n: n - 1 })
+          : t(top.never_opened ? "overview.row_back_never"
+            : "overview.row_back_quiet", { name: top.label,
+            months: top.months })}
+        onClick={() => onOpenBack(windowTerm(mode, since, nowMs()))} />);
   }
   const title = t("overview.week_title");
   return (

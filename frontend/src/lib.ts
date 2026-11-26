@@ -173,6 +173,10 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   is:noreply-ever     the user has never written to any of its senders
  *   is:new              sender first seen within the new-sender window
  *   is:still-mailing    mail kept arriving after a successful unsubscribe
+ *   is:louder           more than twice its usual week in the last 7 days
+ *                       (at least 4 mails)
+ *   is:back             the first mail after 6+ months of silence arrived in
+ *                       the last 30 days
  *   has:pinned          group contains at least one pinned mail
  *   has:tracker         a checked mail of the group has a tracking pixel or
  *                       click-tracking links (needs the body index)
@@ -183,8 +187,10 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   in:7d|12h|90min     a window back from now, next to is:new (first seen in
  *                       it - REPLACES the configured new-sender window, so it
  *                       can widen it), is:still-mailing (a late mail arrived
- *                       in it) or ai:... (verdict given in it), which it
- *                       narrows. Alone it changes nothing here (rules refuse
+ *                       in it), is:louder (counted over the window, at most
+ *                       the last 7 days), is:back (the mail that broke the
+ *                       silence arrived in it - REPLACES the 30 days) or
+ *                       ai:... (verdict given in it), which it narrows. Alone it changes nothing here (rules refuse
  *                       it; in the All mail list it means "arrived in it")
  *   anything else       substring match on name / address / key
  * A new qualifier also goes into FILTER_GRAMMAR (backend/rules.py): the AI
@@ -207,6 +213,8 @@ export interface ParsedFilter {
   newOnly: boolean;
   pinnedOnly: boolean;
   stillMailing: boolean;
+  louder: boolean;
+  back: boolean;
   trackerOnly: boolean;
   eng: EngagementTier | null;
   /** `in:` window in seconds (see the grammar above). */
@@ -222,6 +230,7 @@ export function parseFilter(q: string): ParsedFilter {
     ageMonths: null, unreadMin: null, unsub: false, protectedOnly: false,
     replied: null, attMin: null, unsubscribed: null, fromAddr: null,
     domain: null, newOnly: false, pinnedOnly: false, stillMailing: false,
+    louder: false, back: false,
     trackerOnly: false, eng: null, inSeconds: null };
   for (const tok of q.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
     const m = tok.match(
@@ -250,6 +259,8 @@ export function parseFilter(q: string): ParsedFilter {
     }
     else if (kind === "is" && val === "new") out.newOnly = true;
     else if (kind === "is" && val === "still-mailing") out.stillMailing = true;
+    else if (kind === "is" && val === "louder") out.louder = true;
+    else if (kind === "is" && val === "back") out.back = true;
     else if (kind === "has" && val === "pinned") out.pinnedOnly = true;
     else if (kind === "has" && val === "tracker") out.trackerOnly = true;
     else if (kind === "eng" && (val === "low" || val === "medium"
@@ -314,6 +325,22 @@ const someAddr = (g: Group, members: SmartMembers | undefined,
   return false;
 };
 
+/** Louder = MORE than this many times the usual week and at least this many
+ *  mails (backend senderchanges.py - keep the two in step). */
+export const LOUDER_FACTOR = 2;
+export const LOUDER_MIN_MAILS = 4;
+/** `is:back` without `in:` looks back this many days. */
+export const BACK_DAYS = 30;
+
+/** A louder sender's mails of the window from `start` (epoch s), when that
+ *  is still louder than its usual week; else null. A window shorter than the
+ *  last 7 days is not scaled up. */
+export function louderInWindow(l: { ts: number[]; usual: number },
+    start: number): number | null {
+  const n = l.ts.filter((t) => t >= start).length;
+  return n >= LOUDER_MIN_MAILS && n > LOUDER_FACTOR * l.usual ? n : null;
+}
+
 /** `members` (Smart tab only) lets `from:`, `domain:` and free text reach
  *  every sender pooled into a row, however many there are. */
 export function matchGroup(g: Group, f: ParsedFilter, now = nowMs(),
@@ -340,6 +367,13 @@ export function matchGroup(g: Group, f: ParsedFilter, now = nowMs(),
     : (g.new_ts ?? 0) >= start && start > 0)) return false;
   if (f.stillMailing && (!g.still_mailing || (start !== null
       && (g.still_mailing.last_ts ?? 0) < start))) return false;
+  // louder: the last 7 days (the group carries their arrival times, so `in:`
+  // can count a shorter window); back: the mail that broke the silence
+  // arrived within the window (30 days when `in:` gives none)
+  if (f.louder && (!g.louder
+      || louderInWindow(g.louder, start ?? 0) === null)) return false;
+  if (f.back && (!g.back || g.back.ts < (start
+      ?? now / 1000 - BACK_DAYS * 86400))) return false;
   if (f.pinnedOnly && !g.pinned) return false;
   if (f.trackerOnly && !(g.trackers && (g.trackers.pixel > 0
       || g.trackers.click > 0))) return false;

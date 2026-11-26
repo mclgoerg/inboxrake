@@ -285,8 +285,11 @@ function Share({ value, label, icon }: {
  *  mails of a slot (the list view), `onUnsubscribe` the unsubscribe sheet of
  *  a sender. */
 export function RhythmCard({ period, onOpenSlot, onUnsubscribe, onOpenRecipe,
-  className = "" }: {
+  onNamed, className = "" }: {
   period: RhythmPeriod;
+  /** The senders "What stands out" names (keys) once it is known - [] when
+   *  it could not be loaded; null while loading. */
+  onNamed?: (keys: string[] | null) => void;
   onOpenSlot: (s: ArrivalSlot) => void;
   onUnsubscribe?: (key: string) => void;
   onOpenRecipe?: (id: string) => void;
@@ -314,7 +317,11 @@ export function RhythmCard({ period, onOpenSlot, onUnsubscribe, onOpenRecipe,
 
   const data = resp && resp.period === period ? resp.data : null;
   const cur = data?.kinds[kind];
-  const sentences = data ? standsOut(data) : [];
+  const sentences = useMemo(() => data ? standsOut(data) : [], [data]);
+  useEffect(() => {
+    onNamed?.(data ? sentences.flatMap((s) => s.keys ?? [])
+      : failed ? [] : null);
+  }, [data, failed, sentences, onNamed]);
   const shown = coarse ? picked : hover;
   const sub = t(`rhythm.sub_${period}`, { zone: data?.tz || zoneName() });
   const kpi = cur ? kpiShares(cur.grid) : null;
@@ -449,9 +456,28 @@ export function SlotChip({ slot, onClear }: {
  *  07:00, every day", the rate, a 24-hour strip and the weekday chips. From
  *  the mails the detail already loaded (`stamps` = their epoch seconds), in
  *  the browser's time zone; nothing is shown for a handful of mails. */
-export function ArrivalStrip({ stamps }: { stamps: number[] }) {
+export function ArrivalStrip({ stamps, notes = [] }: {
+  stamps: number[];
+  /** Extra lines under the strip when the rhythm changed (sender changes);
+   *  a sender with too few mails for a strip still shows them. */
+  notes?: { id: string; icon: ReactNode; text: string }[];
+}) {
   const r = useMemo(() => senderRhythm(stamps), [stamps]);
-  if (!r) return null;
+  const noteLines = notes.length > 0 && (
+    <ul className="mt-2 space-y-1">
+      {notes.map((n) => (
+        <li key={n.id} data-testid="strip-change" className="flex items-center
+          gap-1.5 type-meta text-review-fg">
+          <span className="shrink-0">{n.icon}</span>{n.text}</li>
+      ))}
+    </ul>
+  );
+  if (!r) {
+    return noteLines ? (
+      <section className="mx-4 mt-3 rounded-card bg-panel2 p-3"
+        aria-label={t("rhythm.strip_title")}>{noteLines}</section>
+    ) : null;
+  }
   const max = Math.max(...r.hours);
   const listed = HOURS.filter((h) => r.hours[h] > 0)
     .map((h) => `${hh(h)} (${r.hours[h]})`).join(", ");
@@ -483,6 +509,7 @@ export function ArrivalStrip({ stamps }: { stamps: number[] }) {
               : "bg-chip text-muted"}`}>{weekdayName(d)}</li>
         ))}
       </ul>
+      {noteLines}
     </section>
   );
 }

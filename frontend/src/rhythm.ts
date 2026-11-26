@@ -201,6 +201,9 @@ export interface Sentence {
     recipe?: string;
     /** words before the action link ("Batch them:") */
     prefix?: string };
+  /** the senders (keys) the sentence names - the Statistics card "Changes in
+   *  the last 30 days" leaves them out */
+  keys?: string[];
 }
 
 const round1 = (x: number): number => Math.round(x * 10) / 10;
@@ -211,19 +214,19 @@ const and = (names: string[]): string => names.length < 2 ? names[0] ?? ""
 /** Labels of the biggest senders over the named slots, from the per-slot
  *  tops (each slot names two). */
 function sendersOf(data: RhythmKindData, days: number[], from: number,
-    to: number, max = 3): string[] {
-  const by = new Map<string, { label: string; n: number }>();
+    to: number, max = 3): { key: string; label: string }[] {
+  const by = new Map<string, { key: string; label: string; n: number }>();
   for (const d of days) {
     for (let h = from; h < to; h++) {
       for (const s of data.top[`${d}-${h}`]?.senders ?? []) {
-        const e = by.get(s.key) ?? { label: s.label, n: 0 };
+        const e = by.get(s.key) ?? { key: s.key, label: s.label, n: 0 };
         e.n += s.count;
         by.set(s.key, e);
       }
     }
   }
   return [...by.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
-    .slice(0, max).map((e) => e.label);
+    .slice(0, max).map((e) => ({ key: e.key, label: e.label }));
 }
 
 /** The morning wave: most newsletters arrive before 8:00. */
@@ -246,7 +249,8 @@ function dailySender(s: DailySender): Sentence {
     title: t("rhythm.so_daily", { name: s.label, hour: String(s.hour).padStart(2, "0") }),
     detail: [t("rhythm.so_daily_n", { n: round1(perDay) }),
       t("rhythm.so_open", { pct: fmtPct(s.open_pct) })].join(" · "),
-    action: { label: t("rhythm.unsub"), unsubscribe: s.key } };
+    action: { label: t("rhythm.unsub"), unsubscribe: s.key },
+    keys: [s.key] };
 }
 
 /** Two neighbouring weekdays whose evenings carry several times the mail of
@@ -275,10 +279,11 @@ function eveningBlock(r: RhythmResp): Sentence | null {
       days: and(best.days.map((x) => weekdayName(x, true))),
       x: Math.round(best.ratio),
       kind: t(`rhythm.phrase_${best.kind}`) }),
-    detail: names.join(", "),
+    detail: names.map((n) => n.label).join(", "),
     action: { label: t("rhythm.show_them"),
       slot: { kind: best.kind, period: r.period, days: best.days,
-        from: EVENING[0], to: EVENING[1] } } };
+        from: EVENING[0], to: EVENING[1] } },
+    keys: names.map((n) => n.key) };
 }
 
 /** When the people you write to write back: their busy weekdays and hours. */

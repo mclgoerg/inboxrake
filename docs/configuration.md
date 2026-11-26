@@ -115,6 +115,7 @@ State files default to names inside `/data` and normally need no change:
 | `LABELS_PATH` | `sender_labels.json` | The verdicts and categories you set with "Edit labels". |
 | `DUPS_PATH` | `duplicates_kept.json` | The duplicate sets you chose to keep. |
 | `SUBS_PATH` | `subscriptions.json` | What you decided about [subscriptions](features.md#subscriptions): the ones marked "not a subscription", the reminders you asked for, and - only with the opt-in - the amounts read from a receipt (amount and currency, no text). |
+| `SENDER_CHANGES_PATH` | `sender_changes.json` | The weekly mail counts per sender (about 26 weeks, numbers only: how many mails reached the mailbox each week) and the time of each sender's last mail, kept by each scan for [Sender changes](features.md#sender-changes) - per user and account. An older release ignores the file. |
 | `RULE_CHECKUP_PATH` | `rule_checkup.json` | The Rule checkup findings you chose to Ignore (per user and account; a fingerprint of each finding, nothing from your mail). An older release ignores the file. |
 | `KNOWN_SENDERS_PATH` | `known_senders.json` | Which senders were first seen when (for "new sender"). |
 | `UNSUB_STATE_PATH` | `unsub_state.json` | Which senders you already unsubscribed from. |

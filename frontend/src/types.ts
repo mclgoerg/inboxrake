@@ -106,6 +106,24 @@ export interface StillMailing {
   addrs: string[];      // those senders, capped
 }
 
+export interface GroupLouder {
+  addr: string; label: string;
+  /** mails of the last 7 days, the usual week (median), their ratio */
+  n: number; usual: number; factor: number;
+  /** arrival times (epoch s) of those mails */
+  ts: number[];
+}
+export interface GroupBack {
+  addr: string; label: string;
+  /** arrival of the mail that broke the silence (epoch s) */
+  ts: number;
+  gap_days: number;
+  /** its mails since (and including) it */
+  n: number;
+  /** older mail of the sender is still here and none of it was opened */
+  never_opened: boolean;
+}
+
 export interface Group {
   key: string;
   label: string;
@@ -131,6 +149,13 @@ export interface Group {
   // Mails that ARRIVED after the sender's unsubscribe + grace (see
   // backend mailops._group_still_mailing); absent in old snapshots.
   still_mailing?: StillMailing | null;
+  /** Got louder: its last 7 days against its usual week (backend
+   *  senderchanges.py); absent when it did not. A group of several senders
+   *  names the loudest in `addr` / `label`. */
+  louder?: GroupLouder;
+  /** Came back: the first mail after 6+ months of silence; absent when
+   *  there was none lately. */
+  back?: GroupBack;
   pinned: number;   // mails of this group protected from bulk actions
   engagement: number;   // 0-100, see lib.ts engagementTier()
   trackers?: GroupTrackers;   // only when the body index checked its mails
@@ -1114,6 +1139,33 @@ export interface OverviewWindow {
   still_mailing: number;   // senders that wrote in it after their unsubscribe
   verdicts: number;        // senders rated by the AI in it
   verdicts_safe: number;   // ... of which "safe to delete"
+  /** Senders louder than their usual week in it (a window longer than 7 days
+   *  counts as the last 7) and the loudest one; absent from an older server. */
+  louder?: number;
+  louder_top?: { label: string; n: number; usual: number } | null;
+  /** Senders whose first mail after 6+ months of silence arrived in it, and
+   *  the newest one (`months` = the shortest silence of them). */
+  back?: number;
+  back_top?: { label: string; months: number; never_opened: boolean } | null;
+}
+/** GET /api/sender-changes: the Statistics card (last 30 days). */
+export interface ChangeRow {
+  key: string; label: string;
+  /** an unsubscribe is open for it / it is on the protected list / you
+   *  have written to it */
+  unsub: boolean; protected: boolean; replied: boolean;
+}
+export interface LouderRow extends ChangeRow {
+  n: number; usual: number; factor: number; start: number; end: number;
+}
+export interface BackRow extends ChangeRow {
+  ts: number; gap_days: number; n: number;
+}
+export interface SenderChangesResp {
+  days: number;
+  since: number | null;
+  louder: LouderRow[];
+  back: BackRow[];
 }
 /** GET /api/subscriptions (backend/subscriptions.py): the senders that bill
  *  on a schedule, found from receipt subjects in the scan index. */

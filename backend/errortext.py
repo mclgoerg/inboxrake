@@ -161,9 +161,9 @@ TEXT: dict[str, str | tuple[str, str]] = {
     'rule_filter_invalid_run':
         'The filter has parts Inboxrake doesn\'t understand: {names} - edit the rule. Its execute runs are skipped until then.',
     'rule_filter_window':
-        'A time window ({names}) only works together with is:new, is:still-mailing or ai:... - alone it would match everything.',
+        'A time window ({names}) only works together with is:new, is:still-mailing, is:louder, is:back or ai:... - alone it would match everything.',
     'rule_filter_window_run':
-        'The filter has a time window ({names}) without is:new, is:still-mailing or ai:... - edit the rule. Its execute runs are skipped until then.',
+        'The filter has a time window ({names}) without is:new, is:still-mailing, is:louder, is:back or ai:... - edit the rule. Its execute runs are skipped until then.',
     'rule_filter_too_long':
         'This filter is too long (more than {max} characters).',
     'request_too_large':

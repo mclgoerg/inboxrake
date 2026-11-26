@@ -153,6 +153,14 @@ export const DE: Record<string, string> = {
   "overview.row_verdicts_one": "1 neues KI-Urteil",
   "overview.verdicts_safe": "{n} sicher löschbar",
   "overview.verdicts_none_safe": "keins sicher löschbar",
+  "overview.row_louder": "{n} Absender sind lauter geworden",
+  "overview.row_louder_one": "1 Absender ist lauter geworden",
+  "overview.row_louder_sub": "{name}: {n} {when}, sonst {usual} pro Woche",
+  "overview.row_back": "{n} melden sich nach {months}+ Monaten wieder",
+  "overview.row_back_one": "1 meldet sich nach {months} Monaten wieder",
+  "overview.row_back_never": "{name} \u00b7 du hast bisher nichts davon geöffnet",
+  "overview.row_back_quiet": "{name} \u00b7 {months} Monate lang still",
+  "overview.row_back_more": "{name} und {n} weitere",
   "overview.next": "Nächste Schritte",
   "overview.next_hint": "jeder Schritt zeigt dir zuerst, was passiert",
   "overview.subs_title": "{n} Abos, die du vielleicht nicht nutzt",
@@ -1571,6 +1579,24 @@ export const DE: Record<string, string> = {
   "rhythm.strip_title": "Wann sie ankommt",
   "rhythm.strip_label": "Mails dieses Absenders pro Stunde des Tages",
   "rhythm.hours_label": "Stunden mit Post:",
+  "changes.title": "Änderungen der letzten 30 Tage",
+  "changes.hint": "im Vergleich zur üblichen Woche jedes Absenders",
+  "changes.got_louder": "Lauter geworden",
+  "changes.came_back": "Wieder da",
+  "changes.louder_now": "{n} pro Woche, sonst {usual}",
+  "changes.louder_then": "{n} in den {days} Tagen bis {date}, sonst {usual} pro Woche",
+  "changes.back_desc": "{n} Mails seit {date}, davor {months} Monate still",
+  "changes.back_desc_one": "1 Mail seit {date}, davor {months} Monate still",
+  "changes.left_out": "Absender, die schon unter „Was auffällt“ stehen, sind hier weggelassen.",
+  "changes.show_mails": "Mails anzeigen",
+  "changes.block": "Blockieren…",
+  "changes.strip_louder": "Letzte 7 Tage: {n} Mails – mehr als das Doppelte der üblichen Woche",
+  "changes.note_louder": "Lauter geworden: ihre letzten {window} im Vergleich zur üblichen Woche",
+  "changes.note_back": "Nach 6+ Monaten Stille wieder da: erste Mail in den letzten {window}",
+  "changes.days7": "7 Tage",
+  "changes.days30": "30 Tage",
+  "changes.n_months": "{n} Monate",
+  "changes.more": "und {n} weitere",
   "sieve.button": "Sieve-Filter",
   "sieve.intro":
     "Künftige Mails dieses Absenders automatisch in Proton behandeln:",
@@ -2617,6 +2643,8 @@ export const DE: Record<string, string> = {
   "qb.is_protected": "geschützt",
   "qb.is_new": "neue Absender",
   "qb.is_still_mailing": "schreibt nach dem Abbestellen weiter",
+  "qb.is_louder": "lauter geworden",
+  "qb.is_back": "nach 6+ Monaten wieder da",
   "ai.shared_note":
     "Kein eigener Schlüssel - KI läuft über den gemeinsamen "
     + "Server-Schlüssel (dein Monatslimit: {cap}).",
@@ -4006,11 +4034,12 @@ export const DE: Record<string, string> = {
     "Dieser Filter enthält Teile, die Inboxrake nicht versteht: {names}",
   "ferr.rule_filter_window":
     "Ein Zeitfenster ({names}) funktioniert nur zusammen mit is:new, "
-    + "is:still-mailing oder ai:... – allein würde es alles treffen.",
+    + "is:still-mailing, is:louder, is:back oder ai:... – allein würde es "
+    + "alles treffen.",
   "ferr.rule_filter_window_run":
-    "Der Filter hat ein Zeitfenster ({names}) ohne is:new, is:still-mailing "
-    + "oder ai:... – bearbeite die Regel. Ausführungsläufe werden bis dahin "
-    + "übersprungen.",
+    "Der Filter hat ein Zeitfenster ({names}) ohne is:new, is:still-mailing, "
+    + "is:louder, is:back oder ai:... – bearbeite die Regel. Ausführungsläufe "
+    + "werden bis dahin übersprungen.",
   "ferr.rule_filter_invalid_run":
     "Der Filter enthält Teile, die Inboxrake nicht versteht: {names} – "
     + "bearbeite die Regel. Ausführungsläufe werden bis dahin "

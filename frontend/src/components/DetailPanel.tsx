@@ -20,6 +20,7 @@ import { EditLabels } from "./EditLabels";
 import { FolderPicker, type PickEnv } from "./FolderPicker";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { ArrivalStrip } from "./RhythmCard";
+import { arrivalChangeLines } from "./SenderChanges";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions, ReaderNav } from "./MailReader";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
@@ -822,7 +823,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       {/* a sender's own rows only: a pool of senders has no one rhythm */}
       {mails && (grouping === "sender" || grouping === "smart")
         && !isPooled(group) && (
-        <ArrivalStrip stamps={mails.map((m) => m.ts)} />
+        <ArrivalStrip stamps={mails.map((m) => m.ts)}
+          notes={arrivalChangeLines(group)} />
       )}
       {sievePanel}
       {poolBox}
