@@ -455,10 +455,10 @@ test("German", async () => {
   mount("trash");
   await screen.findAllByRole("checkbox");
   expect(await screen.findByText(
-    "Mails von Deals Daily in 3 Konten in den Papierkorb legen?")).toBeTruthy();
+    "Mails von Deals Daily in 3 Konten in den Papierkorb verschieben?")).toBeTruthy();
   expect(screen.getByText(
     "Sicher behalten: 6 Mails könnten wichtig sein - sie bleiben")).toBeTruthy();
-  expect(confirm("339 in 3 Konten in den Papierkorb")).toBeTruthy();
+  expect(confirm("339 Mails in 3 Konten in den Papierkorb")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Abbrechen" })).toBeTruthy();
   expect(screen.getAllByRole("button", { name: "Anzeigen" })).toHaveLength(2);
 });

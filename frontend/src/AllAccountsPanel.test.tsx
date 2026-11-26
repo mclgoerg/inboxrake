@@ -355,8 +355,8 @@ test("German", async () => {
   expect(within(cards()[3]).getByText(/Scan vor 2\sStd\. fehlgeschlagen/))
     .toBeTruthy();
   const pane = within(screen.getByTestId("same-pane"));
-  for (const label of ["In 3 abbestellen", "In 3 in den Papierkorb",
-    "In 3 archivieren", "In 3 blockieren"])
+  for (const label of ["Abbestellen in 3", "Papierkorb in 3",
+    "Archivieren in 3", "Blockieren in 3"])
     expect(pane.getByRole("button", { name: label })).toBeTruthy();
   expect(pane.getByRole("button", { name: "In old öffnen" })).toBeTruthy();
 });
