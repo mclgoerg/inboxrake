@@ -66,7 +66,13 @@ NOT_CODES = ["Welcome to Shop", "Your 20% discount code", "Weekly digest",
              "Your code: WELCOME10 for 10% off", "Your code review is ready",
              "Your code of conduct update", "Dein Code SOMMER10 für 10 % Rabatt",
              "Your discount code: SAVE20", "Verify your email to get 10% off",
-             "Your code is in the mail", "Ihr Code zum Gewinnspiel"]
+             "Your code is in the mail", "Ihr Code zum Gewinnspiel",
+             # worth money, with digits
+             "Your code 12345 for a 25 EUR gift card",
+             "Dein Code 4711 - jetzt einlösen",
+             "Your voucher code 55555", "Geschenkkarte: Ihr Code 123456",
+             "Guthaben aufladen: Ihr Code 998877",
+             "Redeem your code 123456 today"]
 UPDATES = ["Your order #12345 has shipped", "Out for delivery: order #12345",
            "Your parcel is on its way - order 55512",
            "Ihre Sendung ist unterwegs", "Your package is in transit",
@@ -250,6 +256,8 @@ def test_order_numbers():
     assert pastdate.order_number("Order No. AB-4471 shipped") == "ab-4471"
     assert pastdate.order_number("Bestellnummer 4711-22") == "4711-22"
     assert pastdate.order_number("Ihre Sendung 123456 kommt") == "123456"
+    assert pastdate.order_number("Bestellbestätigung 77123") == "77123"
+    assert pastdate.order_number("Bestellnummer 4711-22 ist da") == "4711-22"
     assert pastdate.order_number("Your order has shipped") is None
     assert pastdate.order_number("Order #12 shipped") is None   # too short
     assert pastdate.order_number("") is None
@@ -424,6 +432,23 @@ def test_receipts_of_the_same_order_are_kept_and_never_listed():
     assert ids(res, [ship, done, conf, inv, other]) == [ship["subject"]]
     assert res["kept"] == {(conf["folder"], conf["uid"]),
                            (inv["folder"], inv["uid"])}
+
+
+def test_a_german_order_confirmation_is_kept_by_its_number():
+    ship = mail("Ihre Bestellung 77123 wurde versendet", 10)
+    done = mail("Ihre Bestellung 77123 wurde zugestellt", 5)
+    conf = mail("Bestellbestätigung 77123", 12)
+    other = mail("Bestellbestätigung 88999", 12)
+    res = find([ship, done, conf, other])
+    assert ids(res, [ship, done, conf, other]) == [ship["subject"]]
+    assert res["kept"] == {(conf["folder"], conf["uid"])}
+
+
+def test_a_code_worth_money_is_never_listed_however_old():
+    mails = [mail(s, 400) for s in (
+        "Your code 12345 for a 25 EUR gift card",
+        "Dein Code 4711 - jetzt einlösen")]
+    assert find(mails)["flagged"] == {}
 
 
 def test_an_order_that_is_not_listed_keeps_nothing():

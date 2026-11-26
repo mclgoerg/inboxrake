@@ -191,10 +191,14 @@ OFFER_WORDS_RE = re.compile(
     r"angebot|rabatt|discount|\d\s?%|special|\baktion\b|gutschein|voucher|"
     r"coupon|promo|only today|today only|nur heute", _I)
 
+# A code that is worth money or a gift is no sign-in code, digits or not
+CODE_SKIP_RE = re.compile(
+    r"gift|geschenk|gutschein|einl[oö]s|redeem|guthaben|credit|voucher", _I)
+
 # An order / parcel number in a subject: a few digits in a token that follows
 # one of these words (or a bare "#")
 ORDER_NO_RE = re.compile(
-    r"(?:order|bestellung|bestell-?(?:nr|nummer)|auftrag|sendung|paket|"
+    r"(?:order|bestell\w*|auftrag|sendung|paket|"
     r"parcel|package|shipment|tracking|#)\s*(?:no\.?|nr\.?|number|nummer|id|"
     r"code)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})", _I)
 
@@ -337,7 +341,7 @@ def classify(subject: str) -> str | None:
     # 3. a code or a link that was only good for a short while (not a coupon
     #    code, not an offer for signing in)
     if CODE_RE.search(s) and not OFFER_WORDS_RE.search(s) \
-            and not PROMO_RE.search(s):
+            and not PROMO_RE.search(s) and not CODE_SKIP_RE.search(s):
         return CODE
     # 4. a reminder for something with a date
     if REMINDER_RE.search(s) and (APPOINTMENT_RX.search(s)
