@@ -89,7 +89,9 @@ _TRANSACTIONAL_RE = re.compile(
     r"account|konto|password|passwort|log-?in|sign-?in|verif|best[aä]tig|"
     r"confirm|subscription|\babo\b|statement|security|sicherheit|renew|"
     r"verl[aä]nger|bewerbung|application|interview|code\b|\bpin\b|"
-    r"\btan\b", re.IGNORECASE)
+    r"\btan\b|pr[aä]mie|f[aä]llig|\bdue\b|\bpaid\b|ausgezahlt|gutgeschrieben|"
+    r"guthaben|credited|check.?in|\btrial\b|\baktiv\b|(is|was|now)\s+active|"
+    r"activated|(is|was|are|been|upgrade|setup)\s+complete", re.IGNORECASE)
 # A code in a "shipping" subject (a pickup code, a locker PIN) is a secret that
 # is good for a while, not a shipping update to move to the Trash
 _PICKUP_CODE_RE = re.compile(

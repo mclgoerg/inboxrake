@@ -133,7 +133,14 @@ NEVER_ADS = [
     # of the transactional ones (pastdate has read what it is)
     "Reminder: webinar on 3 Dec - 20% off", "Your table on Friday - 20% off",
     "Don't forget your visit tomorrow - 20% off",
-    "Thank you for joining us - 20% off", "Danke für Ihren Besuch - 20 % Rabatt",    # nothing transactional in the words, but pastdate has read it as a
+    "Thank you for joining us - 20% off", "Danke für Ihren Besuch - 20 % Rabatt",
+    # a promotional word inside a bonus / premium / trial / credit notice
+    "Ihre Jahresprämie wird fällig", "Ihre Prämie für 2026",
+    "Upgrade complete: welcome to Premium", "Ihr Upgrade auf Premium ist aktiv",
+    "Your free trial has started",
+    "Your cashback of 12.40 EUR has been paid out",
+    "Ihr Bonus wurde gutgeschrieben", "Dein Bonus-Guthaben läuft ab",
+    "Last chance: check in online now",    # nothing transactional in the words, but pastdate has read it as a
     # reminder, a thank-you (a receipt) or a code
     "Reminder: webinar on 3 Dec", "Your table on Friday",
     "Don't forget your visit tomorrow", "Thank you for joining us",
@@ -165,7 +172,11 @@ def test_a_newsletter_header_alone_is_no_ad(subject):
 
 
 def test_a_promotional_subject_with_the_header_is_an_ad():
-    for subject in ("20% off everything this weekend", "Deal ends at midnight",
+    for subject in ("Complete your look - 20% off",
+                    "Upgrade your plan and save 20%",
+                    "Last chance: the winter sale ends soon",
+                    "Weekend offer: 20% off outerwear",
+                    "20% off everything this weekend", "Deal ends at midnight",
                     "Neu im Shop: Herbstkollektion", "Our best picks for the "
                     "cold season", "Members get early access"):
         assert kind(subject, unsub=True) == "ads", subject
