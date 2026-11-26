@@ -37,19 +37,15 @@ export interface ScanAllRun {
 export interface StepIdent { id?: string; ts: number; label: string;
   count: number }
 
-/** One step's identity as a string, like the Undo menu's `undoId`. */
-export const stepKey = (u: StepIdent): string =>
-  u.id ?? `${u.ts}|${u.count}|${u.label}`;
-
 export type MoveKind = "trash" | "archive";
 
-/** A move the page queued: one job per account. `before` = each account's
- *  newest Undo step when the page started it (so the step the move made is
- *  told from the older ones). */
+/** A move the page queued: one job per account, each named by the id the
+ *  server gave it. The Undo step it makes carries the same id, so the page
+ *  follows exactly that step - a move the user makes elsewhere in the account
+ *  meanwhile is never mistaken for it. */
 export interface Follow {
   kind: MoveKind;
-  accounts: string[];
-  before: Record<string, string | null>;
+  steps: { account: string; job: string }[];
 }
 
 type Toast = (message: string, opts?: ToastOptions) => number;
@@ -162,29 +158,31 @@ export function useAcrossRuns({ toast, names, onChanged }: {
 
   /* ---- follow the jobs a move queued ---- */
   const follow = useCallback((g: Follow): void => {
-    g.accounts.forEach((a) => claimed.current.add(a));
+    const accounts = g.steps.map((s) => s.account);
+    accounts.forEach((a) => claimed.current.add(a));
     const until = Date.now() + FOLLOW_MS;
-    const release = () => g.accounts.forEach((a) => claimed.current.delete(a));
+    const release = () => accounts.forEach((a) => claimed.current.delete(a));
     const finish = (rows: AllAccountCard[]) => {
       setTimeout(release, CLAIM_GRACE_MS);
       const made: { account: string; ident: StepIdent }[] = [];
-      for (const a of g.accounts) {
+      const failed: string[] = [];
+      for (const { account: a, job } of g.steps) {
         const row = rows.find((r) => r.name === a);
         if (!row) continue;
-        if (row.job_failed) {
-          toastRef.current(t("allp.step_failed", { account: a,
-            msg: errorText(row.job_failed.error) }), { variant: "error" });
-          continue;
-        }
-        const u = row.undo_last;
-        if (u && u.count > 0 && stepKey(u) !== g.before[a]) {
+        // THIS job's own step - by the id the server gave the job
+        const u = row.undo_jobs[job];
+        if (u && u.count > 0) {
           made.push({ account: a, ident: { ts: u.ts, label: u.label,
             count: u.count, ...(u.id ? { id: u.id } : {}) } });
+        } else if (row.job_failed) {
+          failed.push(a);
+          toastRef.current(t("allp.step_failed", { account: a,
+            msg: errorText(row.job_failed.error) }), { variant: "error" });
         }
       }
-      changedRef.current(g.accounts);
+      changedRef.current(accounts);
       if (!made.length) {
-        if (!g.accounts.some((a) => rows.find((r) => r.name === a)?.job_failed)) {
+        if (!failed.length) {
           toastRef.current(t("allp.nothing_moved"), { variant: "info" });
         }
         return;
@@ -200,7 +198,7 @@ export function useAcrossRuns({ toast, names, onChanged }: {
     const tick = async () => {
       let rows: AllAccountCard[] | null = null;
       try { rows = (await api.accountsOverview()).accounts; } catch { /* retry */ }
-      const mine = rows?.filter((r) => g.accounts.includes(r.name)) ?? [];
+      const mine = rows?.filter((r) => accounts.includes(r.name)) ?? [];
       if (rows && mine.every((r) => !r.busy)) { finish(rows); return; }
       if (Date.now() > until) { release(); return; }
       setTimeout(() => { void tick(); }, POLL_MS);

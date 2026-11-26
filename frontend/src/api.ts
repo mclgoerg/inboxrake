@@ -384,7 +384,10 @@ export const api = {
                   *  sender, whatever the action */
                  skipProtected = false, account?: string) =>
     req<{ ok: boolean; queued: number; skipped: number;
-      skipped_pinned?: number }>(forAccount("/api/delete", account),
+      skipped_pinned?: number;
+      /** the queued job; its Undo step carries the same id ("" = nothing
+       *  new was queued) */
+      job?: string }>(forAccount("/api/delete", account),
       { grouping, keys, action, dest, force, keep_latest: keepLatest,
         older_than_days: olderThanDays,
         ...(onlyAddrs ? { only_addrs: onlyAddrs } : {}),

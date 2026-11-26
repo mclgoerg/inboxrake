@@ -195,6 +195,22 @@ test("Insights: the card is the last one, after Waiting for a reply", async () =
   expect(onOpen).toHaveBeenCalledWith("accounts");
 });
 
+test("Insights: the card reads the numbers once - it does not poll while an account scans", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const scanning = overview();
+    scanning.accounts[0] = { ...scanning.accounts[0], status: "scanning" };
+    overviewCall.mockResolvedValue(scanning);
+    insights(["a", "b"]);
+    await screen.findByRole("button", { name: /^All accounts/ });
+    await vi.advanceTimersByTimeAsync(100);
+    const n = overviewCall.mock.calls.length;
+    expect(n).toBe(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(overviewCall.mock.calls.length).toBe(n);
+  } finally { vi.useRealTimers(); }
+});
+
 test("Insights: before the numbers arrive it still has its place", async () => {
   overviewCall.mockReturnValue(new Promise(() => {}));
   insights(["a", "b"]);

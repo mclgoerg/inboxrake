@@ -784,6 +784,8 @@ UNDO_SUMMARY_MAX = 100
 def _undo_summaries(acc, entries: list[dict] | None = None) -> list[dict]:
     return [{"ts": u["ts"], "label": u["label"], "count": u["count"],
              **({"id": u["id"]} if u.get("id") else {}),
+             # the queued job that made the step (absent on older steps)
+             **({"job": u["job"]} if u.get("job") else {}),
              "action": u.get("action", "trash"),
              # the Folders panel toasts these itself; absent = ordinary
              **({"quiet": True} if u.get("quiet") else {}),
@@ -3352,12 +3354,15 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                  label_fields: dict | None = None,
                  copies: list[dict] | None = None,
                  audit_id: str = "", token: str = "",
-                 actor: str = "") -> str:
+                 actor: str = "", job: str = "") -> str:
     """Append a move job to the undo log (acc.lock held). A step of an AI
     assistant (`token` = the token's id, `actor` = its audit actor) goes to
     the assistant list instead, never into (or out of) the user's. `audit_id` is the
     id of the audit entry that records the same action, so an undo can say
-    what it undid. `quiet` = the
+    what it undid. `job` = the id `_start_delete` gave the queued
+    job that made this step, so a caller that started it finds exactly its
+    own step (the All accounts page's "Undo all N") and never "the newest".
+    `quiet` = the
     caller shows its own toast (Folders panel), so the UI's generic "moved
     N" toast for new undo entries stays silent. `label_fields`: optional
     structured label (see `_from_role_label`).
@@ -3392,6 +3397,7 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
              "items": items, "in": copies[0]["in"] if copies else dest, "quiet": quiet,
              **({"copies": copies} if copies is not None else {"who": who}),
              **({"audit_id": audit_id} if audit_id else {}),
+             **({"job": job} if job else {}),
              **(label_fields or {})}
     if token:
         entry.update(token=token, actor=actor)
@@ -3478,7 +3484,8 @@ def _delete_worker(acc) -> None:
             meta = _apply_removal(moved_uids, acc)
             undo_id[0] = _record_undo(
                 label, meta, action, resolved[0], acc, copies=copies,
-                audit_id=audit_id, token=token, actor=actor) or undo_id[0]
+                audit_id=audit_id, token=token, actor=actor,
+                job=job.get("job", "")) or undo_id[0]
             # after the Undo step: nothing here may lose it
             cleaned_addrs.update(m["addr"] for by_uid in meta.values()
                                  for m in by_uid.values() if m.get("addr"))
@@ -3545,9 +3552,11 @@ def _delete_worker(acc) -> None:
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
-                  token: str = "") -> None:
+                  token: str = "") -> str:
     """Enqueue a background mail action (acc.lock held by caller). `token`
-    (an AI assistant's token id) files the undo step in the assistant list."""
+    (an AI assistant's token id) files the undo step in the assistant list.
+    Returns the id of the queued job - its undo step carries it as `job` - or
+    "" when there was nothing left to queue."""
     if action not in ACTIONS:
         raise ValueError("bad action")
     if action == "move" and not dest:
@@ -3568,10 +3577,12 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
     if not by_folder:
         if completion is not None:
             completion.update(done=True, moved=0, error="")
-        return
+        return ""
+    job_id = f"j{time.time_ns():x}"
     acc.delete_pending.append({"by_folder": by_folder, "label": label,
                             "action": action, "dest": dest, "actor": actor,
-                            "token": token, "completion": completion})
+                            "token": token, "completion": completion,
+                            "job": job_id})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
         # at start, so a stale "done" tick of an earlier job is not mistaken
@@ -3583,6 +3594,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         threading.Thread(target=tenants.call_in,
                          args=(acc.tenant, _delete_worker, acc),
                          daemon=True).start()
+    return job_id
 
 
 def _group_mail_items(rec: dict, acc) -> list[tuple[str, int, int]]:
@@ -3729,9 +3741,13 @@ def delete_groups(grouping: str, keys: list[str],
             raise RuntimeError("no known groups selected")
         labels = [jobs[k]["label"] for k in list(jobs)[:3]]
         label = ", ".join(labels) + ("…" if len(jobs) > 3 else "")
-        _start_delete(by_folder, label, acc, action, dest, actor, completion)
+        job_id = _start_delete(by_folder, label, acc, action, dest, actor,
+                               completion)
+    # `job`: the queued job's id ("" = everything was queued already); its undo
+    # step carries the same id
     return {"ok": True, "queued": sum(len(s) for s in by_folder.values()),
-            "skipped": skipped, "skipped_pinned": skipped_pinned}
+            "skipped": skipped, "skipped_pinned": skipped_pinned,
+            "job": job_id}
 
 
 def group_move_mails(grouping: str, keys: list[str],

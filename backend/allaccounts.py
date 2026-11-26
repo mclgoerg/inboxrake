@@ -70,15 +70,22 @@ def _job_failed(state: dict) -> dict | None:
     return None
 
 
-def _undo_last(state: dict) -> dict | None:
-    """The newest step of the account's own Undo list (what "Undo all N"
-    picks up once a step it started has finished), else None."""
-    for u in reversed(state["undo"]):
-        if u.get("quiet"):
-            continue
-        return {"id": u.get("id"), "ts": u["ts"], "label": u["label"],
-                "count": u["count"], "action": u.get("action", "")}
-    return None
+# How many of an account's newest Undo steps `undo_jobs` names.
+UNDO_JOBS_MAX = 30
+
+
+def _undo_jobs(state: dict) -> dict[str, dict]:
+    """The account's newest Undo steps by the id of the queued job that made
+    them (`{job: {id, ts, label, count, action}}`): "Undo all N" asks for the
+    step of ITS OWN job, so a move made elsewhere in the account meanwhile is
+    never undone in its place."""
+    out: dict[str, dict] = {}
+    for u in state["undo"][-UNDO_JOBS_MAX:]:
+        if u.get("job") and not u.get("quiet"):
+            out[u["job"]] = {"id": u.get("id"), "ts": u["ts"],
+                             "label": u["label"], "count": u["count"],
+                             "action": u.get("action", "")}
+    return out
 
 
 def _account_row(name: str, im: dict, since: float | None, now: float,
@@ -125,8 +132,8 @@ def _account_row(name: str, im: dict, since: float | None, now: float,
             # a move / unsubscribe that failed after it was queued (the
             # client says so once per job, naming the account)
             "job_failed": _job_failed(acc.state),
-            # the account's newest Undo step: "Undo all N" reads it
-            "undo_last": _undo_last(acc.state),
+            # its newest Undo steps by job: "Undo all N" finds its own
+            "undo_jobs": _undo_jobs(acc.state),
         }
         for addr, rec in senders.items():
             if not (rec.get("bulk") or rec.get("unsub")):

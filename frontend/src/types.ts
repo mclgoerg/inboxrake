@@ -1658,9 +1658,10 @@ export interface AllAccountCard {
   busy: boolean;
   /** a job that ended with an error (`id` = one message per job) */
   job_failed: { id: string; error: string } | null;
-  /** the account's newest Undo step ("Undo all N" picks it up) */
-  undo_last: { id?: string; ts: number; label: string; count: number;
-    action: string } | null;
+  /** its newest Undo steps by the id of the queued job that made them
+   *  ("Undo all N" finds the step of its OWN job, never "the newest") */
+  undo_jobs: Record<string, { id?: string; ts: number; label: string;
+    count: number; action: string }>;
 }
 
 /** One account's part of a sender that writes to several accounts. */

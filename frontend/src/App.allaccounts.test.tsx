@@ -131,7 +131,8 @@ beforeEach(() => {
       name: ["proton", "icloud", "work"][i], failed: false, status: "done",
       failed_ts: null })),
     same_sender: [dealsRow()] }));
-  deleteGroups.mockResolvedValue({ ok: true, queued: 5, skipped: 0 });
+  deleteGroups.mockImplementation((...a: unknown[]) => Promise.resolve(
+    { ok: true, queued: 5, skipped: 0, job: `j-${a[9]}` }));
   unsubscribe.mockResolvedValue({ action: "done", via: "one_click", detail: "", addr: "x" });
   block.mockResolvedValue({ rule: { id: "r1" } });
   keepCheck.mockResolvedValue({ total: 1, kept: 0, classes: [] });
@@ -196,7 +197,7 @@ test("a step on the page runs in ITS account and the selected account never chan
   await openPage();
   const pane = within(await screen.findByTestId("same-pane"));
   fireEvent.click(pane.getByRole("button", { name: "Trash in 3" }));
-  fireEvent.click(await screen.findByRole("button", { name: /^Trash \d+\sin\s3\saccounts$/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Trash\s\d+\smails\sin\s3\saccounts$/ }));
   await waitFor(() => expect(deleteGroups).toHaveBeenCalledTimes(3));
   // pinned to its own account, in order - the 10th argument is the account
   expect(deleteGroups.mock.calls.map((c) => c[9])).toEqual(
@@ -214,14 +215,15 @@ test("a move in several accounts has ONE toast: the selected account's own 'move
     count, action: "trash" });
   // the steps exist only once the moves were queued
   let queued = false;
-  deleteGroups.mockImplementation(() => {
+  deleteGroups.mockImplementation((...a: unknown[]) => {
     queued = true;
-    return Promise.resolve({ ok: true, queued: 5, skipped: 0 });
+    return Promise.resolve({ ok: true, queued: 5, skipped: 0,
+      job: `j-${a[9]}` });
   });
   overviewCall.mockImplementation(() => Promise.resolve(overview({
     accounts: ["proton", "icloud", "work"].map((n, i) => ({
       ...overview().accounts[0], name: n, busy: false,
-      undo_last: queued ? step(`s${i}`, 5) : null })),
+      undo_jobs: queued ? { [`j-${n}`]: step(`s${i}`, 5) } : {} })),
     same_sender: [dealsRow()] })));
   mount();
   await openPage();
@@ -233,7 +235,7 @@ test("a move in several accounts has ONE toast: the selected account's own 'move
     action: "trash" }] as never,
   delete: { status: "done", progress: "", error: "", moved: 5, seq: 2 } };
   fireEvent.click(await screen.findByRole("button",
-    { name: /^Trash \d+\sin\s3\saccounts$/ }));
+    { name: /^Trash\s\d+\smails\sin\s3\saccounts$/ }));
   expect(await screen.findByText("Moved 15 mails to Trash in 3 accounts"))
     .toBeTruthy();
   expect(screen.getByRole("button", { name: "Undo all 3" })).toBeTruthy();

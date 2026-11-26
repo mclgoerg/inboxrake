@@ -10,7 +10,7 @@ export const card = (name: string, over: Partial<AllAccountCard> = {}):
   name, user: `demo@${name}.example`, status: "done", progress: "",
   scanned_ts: 1_700_000_000, failed: false, failed_ts: null,
   mails: 100, size: 10 * MB, senders: 10, junk: 0, trash: 0, new: 0,
-  new_basis: "week", rev: 1, busy: false, job_failed: null, undo_last: null,
+  new_basis: "week", rev: 1, busy: false, job_failed: null, undo_jobs: {},
   ...over });
 
 export const part = (account: string, addr: string,

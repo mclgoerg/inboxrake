@@ -4,6 +4,7 @@ steps the page's confirm runs (each account's own unsubscribe, delete, undo
 and audit entry, with the server-side protection guards)."""
 
 import json
+import threading
 import time
 
 import pytest
@@ -342,15 +343,77 @@ def test_already_unsubscribed_state_is_carried_per_account(three,
     assert states == {"one": None, "two": "done", "three": None}
 
 
-def test_the_newest_undo_step_of_each_account_is_on_its_card(three):
-    by = lambda: {a["name"]: a for a in _overview()["accounts"]}   # noqa: E731
-    assert by()["one"]["undo_last"] is None
-    client.post("/api/delete?account=one", json={
+def test_a_move_returns_its_job_and_its_undo_step_carries_the_same_id(three):
+    r = client.post("/api/delete?account=one", json={
         "grouping": "sender", "keys": ["deals@dealsdaily.example"]})
+    job = r.json()["job"]
+    assert job
     _wait(accountsmod.get("one"))
-    last = by()["one"]["undo_last"]
-    assert last["count"] == 5 and last["action"] == "trash" and last["id"]
-    assert by()["two"]["undo_last"] is None             # per account
+    steps = _overview()["accounts"][0]["undo_jobs"]
+    assert list(steps) == [job]
+    step = steps[job]
+    assert step["count"] == 5 and step["action"] == "trash" and step["id"]
+    # the Undo menu's own summaries carry it too, the step itself is the one
+    # the user's own Undo would pick
+    summary = accountsmod.get("one").state["undo"][-1]
+    assert summary["job"] == job and summary["id"] == step["id"]
+    by = {a["name"]: a for a in _overview()["accounts"]}
+    assert by["two"]["undo_jobs"] == {}                  # per account
+
+
+def test_the_page_finds_its_own_step_not_the_newest_one(three):
+    """A move the user makes elsewhere in the account while the page's move
+    runs must not stand in for it: each queued job names its own step."""
+    page = client.post("/api/delete?account=one", json={
+        "grouping": "sender", "keys": ["deals@dealsdaily.example"],
+        "skip_protected": True}).json()["job"]
+    _wait(accountsmod.get("one"))
+    # ... then a manual move of another sender in the same account
+    manual = client.post("/api/delete?account=one", json={
+        "grouping": "sender", "keys": ["letter@gmail.com"]}).json()["job"]
+    _wait(accountsmod.get("one"))
+    assert page and manual and page != manual
+    steps = _overview()["accounts"][0]["undo_jobs"]
+    assert set(steps) == {page, manual}
+    assert steps[page]["count"] == 5 and steps[manual]["count"] == 3
+    assert steps[page]["ts"] <= steps[manual]["ts"]
+    # undoing the page's step by ITS identity leaves the manual move alone
+    mailops.undo_last(acc=accountsmod.get("one"), ident={
+        "ts": steps[page]["ts"], "label": steps[page]["label"], "count": 5,
+        "id": steps[page]["id"]})
+    left = {m["from"] for m in three["host-one"].mailbox["INBOX"]}
+    assert DEALS in left and '"Free" <letter@gmail.com>' not in left
+
+
+def test_two_queued_moves_get_two_jobs(three):
+    acc = accountsmod.get("one")
+    first = client.post("/api/delete?account=one", json={
+        "grouping": "sender", "keys": ["deals@dealsdaily.example"]}).json()["job"]
+    second = client.post("/api/delete?account=one", json={
+        "grouping": "sender", "keys": ["letter@gmail.com"]}).json()["job"]
+    assert first and second and first != second
+    _wait(acc)
+    assert set(_overview()["accounts"][0]["undo_jobs"]) == {first, second}
+
+
+def test_a_selection_that_is_queued_already_has_no_job(three, monkeypatch):
+    """Everything is in a running job already: nothing new is queued, so there
+    is no job (and no step) for the page to follow."""
+    gate = threading.Event()
+    real = mailops._move_uids
+
+    def slow(*a, **kw):
+        gate.wait(5)
+        return real(*a, **kw)
+    monkeypatch.setattr(mailops, "_move_uids", slow)
+    body = {"grouping": "sender", "keys": ["deals@dealsdaily.example"]}
+    first = client.post("/api/delete?account=one", json=body).json()
+    assert first["job"]
+    again = client.post("/api/delete?account=one", json=body).json()
+    assert again["job"] == ""
+    gate.set()
+    _wait(accountsmod.get("one"))
+    assert list(_overview()["accounts"][0]["undo_jobs"]) == [first["job"]]
 
 
 def test_the_aggregate_is_read_only_and_selects_nothing(three):

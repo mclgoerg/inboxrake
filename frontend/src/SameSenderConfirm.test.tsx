@@ -63,7 +63,7 @@ beforeEach(() => {
       : account === "proton" ? found(2) : { total: 44, kept: 0, classes: [] }));
   keepPin.mockResolvedValue({ pinned: 1, items: [] });
   deleteGroups.mockImplementation((...a: unknown[]) =>
-    Promise.resolve({ ok: true, queued: a[3] === "" ? 1 : 1, skipped: 0 }));
+    Promise.resolve({ ok: true, queued: 1, skipped: 0, job: `j-${a[9]}` }));
   unsubscribe.mockResolvedValue({ action: "done", via: "one_click",
     detail: "", addr: "x" });
   block.mockImplementation((_g: string, _k: string, _l: string, _t: boolean,
@@ -107,7 +107,7 @@ test("Trash: each account with its tick, count, size and Keep-safe result", asyn
   expect(within(box("old").closest("li")!).queryByText(/Keep-safe/)).toBeNull();
   for (const a of ["work", "proton", "old"]) expect(box(a).checked).toBe(true);
   // 347 mails, 8 of them stay: the button counts what moves
-  expect(confirm("Trash 339 in 3 accounts")).toBeTruthy();
+  expect(confirm("Trash 339 mails in 3 accounts")).toBeTruthy();
   expect(screen.getByText(/One step per account, each with its own Undo and Activity entry; protected senders and pinned mails are left out, as today\./))
     .toBeTruthy();
   // Keep-safe was asked in each account, for that account's own address
@@ -133,7 +133,7 @@ test("one step per ticked account, each pinned to its own account and the server
   mount("trash");
   await screen.findAllByRole("checkbox");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  fireEvent.click(confirm("Trash 339 mails in 3 accounts"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   // the Keep-safe mails are protected FIRST, in their own accounts ...
   expect(keepPin.mock.calls.map((c) => c[2])).toEqual(["work", "proton"]);
@@ -150,13 +150,15 @@ test("one step per ticked account, each pinned to its own account and the server
   expect(onFollow).toHaveBeenCalledTimes(1);
   const follow = onFollow.mock.calls[0][0];
   expect(follow.kind).toBe("trash");
-  expect(follow.accounts).toEqual(["work", "proton", "old"]);
+  // each account's move is followed by the id of ITS job
+  expect(follow.steps).toEqual([{ account: "work", job: "j-work" },
+    { account: "proton", job: "j-proton" }, { account: "old", job: "j-old" }]);
 });
 
 test("the selected account's own 'moved' toast is quieted BEFORE the first step", async () => {
   mount("trash");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  fireEvent.click(confirm("Trash 339 mails in 3 accounts"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(onClaim).toHaveBeenCalledWith(["work", "proton", "old"], true);
   expect(onClaim.mock.invocationCallOrder[0])
@@ -166,22 +168,36 @@ test("the selected account's own 'moved' toast is quieted BEFORE the first step"
     .every((c) => c[0].length === 0)).toBe(true);
 });
 
-test("an account whose move never queued is let go of again", async () => {
-  deleteGroups.mockImplementation((...a: unknown[]) => a[9] === "proton"
-    ? Promise.reject(new Error("down")) : Promise.resolve({ ok: true, queued: 5, skipped: 0 }));
+test("a move that queued nothing new (no job) is not followed", async () => {
+  deleteGroups.mockImplementation((...a: unknown[]) => Promise.resolve({
+    ok: true, queued: 5, skipped: 0, job: a[9] === "proton" ? "" : `j-${a[9]}` }));
   mount("archive");
   await screen.findAllByRole("checkbox");
-  fireEvent.click(confirm(/^Archive\s\d+\sin\s3\saccounts$/));
+  fireEvent.click(confirm(/^Archive\s\d+\smails\sin\s3\saccounts$/));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(onFollow.mock.calls[0][0].steps.map((x: { account: string }) => x.account))
+    .toEqual(["work", "old"]);
+  expect(onClaim).toHaveBeenCalledWith(["proton"], false);
+});
+
+test("an account whose move never queued is let go of again", async () => {
+  deleteGroups.mockImplementation((...a: unknown[]) => a[9] === "proton"
+    ? Promise.reject(new Error("down")) : Promise.resolve({ ok: true, queued: 5,
+      skipped: 0, job: `j-${a[9]}` }));
+  mount("archive");
+  await screen.findAllByRole("checkbox");
+  fireEvent.click(confirm(/^Archive\s\d+\smails\sin\s3\saccounts$/));
   await screen.findByText("2 done · 1 failed");
   expect(onClaim).toHaveBeenCalledWith(["proton"], false);
-  expect(onFollow.mock.calls[0][0].accounts).toEqual(["work", "old"]);
+  expect(onFollow.mock.calls[0][0].steps.map((x: { account: string }) => x.account))
+    .toEqual(["work", "old"]);
 });
 
 test("a protection that failed claims nothing: no step ran", async () => {
   keepPin.mockRejectedValue(new Error("disk full"));
   mount("trash");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  fireEvent.click(confirm("Trash 339 mails in 3 accounts"));
   await screen.findByText(/nothing was moved\./);
   expect(onClaim).not.toHaveBeenCalled();
 });
@@ -192,12 +208,13 @@ test("an unticked account is never called, and the button follows the ticks", as
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
   fireEvent.click(box("proton"));
   expect(box("proton").checked).toBe(false);
-  expect(confirm("Trash 248 in 2 accounts")).toBeTruthy();   // 210 - 6 + 44
-  fireEvent.click(confirm("Trash 248 in 2 accounts"));
+  expect(confirm("Trash 248 mails in 2 accounts")).toBeTruthy();   // 210 - 6 + 44
+  fireEvent.click(confirm("Trash 248 mails in 2 accounts"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(deleteGroups.mock.calls.map((c) => c[9])).toEqual(["work", "old"]);
   expect(keepPin.mock.calls.map((c) => c[2])).toEqual(["work"]);
-  expect(onFollow.mock.calls[0][0].accounts).toEqual(["work", "old"]);
+  expect(onFollow.mock.calls[0][0].steps.map((x: { account: string }) => x.account))
+    .toEqual(["work", "old"]);
 });
 
 test("a sender protected after the page loaded is blocked in the confirm and never called", async () => {
@@ -217,7 +234,7 @@ test("a sender protected after the page loaded is blocked in the confirm and nev
     .toBeTruthy();
   expect(keepCheck.mock.calls.map((c) => c[1])).not.toContain("work");
   // 93 + 44 mails, 2 of them stay (Keep-safe in proton)
-  fireEvent.click(confirm("Trash 135 in 2 accounts"));
+  fireEvent.click(confirm("Trash 135 mails in 2 accounts"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(deleteGroups.mock.calls.map((c) => c[9])).toEqual(["proton", "old"]);
   expect(keepPin.mock.calls.map((c) => c[2])).toEqual(["proton"]);
@@ -227,18 +244,19 @@ test("the server still refuses a protected sender: that account fails, the other
   deleteGroups.mockImplementation((...a: unknown[]) => a[9] === "proton"
     ? Promise.reject(Object.assign(new Error("This sender is protected, so nothing was moved."),
       { code: "delete_protected" }))
-    : Promise.resolve({ ok: true, queued: 5, skipped: 0 }));
+    : Promise.resolve({ ok: true, queued: 5, skipped: 0, job: `j-${a[9]}` }));
   mount("trash");
   await screen.findAllByRole("checkbox");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm(/^Trash\s\d+\sin\s3\saccounts$/));
+  fireEvent.click(confirm(/^Trash\s\d+\smails\sin\s3\saccounts$/));
   expect(await screen.findByText("2 done · 1 failed")).toBeTruthy();
   expect(screen.getByText(/Failed: This sender is protected, so nothing was moved\./))
     .toBeTruthy();
   // the dialog stays (something needs a look); only the two that went through
   // are followed
   expect(onClose).not.toHaveBeenCalled();
-  expect(onFollow.mock.calls[0][0].accounts).toEqual(["work", "old"]);
+  expect(onFollow.mock.calls[0][0].steps.map((x: { account: string }) => x.account))
+    .toEqual(["work", "old"]);
   expect(deleteGroups).toHaveBeenCalledTimes(3);
 });
 
@@ -249,7 +267,7 @@ test("a protection that cannot be written sends the whole confirm back to review
   mount("trash");
   await screen.findAllByRole("checkbox");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  fireEvent.click(confirm("Trash 339 mails in 3 accounts"));
   expect(await screen.findByText(
     /Couldn't protect the mails worth keeping in proton: .*disk full.* - nothing was moved\./))
     .toBeTruthy();
@@ -257,7 +275,7 @@ test("a protection that cannot be written sends the whole confirm back to review
   expect(onFollow).not.toHaveBeenCalled();
   expect(onClose).not.toHaveBeenCalled();
   // back in review: the button is there to try again
-  expect(confirm("Trash 339 in 3 accounts")).toBeTruthy();
+  expect(confirm("Trash 339 mails in 3 accounts")).toBeTruthy();
 });
 
 test("Esc, Cancel and the backdrop do nothing while the steps run", async () => {
@@ -266,7 +284,7 @@ test("Esc, Cancel and the backdrop do nothing while the steps run", async () => 
   mount("trash");
   await screen.findAllByRole("checkbox");
   await screen.findByText("Keep-safe: 6 look worth keeping - they stay");
-  fireEvent.click(confirm("Trash 339 in 3 accounts"));
+  fireEvent.click(confirm("Trash 339 mails in 3 accounts"));
   await screen.findByText(/Working on work… \(0 of 3\)/);
   fireEvent.keyDown(dialog(), { key: "Escape" });
   fireEvent.keyDown(document, { key: "Escape" });
@@ -285,7 +303,7 @@ test("an account removed while the confirm was open is skipped and said so", asy
   mount("archive", { exists: (a: string) => a !== "proton" });
   await screen.findAllByRole("checkbox");
   await screen.findByText("Archive Deals Daily's mails in 3 accounts?");
-  fireEvent.click(confirm("Archive 347 in 3 accounts"));
+  fireEvent.click(confirm("Archive 347 mails in 3 accounts"));
   expect(await screen.findByText("2 done · 1 not run")).toBeTruthy();
   expect(screen.getByText(/This account is no longer there - nothing was changed\./))
     .toBeTruthy();
@@ -300,7 +318,7 @@ test("switching the selected account while it runs stands the rest down", async 
   mount("archive");
   await screen.findAllByRole("checkbox");
   await screen.findByText("Archive Deals Daily's mails in 3 accounts?");
-  fireEvent.click(confirm("Archive 347 in 3 accounts"));
+  fireEvent.click(confirm("Archive 347 mails in 3 accounts"));
   expect(await screen.findByText("1 done · 2 not run")).toBeTruthy();
   expect(deleteGroups).toHaveBeenCalledTimes(1);
 });
@@ -311,7 +329,7 @@ test("Archive: no Keep-safe question, the archive action, the same pinned steps"
   await screen.findByText("Archive Deals Daily's mails in 3 accounts?");
   expect(keepCheck).not.toHaveBeenCalled();
   expect(screen.queryByText(/Keep-safe/)).toBeNull();
-  fireEvent.click(confirm("Archive 347 in 3 accounts"));
+  fireEvent.click(confirm("Archive 347 mails in 3 accounts"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(deleteGroups.mock.calls.map((c) => [c[2], c[9]])).toEqual([
     ["archive", "work"], ["archive", "proton"], ["archive", "old"]]);
@@ -328,7 +346,7 @@ test("pinned mails are said to stay and are not in the count", async () => {
   await screen.findByText("Archive Deals Daily's mails in 3 accounts?");
   expect(within(box("work").closest("li")!).getByText(
     "deals@dealsdaily.example · 10 pinned stay")).toBeTruthy();
-  expect(confirm("Archive 337 in 3 accounts")).toBeTruthy();
+  expect(confirm("Archive 337 mails in 3 accounts")).toBeTruthy();
 });
 
 test("the numbers are read again on open; a failed read blocks the confirm", async () => {
@@ -463,6 +481,28 @@ test("German", async () => {
   expect(screen.getAllByRole("button", { name: "Anzeigen" })).toHaveLength(2);
 });
 
+test("one mail in one account reads right, in English and German", async () => {
+  const one = row("shop.example", "Shop", [
+    { ...deals().accounts[0], account: "work", addr: "a@shop.example", mails: 1 }]);
+  overviewCall.mockResolvedValue(overview({ same_sender: [one] }));
+  mount("trash", { row: one });
+  await screen.findAllByRole("checkbox");
+  expect(confirm("Trash 1 mail in 1 account")).toBeTruthy();
+  cleanup();
+  mount("archive", { row: one });
+  await screen.findAllByRole("checkbox");
+  expect(confirm("Archive 1 mail in 1 account")).toBeTruthy();
+  cleanup();
+  setLang("de");
+  mount("trash", { row: one });
+  await screen.findAllByRole("checkbox");
+  expect(confirm("1 Mail in 1 Konto in den Papierkorb")).toBeTruthy();
+  cleanup();
+  mount("archive", { row: one });
+  await screen.findAllByRole("checkbox");
+  expect(confirm("1 Mail in 1 Konto archivieren")).toBeTruthy();
+});
+
 test("a row of a different shape is unaffected: the confirm only reads what it is given", async () => {
   const solo: SameSenderRow = row("shop.example", "Shop", [
     { ...deals().accounts[0], account: "one", addr: "a@shop.example", mails: 5 },
@@ -473,5 +513,5 @@ test("a row of a different shape is unaffected: the confirm only reads what it i
   await screen.findByText("Move Shop's mails to Trash in 2 accounts?");
   // under the Keep-safe threshold nothing is asked
   expect(keepCheck).not.toHaveBeenCalled();
-  expect(confirm("Trash 10 in 2 accounts")).toBeTruthy();
+  expect(confirm("Trash 10 mails in 2 accounts")).toBeTruthy();
 });

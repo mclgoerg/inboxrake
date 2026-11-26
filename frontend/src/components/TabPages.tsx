@@ -703,7 +703,8 @@ export function InsightsPage({ groups, state, subs, waiting, accounts, onOpen,
 function AllAccountsCard({ names, onOpen }: {
   names: string[]; onOpen: () => void;
 }) {
-  const { data } = useAllAccounts(names);
+  // read once: no polling behind a card on a tab
+  const { data } = useAllAccounts(names, false);
   return (
     <button type="button" onClick={onOpen} className={CARD_BTN}>
       <WidgetTitle icon={<Boxes size={16} />} chevron>

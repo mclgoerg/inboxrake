@@ -30,7 +30,7 @@ import { countIn, plan, type Plan, type SameAction } from "../sameSender";
 import type { KeepSafeCheck, KeepSafeClass, SameSenderRow, UnsubVia }
   from "../types";
 import { openUnsubPage } from "../unsub";
-import { stepKey, type Follow } from "../useAcrossRuns";
+import type { Follow } from "../useAcrossRuns";
 import { AcrossAccountsConfirm, type ConfirmLine }
   from "./AcrossAccountsConfirm";
 import { Button, useToast } from "./ui";
@@ -136,6 +136,8 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
   const [note, setNote] = useState("");
   const rules = useRef<Record<string, string>>({});
   const queued = useRef<Record<string, number>>({});
+  // the job the server gave each account's move: its Undo step carries the id
+  const jobs = useRef<Record<string, string>>({});
 
   // Read again what the page showed (a protection or a pin that appeared
   // since is honoured), then - for a Trash - ask Keep-safe per account.
@@ -208,7 +210,6 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
     setProblem("");
     const by = Object.fromEntries(plans.map((p) => [p.account, p]));
     const moveKind = action === "trash" || action === "archive" ? action : null;
-    let before: Record<string, string | null> = {};
     if (moveKind) {
       // Nothing is moved before every account's protection is in place: a pin
       // that fails sends the whole confirm back to review, with the problem.
@@ -225,17 +226,6 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
             return null;
           }
         }
-      }
-      // each account's newest Undo step BEFORE the move: the step the move
-      // makes is told from the older ones by it
-      try {
-        const r = await api.accountsOverview();
-        before = Object.fromEntries(r.accounts.map((a) => [a.name,
-          a.undo_last ? stepKey(a.undo_last) : null]));
-      } catch (e: any) {
-        setProblem(t("allc.read_failed",
-          { msg: errorText(e?.message ?? String(e)) }));
-        return null;
       }
     }
     if (moveKind) onClaim(accounts, true);
@@ -258,6 +248,7 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
       const r = await api.deleteGroups("sender", [p.addr], action, "", false,
         null, null, null, true, account);
       queued.current[account] = r.queued;
+      if (r.job) jobs.current[account] = r.job;
       return { account, status: "done" as const, text: r.queued
         ? t(action === "trash" ? "allc.out_trash" : "allc.out_archive",
           { n: r.queued }) : t("allc.out_none") };
@@ -272,8 +263,12 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
     });
     if (moveKind) {
       const went = outcomes.filter((o) => o.status === "done"
-        && (queued.current[o.account] ?? 0) > 0).map((o) => o.account);
-      if (went.length) onFollow({ kind: moveKind, accounts: went, before });
+        && (queued.current[o.account] ?? 0) > 0 && jobs.current[o.account])
+        .map((o) => o.account);
+      if (went.length) {
+        onFollow({ kind: moveKind, steps: went.map((account) => ({
+          account, job: jobs.current[account] })) });
+      }
       // the ones that never queued a move have nothing to announce
       onClaim(accounts.filter((a) => !went.includes(a)), false);
     }
@@ -335,8 +330,9 @@ export function SameSenderConfirm({ row, action, exists, demo, onFollow,
       confirmLabel={(k, mails) => {
         const key = { unsubscribe: "allp.b_unsub", trash: "allp.b_trash",
           archive: "allp.b_archive", block: "allp.b_block" }[action];
+        // ("1 mail" / "339 mails", like the toasts)
         return t(key, { where: t("allp.accounts_n", { n: k }),
-          mails: fmtNum(mails) });
+          mails: t("n.mails", { n: mails }) });
       }}
       run={run} resultTitle={acrossTitle} onFinished={finished}
       outcomeExtra={(o) => (
