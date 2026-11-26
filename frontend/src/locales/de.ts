@@ -2636,6 +2636,7 @@ export const DE: Record<string, string> = {
   "ferr.copy_unknown_account": "Dieses Konto gibt es nicht.",
   "ferr.copy_same_account": "Wähle zwei verschiedene Konten.",
   "ferr.copy_busy": "Es läuft schon ein Kopiervorgang – pausiere oder brich ihn zuerst ab.",
+  "ferr.copy_unfinished": "Beende oder brich zuerst das Kopieren in das andere Konto ab.",
   "ferr.copy_nothing": "Nichts zu kopieren – wähle mindestens eine Art mit Mails.",
   "ferr.copy_not_scanned": "Scanne zuerst das Konto, aus dem du kopierst.",
   "ferr.copy_folder_name": "Der Name für den neuen Ordner ist leer oder nicht erlaubt.",

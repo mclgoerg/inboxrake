@@ -79,6 +79,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The server did not delete “{folder}”.',
     'folder_recreate_failed':
         'Could not create “{folder}” again, so nothing was put back yet. Try Undo again.',
+    'copy_unfinished':
+        'Finish or cancel the account copy first.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

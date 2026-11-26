@@ -122,7 +122,10 @@ export function FolderPane({ row, twin, busy, scanOn, onClose, onMerge,
       <div className="-mt-2 space-y-1 type-meta text-muted">
         {reasons.map((why) => <p key={why}>{whyText(why)}</p>)}
         {nothing && <p>{t("yf.why.nothing")}</p>}
-        {row.can.delete === "not_empty" && <p>{t("yf.delete_hint")}</p>}
+        {/* with a rule or a subfolder in the way, the mail in it is a
+            second reason, said as well */}
+        {!row.lock && (row.can.delete === "not_empty"
+          || (row.mails ?? 0) > 0) && <p>{t("yf.delete_hint")}</p>}
         {!row.can.delete && row.mails === null && (
           <p>{t("yf.delete_hint_unknown")}</p>
         )}

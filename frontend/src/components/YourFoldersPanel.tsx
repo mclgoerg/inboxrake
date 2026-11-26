@@ -147,6 +147,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
     const taken = new Set([...rows.map((r) => r.name),
       ...(data?.special ?? []).map((s) => s.name)]
       .map((n) => n.toLowerCase()));
+    taken.delete(row.name.toLowerCase());   // only the case differs: its own
     const asked = await promptDialog({ title: t("yf.rename_title",
       { name: row.name }), label: t("yf.rename_label"), initial: leaf,
     confirmLabel: t("yf.rename_btn"),
@@ -304,8 +305,10 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
           px-4 py-1.5 text-left ${selected ? "bg-panel2 shadow-open-edge"
           : "hover:bg-panel2"}`}>
         <span className="shrink-0 text-muted">{folderIcon(r, true)}</span>
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className={`truncate type-body font-medium
+        {/* the chip goes below a long name instead of cutting it */}
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2
+          gap-y-0.5">
+          <span className={`min-w-0 max-w-full truncate type-body font-medium
             ${numbers(r) ? "" : "text-muted"}`}>{folderLabel(r)}</span>
           {r.lock && (
             <Lock size={14} aria-label={t("yf.locked")} className="shrink-0
@@ -358,7 +361,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
       {!phone && (
         <div className="flex items-center gap-3 border-b border-line px-4
           py-2 type-caption text-muted">
-          <span className="w-[17px] shrink-0" />
+          <span className="w-4 shrink-0" />
           <span className="min-w-0 flex-1">{t("yf.col.folder")}</span>
           <span className="w-16 shrink-0 text-right">{t("yf.col.mails")}</span>
           <span className="w-20 shrink-0 text-right">{t("yf.col.size")}</span>
@@ -374,15 +377,15 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
           </li>
         ))}
       </ul>
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line
-        px-4 py-2.5 type-meta text-muted">
-        <Lock size={14} aria-hidden />
-        <span>{t("yf.footer")}</span>
+      {/* one flow of text: the lock never stands alone on a phone line */}
+      <p className="border-t border-line px-4 py-2.5 type-meta text-muted">
+        <Lock size={14} aria-hidden className="mr-1.5 inline align-text-bottom" />
+        {t("yf.footer")}{" "}
         <button type="button" onClick={onSettings}
-          className="inline-flex cursor-pointer items-center text-accent
-            underline coarse:min-h-11">
+          className="inline-flex cursor-pointer items-center align-middle
+            text-accent underline coarse:min-h-11">
           {t("yf.footer_link")}</button>
-      </div>
+      </p>
     </div>
   );
 

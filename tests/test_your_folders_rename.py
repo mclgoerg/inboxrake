@@ -276,4 +276,4 @@ def test_an_account_copy_into_this_account_blocks_folder_operations(
         "status": "paused", "source": "elsewhere", "target": acc().name}})
     with pytest.raises(RuntimeError) as e:
         yf.rename(acc(), "Receipts 2019", "X1")
-    assert err(e) == "copy_busy"
+    assert err(e) == "copy_unfinished"       # paused: not "pause it first"

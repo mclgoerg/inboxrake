@@ -275,6 +275,7 @@ COPY_NO_JOB = "copy_no_job"              # nothing to pause / resume / cancel
 COPY_SAME_MAILBOX = "copy_same_mailbox"  # both accounts are one mailbox
 COPY_CANNOT_CONFIRM = "copy_cannot_confirm"    # could not tell they differ
 COPY_FOLDER_RESERVED = "copy_folder_reserved"  # folder=: Inbox / Trash / ...
+COPY_UNFINISHED = "copy_unfinished"      # a copy that stopped is not over: finish / cancel it
 # Your folders (backend/yourfolders.py): create / rename / merge / delete the
 # account's own folders. `folder=` is a decoded folder name, `why=` what locks
 # it (inbox | role | provider | noselect), `n=` a count
@@ -303,6 +304,7 @@ FOLDER_ERROR_CODES = frozenset({
     COPY_NOT_SCANNED, COPY_FOLDER_NAME, COPY_CANNOT_CREATE,
     COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     COPY_SAME_MAILBOX, COPY_CANNOT_CONFIRM, COPY_FOLDER_RESERVED,
+    COPY_UNFINISHED,
     FOLDER_NAME_BAD, FOLDER_EXISTS, FOLDER_RESERVED, FOLDER_LOCKED,
     FOLDER_LABEL, FOLDER_TARGET_BAD, FOLDER_SAME, FOLDER_GONE,
     FOLDER_NOT_EMPTY, FOLDER_HAS_CHILDREN, FOLDER_USED_BY_RULES,

@@ -241,6 +241,7 @@ export const EN: Record<string, string> = {
   "ferr.copy_unknown_account": "That account does not exist.",
   "ferr.copy_same_account": "Pick two different accounts.",
   "ferr.copy_busy": "A copy is already running - pause or cancel it first.",
+  "ferr.copy_unfinished": "Finish or cancel the account copy first.",
   "ferr.copy_nothing": "Nothing to copy - tick at least one kind that has mails.",
   "ferr.copy_not_scanned": "Scan the account you copy from first.",
   "ferr.copy_folder_name": "The name for the new folder is empty or not allowed.",

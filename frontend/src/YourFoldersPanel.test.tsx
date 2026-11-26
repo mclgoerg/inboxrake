@@ -809,6 +809,58 @@ test("wide: the list stays first, as drawn", async () => {
   expect(group.querySelector(".max-h-72")).toBeTruthy();
 });
 
+/* ------------------------------ review round 2: the details ------------------------- */
+
+test("a folder with a rule in the way and mail in it says both", async () => {
+  yourFolders.mockResolvedValue(resp({ rows: [INBOX, { ...RECEIPTS_2019,
+    can: { rename: null, merge: null, delete: "rules" } }] }));
+  show();
+  await open("Receipts 2019");
+  expect(within(pane()).getByText("Rules move mail into it: change those rules first."))
+    .toBeTruthy();
+  expect(within(pane()).getByText("Delete is only offered for empty folders."))
+    .toBeTruthy();
+  // a locked folder has its one reason, not two
+  fireEvent.click(within(row("Inbox")).getByRole("button"));
+  expect(within(pane()).queryByText("Delete is only offered for empty folders."))
+    .toBeNull();
+});
+
+test("the name cell lets the chip go below a long name instead of cutting it", async () => {
+  show();
+  await screen.findAllByTestId("folder-row");
+  const name = within(row("Newsletters 2019")).getByText("Newsletters 2019");
+  expect(name.parentElement!.className).toContain("flex-wrap");
+  expect(name.className).toContain("max-w-full");
+  expect(document.body.innerHTML).not.toContain("w-[17px]");
+});
+
+test("the footer is one flow of text: the lock icon is inside the sentence", async () => {
+  show();
+  await screen.findAllByTestId("folder-row");
+  const p = screen.getByText(/Sent, Drafts, Junk and Trash are special folders/);
+  expect(p.tagName).toBe("P");
+  expect(p.querySelector("svg")).toBeTruthy();
+  expect(within(p).getByRole("button", { name: "Settings › Account" })).toBeTruthy();
+});
+
+test("Rename…: a change of case alone is the folder's own name, not a taken one", async () => {
+  folderCheck.mockResolvedValue(renameCheck({ rules: [], new: "TRAVEL",
+    new_name: "TRAVEL" }));
+  renameFolder.mockResolvedValue({ raw: "TRAVEL", name: "TRAVEL", rules: [],
+    failed: [] });
+  show();
+  await open("Travel");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Rename/ }));
+  const prompt = await findDialog();
+  typeInto(prompt, "TRAVEL");
+  await pressDialog("Rename");
+  await waitFor(() => expect(folderCheck).toHaveBeenCalledWith({ op: "rename",
+    folder: "Travel", name: "TRAVEL" }, "proton"));
+  await waitFor(() => expect(renameFolder).toHaveBeenCalledWith("Travel",
+    "TRAVEL", [], "proton"));
+});
+
 /* ------------------------------------ German ---------------------------------- */
 
 test("German: the page, the pane and the merge dialog", async () => {

@@ -24,6 +24,8 @@ import { FolderPicker, loadRecent, rememberRecent, renameRecent }
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { findDialog, pressDialog } from "./dialogTestUtils";
 import { findPicker } from "./folderPickerTestUtil";
+import { cachedFolders, rememberFolders } from "./yourFoldersCache";
+import { resp } from "./yourFoldersFixtures";
 import { setLang } from "./i18n";
 
 const RAW = ["INBOX", "Archive", "Receipts", "Travel"];
@@ -90,6 +92,22 @@ test("it asks for a name, makes the folder, lists it last and chooses it", async
   fireEvent.click(within(dlg).getByRole("button", { name: "Move" }));
   expect(onPick).toHaveBeenCalledWith("Warranty");
   await waitFor(() => expect(loadRecent("acc")[0].raw).toBe("Warranty"));
+});
+
+test("a new folder makes the Clean up tile ask again", async () => {
+  createFolder.mockResolvedValue({ raw: "Warranty", name: "Warranty" });
+  rememberFolders("acc", 7, resp());
+  rememberFolders("other", 7, resp());
+  mount();
+  const dlg = await findPicker();
+  fireEvent.click(within(dlg).getByRole("button", { name: "New folder…" }));
+  const prompt = await findDialog();
+  fireEvent.change(within(prompt).getByRole("textbox"),
+    { target: { value: "Warranty" } });
+  await pressDialog("Create");
+  await within(dlg).findByRole("button", { name: /^Warranty/ });
+  expect(cachedFolders("acc", 7)).toBeNull();           // forgotten
+  expect(cachedFolders("other", 7)).not.toBeNull();     // another account's stays
 });
 
 test("the 'Always move' switch follows the new folder", async () => {
@@ -172,14 +190,17 @@ test("on a wide screen (a popover) the prompt's own presses and Esc leave it ope
   fireEvent.mouseDown(within(prompt).getByRole("textbox"));
   fireEvent.keyDown(within(prompt).getByRole("textbox"), { key: "a" });
   expect(onClose).not.toHaveBeenCalled();
-  // nothing of the popover can be reached while the prompt is open
+  // nothing of the popover can be reached while the prompt is open - and it
+  // is dimmed with the rest of the screen
   expect(dlg.hasAttribute("inert")).toBe(true);
+  expect(dlg.style.opacity).toBe("0.4");
   await pressDialog("Create");
   await within(dlg).findByRole("button", { name: /^Warranty/ });
   expect(onClose).not.toHaveBeenCalled();
   // ... and once the prompt is gone it is usable again, with the focus back
   // on the row that opened it; an outside press closes it again
   await waitFor(() => expect(dlg.hasAttribute("inert")).toBe(false));
+  expect(dlg.style.opacity).toBe("1");
   await waitFor(() => expect(document.activeElement)
     .toBe(within(dlg).getByRole("button", { name: "New folder…" })));
   await new Promise((r) => setTimeout(r, 30));

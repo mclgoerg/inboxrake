@@ -221,6 +221,7 @@ const ERROR_CODES: Record<string, string> = {
   copy_same_mailbox: "ferr.copy_same_mailbox",
   copy_cannot_confirm: "ferr.copy_cannot_confirm",
   copy_folder_reserved: "ferr.copy_folder_reserved",
+  copy_unfinished: "ferr.copy_unfinished",
   // Your folders (backend/yourfolders.py)
   folder_name_bad: "ferr.folder_name_bad",
   folder_exists: "ferr.folder_exists",

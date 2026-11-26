@@ -10,6 +10,7 @@ import { fmtAgo } from "../lib";
 import { nowMs } from "../clock";
 import { useLayer } from "../backStack";
 import { useSidebar } from "../nav";
+import { forgetFolders } from "../yourFoldersCache";
 import type { FoldersResp, Rule } from "../types";
 import { Button, Input, Modal, SettingsGroup, SettingsRow, Switch,
   promptDialog, useOptionalToast } from "./ui";
@@ -219,6 +220,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
         validate: (v) => v.trim() ? null : t("yf.name_required") });
       if (name === null) return;
       const r = await api.createFolder(name.trim(), account || undefined);
+      forgetFolders(account);      // the Clean up tile counts the folders
       setMade((m) => [...m, r]);
       setChosen(r.raw);
       toast?.show(t("yf.created", { name: r.name }), { variant: "success" });
@@ -484,7 +486,8 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     <div ref={pop} role="dialog" aria-label={title} inert={askingUi}
       style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
         left: place?.left ?? 0, width: POP_W, maxHeight: place?.maxH,
-        opacity: place ? 1 : 0 }}
+        // dimmed with the rest of the screen while a prompt is open above it
+        opacity: place ? (askingUi ? 0.4 : 1) : 0 }}
       className="z-(--z-modal) flex flex-col overflow-hidden rounded-card
         border border-line bg-panel pt-3 shadow-popover">
       <div className="flex items-center justify-between gap-2 px-4 pb-3">

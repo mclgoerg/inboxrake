@@ -1351,7 +1351,10 @@ def _tick() -> None:
                 except KeyError:
                     continue                 # account was deleted
                 with acc.lock:
+                    # (a folder operation of Your folders is changing the
+                    # mailbox: skipped quietly, tried again next tick)
                     busy = (acc.state["status"] == "scanning"
+                            or acc.folder_lock.locked()
                             or acc.state["ai"]["status"] == "running"
                             or acc.state["delete"]["status"] == "running"
                             or acc.state["restore"]["status"] == "running"

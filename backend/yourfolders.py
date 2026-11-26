@@ -192,8 +192,8 @@ def _names(acc) -> set[str]:
 
 def _busy(acc, own_held: bool = False) -> str | None:
     """The code of what keeps the account - or an account that is the same
-    mailbox - from a folder operation now. `own_held`: the caller holds this
-    account's folder lock."""
+    mailbox - from a folder operation now. `own_held`: the caller holds the
+    folder lock of the account and of every account that is its mailbox."""
     twins = _twins(acc)
     for t in twins:
         with t.lock:
@@ -205,33 +205,41 @@ def _busy(acc, own_held: bool = False) -> str | None:
                 return mailops.BUSY_ACTION
         if t.purge_lock.locked():
             return mailops.BUSY_PURGE
-        if t.folder_lock.locked() and not (own_held and t is acc):
+        if t.folder_lock.locked() and not own_held:
             return mailops.BUSY_ACTION
     try:
         job = accountcopy.status().get("job") or {}
     except Exception:
         job = {}
-    # a copy that stopped on an error can be resumed: still a copy
+    # a copy that stopped (paused, or on an error that can be resumed) is not
+    # over: "pause or cancel it" would be wrong for it
     if job.get("status") in ("running", "paused", "error") \
             and {t.name for t in twins} & {job.get("source"),
                                            job.get("target")}:
-        return mailops.COPY_BUSY
+        return mailops.COPY_BUSY if job["status"] == "running" \
+            else mailops.COPY_UNFINISHED
     return None
 
 
 @contextmanager
 def _operation(acc, mails: bool = True):
-    """One folder operation at a time per account. `mails`: it changes where
-    mail is, so nothing else may be moving it (create does not)."""
-    if not acc.folder_lock.acquire(blocking=False):
-        raise _refuse(mailops.BUSY_ACTION)
+    """One folder operation at a time per mailbox: the folder lock of the
+    account and of every account that is the same mailbox is held, so a move
+    job, a scan, an Undo or a rule on any of them waits. `mails`: it changes
+    where mail is, so nothing else may be moving it (create does not)."""
+    held: list = []
     try:
+        for t in _twins(acc):
+            if not t.folder_lock.acquire(blocking=False):
+                raise _refuse(mailops.BUSY_ACTION)
+            held.append(t)
         why = _busy(acc, own_held=True) if mails else None
         if why:
             raise _refuse(why)
         yield
     finally:
-        acc.folder_lock.release()
+        for t in held:
+            t.folder_lock.release()
 
 
 # ------------------------------------------------------------------ helpers
@@ -788,7 +796,8 @@ def create(acc, name: str) -> dict:
             _subscribe(conn, raw)
         finally:
             _logout(conn)
-        _scanned_after_create(acc, raw)
+        for t in _twins(acc):
+            _scanned_after_create(t, raw)
         auditlog.record("folder_create", account=acc.name, label=_name(raw),
                         entry_id=auditlog.new_id())
         log.info("a folder was created")
@@ -823,8 +832,10 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
         # which may stop the next (each failure is logged and reported)
         failed: list[str] = []
         for step, run in (
-                ("config", lambda: _rename_config(acc, ctx, folder, raw, fn)),
-                ("state", lambda: _rename_state(acc, fn)),
+                ("config", lambda: [_rename_config(t, ctx, folder, raw, fn)
+                                    for t in _twins(acc)]),
+                ("state", lambda: [_rename_state(t, fn)
+                                   for t in _twins(acc)]),
                 ("rules", lambda: rulesmod.repoint_dest(_names(acc), fn))):
             try:
                 run()
@@ -901,7 +912,8 @@ def _drop(conn, acc, raw: str) -> None:
     if status != "OK":
         raise _refuse(mailops.FOLDER_DELETE_FAILED, folder=_name(raw))
     _subscribe(conn, raw, on=False)
-    _forget_folder(acc, raw)
+    for t in _twins(acc):
+        _forget_folder(t, raw)
     auditlog.record("folder_delete", account=acc.name, label=_name(raw),
                     entry_id=auditlog.new_id())
     log.info("an empty folder was deleted")
@@ -988,7 +1000,8 @@ def _merge_locked(conn, acc, folder, target, uv, max_uid, delete_after,
                              affected, delete_after, failure)
         # what moved is no longer in the folder the index says: also after a
         # failure part-way
-        _after_merge(acc, folder, copies)
+        for t in _twins(acc):
+            _after_merge(t, folder, copies)
         rescan.append((moved, {"n": moved, "from": _name(folder),
                                "to": _name(target)}))
     if failure is not None:

@@ -137,7 +137,7 @@ def twins(monkeypatch):
         "one": {"host": "h1", "user": "me", "password": "pw"},
         "two": {"host": "h1", "user": "me", "password": "pw"}}}))
     fake = FakeIMAP({"INBOX": _mails("I", 1), "Bills": _mails("B", 2, first=5),
-                     "Bills 2019": _mails("B9", 1, first=9)})
+                     "Bills 2019": _mails("B9", 1, first=9), "Trash": []})
     monkeypatch.setattr(mailops, "connect", lambda im, name=None: fake)
     mailops.run_scan(accountsmod.get("one"))
     mailops.run_scan(accountsmod.get("two"))
@@ -224,14 +224,19 @@ def test_accounts_of_another_mailbox_are_no_twins(monkeypatch):
 
 # ------------------------------------------ copy jobs, also one that failed
 
-@pytest.mark.parametrize("status", ["running", "paused", "error"])
+@pytest.mark.parametrize("status,code", [
+    ("running", "copy_busy"), ("paused", "copy_unfinished"),
+    ("error", "copy_unfinished")])
 def test_an_account_copy_that_is_not_over_blocks_folder_operations(
-        box, monkeypatch, status):
+        box, monkeypatch, status, code):
     monkeypatch.setattr(accountcopy, "status", lambda: {"job": {
         "status": status, "source": acc().name, "target": "elsewhere"}})
     with pytest.raises(RuntimeError) as e:
         yf.rename(acc(), "Receipts 2019", "X1")
-    assert err(e) == "copy_busy"
+    # a running copy is told to pause or cancel; a stopped one to finish or
+    # cancel (it cannot be "paused" again)
+    assert err(e) == code
+    assert yf.overview(acc())["busy"] == code
     for over in ("done", "cancelled"):
         monkeypatch.setattr(accountcopy, "status", lambda o=over: {"job": {
             "status": o, "source": acc().name, "target": "elsewhere"}})
@@ -382,3 +387,111 @@ def test_a_rename_unsubscribes_the_old_name_and_subscribes_the_new(box):
     assert ("UNSUBSCRIBE", "Travel") in box.commands
     assert box.commands.index(("SUBSCRIBE", "Trips")) \
         < box.commands.index(("UNSUBSCRIBE", "Travel"))
+
+
+# ------------------------------------------- the rule scheduler waits, too
+
+def _due_rule(**over):
+    return rulesmod.create_rule({
+        "name": "weekly", "grouping": "sender", "query": "from:x@y.example",
+        "action": "move", "dest": "Receipts", "schedule": "weekly", **over})
+
+
+@pytest.mark.parametrize("kind", ["move", "purge"])
+def test_a_due_rule_is_skipped_quietly_while_a_folder_changes_and_runs_after(
+        box, monkeypatch, kind):
+    rule_ = _due_rule() if kind == "move" else rulesmod.create_rule({
+        "name": "purge", "scope": "trash", "schedule": "weekly",
+        "older_than_days": 30})
+    ran = []
+    monkeypatch.setattr(rulesmod, "run_rule",
+                        lambda rid, rescan=True: ran.append(rid))
+    a = acc()
+    assert a.folder_lock.acquire(blocking=False)
+    try:
+        rulesmod._tick()
+        assert ran == []                       # not run ...
+        got = rule_of(rule_["id"])
+        assert not got.get("last_run")         # ... and no failed run recorded
+    finally:
+        a.folder_lock.release()
+    rulesmod._tick()                           # the next tick runs it
+    assert ran == [rule_["id"]]
+
+
+def test_the_scheduler_also_waits_for_a_folder_change_of_the_other_name(
+        twins, monkeypatch):
+    one, two = accountsmod.get("one"), accountsmod.get("two")
+    r = _due_rule(account="two", dest="Bills")
+    ran = []
+    monkeypatch.setattr(rulesmod, "run_rule",
+                        lambda rid, rescan=True: ran.append(rid))
+    held = []
+
+    def spy(*a, **k):
+        held.append((one.folder_lock.locked(), two.folder_lock.locked()))
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(yf, "_new_name", spy)
+    with pytest.raises(RuntimeError):
+        yf.rename(one, "Bills 2019", "X")
+    assert held == [(True, True)]              # every name of the mailbox
+    assert not one.folder_lock.locked() and not two.folder_lock.locked()
+    # while one holds them, the other name's rules, jobs and scans wait
+    with yf._operation(one):
+        rulesmod._tick()
+        assert ran == []
+        with pytest.raises(RuntimeError) as e:
+            mailops.start_scan(two)
+        assert str(e.value) == "busy"
+        with pytest.raises(RuntimeError) as e:
+            with two.lock:
+                mailops._start_delete({"INBOX": {1}}, "x", two)
+        assert err(e) == "busy_action"
+    rulesmod._tick()
+    assert ran == [r["id"]]
+
+
+# ------------------- a rename follows to the other name of the mailbox
+
+def test_a_rename_reaches_the_other_names_undo_steps_and_scan_switch(twins):
+    one, two = accountsmod.get("one"), accountsmod.get("two")
+    mailops.delete_messages([["Bills 2019", 9]], "trash", acc=two)
+    wait_delete_done()
+    wait_scan_done()
+    assert {f for f, _ in two.undo_log[-1]["items"]} == {"Bills 2019"}
+    cfgmod.update_config({"account": "two", "excluded_folders": [
+        "Bills 2019", "Trash"]})
+    yf.rename(one, "Bills 2019", "Bills 2020")
+    wait_scan_done()
+    assert {f for f, _ in two.undo_log[-1]["items"]} == {"Bills 2020"}
+    assert "Bills 2020" in cfgmod.account_imap("two")["excluded_folders"]
+    assert "Bills 2019" not in cfgmod.account_imap("two")["excluded_folders"]
+    # its scan index and folder list follow, too
+    assert "Bills 2019" not in two.state["folders_raw"]
+
+
+def test_a_merge_and_a_delete_reach_the_other_names_index(twins):
+    one, two = accountsmod.get("one"), accountsmod.get("two")
+    chk = yf.check(one, "merge", "Bills 2019", "Bills")
+    yf.merge(one, "Bills 2019", "Bills", chk["uv"], chk["max_uid"],
+             delete_after=True, rules=[])
+    wait_scan_done()
+    assert "Bills 2019" not in twins.mailbox
+    assert not any(m["folder"] == "Bills 2019" for m in two.index.values())
+    assert "Bills 2019" not in two.state["folders_raw"]
+
+
+# -------------------------------------------------- a case-only rename
+
+def test_a_rename_that_only_changes_the_case_is_allowed(box):
+    chk = yf.check(acc(), "rename", "Travel", name="TRAVEL")
+    assert chk["new"] == "TRAVEL"
+    out = yf.rename(acc(), "Travel", "TRAVEL")
+    wait_scan_done()
+    assert out["raw"] == "TRAVEL" and "TRAVEL" in box.mailbox
+    assert "Travel" not in box.mailbox
+    # another folder's name in another case is still taken
+    with pytest.raises(RuntimeError) as e:
+        yf.rename(acc(), "TRAVEL", "receipts")
+    assert err(e) == "folder_exists"
