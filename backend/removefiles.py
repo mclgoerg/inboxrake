@@ -422,8 +422,7 @@ def check(acc, items, files) -> dict:
                 except Exception:
                     pass
         except Exception as exc:
-            log.warning("[%s] remove check failed: %s", acc.name,
-                        type(exc).__name__)
+            log.warning("remove check failed: %s", type(exc).__name__)
             out["refused"] = _failure(exc, acc)
             return out
     per_file = [{"name": n, "size": s, "mails": 0, "safe": 0, "classes": []}
@@ -530,8 +529,8 @@ def prepare(acc, job: dict, progress_cb, strips: dict, skipped: list
                 except (imaplib.IMAP4.abort, OSError):
                     raise
                 except Exception as exc:
-                    log.warning("[%s] remove files: one mail failed (%s)",
-                                acc.name, type(exc).__name__)
+                    log.warning("remove files: one mail failed (%s)",
+                                type(exc).__name__)
                     got = FAILED
                 if isinstance(got, str):
                     skipped.append((folder, uid, got))
@@ -608,8 +607,8 @@ def _one(conn, acc, srv: _Server, folder: str, uid: int, files, when,
     except (imaplib.IMAP4.abort, OSError):
         raise
     except Exception:
-        log.warning("[%s] remove files: the copy could not be read back",
-                    acc.name, exc_info=True)
+        log.warning("remove files: the copy could not be read back",
+                    exc_info=True)
         ok = False
     if not ok:
         _discard(conn, folder, new_uv, new_uid)
@@ -737,14 +736,13 @@ def discard_unmoved(acc, strips: dict, moved: dict[str, set[int]]) -> None:
     try:
         conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     except Exception:
-        log.warning("[%s] remove files: could not reach the server to take "
-                    "%d unused copies out", acc.name, len(todo))
+        log.warning("remove files: could not reach the server to take "
+                    "%d unused copies out", len(todo))
         return
     try:
         for folder, uid, s in todo:
             if not _discard(conn, folder, s["uv"], s["uid"]):
-                log.warning("[%s] remove files: a copy stayed in a folder",
-                            acc.name)
+                log.warning("remove files: a copy stayed in a folder")
     finally:
         try:
             conn.logout()
@@ -843,8 +841,7 @@ def build_zip(acc, items, files):
                 pass
     except Exception as exc:
         out.close()
-        log.warning("[%s] could not build the download: %s", acc.name,
-                    type(exc).__name__)
+        log.warning("could not build the download: %s", type(exc).__name__)
         return {"refused": _failure(exc, acc)}
     size = out.tell()
     out.seek(0)
