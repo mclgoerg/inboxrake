@@ -666,6 +666,8 @@ def start(source: str, target: str, kinds, folder: str = "") -> dict:
     with src.lock:
         if src.state["status"] == "scanning":
             raise RuntimeError(mailops.BUSY_SCAN)
+    if src.folder_lock.locked() or tgt.folder_lock.locked():
+        raise RuntimeError(mailops.BUSY_ACTION)   # a folder is being changed
     items = [i for i in classify(src) if i["mask"] & _mask(picked)]
     if not items:
         raise ValueError(mailops.COPY_NOT_SCANNED if not src.index
@@ -753,6 +755,12 @@ def resume() -> dict:
             if _STOP.get(tid) == "pause":
                 _STOP.pop(tid, None)      # pressed Resume before it paused
             return {"job": _public(job)}
+        for name in (job.get("source"), job.get("target")):
+            try:
+                if accounts.get(name).folder_lock.locked():
+                    raise RuntimeError(mailops.BUSY_ACTION)  # a folder changes
+            except KeyError:
+                pass
         job.update(status="running", error="", finished=0)
         _write(data)
         _spawn(tenants.current())

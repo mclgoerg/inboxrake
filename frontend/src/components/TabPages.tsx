@@ -1,4 +1,5 @@
 import { AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
+  FolderTree,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
@@ -15,7 +16,8 @@ import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
-  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp }
+  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp,
+  YourFoldersResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
 import { ProposalBadge } from "./Sidebar";
@@ -24,6 +26,7 @@ import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
 import { useAllAccounts } from "../useAllAccounts";
 import { useCopies } from "../useCopies";
+import { cachedFolders, rememberFolders } from "../yourFoldersCache";
 import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
@@ -38,7 +41,8 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity";
+  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
+  | "yourfolders";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -123,6 +127,25 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
       .catch(() => alive && setDups("failed"));
     return () => { alive = false; };
   }, [account, done]);
+  // Your folders: how many there are and how many things look worth tidying.
+  // It takes a connection to the mail server, so it is asked once per scan
+  // (the answer is kept, see yourFoldersCache) - not on every visit of this
+  // tab - and the tile shows no number until the answer is there.
+  const scan = state?.scanned_ts ?? null;
+  const [yf, setYf] = useState<YourFoldersResp | "failed" | null>(
+    () => cachedFolders(account, scan));
+  useEffect(() => {
+    if (!done) { setYf(null); return; }
+    const hit = cachedFolders(account, scan);
+    if (hit) { setYf(hit); return; }
+    setYf(null);
+    let alive = true;
+    Promise.resolve().then(() => api.yourFolders(account))
+      .then((r) => { rememberFolders(account, scan, r); if (alive) setYf(r); })
+      .catch(() => alive && setYf("failed"));
+    return () => { alive = false; };
+  }, [account, done, scan]);
+  const yfData = yf != null && yf !== "failed" ? yf : null;
   const dupReady = dups != null && dups !== "failed";
   const dupCompare = dupReady ? dups.versions + dups.possible : 0;
   const compareText = t("tab.dup_compare", { n: fmtNum(dupCompare) });
@@ -273,6 +296,18 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             // The big number is the count: the sub-line adds the size.
             sub={state?.trash_size ? fmtSize(state.trash_size) : undefined}
             onClick={() => onOpen("trash")} />
+        </li>
+        {/* the last tile: see and tidy your own folders */}
+        <li className="contents">
+          <Tile icon={<FolderTree size={18} aria-hidden />}
+            tone="bg-info-bg text-info-fg" label={t("yf.menu")}
+            value={yfData ? t("n.folders", { n: yfData.rows.length })
+              : done && yf == null ? <Skeleton className="h-6 w-14" /> : null}
+            sub={!yfData ? t("yf.tile_sub_open")
+              : yfData.hints.length > 0
+                ? t("yf.tile_sub", { n: yfData.hints.length })
+                : t("yf.tile_sub_none")}
+            onClick={() => onOpen("yourfolders")} />
         </li>
       </ul>
     </div>

@@ -65,7 +65,10 @@ export function useRuleCheckup(state: AppState): {
     // a mail action bumps groups_rev several times in a row: one read after
     // the last of them
     const h = setTimeout(() => {
-      api.ruleCheckup().then((r) => { if (alive) setData(r); })
+      // inside the promise: a call that throws is a failed fetch, too (it
+      // would otherwise be an uncaught error out of the timer)
+      Promise.resolve().then(() => api.ruleCheckup())
+        .then((r) => { if (alive) setData(r); })
         .catch(() => { /* nothing to show */ });
     }, 250);
     return () => { alive = false; clearTimeout(h); };

@@ -98,6 +98,11 @@ single mails). A rule can still be limited to one kind: that is the third
 retention choice of the rule editor ("only one kind of mail"), next to "keep
 newest N" and "only mails older than N days".
 
+The old word `folder:text` matches the mails whose folder name contains the
+text. For a name with spaces - or to mean exactly one folder - write it in
+quotes: `folder:"Receipts 2019"` is that whole folder, in any case. That is what
+**Open in All mail** on [Your folders](features.md#your-folders) uses.
+
 ## Combining
 
 ```text

@@ -116,6 +116,10 @@ class AccountState:
         # Held for the whole of one permanent deletion (Empty Trash, purge of
         # Trash / Junk mails): two of them never run side by side.
         self.purge_lock = threading.Lock()
+        # Held for the whole of one folder operation (Your folders: create /
+        # rename / merge / delete): a move job refuses to start meanwhile and
+        # the operation refuses to start while a job runs.
+        self.folder_lock = threading.Lock()
         # UIDs of the delete job currently being processed (guarded by
         # `lock`) - new jobs dedup against these too, not just the queue.
         self.inflight: dict[str, set[int]] = {}

@@ -1,4 +1,5 @@
-import { Archive, ArrowLeftRight, FolderInput, Globe, History, KeyRound, ListChecks, Mail,
+import { Archive, ArrowLeftRight, FolderInput, FolderPen, FolderPlus,
+  FolderX, Globe, History, KeyRound, ListChecks, Mail,
   MailCheck, Pin, RefreshCw, Send, ShieldCheck, Trash2, Undo2, BellOff, VenetianMask,
   type LucideIcon } from "lucide-react";
 
@@ -11,6 +12,9 @@ export const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   archive: { icon: Archive, tone: "bg-safe-bg text-safe-fg" },
   move: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
   move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
+  folder_create: { icon: FolderPlus, tone: "bg-safe-bg text-safe-fg" },
+  folder_rename: { icon: FolderPen, tone: "bg-info-bg text-info-fg" },
+  folder_delete: { icon: FolderX, tone: "bg-keep-bg text-keep-fg" },
   account_copy: { icon: ArrowLeftRight, tone: "bg-info-bg text-info-fg" },
   mark_read: { icon: MailCheck, tone: "bg-chip text-chiptext" },
   rule_execute: { icon: ListChecks, tone: "bg-review-bg text-review-fg" },

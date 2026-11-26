@@ -31,6 +31,7 @@ import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
+import { YourFoldersPanel } from "./components/YourFoldersPanel";
 import { AllAccountsPanel } from "./components/AllAccountsPanel";
 import { COPIES_VIEW } from "./components/AllMailsView";
 import { canOpenAllAccounts } from "./allAccounts";
@@ -127,7 +128,8 @@ const RESTORE_NOTICES = ["restored", "restored_rescan"];
 // Set by the Junk / Trash pages' moves while the rescan runs; their own
 // toast is the result, so the banner stays out (the "..._rescan" ones tell
 // the user to act and stay).
-const ROLE_MOVE_NOTICES = ["junk_rescued", "trash_restored"];
+const ROLE_MOVE_NOTICES = ["junk_rescued", "trash_restored",
+  "folder_merged", "folder_renamed"];
 /** The status line's Undo menu lists this many steps per list (the undo
  *  lists hold 30 days of steps; Activity has them all). */
 const UNDO_MENU_MAX = 8;
@@ -290,6 +292,8 @@ export default function App() {
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
   const [waitingOpen, setWaitingOpen] = useState(false);
+  // Your folders (Clean up, after Trash)
+  const [yourFoldersOpen, setYourFoldersOpen] = useState(false);
   // The All accounts page (a page, never a mode: nothing about the selected
   // account depends on it).
   const [allAccountsOpen, setAllAccountsOpen] = useState(false);
@@ -328,7 +332,7 @@ export default function App() {
     : statsOpen ? "stats" : spaceOpen ? "space"
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
     : addressesOpen ? "addresses" : waitingOpen ? "waiting"
-    : allAccountsOpen ? "accounts"
+    : allAccountsOpen ? "accounts" : yourFoldersOpen ? "yourfolders"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
   // A focus belongs to the visit it was asked for.
@@ -1289,6 +1293,7 @@ export default function App() {
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
     setSubsOpen(false); setAddressesOpen(false); setWaitingOpen(false);
     setAllAccountsOpen(false); setAuditOpen(false);
+    setYourFoldersOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1362,7 +1367,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || yourFoldersOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2539,6 +2544,7 @@ export default function App() {
     rules: () => setRulesOpen(true),
     junk: () => setFoldersOpen("junk"),
     trash: () => setFoldersOpen("trash"),
+    yourfolders: () => setYourFoldersOpen(true),
     stats: () => setStatsOpen(true),
     space: () => setSpaceOpen(true),
     wrapped: () => setWrappedOpen(true),
@@ -3092,6 +3098,28 @@ export default function App() {
           if (!g) return;
           setWaitingOpen(false);
           openSender(g);
+        }} />
+    )}
+    {toolShown("yourfolders") && (
+      <YourFoldersPanel key={account} account={account}
+        scannedTs={state?.scanned_ts ?? null}
+        hasSender={(addr) => !!state?.groups.sender?.[addr]}
+        onClose={() => closeTool(() => setYourFoldersOpen(false))}
+        onChanged={refresh}
+        onOpenAllMail={(query) => {
+          setYourFoldersOpen(false);
+          openAllMailNewest(query);
+        }}
+        onOpenSender={(addr) => {
+          const g = state?.groups.sender?.[addr];
+          if (!g) return;
+          setYourFoldersOpen(false);
+          openSender(g);
+        }}
+        onSettings={() => {
+          setYourFoldersOpen(false);
+          openTool("settings");
+          openSettingsSection("account", account, true);
         }} />
     )}
     {toolShown("accounts") && cfg && (

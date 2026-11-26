@@ -1,4 +1,5 @@
-import { Archive, Check, Clock, Folder, Inbox, Search } from "lucide-react";
+import { Archive, Check, Clock, Folder, FolderPlus, Inbox, Search }
+  from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState,
   type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -9,9 +10,10 @@ import { fmtAgo } from "../lib";
 import { nowMs } from "../clock";
 import { useLayer } from "../backStack";
 import { useSidebar } from "../nav";
+import { forgetFolders } from "../yourFoldersCache";
 import type { FoldersResp, Rule } from "../types";
 import { Button, Input, Modal, SettingsGroup, SettingsRow, Switch,
-  useOptionalToast } from "./ui";
+  promptDialog, useOptionalToast } from "./ui";
 
 /** One row of the folder tree. `raw` is null for a parent the server does
  *  not offer as a target (it only exists to nest its children). */
@@ -88,6 +90,16 @@ export function rememberRecent(account: string, raw: string): void {
   catch { /* private mode: suggestions are a convenience */ }
 }
 
+/** A renamed folder keeps its place among the recent targets. */
+export function renameRecent(account: string, from: string, to: string): void {
+  const list = loadRecent(account);
+  if (!list.some((r) => r.raw === from)) return;
+  try {
+    localStorage.setItem(recentKey(account), JSON.stringify(
+      list.map((r) => r.raw === from ? { ...r, raw: to } : r)));
+  } catch { /* private mode: suggestions are a convenience */ }
+}
+
 /** The filter a "move rule" gets: one sender (`from:`) or one domain. */
 export interface MoveRuleTarget {
   kind: "sender" | "domain";
@@ -148,6 +160,13 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
   const [q, setQ] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
   const [always, setAlways] = useState(false);
+  // folders made from this picker: listed (last) and chosen right away
+  const [made, setMade] = useState<{ raw: string; name: string }[]>([]);
+  // a prompt is open above the picker: its clicks and Esc are not ours, and
+  // the popover is inert meanwhile (nothing behind it can be reached)
+  const asking = useRef(false);
+  const [askingUi, setAskingUi] = useState(false);
+  const newRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(openerNow());
   const pop = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ top?: number; bottom?: number;
@@ -162,8 +181,13 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
 
   const delims = useMemo(() => Object.fromEntries(
     (info?.folders ?? []).map((f) => [f.raw, f.delim])), [info]);
-  const tree = useMemo(() => buildFolderTree(folders, labels, delims,
-    info?.mail_counts), [folders, labels, delims, info]);
+  const tree = useMemo(() => {
+    const extra = made.filter((m) => !folders.includes(m.raw));
+    return buildFolderTree(
+      [...folders, ...extra.map((m) => m.raw)],
+      [...folders.map((_, i) => labels[i] ?? ""),
+        ...extra.map((m) => m.name)], delims, info?.mail_counts);
+  }, [folders, labels, delims, info, made]);
   const byRaw = useMemo(() => new Map(
     tree.filter((n) => n.raw !== null).map((n) => [n.raw!, n])), [tree]);
 
@@ -186,6 +210,32 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
 
   const searching = q.trim() !== "";
   const hits = useMemo(() => searching ? searchFolders(tree, q) : [], [tree, q]);
+
+  const newFolder = async () => {
+    asking.current = true;
+    setAskingUi(true);
+    try {
+      const name = await promptDialog({ title: t("yf.create_title"),
+        label: t("yf.create_label"), confirmLabel: t("yf.create_btn"),
+        validate: (v) => v.trim() ? null : t("yf.name_required") });
+      if (name === null) return;
+      const r = await api.createFolder(name.trim(), account || undefined);
+      forgetFolders(account);      // the Clean up tile counts the folders
+      setMade((m) => [...m, r]);
+      setChosen(r.raw);
+      toast?.show(t("yf.created", { name: r.name }), { variant: "success" });
+    } catch (e: any) {
+      toast?.show(String(e?.message ?? e), { variant: "error" });
+    } finally {
+      // after the dialog's own closing clicks have passed
+      setTimeout(() => {
+        asking.current = false;
+        setAskingUi(false);
+        requestAnimationFrame(() => newRef.current?.focus(
+          { preventScroll: true }));
+      }, 0);
+    }
+  };
 
   const close = () => {
     onClose();
@@ -251,6 +301,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
   useEffect(() => {
     if (!wide) return;
     const onKey = (e: KeyboardEvent) => {
+      if (asking.current) return;
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
       // Tab wraps inside the popover; an open Modal behind it (the sender
       // detail) must not pull focus back into itself.
@@ -275,7 +326,7 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     // An outside press only closes the popover: the click that follows it must
     // not also hit whatever lay underneath (same idea as the swipe-row tap).
     const onDoc = (e: MouseEvent) => {
-      if (pop.current?.contains(e.target as Node)) return;
+      if (asking.current || pop.current?.contains(e.target as Node)) return;
       const eat = (c: Event) => { c.stopPropagation(); c.preventDefault(); };
       document.addEventListener("click", eat, { capture: true, once: true });
       setTimeout(() => document.removeEventListener("click", eat, true), 600);
@@ -393,6 +444,14 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
                     <span className="truncate type-body">{n.name}</span>
                   </div>
                 ))}
+              {/* the last row: a new folder, chosen as soon as it exists */}
+              <button type="button" data-folder-row="" ref={newRef}
+                onClick={() => void newFolder()}
+                className="flex min-h-11 w-full items-center gap-3 px-4 py-1.5
+                  text-left text-accent transition-colors hover:bg-panel2">
+                <FolderPlus size={18} aria-hidden className="shrink-0" />
+                <span className="type-body font-medium">{t("yf.new")}</span>
+              </button>
             </SettingsGroup>
           </>
         )}
@@ -424,10 +483,11 @@ export function FolderPicker({ count, folders, labels = [], account, onPick,
     );
   }
   return createPortal(
-    <div ref={pop} role="dialog" aria-label={title}
+    <div ref={pop} role="dialog" aria-label={title} inert={askingUi}
       style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
         left: place?.left ?? 0, width: POP_W, maxHeight: place?.maxH,
-        opacity: place ? 1 : 0 }}
+        // dimmed with the rest of the screen while a prompt is open above it
+        opacity: place ? (askingUi ? 0.4 : 1) : 0 }}
       className="z-(--z-modal) flex flex-col overflow-hidden rounded-card
         border border-line bg-panel pt-3 shadow-popover">
       <div className="flex items-center justify-between gap-2 px-4 pb-3">

@@ -268,7 +268,11 @@ def _live(acc, entries: list[dict]) -> dict:
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         existing = set(mailops.selectable_folders(conn))
-        out["missing"] = {f for f in targets if f and f not in existing}
+        # a merge that deleted its emptied source folder brings it back when
+        # it is undone (mailops._recreate_folders): not "gone"
+        recreate = {f for e in entries for f in (e.get("recreate") or [])}
+        out["missing"] = {f for f in targets
+                          if f and f not in existing and f not in recreate}
         for f in folders:
             status, _ = conn.select(mailops.quote_folder(f), readonly=True)
             out["folders"][f] = ((mailops.uidvalidity(conn),

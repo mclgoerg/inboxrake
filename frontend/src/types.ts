@@ -1744,3 +1744,100 @@ export interface CopiesResp {
   /** copies "Move to another account" made: never offered */
   left_out: number;
 }
+
+/* ---- Your folders (`GET /api/your_folders`, backend/yourfolders.py) ---- */
+
+/** Why a folder is locked (no rename / merge / delete): the inbox, a role
+ *  folder (Archive, Sent, Drafts, Junk, Trash), a provider's own folder, a
+ *  parent-only folder. */
+export type FolderLock = "inbox" | "role" | "provider" | "noselect";
+/** The reason one operation is off for a folder (null = allowed). */
+export type FolderWhy = FolderLock | "label" | "move_unsafe" | "children"
+  | "rules" | "not_empty" | "locked_child";
+export type FolderHint = "look" | "empty" | "stale";
+
+/** A rule as a folder row names it. */
+export interface FolderRule {
+  id: string;
+  name: string;
+  mode: "report" | "execute";
+  schedule?: "manual" | "daily" | "weekly";
+}
+
+export interface YourFolderRow {
+  raw: string;
+  /** readable name (the whole path) */
+  name: string;
+  delim: string | null;
+  lock: FolderLock | null;
+  role: string | null;
+  /** a mail can carry several of these (Gmail labels, Proton "Labels/...") */
+  label: boolean;
+  scanned: boolean;
+  /** why a folder the scan did not read is out: an exclusion pattern, or its
+   *  own switch */
+  off: "pattern" | "switch" | null;
+  pattern: string;
+  /** the last scan's numbers; null = the scan did not read it */
+  mails: number | null;
+  size: number | null;
+  newest: number | null;
+  unread: number | null;
+  /** the senders with most mail in it (up to three) */
+  top: { addr: string; label: string; n: number }[];
+  used_by: FolderRule[];
+  children: number;
+  hints: FolderHint[];
+  /** the folder it looks like (raw name) */
+  twin: string | null;
+  can: { rename: FolderWhy | null; merge: FolderWhy | null;
+         delete: FolderWhy | null };
+}
+
+export interface YourFoldersResp {
+  rows: YourFolderRow[];
+  hints: { kind: FolderHint; folders: string[] }[];
+  /** the account's special folders (not rows: the page's footer names them) */
+  special: { raw: string; name: string; why: FolderLock | null;
+             role: string | null }[];
+  totals: { scanned: number; mails: number; size: number;
+            not_scanned: number };
+  scanned: boolean;
+  gmail: boolean;
+  /** the code of what keeps folders from being changed right now */
+  busy: string | null;
+  scanned_ts?: number | null;
+}
+
+/** The live numbers and rules of an operation, for its confirm. */
+export interface FolderCheck {
+  folder: string;
+  name: string;
+  target?: string;
+  target_name?: string;
+  /** merge: the mails to move (live) and what the move is bound to */
+  count?: number;
+  uv?: number;
+  max_uid?: number;
+  /** the rules that move mail into this folder (rename / merge) */
+  rules?: FolderRule[];
+  pinned?: number;
+  protected?: number;
+  /** merge: why "then delete the folder" is not offered (null = it is) */
+  can_delete?: FolderWhy | null;
+  /** rename: the new raw / readable name and what it changes */
+  new?: string;
+  new_name?: string;
+  children?: number;
+  stops_scanning?: boolean;
+}
+
+export interface FolderMergeResult {
+  moved: number;
+  target?: string;
+  undo: UndoIdent | null;
+  rules: { id: string; name: string; mode: "report" | "execute" }[];
+  deleted: boolean;
+  /** why the emptied folder was kept ("then delete" was ticked) */
+  kept: string;
+}

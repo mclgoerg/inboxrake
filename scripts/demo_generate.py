@@ -23,6 +23,7 @@ from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, copystore, demo,
                      knowledgestore, mailops, pinstore, rules, unsubstore,
                      verdictstore, waitstore)
+from backend import config as cfgmod
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -1223,6 +1224,46 @@ PROTON.mailbox["INBOX"] += mails(
     newest_days=3, span_days=300, unread=0.5, unsub=True)
 random.setstate(_state)
 
+# Your folders (IY123): folders of the Proton demo account's own - look-alike
+# names, an empty one, one gone quiet, one its scan switch leaves out (see
+# `generate`) and a label an exclude pattern keeps out. Invented senders. Added
+# last and from its own random stream, so every other mail keeps its data.
+_state = random.getstate()
+random.seed(123)
+_YOUR_FOLDERS = {
+    "Bills": mails('"Utility Co" <bills@utility-co.example>',
+                   ["Your bill for {n}", "Payment received {n}"], 38,
+                   newest_days=3, span_days=500, unread=0.1),
+    "Bills 2019": mails('"Utility Co" <bills@utility-co.example>',
+                        ["Your bill for {n}", "Payment received {n}"], 12,
+                        newest_days=2300, span_days=2420, unread=0.4),
+    "bills-old": [],
+    "Trips": mails('"Trips Example" <booking@trips-example.example>',
+                   ["Your booking {n}", "Trip details"], 21,
+                   newest_days=40, span_days=800, unread=0.2),
+    "Newsletters 2019": mails('"Old Digest" <hello@old-digest.example>',
+                              ["The weekly digest {n}"], 30,
+                              newest_days=1900, span_days=2100, unread=0.97,
+                              unsub=True),
+    "Taxes": mails('"Tax Office" <service@tax-office.example>',
+                   ["Your notice {n}"], 6, newest_days=170, span_days=500,
+                   unread=0.0),
+    "Old phone backup": mails('"Phone Sync" <sync@phone-sync.example>',
+                              ["Backup {n}"], 15, newest_days=400,
+                              span_days=900, unread=0.5),
+    "Labels/Family": mails('"Family Chat" <circle@family-chat.example>',
+                           ["Photos from the weekend"], 5, newest_days=9,
+                           span_days=60, unread=0.4),
+}
+for _name, _msgs in _YOUR_FOLDERS.items():
+    PROTON.mailbox[_name] = _msgs
+    PROTON.uv[_name] = 1
+# the "Labels" parent of Proton's label folders: it holds no mail
+PROTON.mailbox["Labels"] = []
+PROTON.uv["Labels"] = 1
+PROTON.noselect["Labels"] = "\\Noselect"
+random.setstate(_state)
+
 
 def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
     """The Time machine's demo history of the Proton account: real undo steps
@@ -1320,7 +1361,10 @@ def generate() -> dict:
         "accounts": {
             "proton": {"host": "demo-proton", "user": "demo@example.com",
                        "password": "demo", "preset": "proton", "cafile": "",
-                       "body_search": "local"},
+                       "body_search": "local",
+                       # Your folders: one folder the scan switch leaves out
+                       "excluded_folders": [*cfgmod.DEFAULT_EXCLUDED,
+                                            "Old phone backup"]},
             "icloud": {"host": "demo-icloud", "user": "demo@icloud.example",
                        "password": "demo", "preset": "icloud", "cafile": ""},
         },
@@ -1536,6 +1580,16 @@ def generate() -> dict:
         _au.append((rule["account"], "rule_execute", ts, count, "ok",
                     f"rule:{rule['id']}", rule["name"]))
         _ran(rule, ts, count, 4, ts - 30 * 86400)
+    # Your folders: an Active rule that files the old bills (its folder is a
+    # look-alike of "Bills"); it ran once, three days ago, with nothing to do
+    bills = rules.create_rule({
+        "name": "Old bills to their folder", "query": "from:bills@utility-co.example",
+        "action": "move", "dest": "Bills 2019", "schedule": "weekly",
+        "account": "proton"})
+    _bills_ts = int(NOW - 3 * 86400)
+    _au.append(("proton", "rule_execute", _bills_ts, 0, "ok",
+                f"rule:{bills['id']}", bills["name"]))
+    _ran(bills, _bills_ts, 0, 0, int(NOW - 40 * 86400))
     # keep-latest runs every day; the receipts rule ran a month ago (before
     # its folder went away); the ticket rule has run weekly and found nothing
     for rule, d, count, groups, created in (
@@ -1561,7 +1615,8 @@ def generate() -> dict:
         time.strptime(_ym + "-01", "%Y-%m-%d"))
     _rule_action = {sweep["name"]: "trash", parcels["name"]: "archive",
                     lapsed["name"]: "trash", keep5["name"]: "trash",
-                    receipts["name"]: "archive", tickets["name"]: "archive"}
+                    receipts["name"]: "archive", tickets["name"]: "archive",
+                    bills["name"]: "move"}
     _labels = {"trash": ["Old newsletters", "Expired promotions",
                          "Past order updates"],
                "archive": ["Receipts to keep", "Travel confirmations"]}

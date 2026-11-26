@@ -275,6 +275,26 @@ COPY_NO_JOB = "copy_no_job"              # nothing to pause / resume / cancel
 COPY_SAME_MAILBOX = "copy_same_mailbox"  # both accounts are one mailbox
 COPY_CANNOT_CONFIRM = "copy_cannot_confirm"    # could not tell they differ
 COPY_FOLDER_RESERVED = "copy_folder_reserved"  # folder=: Inbox / Trash / ...
+COPY_UNFINISHED = "copy_unfinished"      # a copy that stopped is not over: finish / cancel it
+# Your folders (backend/yourfolders.py): create / rename / merge / delete the
+# account's own folders. `folder=` is a decoded folder name, `why=` what locks
+# it (inbox | role | provider | noselect), `n=` a count
+FOLDER_NAME_BAD = "folder_name_bad"          # the new name is unusable
+FOLDER_EXISTS = "folder_exists"              # a folder of that name is there
+FOLDER_RESERVED = "folder_reserved"          # the name is one the server uses
+FOLDER_LOCKED = "folder_locked"              # folder=, why=: no rename / merge / delete
+FOLDER_LABEL = "folder_label"                # folder=: a label, merge is off
+FOLDER_TARGET_BAD = "folder_target_bad"      # folder=: not a merge target
+FOLDER_SAME = "folder_same"                  # a folder cannot go into itself
+FOLDER_GONE = "folder_gone"                  # folder=: not on the server
+FOLDER_NOT_EMPTY = "folder_not_empty"        # folder=, n=: delete needs 0
+FOLDER_HAS_CHILDREN = "folder_has_children"  # folder=: it has subfolders
+FOLDER_USED_BY_RULES = "folder_used_by_rules"    # folder=, n=
+FOLDER_RULES_CHANGED = "folder_rules_changed"    # the rules differ from the confirm
+FOLDER_CREATE_FAILED = "folder_create_failed"    # folder=
+FOLDER_RENAME_FAILED = "folder_rename_failed"    # folder=
+FOLDER_DELETE_FAILED = "folder_delete_failed"    # folder=
+FOLDER_RECREATE_FAILED = "folder_recreate_failed"    # folder=: undo
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -284,6 +304,12 @@ FOLDER_ERROR_CODES = frozenset({
     COPY_NOT_SCANNED, COPY_FOLDER_NAME, COPY_CANNOT_CREATE,
     COPY_SOURCE_CHANGED, COPY_APPEND_REFUSED, COPY_TARGET_FULL, COPY_NO_JOB,
     COPY_SAME_MAILBOX, COPY_CANNOT_CONFIRM, COPY_FOLDER_RESERVED,
+    COPY_UNFINISHED,
+    FOLDER_NAME_BAD, FOLDER_EXISTS, FOLDER_RESERVED, FOLDER_LOCKED,
+    FOLDER_LABEL, FOLDER_TARGET_BAD, FOLDER_SAME, FOLDER_GONE,
+    FOLDER_NOT_EMPTY, FOLDER_HAS_CHILDREN, FOLDER_USED_BY_RULES,
+    FOLDER_RULES_CHANGED, FOLDER_CREATE_FAILED, FOLDER_RENAME_FAILED,
+    FOLDER_DELETE_FAILED, FOLDER_RECREATE_FAILED,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,
@@ -3047,6 +3073,7 @@ def start_scan(acc=None, notice: dict | None = None,
     acc = acc or accounts.get()
     with acc.lock:
         if acc.state["status"] == "scanning" \
+                or acc.folder_lock.locked() \
                 or acc.state["ai"]["status"] == "running" \
                 or acc.state["delete"]["status"] == "running" \
                 or acc.state["restore"]["status"] == "running" \
@@ -3340,10 +3367,12 @@ def _apply_seen(folder: str, uids: list[int], acc) -> None:
 
 
 def _job_running(acc) -> bool:
-    """A move / deletion job or a Time machine restore is running (acc.lock
-    held): nothing else may change the mailbox meanwhile."""
+    """A move / deletion job, a Time machine restore or a folder operation
+    (Your folders) is running (acc.lock held): nothing else may change the
+    mailbox meanwhile."""
     return (acc.state["delete"]["status"] == "running"
-            or acc.state["restore"]["status"] == "running")
+            or acc.state["restore"]["status"] == "running"
+            or acc.folder_lock.locked())
 
 
 def _from_role_label(n: int, role: str) -> tuple[str, dict]:
@@ -3569,7 +3598,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
         raise ValueError("move needs a target folder")
     if acc.state["status"] == "scanning":
         raise RuntimeError("busy: scan running")
-    if acc.state["restore"]["status"] == "running":
+    if acc.state["restore"]["status"] == "running" or acc.folder_lock.locked():
         raise RuntimeError(BUSY_ACTION)
     # Drop UIDs already sitting in queued jobs - or in the job the worker is
     # processing right now - so overlapping selections (e.g. a sender group,
@@ -4890,6 +4919,29 @@ def pop_undo(acc, index: int = -1, ident: dict | None = None,
     return entry, pos
 
 
+def _recreate_folders(conn, entry: dict) -> None:
+    """A step that deleted its source folder (Your folders: merge, then
+    delete the emptied one) brings that folder back before its mails go home.
+    A folder that is there already is left alone; one the server will not
+    create stops the undo with a coded error (the step stays for a retry)."""
+    want = [f for f in (entry.get("recreate") or [])
+            if isinstance(f, str) and f]
+    if not want:
+        return
+    have = set(list_folders(conn))
+    for folder in want:
+        if folder in have:
+            continue
+        status, _ = conn.create(quote_folder(folder))
+        if status != "OK" and folder not in list_folders(conn):
+            raise RuntimeError(coded(FOLDER_RECREATE_FAILED,
+                                     folder=decode_mutf7(folder)))
+        try:
+            conn.subscribe(quote_folder(folder))
+        except Exception:
+            pass                # only makes the folder show up in some apps
+
+
 def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
     """Move the mails of one step (or one part of a restore step) back to
     where they came from, as far as they can be found, and book them in
@@ -4901,6 +4953,7 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
     trash = ""
     back: list[tuple[str, str, str, int]] = []
     try:
+        _recreate_folders(conn, entry)
         trash = entry.get("in") or folder_roles(conn, acc).get("trash")
         if not trash:
             raise RuntimeError(coded(ROLE_MISSING, role="trash"))
@@ -5242,6 +5295,15 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
         elif keep is not None:
             with acc.lock:
                 _reinsert_undo(acc, keep, pos)
+    if run["failed"] is None and run["restored"] > 0 \
+            and entry.get("folder_rules"):
+        # Your folders: the step that moved a folder's mail pointed some rules
+        # at the new folder: they go back (still Report only) - after the mail
+        try:
+            from . import yourfolders
+            yourfolders.undo_rules(acc, entry)
+        except Exception:
+            log.exception("could not point the rules back")
     return run
 
 
@@ -5334,7 +5396,8 @@ def undo_last(index: int = -1, acc=None, ident: dict | None = None,
                 "restored": restored, "of": entry["count"],
                 "label": entry["label"]})
         raise failed
-    if entry.get("action") == "move_contents":
+    if entry.get("action") == "move_contents" \
+            and not entry.get("folder_merge"):
         # the mails went back to a folder that is never scanned: nothing
         # in the index changes, so no rescan and no "rescan" notice
         return {"restored": restored, "of": entry["count"], "rescan": False,
@@ -6856,6 +6919,9 @@ def search_body(query: str, limit: int = 500, acc=None,
 MAIL_SORTS = ("date", "size", "sender")
 _MQ_RE = re.compile(r"^(age|size|att|from|domain|folder|is|has|"
                     r"tag|ai|unread|eng|in|kind):(.*)$")
+# `folder:"Receipts 2019"`: the whole name (a plain `folder:` token cannot hold
+# a space), matched exactly - what "Open in All mail" of Your folders uses
+_MQ_FOLDER_Q = re.compile(r'(?:^|\s)folder:"([^"]+)"', re.I)
 _MQ_IN_RE = re.compile(r"^(\d+)(min|h|d)$")
 _MQ_IN_UNIT = {"min": 60, "h": 3600, "d": 86400}
 _MQ_AGE_RE = re.compile(r"^>?(\d+)(d|m|y)$")
@@ -6869,7 +6935,8 @@ def parse_mail_query(q: str) -> dict:
     Per-mail qualifiers: `age:>6m|2y|30d` (older than), `size:>1m` (at
     least), `att:>1m` (attachment bytes - only for mails the attachment
     analysis has covered), `from:addr` (exact), `domain:example.com`,
-    `folder:text`, `is:unread|read`, `is:expired` (mail past its date: a
+    `folder:text` (the name contains it) or `folder:"Two Words"` (exactly
+    that folder), `is:unread|read`, `is:expired` (mail past its date: a
     stale code, a parcel update of a parcel that has arrived, a reminder of
     something over, an offer that has ended - see pastdate.py; a per-mail
     word only, no group or rule word), `kind:ads|orders|shipping|invoices|
@@ -6884,10 +6951,16 @@ def parse_mail_query(q: str) -> dict:
     smaller parser - the group-filter DSL in rules.py/lib.ts is untouched.)"""
     out: dict = {"text": [], "age_days": None, "size_min": None,
                  "att_min": None, "from_addr": None, "domain": None,
-                 "folder": None, "read": None, "pinned": False,
+                 "folder": None, "folder_exact": None, "read": None,
+                 "pinned": False,
                  "in_seconds": None, "expired": False, "kinds": set(),
                  "ignored": []}
-    for tok in (q or "").strip().lower().split():
+    text = (q or "").strip()
+    quoted = _MQ_FOLDER_Q.search(text)
+    if quoted:
+        out["folder_exact"] = quoted.group(1).strip().lower() or None
+        text = text[:quoted.start()] + " " + text[quoted.end():]
+    for tok in text.lower().split():
         m = _MQ_RE.match(tok)
         if not m:
             out["text"].append(tok)
@@ -6973,6 +7046,9 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                 continue
             if f["folder"] is not None \
                     and f["folder"] not in decode_mutf7(m["folder"]).lower():
+                continue
+            if f["folder_exact"] is not None \
+                    and f["folder_exact"] != decode_mutf7(m["folder"]).lower():
                 continue
             if f["read"] is not None and m["seen"] != f["read"]:
                 continue

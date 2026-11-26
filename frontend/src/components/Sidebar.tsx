@@ -1,4 +1,5 @@
-import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, Hourglass, Layers,
+import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, FolderTree,
+  Hourglass, Layers,
   LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
@@ -12,7 +13,7 @@ import { fmtNum } from "../numfmt";
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "settings";
+  | "yourfolders" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -145,6 +146,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         junkCount)}
       {tool("trash", <Trash2 size={16} aria-hidden />, t("role.trash"),
         trashCount)}
+      {tool("yourfolders", <FolderTree size={16} aria-hidden />,
+        t("yf.menu"))}
       {section(t("tools.group_insights"))}
       {tool("stats", <BarChart3 size={16} aria-hidden />, t("Statistics"))}
       {tool("space", <LayoutGrid size={16} aria-hidden />, t("space.title"))}
