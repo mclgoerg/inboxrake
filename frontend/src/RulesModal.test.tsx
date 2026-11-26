@@ -1204,3 +1204,29 @@ test("the editor offers the kind choice in German", () => {
     { name: "nur eine Art von Mail" }));
   expect(popup("Art der Mail").textContent).toContain("Werbung und Angebote");
 });
+
+test("the preview says it counts every kind until the first report, for the "
+  + "kind choice only", () => {
+  renderNew();
+  expect(screen.queryByTestId("kind-preview-hint")).toBeNull();
+  choose("Apply to", "keep newest N, act on the rest");
+  expect(screen.queryByTestId("kind-preview-hint")).toBeNull();
+  choose("Apply to", "only one kind of mail");
+  expect(screen.getByTestId("kind-preview-hint").textContent).toBe(
+    "The preview counts every kind of mail until the first report - then it "
+    + "shows only this kind.");
+  // it sits in the preview box, by the numbers it is about
+  expect(screen.getByTestId("kind-preview-hint").parentElement!.textContent)
+    .toContain("Preview");
+  choose("Apply to", "all mails");
+  expect(screen.queryByTestId("kind-preview-hint")).toBeNull();
+});
+
+test("the preview hint is in German", () => {
+  setLang("de");
+  renderNew();
+  choose("Anwenden auf", "nur eine Art von Mail");
+  expect(screen.getByTestId("kind-preview-hint").textContent).toBe(
+    "Die Vorschau zählt alle Arten von Mails, bis der erste Bericht da ist "
+    + "- dann zeigt er nur diese Art.");
+});

@@ -49,6 +49,9 @@ KINDS = [
     ("Your parcel is out for delivery", False, "shipping"),
     ("Ihr Paket wurde versendet", True, "shipping"),
     ("Delivered: order #88", False, "shipping"),
+    ("Deine Bestellung ist unterwegs", True, "shipping"),
+    ("Your parcel is on its way", False, "shipping"),
+    ("Your order is on its way", True, "shipping"),
     # invoices and receipts
     ("Invoice 2026-11", True, "invoices"),
     ("Rechnung Nr. 5512", False, "invoices"),
@@ -69,8 +72,8 @@ KINDS = [
     ("20% off everything this weekend", False, "ads"),
     ("Neu im Shop: Herbstkollektion", True, "ads"),
     ("Deal ends at midnight", True, "ads"),
-    ("Your discount code: SAVE20", True, "ads"),
     ("Weekly digest", True, "ads"),
+    ("New arrivals just landed", True, "ads"),
 ]
 
 
@@ -110,7 +113,23 @@ NEVER_ADS = [
     "Order now and get free delivery",
     "How was your order?", "Please rate your purchase",
     "Order confirmation - 20% off your next order",
-    # nothing transactional in the words, but pastdate has read it as a
+    # a List-Unsubscribe sender's other transactional mail (none of it has a
+    # promotional word, and none may become an ad)
+    "Your PIN 4821", "Your pickup code", "Your items are on the way",
+    "Arriving today", "Deine Ware ist unterwegs", "Kommt heute an",
+    "Dein Kurs ist gebucht", "Your itinerary for Berlin",
+    "Your stay at Hotel Lindenhof", "Ihre Bahnfahrt", "Ihre Stornierung",
+    "Your cancellation is complete", "Ihr Einkauf vom 03.11.",
+    "Amount due: 49.00", "Ankündigung der SEPA-Lastschrift",
+    "Ihre Gutschrift", "Ihre Überweisung wurde ausgeführt",
+    "Dein Kassenzettel", "Abholcode für dein Paket: 4821",
+    "Your subscription is changing", "Mietvertrag Wohnung",
+    "Your rental car", "Ihr Vertrag", "Kündigung bestätigt",
+    "Lizenz abgelaufen", "Your balance", "Credit note 4412",
+    "Ihre Abrechnung", "Your trip to Rome", "Ihr Betrag wurde erstattet",
+    # ... and with a promotional word next to the transactional one
+    "Your order is on its way - 10% off your next one",
+    "Cancellation fee waived: 20% off",    # nothing transactional in the words, but pastdate has read it as a
     # reminder, a thank-you (a receipt) or a code
     "Reminder: webinar on 3 Dec", "Your table on Friday",
     "Don't forget your visit tomorrow", "Thank you for joining us",
@@ -125,6 +144,48 @@ def test_what_is_no_ad_never_lands_in_ads(subject, unsub):
     assert kind(subject, unsub=unsub) != "ads"
     # nor from a sender that is a shop under another name
     assert kind(subject, "orders@another-shop.example", unsub) != "ads"
+
+
+# The header alone is no proof: with nothing promotional in the subject the
+# mail gets no kind at all.
+NO_PROMO = ["Hello from the team", "Quick update", "Wichtige Information",
+            "Ihre Kontoübersicht", "Two days only: boots and scarves",
+            "Notice", "Your monthly overview", "Neues von uns",
+            "Your discount code: SAVE20"]
+
+
+@pytest.mark.parametrize("subject", NO_PROMO)
+def test_a_newsletter_header_alone_is_no_ad(subject):
+    assert kind(subject, unsub=True) == ""
+    assert kind(subject, unsub=False) == ""
+
+
+def test_a_promotional_subject_with_the_header_is_an_ad():
+    for subject in ("20% off everything this weekend", "Deal ends at midnight",
+                    "Neu im Shop: Herbstkollektion", "Our best picks for the "
+                    "cold season", "Members get early access"):
+        assert kind(subject, unsub=True) == "ads", subject
+    # the marketing words that are no promo word need the header; a promo
+    # word does not
+    assert kind("Members get early access", unsub=False) == ""
+    assert kind("20% off everything this weekend", unsub=False) == "ads"
+
+
+def test_a_pickup_code_is_no_shipping_update():
+    for subject in ("Abholcode für dein Paket: 4821", "Your pickup code",
+                    "Your PIN 4821", "Locker PIN for your parcel",
+                    "Your parcel pickup code is 4821",
+                    "Abholnummer für Ihre Sendung"):
+        assert kind(subject, unsub=True) == "", subject
+        assert kind(subject, unsub=False) == "", subject
+
+
+def test_on_its_way_is_a_shipping_update_even_for_an_order():
+    assert kind("Deine Bestellung ist unterwegs") == "shipping"
+    assert kind("Your order is on its way") == "shipping"
+    assert kind("Your parcel is on its way") == "shipping"
+    assert kind("Your return is on its way") == ""        # no shipping update
+    assert kind("Your order: support ticket #4412, parcel on its way") == ""
 
 
 def test_a_plain_mail_without_a_newsletter_header_is_no_ad():
@@ -760,3 +821,98 @@ def test_a_mail_the_index_lost_is_left_alone_by_a_kind_rule(monkeypatch):
     del acc.index[mailops.ikey("INBOX", 1)]          # still listed by the group
     held = mailops.retained_mails(rec, acc, only_kind="ads")
     assert 1 in held["INBOX"] and {2, 3}.isdisjoint(held["INBOX"])
+
+
+# ----------------------------------------------- rollback: kind rules sealed
+
+def raw_rules():
+    return json.loads(rulesmod._path().read_text())["rules"]
+
+
+def test_a_kind_rule_is_written_with_an_action_an_older_image_rejects():
+    """An older release does not know `only_kind`; it does reject an action it
+    does not know ("bad action") - before anything is queued, and when anyone
+    tries to arm or edit the rule."""
+    plain = rulesmod.create_rule({"name": "plain", "query": "from:a@b.example"})
+    rule = rule_for("ads")
+    raw = {r["id"]: r for r in raw_rules()}
+    assert raw[rule["id"]]["action"] == "kind_trash"
+    assert raw[rule["id"]]["action"] not in mailops.ACTIONS
+    assert raw[rule["id"]]["only_kind"] == "ads"
+    assert raw[plain["id"]]["action"] == "trash"           # others unchanged
+    # in memory, on the API and in the editor the action is the plain one
+    assert rulesmod.load_rules()[1]["action"] == "trash"
+    got = {r["id"]: r for r in client.get("/api/rules").json()["rules"]}
+    assert got[rule["id"]]["action"] == "trash"
+    # what an older release's `_validate` does with the file's rule (the same
+    # branch a purge rule takes there): it will not arm or edit it
+    with pytest.raises(ValueError, match="bad action"):
+        rulesmod._validate({"mode": "execute"}, dict(raw[rule["id"]]))
+
+
+def test_an_older_image_cannot_queue_what_a_kind_rule_would_have_moved(
+        monkeypatch):
+    fake = shop_box(monkeypatch)
+    rule_for("ads")
+    (raw,) = raw_rules()
+    with pytest.raises(ValueError, match="bad action"):
+        mailops.delete_groups("sender", [SHOP], raw["action"])
+    assert fake.mailbox["Trash"] == []
+    assert accountsmod.get().state["delete"]["status"] == "idle"
+
+
+def test_every_kind_action_is_sealed_and_comes_back_plain(monkeypatch):
+    for action, dest in (("trash", ""), ("archive", ""),
+                         ("mark_read", ""), ("move", "Receipts")):
+        rule = rule_for("orders", action=action, dest=dest)
+        assert {r["id"]: r for r in raw_rules()}[rule["id"]]["action"] \
+            == "kind_" + action
+        assert {r["id"]: r for r in rulesmod.load_rules()}[
+            rule["id"]]["action"] == action
+
+
+def test_an_edit_keeps_the_seal_and_taking_the_kind_away_lifts_it():
+    rule = rule_for("ads")
+    rulesmod.update_rule(rule["id"], {"name": "renamed"})
+    assert raw_rules()[0]["action"] == "kind_trash"
+    rulesmod.update_rule(rule["id"], {"only_kind": None})
+    assert raw_rules()[0]["action"] == "trash"
+    assert raw_rules()[0]["only_kind"] is None
+
+
+def test_a_sealed_action_without_a_kind_acts_on_nothing(monkeypatch):
+    """A hand edit: never read as "all the sender's mail"."""
+    shop_box(monkeypatch)
+    rule = rule_for("ads")
+    path = rulesmod._path()
+    data = json.loads(path.read_text())
+    data["rules"][0].pop("only_kind")
+    path.write_text(json.dumps(data))
+    (loaded,) = rulesmod.load_rules()
+    assert loaded["action"] == "trash" and loaded["only_kind"] == ""
+    assert run_report(rule)["mails"] == 0
+
+
+def test_an_export_carries_the_sealed_action_and_an_import_unseals_it(
+        monkeypatch):
+    shop_box(monkeypatch)
+    rule_for("ads")
+    plain = rulesmod.create_rule({"name": "plain", "query": "from:a@b.example"})
+    data = client.get("/api/export_config").json()
+    by_name = {r["name"]: r for r in data["rules"]}
+    assert by_name["ads"]["action"] == "kind_trash"
+    assert by_name[plain["name"]]["action"] == "trash"
+    # an older image's import ("bad action") skips it instead of dropping the
+    # kind and widening the rule
+    with pytest.raises(ValueError, match="bad action"):
+        rulesmod._validate({}, dict(by_name["ads"]))
+    r = client.post("/api/import_config", json=data)
+    assert r.status_code == 200, r.text
+    got = {r["name"]: r for r in rulesmod.load_rules()}
+    assert got["ads"]["action"] == "trash" and got["ads"]["only_kind"] == "ads"
+    assert got["ads"]["mode"] == "report"
+    assert {r["name"]: r["action"] for r in raw_rules()}["ads"] == "kind_trash"
+    # a sealed action without its kind is no rule
+    data["rules"] = [{**by_name["ads"], "only_kind": None}]
+    client.post("/api/import_config", json=data)
+    assert rulesmod.load_rules() == []

@@ -2806,7 +2806,7 @@ def get_export_config():
             "keep_safe": cfgmod.keep_safe_of(cfg),
             "ai": cfgmod.strip_ai_secrets(cfg["ai"]),
         },
-        "rules": rulesmod.load_rules(),
+        "rules": rulesmod.sealed(rulesmod.load_rules()),
         "verdicts": verdictstore.load(),
         "unsub": unsubstore.load(),
         "replied": {n: sorted(mailops.load_replied(accountsmod.get(n)))

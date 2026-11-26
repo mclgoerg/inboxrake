@@ -3281,6 +3281,8 @@ export const EN: Record<string, string> = {
   "rule.f_apply": "Apply to",
   "rule.f_retention_n": "Number",
   "rule.f_kind": "Kind of mail",
+  "rule.kind_hint":
+    "The preview counts every kind of mail until the first report - then it shows only this kind.",
   "rule.f_dest": "Folder",
   "rule.f_name": "Name",
   "rule.f_scope": "Applies to",

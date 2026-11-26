@@ -505,13 +505,16 @@ Smart and Keep-safe already use, and stored with the scan:
   **Appointments and bookings**, **Job applications**, **Support and
   inquiries**, **Account and security** - the purposes of the Smart patterns
   (a shipping update is the shipping pattern; a return or a refund is none).
-- **Ads and offers** - newsletter-style mail that has no purpose at all: it
-  carries a List-Unsubscribe header or a promotional subject.
+- **Ads and offers** - newsletter-style mail that has no purpose at all and a
+  promotional subject ("20% off", "New arrivals", "Deal ends at midnight").
+  The List-Unsubscribe header alone is not enough: shops, banks and travel sites
+  send receipts and codes through the same system.
 
 A mail has one kind or none. Where it is not clear, it has none: a subject that
 matches two purposes, mail from a freemail address (people, not shops), and
-anything that talks about an order, a parcel, a payment, a booking or an account
-never becomes an ad - an ad that says "order now" is left unclassified. Mails of
+anything that talks about an order, a parcel, a payment, a booking, a trip, a
+code, a contract or an account never becomes an ad - an ad that says "order
+now" is left unclassified. A pickup code or a PIN is never a shipping update. Mails of
 no kind are not in any row (they are the gap in the bar above the rows).
 
 Each row has:
@@ -545,8 +548,11 @@ The filter word `kind:ads` (also `orders`, `shipping`, `invoices`,
 see [Filter syntax](filters.md). It is not a group word and not a rule word.
 
 Rolling back to an older version is safe: it ignores the kind in the index (the
-next scan reads it afresh), and it takes a rule limited to a kind back to
-**Report only** instead of running it on all of the sender's mail.
+next scan reads it afresh). A rule limited to a kind is stored - and exported -
+with an action an older version does not know, so that version refuses to run,
+arm or edit it ("bad action", nothing is queued) instead of running it on all of
+the sender's mail, and skips it when you import a backup. After a rollback,
+delete such rules or leave them off; this version reads them as before.
 
 ### Swipe triage
 

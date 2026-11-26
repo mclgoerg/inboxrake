@@ -583,12 +583,46 @@ def _normalise(r: dict) -> bool:
     return False
 
 
+# A rule limited to a kind is written (to rules.json and to an export) with its
+# action prefixed: an older release does not know `only_kind` and would run the
+# rule on ALL of the sender's mail. It does reject an action it does not know -
+# "bad action", before anything is queued, and it refuses to arm or edit such a
+# rule - the way it treats purge rules (see the top of this file). In memory,
+# on the API and in the editor the action is the plain one.
+KIND_ACTION = "kind_"
+
+
+def seal(rule: dict) -> dict:
+    """The rule as it is written: a kind rule's action carries the prefix."""
+    if rule.get("only_kind") is None or rule.get("scope", "mail") != "mail":
+        return rule
+    return {**rule, "action": KIND_ACTION + str(rule.get("action", ""))}
+
+
+def sealed(rules: list[dict]) -> list[dict]:
+    return [seal(r) for r in rules]
+
+
+def _unseal(rule: dict) -> None:
+    """Read side of `seal`. A prefixed action with no kind (a hand edit) keeps
+    a kind that no mail has, so the rule acts on nothing - never on everything."""
+    action = rule.get("action")
+    if isinstance(action, str) and action.startswith(KIND_ACTION):
+        rule["action"] = action[len(KIND_ACTION):]
+        if rule.get("only_kind") is None:
+            rule["only_kind"] = ""
+
+
 def _read_rules() -> list[dict]:
     try:
         data = json.loads(_path().read_text())
-        return data.get("rules", []) if isinstance(data, dict) else []
+        rules = data.get("rules", []) if isinstance(data, dict) else []
     except (OSError, json.JSONDecodeError):
         return []
+    for r in rules:
+        if isinstance(r, dict):
+            _unseal(r)
+    return rules
 
 
 def load_rules() -> list[dict]:
@@ -610,7 +644,7 @@ def _save(rules: list[dict]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(
         {"rules": [{k: v for k, v in r.items() if k != "filter_invalid"}
-                   for r in rules]}, indent=1))
+                   for r in sealed(rules)]}, indent=1))
     tmp.chmod(0o600)
     tmp.replace(path)
     _publish(rules)
@@ -807,6 +841,11 @@ def create_rule(body: dict, lenient_filter: bool = False, *,
             "reset_reason": ""}
     body = dict(body)
     body.pop("mode", None)                            # not on create
+    if str(body.get("action", "")).startswith(KIND_ACTION):
+        # a sealed kind rule from an export; without its kind it is no rule
+        if body.get("only_kind") is None:
+            raise ValueError("bad action")
+        body["action"] = body["action"][len(KIND_ACTION):]
     auto_empty = body.get("origin") == AUTO_EMPTY
     if auto_empty:
         body.pop("origin")

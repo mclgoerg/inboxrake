@@ -1057,6 +1057,10 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
 
         {!purge && <div className="rounded-card bg-panel2 p-3" aria-live="polite">
           <div className="type-body font-medium">{t("rule.preview")}</div>
+          {form.retention === "only_kind" && (
+            <p data-testid="kind-preview-hint"
+              className="mt-0.5 type-meta text-muted">{t("rule.kind_hint")}</p>
+          )}
           {matchCount ? <>
             <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1">
               <PreviewStat n={matchCount.groups} k="rule.pv_groups" />

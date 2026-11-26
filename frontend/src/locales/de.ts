@@ -3498,6 +3498,8 @@ export const DE: Record<string, string> = {
   "rule.f_apply": "Anwenden auf",
   "rule.f_retention_n": "Anzahl",
   "rule.f_kind": "Art der Mail",
+  "rule.kind_hint":
+    "Die Vorschau zählt alle Arten von Mails, bis der erste Bericht da ist - dann zeigt er nur diese Art.",
   "rule.f_dest": "Ordner",
   "rule.f_name": "Name",
   "rule.f_scope": "Gilt für",

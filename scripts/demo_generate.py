@@ -753,7 +753,7 @@ def _ws_mail(subject, days_ago, *, ad=False, seen=True, size=52000):
 
 
 _WS_ADS = ("Weekend offer: 20% off outerwear", "New arrivals just landed",
-           "Last chance: the winter sale ends soon", "Two days only: boots and scarves",
+           "Last chance: the winter sale ends soon", "Two days only: 15% off boots and scarves",
            "Our best picks for the cold season", "Members get early access")
 _WS = [_ws_mail(_WS_ADS[i % len(_WS_ADS)], 2.5 + i * 4.2, ad=True,
                 seen=i % 7 == 6, size=68000 + i * 900)
