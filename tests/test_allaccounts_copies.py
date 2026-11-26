@@ -528,6 +528,8 @@ def test_an_account_that_is_moving_mails_refuses_the_step(pair, who, field):
     """A mail the keeper is already moving is still in its index: both copies
     could end up in Trash. Refused (409) while either account is busy."""
     acc = accountsmod.get(who)
+    for host in ("host-old", "host-proton"):
+        pair[host].commands.clear()
     with acc.lock:
         if field == "pending":
             acc.delete_pending.append({"by_folder": {"INBOX": {101}}})
@@ -541,6 +543,8 @@ def test_an_account_that_is_moving_mails_refuses_the_step(pair, who, field):
     assert r.status_code == 409 and r.json()["detail"] == "busy_action"
     assert not pair["host-old"].mailbox["Trash"]
     assert not accountsmod.get("old").undo_log
+    # refused up front: no mail server was asked
+    assert pair["host-old"].commands == [] and pair["host-proton"].commands == []
 
 
 def test_a_move_the_keeper_has_queued_for_real_stops_the_step(pair, monkeypatch):
