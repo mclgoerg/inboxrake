@@ -1266,6 +1266,94 @@ export interface SubReminder {
   amount: number | null; currency: string;
 }
 
+/** GET /api/waiting (backend/waiting.py): the mails you sent that nobody
+ *  answered, matched from the headers of your Sent folder. */
+export interface WaitingItem {
+  /** the sent mail's Message-ID (what every decision is keyed by) */
+  id: string;
+  uid: number;
+  state: "open" | "answered" | "needed";
+  /** `name` is the display name, else the address */
+  person: { addr: string; name: string };
+  subject: string;
+  /** epoch s you sent it, whole seconds / days open */
+  ts: number;
+  age: number;
+  days: number;
+  overdue: boolean;
+  /** after how many days it counts as overdue (their usual time or the days
+   *  of the setting) */
+  limit_days: number;
+  /** how many days this person usually takes (null = not known: fewer than
+   *  two earlier conversations) and from how many conversations */
+  usual_days: number | null;
+  usual_n: number;
+  answered_ts: number | null;
+  answered_days: number | null;
+  /** people the mail went to (lists and no-reply addresses not counted) */
+  recipients: number;
+  reminder: { at: number; fired: number } | null;
+}
+/** What the Last week row and the phone card show. */
+export interface WaitingSummary {
+  /** this account watches its sent mail (Settings > Account) */
+  watching: boolean;
+  overdue: number;
+  open: number;
+  /** how many different people the overdue mails wait on */
+  people_n: number;
+  /** up to three names (or addresses), most overdue first, and how many more */
+  people: string[];
+  more: number;
+  oldest_days: number;
+  /** the usual answer time of the oldest one (null = not known yet) */
+  oldest_usual: number | null;
+}
+export interface WaitingResp {
+  watching: boolean;
+  scanned: boolean;
+  /** "Overdue after": their usual time | fixed days, and the days */
+  mode: "usual" | "fixed";
+  days: number;
+  counts: { open: number; answered: number; needed: number };
+  kpis: { overdue: number; open: number; typical_days: number | null };
+  summary: WaitingSummary;
+  items: WaitingItem[];
+}
+/** GET|POST /api/waiting/settings: this account's switch and the per-user
+ *  notification settings. */
+export interface WaitingSettingsResp {
+  watch: boolean;
+  notify: boolean;
+  mode: "usual" | "fixed";
+  days: number;
+  subject: boolean;
+}
+export interface WaitingEvent {
+  ts: number;
+  kind: "in" | "out";
+  /** "" = you (out) or the person you wrote to (in); else somebody else */
+  who: string;
+  subject: string;
+  /** a mail of yours: when they answered it (before your next one) */
+  answered_ts?: number | null;
+}
+export interface WaitingDetail {
+  id: string;
+  timeline: WaitingEvent[];
+  /** their newsletters since (never an answer) */
+  newsletters: number;
+  /** your sent mail: "Read conversation" opens the reading view from it */
+  sent: { folder: string; uid: number };
+}
+export interface WaitingReminder { id: string; ts: number; name: string;
+  days: number }
+/** GET /api/waiting/sender: the mail you wait on from one address. */
+export interface WaitingSender {
+  id: string; ts: number; days: number; overdue: boolean;
+  usual_days: number | null; subject: string;
+}
+
 /** GET /api/overview: counts behind the Overview, one account. */
 export interface OverviewResp {
   now: number;

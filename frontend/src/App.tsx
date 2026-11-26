@@ -30,9 +30,12 @@ import { DuplicatesPanel } from "./components/DuplicatesPanel";
 import { AddressesPanel } from "./components/AddressesPanel";
 import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
+import { WaitingPanel } from "./components/WaitingPanel";
 import { showReminderToast } from "./subscriptions";
+import { shortName } from "./waiting";
 
 const VISIBLE_KEY = "pmc_visible_at";
+const WAIT_VISIBLE_KEY = "pmc_wait_visible_at";
 import { AccountCopyPanel } from "./components/AccountCopy";
 import { GroupTable, type GroupSwipe, type SortKey } from "./components/GroupTable";
 import { PullToScan } from "./components/PullToScan";
@@ -88,7 +91,7 @@ import type { FileEntry, SenderAction } from "./components/SenderList";
 import type { AccountSummary, AppState, AuthProbe, Config, ExpiredResp, FilterPreset, Group, Grouping,
   KnowledgeStored,
   StatusMsg, SubscriptionsResp, TrashResp, FolderRole, UndoIdent, UndoEntry,
-  AuditBy } from "./types";
+  AuditBy, WaitingSummary } from "./types";
 
 const GROUPING_LABEL: Record<Grouping, string> = {
   sender: "Sender", smart: "Smart", domain: "Domain", subject: "Subject",
@@ -282,6 +285,9 @@ export default function App() {
   const [dupsOpen, setDupsOpen] = useState(false);
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
+  const [waitingOpen, setWaitingOpen] = useState(false);
+  // The Waiting for a reply page opened from a sender pane: select that mail.
+  const [waitingFocus, setWaitingFocus] = useState<string | null>(null);
   // The Subscriptions page opened from the Overview's Review: only the unused.
   const [subsOnlyUnused, setSubsOnlyUnused] = useState(false);
   const [addressesOpen, setAddressesOpen] = useState(false);
@@ -314,9 +320,13 @@ export default function App() {
     : attsOpen ? "attachments" : rulesOpen ? "rules" : foldersOpen ? foldersOpen
     : statsOpen ? "stats" : spaceOpen ? "space"
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
-    : addressesOpen ? "addresses"
+    : addressesOpen ? "addresses" : waitingOpen ? "waiting"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
+  // A focus belongs to the visit it was asked for.
+  useEffect(() => {
+    if (shownTool !== "waiting") setWaitingFocus(null);
+  }, [shownTool]);
   // "Only the unused" is for the visit the Overview's Review started.
   useEffect(() => {
     if (shownTool !== "subscriptions") setSubsOnlyUnused(false);
@@ -568,6 +578,24 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, authOk, state?.scanned_ts, state?.status]);
 
+  /* Mails you sent that nobody answered (backend/waiting.py): the Overview's
+     "replies overdue" row, the phone Insights card and the sender pane's
+     line. Local data like the subscriptions; fetched when the account or its
+     last scan changes, and again after a decision on the page or a change of
+     its settings (`loadWaiting`). Null while unknown or not scanned. */
+  const [waiting, setWaiting] = useState<WaitingSummary | null>(null);
+  const loadWaiting = useCallback(() => {
+    const switched = accountGuard();
+    Promise.resolve().then(() => api.waiting())
+      .then((d) => { if (!switched()) setWaiting(d.scanned ? d.summary : null); })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    setWaiting(null);
+    if (authOk && state?.status === "done") loadWaiting();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, authOk, state?.scanned_ts, state?.status]);
+
   /* Mail past its date (backend/pastdate.py): the Overview's extra Next steps
      line and its sheet. Worked out on the server from subjects and dates;
      fetched while the Overview is shown, and again when a scan or an action
@@ -635,6 +663,59 @@ export default function App() {
       if (document.hidden) return;
       // read BEFORE noting now: "when was this page last seen" is the question
       check(Number(localStorage.getItem(VISIBLE_KEY)) || 0);
+      stamp();
+    };
+    tick();
+    const h = setInterval(tick, REMINDER_POLL_MS);
+    const vis = () => { if (document.hidden) stamp(); else tick(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => {
+      live = false;
+      clearInterval(h);
+      document.removeEventListener("visibilitychange", vis);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, authOk]);
+
+  /* "No answer yet" fired on a mail you sent (a "Remind me" that came due, or
+     "Tell me when a reply is overdue"): the server also pushes it to devices
+     that are not looking at the app; this page shows it once as a toast (see
+     the subscription reminders above for the push / visibility rule). */
+  const openWaitingRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!authOk) return;
+    let live = true;
+    const check = (lastVisible: number) => {
+      Promise.resolve().then(() => api.waitingReminders())
+        .then(({ reminders }) => {
+          if (!live || !reminders.length) return;
+          let seen: string[] = [];
+          try { seen = JSON.parse(localStorage.getItem("pmc_wait_seen") ?? "[]"); }
+          catch { /* start over */ }
+          for (const r of reminders) {
+            const id = `${account}:${r.id}:${r.ts}`;
+            if (seen.includes(id)) continue;
+            seen.push(id);
+            if (!showReminderToast(pushMode(), r.ts, lastVisible)) continue;
+            const text = t("waiting.reminder_n", { name: shortName(r.name),
+              n: r.days });
+            toast.show(text, { action: { label: t("waiting.show"),
+              onClick: () => openWaitingRef.current() } });
+            fire(text);
+          }
+          try { localStorage.setItem("pmc_wait_seen", JSON.stringify(seen.slice(-50))); }
+          catch { /* private mode: it may show again */ }
+        }).catch(() => {});
+    };
+    // its own "last seen" stamp: the subscription loop's would already read
+    // "now" by the time this one looks
+    const stamp = () => {
+      try { localStorage.setItem(WAIT_VISIBLE_KEY, String(Math.floor(nowMs() / 1000))); }
+      catch { /* private mode: a late reminder may be missed */ }
+    };
+    const tick = () => {
+      if (document.hidden) return;
+      check(Number(localStorage.getItem(WAIT_VISIBLE_KEY)) || 0);
       stamp();
     };
     tick();
@@ -1144,7 +1225,8 @@ export default function App() {
     setSearchOpen(false); setTriageOpen(false); setDupsOpen(false);
     setAttsOpen(false); setRulesOpen(false); setFoldersOpen(null);
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
-    setSubsOpen(false); setAddressesOpen(false); setAuditOpen(false);
+    setSubsOpen(false); setAddressesOpen(false); setWaitingOpen(false);
+    setAuditOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1218,7 +1300,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2200,8 +2282,19 @@ export default function App() {
   const openRules = () => openTool("rules");
   openRulesRef.current = openRules;
   openSubsRef.current = () => { setSubsOnlyUnused(false); openTool("subscriptions"); };
+  openWaitingRef.current = () => openTool("waiting");
   const pickEnv = { labels: state?.folders, account: state?.account ?? "",
     onOpenRules: openRules };
+
+  // A sender's pane: the line "You're waiting for their reply" and its Show,
+  // which opens that mail on the Waiting for a reply page.
+  const waitingPane = {
+    enabled: !!waiting?.watching,
+    onShow: (id: string) => {
+      setWaitingFocus(id);
+      setDetail(null);
+      openTool("waiting");
+    } };
 
   // One sender of a pooled Smart row, opened inside the pool's own panel:
   // the full Sender-tab detail (mails, trash, protect, block, Sieve and the
@@ -2236,6 +2329,7 @@ export default function App() {
         onClose={back} backLabel={t("senders.back")} onEmptied={back}
         onFile={fileSenders} onUnfile={resetFiling} categories={ownCategories}
         labelSender={live ?? sender} onLabelsSaved={refresh}
+        waiting={waitingPane}
         onDeleted={refresh} />
     );
   };
@@ -2295,6 +2389,7 @@ export default function App() {
       onSenderAct={actOnSenders} onSenderProtect={protectSenders}
       onFile={fileSenders} onUnfile={resetFiling} categories={ownCategories}
       labelSender={detailSender(detail)} onLabelsSaved={refresh}
+      waiting={waitingPane}
       renderSender={renderSender}
       aiSort={mode === "smart" && isPooled(detail) ? {
         total: aiSortedCount, checked: aiCheckedCount,
@@ -2388,6 +2483,7 @@ export default function App() {
     trackers: () => setTrackersOpen(true),
     subscriptions: () => setSubsOpen(true),
     addresses: () => setAddressesOpen(true),
+    waiting: () => setWaitingOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
       if (navPage !== "settings") settingsFrom.current = navPage;
@@ -2890,6 +2986,29 @@ export default function App() {
           setSubsOpen(false);
           openTool("settings");
           openSettingsSection("notifications", null, true);
+        }} />
+    )}
+    {toolShown("waiting") && (
+      <WaitingPanel key={account} account={account}
+        scannedTs={state?.scanned_ts ?? null} focusId={waitingFocus}
+        hasSender={(addr) => !!state?.groups.sender?.[addr]}
+        onClose={() => closeTool(() => setWaitingOpen(false))}
+        onChanged={loadWaiting}
+        onNotifications={() => {
+          setWaitingOpen(false);
+          openTool("settings");
+          openSettingsSection("notifications", null, true);
+        }}
+        onSettings={() => {
+          setWaitingOpen(false);
+          openTool("settings");
+          openSettingsSection("account", account, true);
+        }}
+        onOpenSender={(addr) => {
+          const g = state?.groups.sender?.[addr];
+          if (!g) return;
+          setWaitingOpen(false);
+          openSender(g);
         }} />
     )}
     {toolShown("attachments") && state && (
@@ -3409,7 +3528,7 @@ export default function App() {
           onOpen={openTool} onReviewAi={() => reviewWithAi()} />
       ) : (
         <InsightsPage groups={senderGroups} state={state} subs={subs}
-          onOpen={openTool}
+          waiting={waiting} onOpen={openTool}
           onRetryUnsub={async (g) => unsubscribeOne("sender", g.key)}
           onUnsubscribe={(key) => {
             if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
@@ -3447,7 +3566,8 @@ export default function App() {
               openTool("subscriptions");
             }}
             expired={expired}
-            onReviewExpired={() => setExpiredOpen(true)} />
+            onReviewExpired={() => setExpiredOpen(true)}
+            waiting={waiting} onOpenWaiting={() => openTool("waiting")} />
         )
       ) : flat ? (
         state && (
@@ -3619,6 +3739,7 @@ export default function App() {
             openTool("activity");
           }}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
+          onWaitingChanged={loadWaiting}
           scanState={state ? { account: state.account, status: state.status,
             scanned_ts: state.scanned_ts, error: state.error } : null}
           onAccountsChanged={(next, name) => {

@@ -1,5 +1,5 @@
-import { AtSign, BarChart3, ClipboardList, Copy, Eye, Layers, LayoutDashboard,
-  LayoutGrid, Mails,
+import { AtSign, BarChart3, ClipboardList, Copy, Eye, Hourglass, Layers,
+  LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
   ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -11,7 +11,7 @@ import { fmtNum } from "../numfmt";
  *  the dialog that stays a modal (Your year in mail). */
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "activity" | "settings";
+  | "subscriptions" | "addresses" | "waiting" | "activity" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -151,6 +151,7 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         subscriptions)}
       {tool("addresses", <AtSign size={16} aria-hidden />, t("addr.menu"),
         undefined, <LeakBadge n={leaked} />)}
+      {tool("waiting", <Hourglass size={16} aria-hidden />, t("waiting.menu"))}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

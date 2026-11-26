@@ -12,7 +12,7 @@ import { computeQuickWins, isDismissed, loadDismissed, MIN_BYTES, MIN_MAILS,
   from "../quickwins";
 import { fmtMoney, unusedNames } from "../subscriptions";
 import type { AuditEntry, ExpiredResp, Group, OverviewResp, Rule,
-  SubscriptionsResp } from "../types";
+  SubscriptionsResp, WaitingSummary } from "../types";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
 import { Avatar, Button, EmptyState, hueFillAt, HUE_COUNT, hueIndex,
@@ -67,6 +67,10 @@ export interface OverviewProps {
   /** Senders that got louder / came back (`is:louder` / `is:back`). */
   onOpenLouder?: (window: string) => void;
   onOpenBack?: (window: string) => void;
+  /** Mails you sent that nobody answered (null while unknown): Last week
+   *  gets one more row at its end while some are overdue. */
+  waiting?: WaitingSummary | null;
+  onOpenWaiting?: () => void;
   /** The subscriptions found (null while unknown): when some look unused,
    *  Next steps gets a line for them. */
   subs?: SubscriptionsResp | null;
@@ -295,7 +299,8 @@ export function Overview(p: OverviewProps) {
               onOpenAllMail={p.onOpenAllMail} onOpenNew={p.onOpenNewSenders}
               onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
               onOpenAi={p.onOpenAiVerdicts}
-              onOpenLouder={p.onOpenLouder} onOpenBack={p.onOpenBack} />
+              onOpenLouder={p.onOpenLouder} onOpenBack={p.onOpenBack}
+              waiting={p.waiting} onOpenWaiting={p.onOpenWaiting} />
           </div>
           {hasNext && (
             <div className="max-xl:order-3">

@@ -58,7 +58,7 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
 (Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
-(Statistics, Space map, Your year in mail, Trackers, Subscriptions) and, at the bottom,
+(Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
@@ -799,6 +799,64 @@ subscription, on your own server through your own mail connection, and keeps
 only the amount and its currency. Nothing is sent anywhere, and switching it
 off forgets the amounts it found. It is off by default.
 
+### Waiting for a reply
+
+<small class="where">Insights → Waiting for a reply</small>
+
+Lists the mails **you sent** where the last word is yours - nobody has
+answered. It is **off until you switch it on per account** (Settings ›
+Account → **Watch my sent mail for replies**); an account that does not
+switch it on reads nothing more than before. Switched on, the scan also reads
+your Sent folder's headers (Message-ID, date, subject, From, To / Cc,
+In-Reply-To, References; never a mail body) for the last 90 days, and after
+that only what is new each time. **The first scan after switching it on reads
+those 90 days.** Switching it off deletes that index again.
+
+A sent mail is **open** when it went to at least one person (your own
+addresses, `no-reply` style addresses and list or newsletter senders are not
+people), it is your **latest** mail of its conversation (the same In-Reply-To
+/ References matching as the Conversation view) and nothing newer in that
+conversation came back from one of those people. Their newsletters are never
+an answer. An answer you moved to Trash or that landed in Junk still counts. A
+reply in a folder Inboxrake does not scan (for example Gmail's All Mail only)
+is not seen, so that mail stays on the list until you mark it "No answer
+needed".
+
+It is **overdue** when it has waited longer than that person usually takes to
+answer you: the median over their earlier answered conversations (at least
+two of them, never less than a day), shown in the pane as "They usually answer
+you within 3 days (2 earlier conversations)". Without that history - or when
+you choose **Fixed days** (Settings › Notifications) - it is overdue after 2,
+3 or 7 days (3 by default).
+
+The page has three tiles (overdue, open, and how fast your contacts usually
+answer) and the list in three views - **Open** (most overdue first),
+**Answered** and **No answer needed**. Each row shows the days and the
+person's usual time ("9 days · usually 3"). The pane tells the conversation
+as a timeline and offers **Remind me** (tomorrow 09:00, Monday, in a week or a
+date you pick; a push to your devices with notifications on, plus a line in
+the activity digest; it fires once and clears itself when the answer
+arrives), **Read conversation** (the Conversation view - it now also shows
+your open sent mail), **No answer needed** (takes it off the list; "Bring it
+back" undoes it) and **Open sender**. On a phone swipe a row left for No
+answer needed and right for Remind me (tomorrow). A sender's pane gets one
+line - "You're waiting for their reply since 16 Nov · usually 3 days" - while
+you wait on that sender, Overview's Last week card gets a row "3 replies
+overdue" after its other rows (only when there are any), and the phone's
+Insights tab gets a card after Recent activity.
+
+**Settings › Notifications → Waiting for a reply**: *Tell me when a reply is
+overdue* (a push for every mail that becomes overdue after you switch it on,
+at most a few per check; needs Notifications on, greyed out with the reason
+otherwise), *Overdue after* (their usual time | fixed days), *Days* (2, 3 or
+7; used while there is no history yet, or always with Fixed days) and *Show
+the subject in the notification* (off by default). The push says who and how
+long - the person's name, else the company, else "Someone" - and never an
+address; the subject only when you switch that on.
+
+Inboxrake never sends mail for you - you reply from your own mail app. It is
+all read from headers, with no AI.
+
 ### Your addresses
 
 <small class="where">Insights → Your addresses</small>
@@ -1247,13 +1305,18 @@ a clean-up (move, delete, mark read), AI review or sorting, attachment
 analysis, bulk unsubscribe - the server sends a real Web Push, so the
 notification arrives with Inboxrake closed. The same goes for a
 [subscription reminder](#subscriptions) you switched on (it names the service,
-the expected date and amount). Automatic scans and rules never
+the expected date and amount) and a [reminder or "no answer yet" on a mail you
+sent](#waiting-for-a-reply) that you asked for (it names the person - or just
+"Someone" - and the days it has waited). Automatic scans and rules never
 notify, nor does a cancelled job, and a device that is looking at Inboxrake
 right now gets the in-app message instead. The text is short and generic
 (for example "Scan finished", with the account and counts under it) and
 travels encrypted through the browser vendor's push service; no mail subject
-or address is in it. "Send test
-notification" checks a device. Each device belongs to the signed-in user,
+or address is in it - the one exception is a sent mail's subject, which
+appears in a "no answer yet" push only when you switch **Show the subject in
+the notification** on. "Send test
+notification" checks a device. Under the two switches, a **Waiting for a
+reply** group sets when such a push goes out. Each device belongs to the signed-in user,
 and notifies about that user's accounts only.
 
 Requirements: Inboxrake served over **HTTPS**, and the server must be able to

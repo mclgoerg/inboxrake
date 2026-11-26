@@ -787,6 +787,13 @@ export const EN: Record<string, string> = {
     "Reads the latest receipt of each subscription whose subject has no "
     + "amount, on this server only. Only the amount and its currency are "
     + "kept; nothing is sent anywhere.",
+  "waiting.settings_title": "Sent mail",
+  "waiting.settings_watch": "Watch my sent mail for replies",
+  "waiting.settings_watch_sub":
+    "Keeps the headers of the last 90 days of your Sent folder (Message-ID, "
+    + "date, subject, recipients) to see which mails nobody answered - never "
+    + "the mail text. The first scan after you switch this on reads them. "
+    + "Off: nothing extra is read and the index is deleted.",
   "auto_scan.align": "Start at minute (0-59)",
   "auto_scan.help":
     "Rescans this account on a timer, independent of any rule schedule - "
@@ -928,6 +935,13 @@ export const EN: Record<string, string> = {
   "tab.subs_services": "{n}\u00a0services",
   "tab.subs_services_one": "1\u00a0service",
   "tab.subs_empty": "See what you still pay for",
+  "tab.waiting_sub": "See who hasn't answered you",
+  "tab.waiting_none": "No reply is overdue",
+  "tab.waiting_off": "Off for this account",
+  "tab.waiting_over": "{n}\u00a0replies overdue",
+  "tab.waiting_over_one": "1\u00a0reply overdue",
+  "tab.waiting_oldest": "oldest: {n}\u00a0days",
+  "tab.waiting_oldest_one": "oldest: 1\u00a0day",
   "tab.space_scan": "Scan your mailbox to see the biggest senders.",
   "tab.space_empty": "Nothing to map yet.",
   "tab.year_stories": "{year} in {n}\u00a0stories",
@@ -1148,6 +1162,117 @@ export const EN: Record<string, string> = {
   "sub.ics_note":
     "Expected from the receipts in your mailbox. Inboxrake can't cancel it "
     + "for you.",
+  "waiting.menu": "Waiting for a reply",
+  "waiting.sub": "Mail you sent where the last word is yours \u00b7 {account}",
+  "waiting.sub_phone": "{n} overdue \u00b7 {m} open",
+  "waiting.pane_title": "Waiting for a reply",
+  "waiting.tile_overdue": "overdue - longer than they usually take",
+  "waiting.tile_open": "open - you wrote last, no answer yet",
+  "waiting.tile_usual": "your contacts usually answer within",
+  "waiting.tile_days": "{n}\u00a0days",
+  "waiting.tile_days_one": "{n}\u00a0day",
+  "waiting.tabs": "Show",
+  "waiting.tab_open": "Open \u00b7 {n}",
+  "waiting.tab_answered": "Answered \u00b7 {n}",
+  "waiting.tab_needed": "No answer needed \u00b7 {n}",
+  "waiting.sorted": "Most overdue first",
+  "waiting.newest": "Newest first",
+  "waiting.you_wrote": "you wrote {date}",
+  "waiting.n_days": "{n}\u00a0days",
+  "waiting.n_days_one": "{n}\u00a0day",
+  "waiting.usually": "usually {n}",
+  "waiting.d": "{n}d",
+  "waiting.usu": "usu. {n}d",
+  "waiting.answered_same": "answered the same day",
+  "waiting.answered_after": "answered in {n}\u00a0days",
+  "waiting.answered_after_one": "answered in 1\u00a0day",
+  "waiting.empty_open": "Nobody is keeping you waiting",
+  "waiting.empty_hint":
+    "A mail you sent shows up here once nobody has answered it.",
+  "waiting.empty_answered": "No answered mails in the last 90 days",
+  "waiting.empty_needed": "Nothing is marked as not needing an answer",
+  "waiting.off_title": "Not watching this account's sent mail",
+  "waiting.off_hint":
+    "Turn on \u201cWatch my sent mail for replies\u201d in Settings \u203a "
+    + "Account. The first scan after that reads the headers of the last 90 "
+    + "days of your Sent folder - no mail text.",
+  "waiting.off_action": "Open Settings",
+  "waiting.scan_first":
+    "Scan your mailbox first, then this shows who has not answered you.",
+  "waiting.load_failed": "Couldn't load the list.",
+  "waiting.swipe_hint":
+    "Swipe left: No answer needed \u00b7 swipe right: Remind me",
+  "waiting.swipe_needed": "Not needed",
+  "waiting.swipe_remind": "Remind",
+  "waiting.footnote":
+    "Counted: mail you sent to a person (not a list or a no-reply address) "
+    + "in the last 90 days where nothing newer came back from them. Matched "
+    + "by the mail headers - no mail text is read.",
+  "waiting.conversation": "The conversation",
+  "waiting.you": "You",
+  "waiting.they": "They",
+  "waiting.ev_text": "{who}: \u201c{subject}\u201d",
+  "waiting.ev_answered": "answered after {n} days",
+  "waiting.ev_answered_one": "answered after 1 day",
+  "waiting.ev_answered_same": "answered the same day",
+  "waiting.ev_last": "last word is yours \u00b7 to {n} people",
+  "waiting.ev_last_one": "last word is yours \u00b7 to 1 person",
+  "waiting.today": "Today",
+  "waiting.ev_none": "no answer for {n} days",
+  "waiting.ev_none_one": "no answer for 1 day",
+  "waiting.ev_none_today": "no answer yet",
+  "waiting.ev_usual":
+    "usually {n} days ({m} earlier conversations)",
+  "waiting.ev_usual_one":
+    "usually 1 day ({m} earlier conversations)",
+  "waiting.ev_rule": "overdue after {n} days (your setting)",
+  "waiting.ev_news": "{n} newsletters from them since - they are no answer",
+  "waiting.ev_news_one": "1 newsletter from them since - it is no answer",
+  "waiting.notice_head": "No answer for {n}\u00a0days.",
+  "waiting.notice_head_one": "No answer for 1\u00a0day.",
+  "waiting.notice_today": "Sent today, no answer yet.",
+  "waiting.notice_usual":
+    "They usually answer you within {n}\u00a0days ({m} earlier "
+    + "conversations).",
+  "waiting.notice_usual_one":
+    "They usually answer you within 1\u00a0day ({m} earlier conversations).",
+  "waiting.notice_rule": "Mails count as overdue after {n}\u00a0days.",
+  "waiting.notice_answered": "They answered after {n}\u00a0days.",
+  "waiting.notice_answered_one": "They answered after 1\u00a0day.",
+  "waiting.notice_answered_same": "They answered the same day.",
+  "waiting.notice_needed": "Marked as not needing an answer.",
+  "waiting.remind": "Remind me",
+  "waiting.rem_tomorrow": "Tomorrow {time}",
+  "waiting.rem_week": "In a week",
+  "waiting.rem_pick": "Pick a date\u2026",
+  "waiting.rem_pick_label": "Remind me on",
+  "waiting.rem_hint":
+    "A push to your devices with notifications on (and a line in the "
+    + "digest, if it's on). Cleared by itself when they answer.",
+  "waiting.rem_set": "Reminder set for {when}",
+  "waiting.rem_cancel": "Cancel reminder",
+  "waiting.rem_off_device": "Notifications are off on this device.",
+  "waiting.rem_turn_on": "Turn them on",
+  "waiting.open": "Read conversation",
+  "waiting.no_need": "No answer needed",
+  "waiting.bring_back": "Bring it back",
+  "waiting.open_sender": "Open sender",
+  "waiting.no_sender": "No mail from them in this mailbox, so there is no "
+    + "sender page.",
+  "waiting.never_sends":
+    "Inboxrake never sends mail for you - you reply from your own mail app.",
+  "waiting.toast_needed": "{name}: no answer needed.",
+  "waiting.toast_back": "Back on the list.",
+  "waiting.toast_remind": "Reminder set for {when} ({name}).",
+  "waiting.toast_remind_off": "Reminder cancelled.",
+  "waiting.reminder_n": "No answer yet: {name} \u00b7 {n} days",
+  "waiting.reminder_n_one": "No answer yet: {name} \u00b7 1 day",
+  "waiting.show": "Show",
+  "waiting.line": "You're waiting for their reply since {date}",
+  "waiting.line_usual":
+    "You're waiting for their reply since {date} \u00b7 usually {n} days",
+  "waiting.line_usual_one":
+    "You're waiting for their reply since {date} \u00b7 usually 1 day",
   "addr.menu": "Your addresses",
   "addr.title": "Your addresses",
   "addr.sub": "{n}\u00a0addresses received mail",
@@ -1367,6 +1492,8 @@ export const EN: Record<string, string> = {
   "overview.row_back_never": "{name} \u00b7 you never opened it before",
   "overview.row_back_quiet": "{name} \u00b7 quiet for {months} months",
   "overview.row_back_more": "{name} and {n} more",
+  "overview.row_waiting": "{n} replies overdue",
+  "overview.row_waiting_one": "1 reply overdue",
   "overview.next": "Next steps",
   "overview.next_hint": "each step shows what it does first",
   "overview.subs_title": "{n} subscriptions you may not use",
@@ -2673,6 +2800,20 @@ export const EN: Record<string, string> = {
   "notify.atts_done": "Attachment analysis finished.",
   "notify.unsub_done": "Bulk unsubscribe finished.",
   "notify.proposal": "{name} proposes a rule. Review it in Rules.",
+  "waiting.notify_title": "Waiting for a reply",
+  "waiting.notify_tell": "Tell me when a reply is overdue",
+  "waiting.notify_tell_sub":
+    "For accounts that watch their sent mail (Settings \u203a Account).",
+  "waiting.notify_needs": "Needs Notifications on - switch them on above.",
+  "waiting.after": "Overdue after",
+  "waiting.after_sub": "Their usual answer time, from earlier conversations",
+  "waiting.after_usual": "Their usual time",
+  "waiting.after_fixed": "Fixed days",
+  "waiting.days": "Days",
+  "waiting.days_sub":
+    "Used while there is no history yet - or always, with Fixed days",
+  "waiting.subject": "Show the subject in the notification",
+  "waiting.subject_sub": "Off: only who and how long (lock screen)",
   "preset.label": "Provider preset (prefills the fields below)",
   "preset.row": "Provider",
   "preset.row_sub": "Prefills the fields below",

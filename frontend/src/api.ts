@@ -5,6 +5,8 @@ import type {
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   ExpiredResp, Mail, MessageDetail, SubReminder, SubscriptionsResp,
+  WaitingDetail, WaitingReminder, WaitingResp, WaitingSender,
+  WaitingSettingsResp,
   LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SenderChangesResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
@@ -721,6 +723,28 @@ export const api = {
       { body_amounts: bodyAmounts }),
   subscriptionAmounts: () =>
     req<{ read: number; found: number }>("/api/subscriptions/amounts", {}),
+  // Waiting for a reply (backend/waiting.py): local data, nothing is sent
+  waiting: () => req<WaitingResp>("/api/waiting"),
+  waitingItem: (id: string) =>
+    req<WaitingDetail>(`/api/waiting/item?id=${encodeURIComponent(id)}`),
+  waitingNeeded: (id: string, needed: boolean) =>
+    req<{ ok: boolean }>("/api/waiting/needed", { id, needed }),
+  /** Remind me about one mail at `at` (epoch s); null cancels. */
+  waitingRemind: (id: string, at: number | null) =>
+    req<{ ok: boolean; at: number | null }>("/api/waiting/remind", { id, at }),
+  waitingReminders: () =>
+    req<{ reminders: WaitingReminder[] }>("/api/waiting/reminders"),
+  /** The mail you are waiting on from one address (the sender pane's line). */
+  waitingSender: (addr: string) =>
+    req<{ waiting: WaitingSender | null }>(
+      `/api/waiting/sender?addr=${encodeURIComponent(addr)}`),
+  /** This account's switch (`account` = the one being edited in Settings)
+   *  and the per-user notification settings. */
+  waitingSettingsGet: (account?: string) =>
+    req<WaitingSettingsResp>(forAccount("/api/waiting/settings", account)),
+  waitingSettings: (patch: Partial<WaitingSettingsResp>, account?: string) =>
+    req<WaitingSettingsResp>(forAccount("/api/waiting/settings", account),
+      patch),
   // Your addresses (backend/addresses.py) and the optional alias service
   addresses: () => req<AddressReport>("/api/addresses"),
   addressesSummary: () =>

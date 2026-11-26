@@ -25,6 +25,7 @@ import { RowAvatar, localizedSub } from "./GroupTable";
 import { KindChip, KindsBox, type KindActions } from "./KindsBox";
 import { ArrivalStrip } from "./RhythmCard";
 import { arrivalChangeLines } from "./SenderChanges";
+import { WaitingLine } from "./WaitingLine";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions, ReaderNav } from "./MailReader";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
@@ -55,7 +56,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   sieve = true, smartMin = 10, onClose, onEmptied, onDeleted, variant = "modal", hideGroupActions = false,
   senders, onSenderAct, onSenderProtect, renderSender, backLabel,
   aiSort, onFile, onUnfile, categories, filingBox, onLabelsSaved,
-  labelSender, pickEnv }: {
+  labelSender, pickEnv, waiting }: {
   grouping: Grouping;
   group: Group;
   aiEnabled: boolean;
@@ -120,6 +121,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // `onLabelsSaved` reloads the state after a change. Absent: no button.
   onLabelsSaved?: () => void;
   labelSender?: Group;
+  // One sender: the line "You're waiting for their reply" (Waiting for a
+  // reply). `enabled` = the account watches its sent mail; Show opens that
+  // mail on its page. Absent: no line.
+  waiting?: { enabled: boolean; onShow: (id: string) => void };
 }) {
   const demo = useDemo();
   const hasSenders = !!senders && !!onSenderAct && !!onSenderProtect
@@ -937,6 +942,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
       {showKinds && (
         <KindsBox mails={mails!} shown={kindFilter} actions={kindActions}
           busy={busy} phone={phone} />
+      )}
+      {waiting && shortcutTarget(grouping, group)?.kind === "sender" && (
+        <WaitingLine addr={shortcutTarget(grouping, group)!.value}
+          enabled={waiting.enabled} onShow={waiting.onShow} />
       )}
     </>
   );

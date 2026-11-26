@@ -21,7 +21,8 @@ from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, demo, knowledgestore,
-                     mailops, pinstore, rules, unsubstore, verdictstore)
+                     mailops, pinstore, rules, unsubstore, verdictstore,
+                     waitstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -1002,10 +1003,104 @@ for _i, _dom in enumerate(["ticketline", "oldclub", "parcelhub", "bankalert",
         ["An update for you", "Still interested?"], 3, 900 - _i * 40,
         3 + _i * 30, original="old.demo@oldmail.example")
 
+# --- Waiting for a reply -----------------------------------------------------
+# Mail the demo user sent that nobody answered (Insights), and the small
+# history behind it: people with earlier conversations that they answered
+# after a day or three (so each has a "usual" time), one conversation that
+# went on, newsletters of a sender that are no answer, a few answered mails
+# and one marked "No answer needed". Deterministic (no random draws, UIDs from
+# a range of their own), so the rest of the demo stays exactly as it was.
+# Everything is dated relative to NOW. The proton demo account watches its
+# sent mail (the switch is off by default; see demo_generate's scan below).
+_WUID = iter(range(800_000, 900_000))
+WAIT_IN: list[dict] = []
+WAIT_SENT: list[dict] = []
+
+
+def _w_in(frm: str, subject: str, days_ago: float, msgid: str, *, irt=None,
+          refs=None, unsub=False, body=None) -> str:
+    WAIT_IN.append(make_msg(
+        next(_WUID), frm=frm, subject=subject, msgid=msgid, irt=irt,
+        refs=refs, seen=True, size=3000, date=_date(days_ago),
+        unsub="<https://unsub.example/u>" if unsub else None,
+        body=body or "Noted - I will write back soon."))
+    return msgid
+
+
+def _w_out(to: str, subject: str, days_ago: float, msgid: str, *, irt=None,
+           refs=None, body=None) -> str:
+    WAIT_SENT.append(make_msg(
+        next(_WUID), frm=ME, subject=subject, msgid=msgid, irt=irt, refs=refs,
+        to=to, seen=True, size=2500, date=_date(days_ago),
+        body=body or "Hello,\n\ncould you let me know? Thank you."))
+    return msgid
+
+
+def _w_history(who: str, tag: str, gaps: list[int], first: int = 80) -> None:
+    """Earlier conversations with `who`, each answered after the given days."""
+    for k, gap in enumerate(gaps):
+        ago = first - 14 * k
+        mid = _w_out(who, f"Earlier question {k + 1}", ago,
+                     f"<wait-{tag}{k}@demo.example>")
+        _w_in(who, f"Re: Earlier question {k + 1}", ago - gap,
+              f"<wait-{tag}{k}-a@demo.example>", irt=mid, refs=[mid])
+
+
+_TAX = '"Tax advisor" <steuerberater@kanzlei-brandt.example>'
+_CLARA = '"Clara Neumann" <clara.neumann@mailfox.example>'
+_LANDLORD = "vermieter@hausverwaltung-nord.example"
+_TOBI = '"Tobi" <tobi@kletterhalle.example>'
+_OPA = '"Opa" <opa@familienpost.example>'
+# the tax advisor answered two earlier conversations after 2 and 4 days
+_w_history(_TAX, "tax", [2, 4])
+# the conversation behind the open mail: your question, their answer after 3
+# days, your follow-up - which nobody answered
+_w_out(_TAX, "Questions about 2024", 56, "<wait-x1@demo.example>")
+_w_in(_TAX, "Re: Questions about 2024", 53, "<wait-x2@demo.example>",
+      irt="<wait-x1@demo.example>", refs=["<wait-x1@demo.example>"])
+_w_out(_TAX, "Documents for the 2025 tax return", 9, "<wait-x3@demo.example>",
+       irt="<wait-x2@demo.example>",
+       refs=["<wait-x1@demo.example>", "<wait-x2@demo.example>"])
+# their newsletters since are no answer
+for _i, _ago in enumerate([6, 2]):
+    _w_in('"Kanzlei News" <news@kanzlei-brandt.example>',
+          ["Tax calendar 2026", "New rules for home offices"][_i], _ago,
+          f"<wait-n{_i}@demo.example>", unsub=True)
+# the other open mails of the board, each with a history of its own
+_w_history(_CLARA, "cl", [1, 1], 70)
+_w_out(_CLARA, "Coffee next week?", 6, "<wait-o1@demo.example>")
+_w_history(_LANDLORD, "ll", [2, 2], 75)
+_w_out(_LANDLORD, "Question about the service charges", 5,
+       "<wait-o2@demo.example>")
+_w_history(_TOBI, "tb", [3, 3], 72)
+_w_out(_TOBI, "Climbing on Saturday?", 2, "<wait-o3@demo.example>")
+_w_history(_OPA, "op", [4, 4], 78)
+_w_out(_OPA, "Photos from the weekend", 1, "<wait-o4@demo.example>")
+# a sender that wrote first and got your answer, then went quiet again: open
+# without a history (the days you set decide)
+_w_in('"Bank of Example" <service@bank.example>', "Card replacement", 3,
+      "<wait-o5a@demo.example>")
+_w_out('"Bank of Example" <service@bank.example>', "Re: Card replacement", 1,
+       "<wait-o5@demo.example>", irt="<wait-o5a@demo.example>",
+       refs=["<wait-o5a@demo.example>"])
+# mails that were answered
+_m = _w_out('"Sam Lee" <sam@work.example>', "Meeting notes", 20,
+            "<wait-a1@demo.example>")
+_w_in('"Sam Lee" <sam@work.example>', "Re: Meeting notes", 19,
+      "<wait-a1-a@demo.example>", irt=_m, refs=[_m])
+_m = _w_out('"Pat Roe" <pat@club.example>', "Invoice question", 9,
+            "<wait-a2@demo.example>")
+_w_in('"Pat Roe" <pat@club.example>', "Re: Invoice question", 7,
+      "<wait-a2-a@demo.example>", irt=_m, refs=[_m])
+# a mail you decided needs no answer
+_w_out('"City Library" <loans@library.example>',
+       "Thank you for the quick reply", 12, "<wait-nn@demo.example>")
+
 
 PROTON = _server({
-    "INBOX": PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS,
-    "Sent": PROTON_TAIL_SENT + PROTON_SENT + [make_msg(
+    "INBOX": (PROTON_INBOX + PROTON_COPIES + PROTON_TAIL + ADDRESS_MAILS
+              + WAIT_IN),
+    "Sent": PROTON_TAIL_SENT + PROTON_SENT + WAIT_SENT + [make_msg(
         next(_UID), frm="Demo <demo@example.com>",
         subject="Re: Wanderung am Samstag?", msgid=WANDER_R1,
         irt=WANDER_1, refs=WANDER_1, to="anna.weber@mailfox.example",
@@ -1501,6 +1596,8 @@ def generate() -> dict:
     # Pre-scan both accounts (incl. attachments) so screenshots are instant. The
     # Proton demo also builds its local body index, which is where the tracker
     # report (Tools -> Trackers) comes from; iCloud stays without one (empty state).
+    # The proton demo watches its sent mail for replies (off by default).
+    waitstore.set_watch(True, "proton")
     for name in ("proton", "icloud"):
         acc = accounts.get(name)
         mailops.run_scan(acc)
@@ -1510,6 +1607,11 @@ def generate() -> dict:
         st = mailops.public_state(acc)
         print(f"[demo] {name}: {len(st['groups']['sender'])} senders, "
               f"{sum(g['count'] for g in st['groups']['sender'].values())} mails")
+    # Waiting for a reply: "No answer needed" on one mail and a reminder on the
+    # tax advisor's, as the board shows.
+    waitstore.set_needed("<wait-nn@demo.example>", True, "proton")
+    waitstore.set_reminder("<wait-x3@demo.example>",
+                           int(NOW // 86400 + 1) * 86400 + 9 * 3600, "proton")
     # A few pinned mails (by Message-ID) of a protected sender, so the
     # "Pinned mails" row of Move to another account has something to count
     # (and a mail that is both counts once). A protected sender: the demo

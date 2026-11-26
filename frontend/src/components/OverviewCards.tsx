@@ -12,7 +12,8 @@ import { categoryHues, categoryName } from "../categories";
 import { nowMs } from "../clock";
 import { kindShares, louderWindow, type Trend, windowTerm } from "../overview";
 import { TOP_CARDS, type QuickWinCard } from "../quickwins";
-import type { OverviewResp } from "../types";
+import type { OverviewResp, WaitingSummary } from "../types";
+import { peopleLine } from "../waiting";
 import { Button, Checkbox, hueFillAt, IconTile, Menu, MenuItem, Segmented,
   Spinner, tabPanelProps, useMediaQuery, type TagTone } from "./ui";
 
@@ -317,7 +318,7 @@ export type WeekRange = "week" | "since";
 /** The numbers of a window as rows; a row whose count is 0 is left out. */
 export function LastWeekCard({ data, since, range, onRange, junk, failed,
   onRetry, onOpenAllMail, onOpenNew, onOpenStill, onOpenJunk, onOpenAi,
-  onOpenLouder, onOpenBack }: {
+  onOpenLouder, onOpenBack, waiting, onOpenWaiting }: {
   data: OverviewResp | null;
   /** Start of the previous visit (ms); null = there is none yet. */
   since: number | null;
@@ -338,6 +339,10 @@ export function LastWeekCard({ data, since, range, onRange, junk, failed,
    *  `is:back` over the window (louder never wider than the last 7 days). */
   onOpenLouder?: (window: string) => void;
   onOpenBack?: (window: string) => void;
+  /** Mails you sent that nobody answered (Waiting for a reply): one row at
+   *  the end, only while some are overdue; it opens that page. */
+  waiting?: WaitingSummary | null;
+  onOpenWaiting?: () => void;
 }) {
   const showSince = since !== null;
   const mode: WeekRange = showSince ? range : "week";
@@ -418,6 +423,15 @@ export function LastWeekCard({ data, since, range, onRange, junk, failed,
             : "overview.row_back_quiet", { name: top.label,
             months: top.months })}
         onClick={() => onOpenBack(windowTerm(mode, since, nowMs()))} />);
+  }
+  // the last row: replies nobody gave, not tied to the week or the visit
+  if (waiting && waiting.overdue > 0 && onOpenWaiting) {
+    rows.push(
+      <OverviewRow key="waiting" testId="ov-row-waiting"
+        icon={<Hourglass size={16} />} tone="review"
+        title={t("overview.row_waiting", { n: waiting.overdue })}
+        sub={peopleLine(waiting.people, waiting.more)}
+        onClick={onOpenWaiting} />);
   }
   const title = t("overview.week_title");
   return (
