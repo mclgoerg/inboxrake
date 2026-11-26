@@ -417,6 +417,22 @@ def test_the_last_copy_job_that_ran_before_the_record_existed_is_folded_in_once(
     accountcopy.fold_last_job()
 
 
+def test_the_finder_folds_the_last_job_in_before_it_counts(pair, monkeypatch):
+    """A copy job that ran before the record existed: its ledger is read once,
+    by the finder itself, so the mails it copied are not offered."""
+    job = {"id": "job-3", "source": "old", "target": "proton", "status": "done"}
+    monkeypatch.setattr(accountcopy, "_read", lambda: {"job": job, "tell": {}})
+    monkeypatch.setattr(accountcopy, "_ledger_read", lambda jid: {
+        "<c4@x.example>": "ok", "<c5@x.example>": "unchecked"})
+    assert _row(_pairs(), "old", "proton")["mails"] == 7      # 9 - the two
+    assert _pairs()["left_out"] == 4
+    r = _trash("proton", "old")
+    assert r.json()["queued"] == 3                            # c1, c2, c3
+    _wait(accountsmod.get("old"))
+    left = {m["msgid"] for m in pair["host-old"].mailbox["INBOX"]}
+    assert {"<c4@x.example>", "<c5@x.example>"} <= left
+
+
 def test_a_job_that_is_still_going_is_folded_as_far_as_it_got_and_not_marked(
         pair, monkeypatch):
     job = {"id": "job-2", "source": "old", "target": "proton",
