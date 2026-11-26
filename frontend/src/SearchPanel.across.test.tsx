@@ -217,6 +217,9 @@ test("the same folder and UID in two accounts are two mails", async () => {
   await screen.findByText(/^Mails · 2$/);
   fireEvent.click(screen.getAllByRole("checkbox")[0]);
   expect(screen.getByRole("button", { name: /^Trash selected \(1\)$/ })).toBeTruthy();
+  // only THAT mail is ticked - the other has the same folder and UID
+  const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+  expect(boxes.map((b) => b.checked)).toEqual([true, false]);
 });
 
 test("one account failing is a note with its name; the rest is listed", async () => {
