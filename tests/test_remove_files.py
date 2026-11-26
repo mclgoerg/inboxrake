@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 from backend import accounts as accountsmod
 from backend import auditlog
 from backend import config as cfgmod
-from backend import mailops, mimecut, pinstore, removefiles
+from backend import mailops, mimecut, removefiles
 from backend.main import app
-from conftest import (FakeIMAP, make_msg, wait_delete_done, wait_scan_done)
+from conftest import FakeIMAP, wait_delete_done
 from rmfiles_util import (FILES, KEEP, CRLF, analyse, b64, blob, body, listed,
                           mail, raw_mail, server)
 

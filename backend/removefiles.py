@@ -30,7 +30,6 @@ import time
 import zipfile
 from email import policy as _policy
 
-from . import accounts
 from . import config as cfgmod
 from . import keepsafe
 from . import mailops

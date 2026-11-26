@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import email
 import email.header
-import email.utils
 import quopri
 import re
 import time

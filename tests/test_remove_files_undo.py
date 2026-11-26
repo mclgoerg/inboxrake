@@ -7,11 +7,11 @@ import time
 from fastapi.testclient import TestClient
 
 from backend import accounts as accountsmod
-from backend import mailops, mimecut, removefiles, timemachine, undostore
+from backend import mailops, timemachine, undostore
 from backend.main import app
 from conftest import wait_delete_done, wait_scan_done
 from rmfiles_util import (FILES, KEEP, CRLF, analyse, b64, body, mail,
-                          raw_mail, server)
+                          server)
 
 client = TestClient(app)
 SIZES = [(n, len(b64(d).rstrip(CRLF))) for n, d in FILES]
