@@ -58,7 +58,8 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
 (Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
-(Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply) and, at the bottom,
+(Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply and,
+with two accounts or more, All accounts) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
@@ -94,10 +95,13 @@ Connect several providers at once (e.g. Proton
 Bridge + Gmail). Every account is strictly separate: its own scans, groups,
 rules, saved presets, digest settings, statistics, folder exclusions,
 duplicate and label choices and replied/verdict/known-senders caches - nothing
-is ever mixed or aggregated. The account switcher (top of the sidebar; the
+is ever mixed. The account switcher (top of the sidebar; the
 avatar on a phone) shows a card per account with its sign-in state, last scan,
 mails and size and switches the whole view between accounts; a card whose
-sign-in is broken leads straight to that account's settings. It also holds
+sign-in is broken leads straight to that account's settings. With two
+accounts or more, one more row after the cards - **All accounts** - opens the
+[All accounts](#all-accounts) page; it is a page, not an account, and it never
+changes the selected account. The switcher also holds
 "Add account" (always the setup wizard, also from Settings), Appearance and
 the links to Activity and Settings. Accounts can be renamed (all their data
 follows) and removed in settings, and each has its own folder-discovery
@@ -860,6 +864,53 @@ address; the subject only when you switch that on.
 
 Inboxrake never sends mail for you - you reply from your own mail app. It is
 all read from headers, with no AI.
+
+### All accounts
+
+<small class="where">Insights → All accounts (from two accounts) · the row after the account cards in the account switcher</small>
+
+One page across your mailboxes - **a page you open, never a mode the app goes
+into**. Opening it, or anything you do on it, does not change the account that
+is selected; its Overview, Senders, All mail, rules, tools and Settings stay
+exactly as they are, for the selected account, with every action. Only
+**Open** (a card) and **Open in &lt;account&gt;** (a sender's pane) switch
+account, the way the switcher does; **Fix it** opens that
+account's settings without switching. With OIDC sign-in each person sees only
+their own accounts there; without it everyone shares one set, as everywhere
+else. On a phone the page is a card at the end of the Insights tab and a row in
+the Accounts sheet.
+
+- **Every mailbox side by side**: size, mails, how many are new since you last
+  looked at that account's Overview (else this week), the result of its last
+  scan - a failed scan is shown in orange with the time and a **Fix it** -
+  and **Open**. **Scan all** scans the accounts one after the other (it goes on
+  when you leave the page; an account that is busy or fails does not stop the
+  rest and is named). A bar shows where the space is, by account.
+- **Same sender, several accounts**: the newsletters and shops that write to
+  more than one of your accounts, matched by company domain (also the very
+  same address) - or by the exact address for freemail and shared hosts - with
+  the mails per account. Protected senders and the people you wrote to are left
+  out. The pane offers **Unsubscribe / Trash / Archive / Block in N**: one
+  confirm lists every account with its own tick and count (a Trash also with
+  the Keep-safe result of that account - "6 look worth keeping - they stay"),
+  then **one step per account**, each with its own Undo and Activity entry; the
+  toast says "Moved 339 mails to Trash in 3 accounts" with **Undo all 3**.
+  Anything else - Move, Protect, labels, rules - is **Open in &lt;account&gt;**.
+- **Unsubscribe runs separately in each account**: that account's own method
+  (one-click, a mail from that address through that account's SMTP settings, or
+  a page you confirm), its own unsubscribe record and its own "still mailing"
+  check. **Block in N** creates one daily Block rule per account (existing mail
+  stays; use Trash in N for that).
+- **Safety, per account**: the confirm reads the numbers again when it opens, so
+  a sender you protected after the page loaded is shown as protected and left
+  out - and the server refuses a protected sender on these paths whatever the
+  page said. Pinned mails stay, the usual Keep-safe applies to a Trash, an
+  account that was removed meanwhile is skipped and said so, a failing account
+  never stops the others, an unticked account is never called, and Esc does
+  nothing while the steps run.
+
+No AI, no mail server contacted to draw the page (it reads what each account's
+last scan holds), nothing new stored on disk.
 
 ### Your addresses
 

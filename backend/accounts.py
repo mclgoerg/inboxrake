@@ -2,8 +2,9 @@
 
 Every connected account gets its own AccountState: scan state, message
 index, folder UIDVALIDITYs/roles, replied cache, cancel flags and delete
-queue - nothing is ever shared or aggregated across accounts. Instances
-are created lazily from the configured account names.
+queue - nothing is ever shared across accounts or acted on in one call
+(`allaccounts.py` only READS them side by side, for the All accounts page).
+Instances are created lazily from the configured account names.
 """
 
 from __future__ import annotations
@@ -82,6 +83,9 @@ class AccountState:
         # When the last finished scan ended: start_scan() clears the public
         # `scanned_ts`, but the arrivals diff of the next scan needs it.
         self.prev_scan_ts: int | None = None
+        # When the newest scan FAILED (None = it did not, or none ran since
+        # the server started): the All accounts page's "scan failed 2 h ago".
+        self.scan_failed_ts: int | None = None
         self.folder_uv: dict[str, int] = {}  # folder -> UIDVALIDITY at scan
         self.folder_roles: dict[str, str] = {}   # role -> raw folder name
         # Role folders (Trash, later Junk ...) never enter `index`; each

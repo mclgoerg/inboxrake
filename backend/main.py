@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, StrictInt
 from . import FORMER_ENV
 from . import accountcopy
 from . import accounts as accountsmod
+from . import allaccounts
 from . import addresses as addressesmod
 from . import addressstore
 from . import aifilter
@@ -700,6 +701,9 @@ class DeleteBody(BaseModel):
     keep_latest: int | None = Field(None, ge=1)       # keep N newest mails
     older_than_days: int | None = Field(None, ge=1)   # act only past N days
     only_addrs: list[str] | None = None   # act only on mails from these senders
+    # a bulk path (the All accounts page) never touches a protected sender,
+    # whatever the action; `force` is ignored then
+    skip_protected: bool = False
 
 
 class DeleteMessagesBody(BaseModel):
@@ -727,6 +731,11 @@ class AiGroupBody(BaseModel):
     # Restrict rating to exactly these (folder, uid) mails instead of the
     # whole group - the detail panel's "rate only what I selected" mode.
     uids: list[tuple[str, int]] | None = None
+
+
+class UnsubOneBody(AiGroupBody):
+    # a bulk path (the All accounts page) leaves a protected sender alone
+    skip_protected: bool = False
 
 
 class UnsubBulkBody(BaseModel):
@@ -1535,7 +1544,8 @@ def post_delete(body: DeleteBody, account: str | None = Query(None)):
         return mailops.delete_groups(body.grouping, body.keys,
                                      body.action, body.dest, body.force,
                                      body.keep_latest, body.older_than_days,
-                                     acc=acc, only_addrs=body.only_addrs)
+                                     acc=acc, only_addrs=body.only_addrs,
+                                     skip_protected=body.skip_protected)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
@@ -1835,11 +1845,12 @@ def post_ai_group(body: AiGroupBody, account: str | None = Query(None)):
 
 
 @app.post("/api/unsubscribe")
-def post_unsubscribe(body: AiGroupBody, account: str | None = Query(None)):
+def post_unsubscribe(body: UnsubOneBody, account: str | None = Query(None)):
     _check_grouping(body.grouping)
     acc = _acc(account)
     try:
-        return unsub.unsubscribe(body.grouping, body.key, acc)
+        return unsub.unsubscribe(body.grouping, body.key, acc,
+                                 skip_protected=body.skip_protected)
     except Exception as exc:
         # a failed unsubscribe is a handled outcome: the code is the detail
         # (the UI words it); never raw exception text
@@ -2271,8 +2282,12 @@ def post_block(body: BlockBody, account: str | None = Query(None)):
     if cfgmod.is_protected(check_addr, plist):
         raise HTTPException(400, "refusing to block a protected sender")
     query = f"{'from' if body.grouping == 'sender' else 'domain'}:{body.key}"
+    # "already blocked" is per account: the same sender may be blocked in
+    # each of the user's accounts (the All accounts page does exactly that)
     if any(r.get("origin") == "block" and r["grouping"] == body.grouping
-           and r["query"] == query for r in rulesmod.load_rules()):
+           and r["query"] == query
+           and (r.get("account") or accountsmod.default_name()) == acc.name
+           for r in rulesmod.load_rules()):
         raise HTTPException(400, "already blocked")
     rule = rulesmod.create_rule({
         "name": body.label or body.key, "grouping": body.grouping,
@@ -3071,6 +3086,27 @@ def get_accounts_summary():
                 "mails": sum(r["count"] for r in senders.values()),
                 "size": sum(r["size"] for r in senders.values())}
     return out
+
+
+@app.get("/api/accounts/overview")
+def get_accounts_overview(since: str | None = Query(None, max_length=4000)):
+    """The All accounts PAGE (read-only, no mail server is contacted, no
+    account is selected): per account of this workspace its size, mails, new
+    mails and last scan, plus the senders that write to more than one account
+    (see allaccounts.py). `since` = a JSON object {account: epoch seconds},
+    the visit each account's "+N new" counts from; anything unreadable is
+    ignored."""
+    marks: dict[str, float] = {}
+    try:
+        raw = json.loads(since) if since else {}
+    except ValueError:
+        raw = {}
+    if isinstance(raw, dict):
+        for name, ts in raw.items():
+            if isinstance(ts, (int, float)) and not isinstance(ts, bool) \
+                    and 0 <= ts < 1e11:
+                marks[str(name)] = float(ts)
+    return allaccounts.build(marks)
 
 
 def _keep_caller_signed_in(request: Request, response: Response,

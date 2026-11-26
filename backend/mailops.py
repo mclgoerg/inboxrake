@@ -104,6 +104,8 @@ NO_MESSAGE_ID = "no_message_id"      # set_pin: nothing stable to key a pin on
 PINNED_MAILS = "pinned_mails"        # delete_messages: needs force
 PROTECTED_MAILS = "protected_mails"  # role_move trash: needs force
 ALL_PINNED = "all_pinned"            # delete_groups: nothing but pinned mails
+DELETE_PROTECTED = "delete_protected"   # delete_groups(skip_protected): the
+                                     # selection is nothing but protected
 ROLE_NOT_CANDIDATE = "role_not_candidate"  # set_role_override: not that role's
 ROLE_AMBIGUOUS = "role_ambiguous"    # lookalike_*: choose the role folder first
 NOT_LOOKALIKE = "not_lookalike"      # lookalike_*: no look-alike of a role
@@ -208,11 +210,12 @@ UNSUB_BAD_URL = "unsub_bad_url"
 UNSUB_NO_METHOD = "unsub_no_method"
 UNSUB_MAIL_FAILED = "unsub_mail_failed"  # the unsubscribe mail was not sent
 UNSUB_POOLED = "unsub_pooled"
+UNSUB_PROTECTED = "unsub_protected"      # skip_protected: the sender is protected
 UNSUB_UNKNOWN_GROUP = "unsub_unknown_group"
 UNSUB_FAILED = "unsub_failed"            # anything unexpected (see the log)
 UNSUB_CODES = (UNSUB_BLOCKED, UNSUB_HTTP, UNSUB_TLS, UNSUB_UNREACHABLE,
                UNSUB_TIMEOUT, UNSUB_BAD_URL, UNSUB_NO_METHOD,
-               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_UNKNOWN_GROUP,
+               UNSUB_MAIL_FAILED, UNSUB_POOLED, UNSUB_PROTECTED, UNSUB_UNKNOWN_GROUP,
                UNSUB_FAILED)
 # the in-browser demo has no network, no real mail server and no AI
 # (backend/demo.py: socket denial, connect and AI refusals)
@@ -287,7 +290,7 @@ FOLDER_ERROR_CODES = frozenset({
     ASSISTANT_TOKEN_LEVEL,
     ASSISTANT_TOKEN_LIMIT,
     ASSISTANT_TOKEN_UNKNOWN,
-    NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED,
+    NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED, DELETE_PROTECTED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
     BUSY_PURGE,
@@ -2952,6 +2955,7 @@ def run_scan(acc=None, push: bool = False) -> None:
                                "progress": "", "error": "", "usage": None}
                 acc.state["scanned_ts"] = int(time.time())
                 acc.prev_scan_ts = None
+                acc.scan_failed_ts = None
                 acc.state["groups_rev"] += 1
                 analysed = [m.get("att_size", 0) for m in acc.index.values()
                             if m.get("att_size")]
@@ -3006,6 +3010,7 @@ def run_scan(acc=None, push: bool = False) -> None:
         with acc.lock:
             acc.state["status"] = "error"
             acc.state["error"] = error_text(exc, im["host"], SCAN_FAILED)
+            acc.scan_failed_ts = int(time.time())
         outcome = False
     if push and outcome is not None:        # a scan somebody started
         webpush.job_finished(acc, "scan", outcome)
@@ -3647,8 +3652,14 @@ def delete_groups(grouping: str, keys: list[str],
                   actor: str = "user", completion: dict | None = None,
                   only_addrs: list[str] | None = None,
                   exempt: set[str] | None = None,
-                  only_kind: str | None = None) -> dict:
-    """Queue `action` for the mails of the given groups. `only_addrs` limits
+                  only_kind: str | None = None,
+                  skip_protected: bool = False) -> dict:
+    """Queue `action` for the mails of the given groups. `skip_protected`
+    (a bulk path that must never touch a protected sender: the All accounts
+    page's step per account) leaves protected groups out for EVERY action -
+    `force` is ignored - and refuses with the coded DELETE_PROTECTED when
+    nothing else is left, decided now, not when the list was drawn.
+    `only_addrs` limits
     it to mails from those sender addresses: a caller that decided on a group
     because it held only those senders (the unsubscribe sheet's "also move
     to Trash") is not acting on a mail from anyone else that joined the
@@ -3679,7 +3690,7 @@ def delete_groups(grouping: str, keys: list[str],
         jobs = {k: recs[k] for k in keys if k in recs}
         # Safety floor: trashing protected groups needs an explicit force
         # (the UI sends it only after a dedicated per-group confirmation).
-        if jobs and action == "trash" and not force:
+        if jobs and (skip_protected or (action == "trash" and not force)):
             plist = cfgmod.normalize_protected(
                 cfgmod.load_config().get("protected"))
             paddrs = _protected_addrs(plist, acc)
@@ -3692,7 +3703,8 @@ def delete_groups(grouping: str, keys: list[str],
                 log.info("delete: skipped %d protected group(s): %s",
                          skipped, ", ".join(prot[:5]))
             if not jobs:
-                raise ValueError("all selected groups are protected")
+                raise ValueError(DELETE_PROTECTED if skip_protected
+                                 else "all selected groups are protected")
         by_folder: dict[str, set[int]] = {}
         for rec in jobs.values():
             keep = retained_mails(rec, acc, keep_latest, older_than_days,

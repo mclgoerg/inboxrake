@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import type {
   AssistantTokenList, AssistantToken, AssistantTokenRequest, ConnectDecision, ConnectRedirect, ConnectRequest,
-  AccountSummary, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
+  AccountSummary, AllAccountsResp, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   ExpiredResp, Mail, MessageDetail, SubReminder, SubscriptionsResp,
@@ -87,6 +87,7 @@ const ERROR_CODES: Record<string, string> = {
   pinned_mails: "pin.refused",
   protected_mails: "fp.protected_refused",
   all_pinned: "toast.all_pinned",
+  delete_protected: "toast.delete_protected",
   // private sender knowledge (backend/knowledgestore.py)
   knowledge_bad_request: "know.err.bad_request",
   knowledge_bad_key: "know.err.bad_key",
@@ -188,6 +189,7 @@ const ERROR_CODES: Record<string, string> = {
   unsub_no_method: "ferr.unsub_no_method",
   unsub_mail_failed: "ferr.unsub_mail_failed",
   unsub_pooled: "ferr.unsub_pooled",
+  unsub_protected: "ferr.unsub_protected",
   unsub_unknown_group: "ferr.unsub_unknown_group",
   unsub_failed: "ferr.unsub_failed",
   // plain words -> filter (backend/aifilter.py)
@@ -377,11 +379,16 @@ export const api = {
                  action = "trash", dest = "", force = false,
                  keepLatest: number | null = null,
                  olderThanDays: number | null = null,
-                 onlyAddrs: string[] | null = null) =>
-    req<{ ok: boolean; queued: number; skipped: number }>("/api/delete",
+                 onlyAddrs: string[] | null = null,
+                 /** a bulk path (the All accounts page): never a protected
+                  *  sender, whatever the action */
+                 skipProtected = false, account?: string) =>
+    req<{ ok: boolean; queued: number; skipped: number;
+      skipped_pinned?: number }>(forAccount("/api/delete", account),
       { grouping, keys, action, dest, force, keep_latest: keepLatest,
         older_than_days: olderThanDays,
-        ...(onlyAddrs ? { only_addrs: onlyAddrs } : {}) }),
+        ...(onlyAddrs ? { only_addrs: onlyAddrs } : {}),
+        ...(skipProtected ? { skip_protected: true } : {}) }),
   protect: (entry: string, on: boolean) =>
     req<{ protected: string[] }>("/api/protect", { entry, on }),
   // The AI writes a filter query from a sentence (nothing else is sent).
@@ -455,6 +462,14 @@ export const api = {
   /** Per account: what its last scan holds (the account switcher's cards). */
   accountsSummary: () => req<Record<string, AccountSummary>>(
     "/api/accounts/summary"),
+  /** All accounts page: every mailbox's card and the senders that write to
+   *  several of them. `since` = per account the epoch seconds its "+N new"
+   *  counts from (the remembered visit). Read-only, no mail server, and it
+   *  selects nothing. */
+  accountsOverview: (since: Record<string, number> = {}) => req<AllAccountsResp>(
+    Object.keys(since).length
+      ? `/api/accounts/overview?since=${encodeURIComponent(JSON.stringify(since))}`
+      : "/api/accounts/overview"),
   saveConfig: (body: unknown) => req<Config>("/api/config", body),
   /** AI assistants (MCP): this workspace's access tokens. */
   assistantTokens: () => req<AssistantTokenList>("/api/assistants/tokens"),
@@ -475,17 +490,21 @@ export const api = {
   revokeAssistantToken: (id: string) =>
     req<{ ok: boolean }>(`/api/assistants/tokens/${encodeURIComponent(id)}`,
       undefined, "DELETE"),
-  unsubscribe: (grouping: Grouping, key: string) =>
-    req<UnsubResult>("/api/unsubscribe", { grouping, key }),
+  /** `skipProtected`: refuse a protected sender (the All accounts page, a bulk
+   *  path); `account`: run it in that account, not the selected one. */
+  unsubscribe: (grouping: Grouping, key: string, skipProtected = false,
+      account?: string) =>
+    req<UnsubResult>(forAccount("/api/unsubscribe", account), skipProtected
+      ? { grouping, key, skip_protected: true } : { grouping, key }),
   unsubscribeBulk: (grouping: Grouping, keys: string[]) =>
     req<UnsubBulkResult>("/api/unsubscribe_bulk", { grouping, keys }),
   unsubscribePreview: (grouping: Grouping, keys: string[], single = false) =>
     req<UnsubPreview>("/api/unsubscribe/preview", { grouping, keys, single }),
   unsubscribeResults: () =>
     req<{ run: number; items: UnsubRunItem[] }>("/api/unsubscribe/results"),
-  unsubscribeAck: (addr: string, done = true) =>
-    req<{ status?: string; ok?: boolean }>("/api/unsubscribe/ack",
-      { addr, done }),
+  unsubscribeAck: (addr: string, done = true, account?: string) =>
+    req<{ status?: string; ok?: boolean }>(
+      forAccount("/api/unsubscribe/ack", account), { addr, done }),
   /** `assistant`: the step is in the AI assistants' list. */
   undo: (index = -1, ident?: UndoIdent, account?: string,
       assistant = false) =>
@@ -567,9 +586,9 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
   block: (grouping: Grouping, key: string, label = "",
-          trashExisting = false) =>
+          trashExisting = false, account?: string) =>
     req<{ rule: Rule; trashed?: { queued: number; skipped: number };
-          trash_error?: string }>("/api/block",
+          trash_error?: string }>(forAccount("/api/block", account),
       { grouping, key, label, trash_existing: trashExisting }),
   startAttachments: () => req<{ ok: boolean }>("/api/attachments", {}),
   attachments: () => req<AttMail[]>("/api/attachments"),
