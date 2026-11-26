@@ -280,6 +280,20 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       } else title = counted("move_contents");
       break;
     }
+    case "folder_create": case "folder_delete":
+      // the label is the folder's readable name
+      title = label ? t(`audit.h.${e.action}`, { label })
+        : tOr("audit.act", e.action);
+      detail = "";   // the headline names the folder
+      break;
+    case "folder_rename": {
+      // the stored label is "<old name> → <new name>"
+      const [from, to] = label.split(" \u2192 ");
+      title = from && to ? t("audit.h.folder_rename", { from, to })
+        : tOr("audit.act", e.action);
+      detail = "";
+      break;
+    }
     case "account_copy": {
       // the stored label is "<source> → <target>" (account names only)
       const [from, to] = label.split(" \u2192 ");

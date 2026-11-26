@@ -88,6 +88,10 @@ def test_rows_carry_mails_size_newest_and_the_rules_that_use_them(box):
     assert rr["Receipts"]["newest"] > 0
     assert [u["id"] for u in rr["Receipts"]["used_by"]] == [r["id"]]
     assert rr["Travel"]["used_by"] == []
+    assert rr["Receipts"]["top"] == [
+        {"addr": "shop@store.example", "label": "Shop", "n": 3}]
+    assert rr["Receipts 2019"]["top"][0]["addr"] == "old@store.example"
+    assert rr["receipts-old"]["top"] == []
     assert rr["Receipts 2019"]["mails"] == 2
     assert rr["receipts-old"]["mails"] == 0
 

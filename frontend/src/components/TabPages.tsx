@@ -1,4 +1,5 @@
 import { AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
+  FolderTree,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
@@ -15,7 +16,8 @@ import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
-  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp }
+  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp,
+  YourFoldersResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
 import { ProposalBadge } from "./Sidebar";
@@ -38,7 +40,8 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity";
+  | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
+  | "yourfolders";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -123,6 +126,19 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
       .catch(() => alive && setDups("failed"));
     return () => { alive = false; };
   }, [account, done]);
+  // Your folders: how many there are and how many things look worth tidying
+  // (one connection to the mail server; fetched on mount, account change and
+  // scan done, like Duplicates).
+  const [yf, setYf] = useState<YourFoldersResp | null>(null);
+  useEffect(() => {
+    if (!done) { setYf(null); return; }
+    let alive = true;
+    Promise.resolve().then(() => api.yourFolders(account))
+      .then((r) => alive && setYf(r))
+      .catch(() => alive && setYf(null));
+    return () => { alive = false; };
+  }, [account, done]);
+  const yfRows = yf ? yf.rows.length : null;
   const dupReady = dups != null && dups !== "failed";
   const dupCompare = dupReady ? dups.versions + dups.possible : 0;
   const compareText = t("tab.dup_compare", { n: fmtNum(dupCompare) });
@@ -273,6 +289,19 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
             // The big number is the count: the sub-line adds the size.
             sub={state?.trash_size ? fmtSize(state.trash_size) : undefined}
             onClick={() => onOpen("trash")} />
+        </li>
+        {/* the last tile: see and tidy your own folders */}
+        <li className="contents">
+          <Tile icon={<FolderTree size={18} aria-hidden />}
+            tone="bg-info-bg text-info-fg" label={t("yf.menu")}
+            value={yfRows != null ? t("n.folders", { n: yfRows })
+              : state?.folders_raw?.length
+                ? t("n.folders", { n: state.folders_raw.length }) : null}
+            sub={yf == null ? t("yf.tile_sub_open")
+              : yf.hints.length > 0
+                ? t("yf.tile_sub", { n: yf.hints.length })
+                : t("yf.tile_sub_none")}
+            onClick={() => onOpen("yourfolders")} />
         </li>
       </ul>
     </div>

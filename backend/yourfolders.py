@@ -44,6 +44,7 @@ import logging
 import re
 import time
 import unicodedata
+from collections import Counter
 from contextlib import contextmanager
 
 from . import accountcopy
@@ -56,6 +57,7 @@ from . import rules as rulesmod
 log = logging.getLogger("inboxrake.yourfolders")
 
 QUIET_YEARS = 3                  # "gone quiet": nothing new for this long
+TOP_SENDERS = 3                  # "Most mail from" in a folder's pane
 FOLDER_MAX = accountcopy.FOLDER_MAX
 
 # SPECIAL-USE attributes (RFC 6154, XLIST, Gmail): a folder that carries one
@@ -218,10 +220,11 @@ def _parent(ctx: _Ctx, raw: str) -> str:
 
 
 def _index_stats(acc) -> dict[str, dict]:
-    """Per raw folder what the last scan holds: mails, bytes, the newest mail
-    and how many are unread (label copies count: they are mails of that
-    label)."""
+    """Per raw folder what the last scan holds: mails, bytes, the newest mail,
+    how many are unread and the senders with most mail in it (label copies
+    count: they are mails of that label)."""
     out: dict[str, dict] = {}
+    senders: dict[str, Counter] = {}
     with acc.lock:
         for m in (*acc.index.values(), *acc.label_copies.values()):
             s = out.setdefault(m["folder"], {"mails": 0, "size": 0,
@@ -230,6 +233,13 @@ def _index_stats(acc) -> dict[str, dict]:
             s["size"] += int(m.get("size") or 0)
             s["newest"] = max(s["newest"], int(m.get("ts") or 0))
             s["unread"] += 0 if m.get("seen") else 1
+            if m.get("addr"):
+                senders.setdefault(m["folder"], Counter())[m["addr"]] += 1
+        recs = acc.state["groups"].get("sender") or {}
+        for folder, counter in senders.items():
+            out[folder]["top"] = [
+                {"addr": a, "label": (recs.get(a) or {}).get("label") or a,
+                 "n": n} for a, n in counter.most_common(TOP_SENDERS)]
     return out
 
 
@@ -301,13 +311,13 @@ def overview(acc) -> dict:
             "raw": raw, "name": shown, "delim": ctx.delim_of(raw) or None,
             "lock": why, "role": role, "label": not why and ctx.is_label(raw),
             "scanned": is_scanned,
-            "off": None if is_scanned else (off or ("switch" if done
-                                                    else None)),
+            "off": off,
             "pattern": pattern,
             "mails": s["mails"] if s else None,
             "size": s["size"] if s else None,
             "newest": (s["newest"] or None) if s else None,
             "unread": s["unread"] if s else None,
+            "top": s.get("top", []) if s else [],
             "used_by": [{k: r[k] for k in ("id", "name", "mode", "schedule")}
                         for r in used],
             "children": len(kids), "hints": [], "twin": None,

@@ -47,6 +47,38 @@ TEXT: dict[str, str | tuple[str, str]] = {
         "We couldn't confirm that these two accounts are different mailboxes (the server did not answer the check), so nothing was copied. Try again.",
     'copy_folder_reserved':
         '“{folder}” is a folder the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - give the new folder another name.',
+    'folder_name_bad':
+        'Enter a folder name (no slashes or quotes).',
+    'folder_exists':
+        'A folder called “{folder}” already exists.',
+    'folder_reserved':
+        '“{folder}” is a name the server uses for something else (Inbox, Trash, Junk, Sent, Drafts, Archive) - choose another name.',
+    'folder_locked':
+        '“{folder}” is a special folder and cannot be renamed, merged or deleted here.',
+    'folder_label':
+        '“{folder}” is a label: a mail can have several, so merging it here could take labels away. Nothing was changed.',
+    'folder_target_bad':
+        'Mail cannot be merged into “{folder}”.',
+    'folder_same':
+        'That is the same folder - choose another one.',
+    'folder_gone':
+        '“{folder}” is not on the server (any more). Scan again to refresh the list.',
+    'folder_not_empty':
+        '“{folder}” still holds mail on the server, so it was not deleted.',
+    'folder_has_children':
+        '“{folder}” has subfolders. Delete or move them first.',
+    'folder_used_by_rules':
+        'Rules move mail into “{folder}”: change or delete them first.',
+    'folder_rules_changed':
+        'The rules that use this folder changed while you were looking. Nothing was changed - open it again.',
+    'folder_create_failed':
+        'The server did not create “{folder}”.',
+    'folder_rename_failed':
+        'The server did not rename “{folder}”.',
+    'folder_delete_failed':
+        'The server did not delete “{folder}”.',
+    'folder_recreate_failed':
+        'Could not create “{folder}” again, so nothing was put back yet. Try Undo again.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

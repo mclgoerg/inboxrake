@@ -13,6 +13,7 @@ import type {
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
+  FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -220,6 +221,23 @@ const ERROR_CODES: Record<string, string> = {
   copy_same_mailbox: "ferr.copy_same_mailbox",
   copy_cannot_confirm: "ferr.copy_cannot_confirm",
   copy_folder_reserved: "ferr.copy_folder_reserved",
+  // Your folders (backend/yourfolders.py)
+  folder_name_bad: "ferr.folder_name_bad",
+  folder_exists: "ferr.folder_exists",
+  folder_reserved: "ferr.folder_reserved",
+  folder_locked: "ferr.folder_locked",
+  folder_label: "ferr.folder_label",
+  folder_target_bad: "ferr.folder_target_bad",
+  folder_same: "ferr.folder_same",
+  folder_gone: "ferr.folder_gone",
+  folder_not_empty: "ferr.folder_not_empty",
+  folder_has_children: "ferr.folder_has_children",
+  folder_used_by_rules: "ferr.folder_used_by_rules",
+  folder_rules_changed: "ferr.folder_rules_changed",
+  folder_create_failed: "ferr.folder_create_failed",
+  folder_rename_failed: "ferr.folder_rename_failed",
+  folder_delete_failed: "ferr.folder_delete_failed",
+  folder_recreate_failed: "ferr.folder_recreate_failed",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -582,6 +600,29 @@ export const api = {
           undo: UndoIdent | null }>(
       forAccount("/api/folders/move_contents", account),
       { folder, uv, max_uid }),
+  /** Your folders: the page's rows / hints / totals. */
+  yourFolders: (account?: string) =>
+    req<YourFoldersResp>(forAccount("/api/your_folders", account)),
+  /** Live numbers + rules of a merge / rename / delete, for its confirm. */
+  folderCheck: (body: { op: "merge" | "rename" | "delete"; folder: string;
+                        target?: string; name?: string }, account?: string) =>
+    req<FolderCheck>(forAccount("/api/your_folders/check", account), body),
+  createFolder: (name: string, account?: string) =>
+    req<{ raw: string; name: string }>(
+      forAccount("/api/your_folders/create", account), { name }),
+  renameFolder: (folder: string, name: string, rules: string[],
+                 account?: string) =>
+    req<{ raw: string; name: string; rules: FolderRule[]; failed: string[] }>(
+      forAccount("/api/your_folders/rename", account),
+      { folder, name, rules }),
+  mergeFolder: (body: { folder: string; target: string; uv: number;
+                        max_uid: number; delete_after: boolean;
+                        rules: string[] }, account?: string) =>
+    req<FolderMergeResult>(forAccount("/api/your_folders/merge", account),
+      body),
+  deleteFolder: (folder: string, uv: number, account?: string) =>
+    req<{ deleted: string }>(
+      forAccount("/api/your_folders/delete", account), { folder, uv }),
   exportUrl: (grouping: Grouping, keys?: string[]) =>
     withAccount(`/api/export?grouping=${grouping}`
       + (keys?.length

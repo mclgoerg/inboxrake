@@ -57,7 +57,7 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
-(Triage, Duplicates, Attachments, Rules, Junk, Trash), **Insights**
+(Triage, Duplicates, Attachments, Rules, Junk, Trash, Your folders), **Insights**
 (Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply and,
 with two accounts or more, All accounts) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
@@ -424,7 +424,9 @@ move really went through). It is a popover on wide screens and a bottom sheet
 on phones. When you move everything from one sender or domain you can switch
 on **Always move new mail from <sender> here**: after the move this creates a
 rule (manual schedule: it runs only when you run it) that starts in report
-mode, so nothing is moved automatically until you arm it in Rules.
+mode, so nothing is moved automatically until you arm it in Rules. The last
+row under All folders is **New folder…**: it makes the folder on the mail
+server and picks it for this move (and for the rule, if you switched that on).
 
 ### Keyboard shortcuts
 
@@ -661,6 +663,58 @@ on the server, irreversibly. That skipping applies to these actions only:
 confirm says so. Junk mails go through Trash first. Refused while
 Trash/Junk is ambiguous and not confirmed in Settings. Nothing is ever
 deleted without your click and the confirm.
+
+### Your folders
+
+<small class="where">Clean up → Your folders (on a phone: the last tile of the Clean up tab)</small>
+
+A page for the folders you made yourself. Each folder is a row with its mails,
+size (summed from the last scan), newest mail and the rules that use it
+(including the "Always move new mail here" rules); a folder the scan does not
+read - its switch is off, or an exclude pattern like `Labels/*` keeps it out -
+is listed without numbers. Three cards say what looks worth tidying, with the
+reason: **look-alike names** (Receipts, Receipts 2019, receipts-old), **empty
+folders** and folders that have **gone quiet** (nothing new for three years).
+A tap on a card shows just those folders. Inbox and Archive are listed with a
+lock; Sent, Drafts, Junk, Trash and the mail provider's own folders (Gmail's
+`[Gmail]/…`, All Mail, Starred, Proton Bridge's Folders / Labels parents) are
+named in the footer and cannot be changed here - set them in Settings →
+Account.
+
+A folder's pane has four actions and the scan switch:
+
+- **Merge into…** moves every mail of the folder into another one (any
+  ordinary folder, the Archive folder or the inbox; a similar-named folder is
+  suggested) as **one step with an Undo**, through the same reversible move as
+  everywhere else. The confirm shows the live count from the mail server. Tick
+  **Then delete the empty folder** to remove it afterwards; it only goes on a
+  fresh count of 0 (no new mail, no subfolders, no rule pointing at it) and
+  Undo creates it again before the mails go back. Mails you pinned or from
+  protected senders move along and keep their pin / protection.
+- **Rename…** renames the folder (and its subfolders) on the server. Your
+  exclude list, the folder's scan switch, the stored Undo steps and the Time
+  machine's points follow the new name, and a scan starts.
+- **Delete folder** is only offered for empty folders. The mail server is
+  asked at that moment (not the scan): any mail left, a subfolder or a rule
+  that moves mail into it refuses the delete.
+- **Open in All mail** shows the folder's mails (`folder:"…"`, see
+  [filters](filters.md#words-only-the-all-mail-list-knows)).
+- **Part of the cleanup scan** is the same setting as Settings → Account →
+  Folders to scan, in a second place (a folder an exclude pattern covers shows
+  the pattern instead of a switch).
+
+**New folder…** (top right; also the last row of the folder picker) creates a
+folder below your namespace (`INBOX.…` where the server wants it, `Folders/…`
+on Proton Bridge).
+
+**Rules are never changed silently.** When a merge or rename changes where a
+rule moves mail, the confirm names the rule; it points at the new folder and
+goes back to **Report only**, as every change of a target does, and Undo of a
+merge points it back. **Labels** (Gmail labels, Proton Bridge `Labels/…`) can
+be renamed, created and - when empty - deleted, but not merged: a mail can
+carry several labels and a merge could take the others away, so the page says
+so instead of guessing. Nothing runs while a move job, a scan or an Undo is
+running, and every folder action is in Activity.
 
 ### Unsubscribe
 

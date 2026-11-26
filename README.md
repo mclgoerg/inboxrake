@@ -210,6 +210,9 @@ or never match,
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
+a page for your own folders (how full each is, look-alike names, empty or
+quiet ones; merge, rename, create, delete an empty one - a merge can be
+undone),
 trackers, subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), "Waiting
 for a reply" (the mails you sent that nobody answered, with a reminder),
