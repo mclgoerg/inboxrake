@@ -52,7 +52,7 @@ def three(monkeypatch):
             "INBOX": _mails(DEALS, 5, 1, **UNSUB)
             + _mails('"Free" <letter@gmail.com>', 3, 20, **UNSUB)
             + _mails('"Boss" <keep@boss.example>', 2, 30, **UNSUB)
-            + _mails('"Pal" <pal@pal.example>', 1, 40, **UNSUB)
+            + _mails('"Pal" <pal@pal.example>', 3, 40, **UNSUB)
             + [make_msg(50, frm='"Solo" <solo@solo.example>')],
             "Sent": [make_msg(90, frm="one@mine.example", subject="re",
                               to="pal@pal.example")],
@@ -62,7 +62,7 @@ def three(monkeypatch):
             + _mails('"Free" <letter@gmail.com>', 1, 20, **UNSUB)
             + _mails('"Free" <other@gmail.com>', 4, 25, **UNSUB)
             + _mails('"Boss" <keep@boss.example>', 1, 30, **UNSUB)
-            + _mails('"Pal" <pal@pal.example>', 1, 40, **UNSUB),
+            + _mails('"Pal" <pal@pal.example>', 2, 40, **UNSUB),
             "Sent": [make_msg(90, frm="two@mine.example", subject="re",
                               to="pal@pal.example")],
             "Trash": []}),
@@ -104,11 +104,11 @@ def test_cards_hold_each_accounts_own_numbers(three):
     by = {a["name"]: a for a in body["accounts"]}
     assert list(by) == ["one", "two", "three"]
     assert by["one"]["user"] == "one@mine.example"
-    assert by["one"]["mails"] == 12 and by["two"]["mails"] == 10
+    assert by["one"]["mails"] == 14 and by["two"]["mails"] == 11
     assert by["three"]["mails"] == 3
     assert by["one"]["senders"] == 5
     assert body["totals"] == {
-        "mails": 25, "size": sum(a["size"] for a in body["accounts"]),
+        "mails": 28, "size": sum(a["size"] for a in body["accounts"]),
         "senders": sum(a["senders"] for a in body["accounts"])}
     assert all(a["scanned_ts"] and not a["failed"] for a in by.values())
     assert all(a["status"] == "done" for a in by.values())
@@ -190,13 +190,13 @@ def test_new_counts_from_the_remembered_visit_else_the_last_week(three):
             for a in allaccounts.build({}, now=soon)["accounts"]}
     assert week == {"one": 0, "two": 0, "three": 0}
     assert {a["name"]: a["new"]
-            for a in _overview()["accounts"]} == {"one": 12, "two": 10,
+            for a in _overview()["accounts"]} == {"one": 14, "two": 11,
                                                   "three": 3}
     assert {a["new_basis"] for a in _overview()["accounts"]} == {"week"}
     # a remembered visit counts from THAT account's moment, per account
     body = allaccounts.build({"one": 0, "two": soon}, now=soon)
     by = {a["name"]: a for a in body["accounts"]}
-    assert by["one"]["new"] == 12 and by["two"]["new"] == 0
+    assert by["one"]["new"] == 14 and by["two"]["new"] == 0
     assert by["one"]["new_basis"] == "visit"
     assert by["three"]["new_basis"] == "week"
 
@@ -249,6 +249,8 @@ def test_freemail_is_matched_by_exact_address_only(three):
 
 def test_protected_replied_and_single_account_senders_are_left_out(three):
     keys = {r["key"] for r in _overview()["same_sender"]}
+    # (the person has 3 + 2 mails across two accounts: only the reply the
+    # user wrote keeps them off the list)
     assert "boss.example" not in keys and "keep@boss.example" not in keys
     assert "pal.example" not in keys and "pal@pal.example" not in keys
     assert "solo.example" not in keys
@@ -528,7 +530,7 @@ def test_trash_and_archive_with_skip_protected_never_touch_a_protected_sender(
     assert r.status_code == 400 and r.json()["detail"] == "delete_protected"
     assert not three["host-one"].mailbox["Trash"]
     assert not accountsmod.get("one").undo_log
-    assert len(three["host-one"].mailbox["INBOX"]) == 12   # nothing moved
+    assert len(three["host-one"].mailbox["INBOX"]) == 14   # nothing moved
 
 
 def test_the_ordinary_move_keeps_its_own_protection_rule(three):
