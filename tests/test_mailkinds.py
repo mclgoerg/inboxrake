@@ -129,7 +129,12 @@ NEVER_ADS = [
     "Ihre Abrechnung", "Your trip to Rome", "Ihr Betrag wurde erstattet",
     # ... and with a promotional word next to the transactional one
     "Your order is on its way - 10% off your next one",
-    "Cancellation fee waived: 20% off",    # nothing transactional in the words, but pastdate has read it as a
+    "Cancellation fee waived: 20% off",
+    # a reminder / thank-you / code that carries a promotional word and none
+    # of the transactional ones (pastdate has read what it is)
+    "Reminder: webinar on 3 Dec - 20% off", "Your table on Friday - 20% off",
+    "Don't forget your visit tomorrow - 20% off",
+    "Thank you for joining us - 20% off", "Danke für Ihren Besuch - 20 % Rabatt",    # nothing transactional in the words, but pastdate has read it as a
     # reminder, a thank-you (a receipt) or a code
     "Reminder: webinar on 3 Dec", "Your table on Friday",
     "Don't forget your visit tomorrow", "Thank you for joining us",
@@ -195,6 +200,8 @@ def test_a_plain_mail_without_a_newsletter_header_is_no_ad():
 
 def test_a_biller_is_never_an_ad():
     assert kind("Weekly news", "news@stadtwerke.example", True) == ""
+    assert kind("Weekly news: 20% off", "news@stadtwerke.example", True) == ""
+    assert kind("Weekly news: 20% off", "news@acme.example", True) == "ads"
     assert kind("Stromrechnung November", "kunde@stadtwerke.example",
                 True) == "invoices"
 
@@ -916,3 +923,22 @@ def test_an_export_carries_the_sealed_action_and_an_import_unseals_it(
     data["rules"] = [{**by_name["ads"], "only_kind": None}]
     client.post("/api/import_config", json=data)
     assert rulesmod.load_rules() == []
+
+
+# Each of these words is transactional even when a promotional word sits next
+# to it: the mail is never an ad (and it is never a shipping update or an
+# order either - it just has no kind).
+TRANSACTIONAL_WORDS = [
+    "cancellation", "Stornierung", "gebucht", "booked", "Einkauf", "unterwegs",
+    "on the way", "arriving", "kommt an", "Abholung", "pickup", "PIN", "code",
+    "Lastschrift", "Gutschrift", "credit note", "Überweisung", "amount due",
+    "balance", "Betrag", "Erstattung", "itinerary", "Reise", "Bahnfahrt",
+    "trip", "stay", "Hotel", "Miete", "rental", "Vertrag", "contract",
+    "Kündigung", "policy", "Lizenz", "license", "Abrechnung", "Kassenzettel"]
+
+
+@pytest.mark.parametrize("word", TRANSACTIONAL_WORDS)
+def test_a_transactional_word_beats_a_promotional_one(word):
+    for subject in (f"Your {word} - 20% off", f"Ihre {word}: 20 % Rabatt"):
+        assert kind(subject, unsub=True) != "ads", subject
+        assert kind(subject, unsub=False) != "ads", subject
