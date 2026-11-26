@@ -11,6 +11,7 @@ import { api, downloadFile, errorText, noticeParams,
 import { assistantActorName } from "./activity";
 import { disablePush, pushMode, syncPush, watchPresence } from "./push";
 import { Sidebar, type SidebarTool } from "./components/Sidebar";
+import { nFiles, nMails } from "./components/RemoveFilesConfirm";
 import { openProposals } from "./proposals";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
@@ -140,7 +141,9 @@ const undoId = (u: { id?: string; ts: number; count: number; label: string }) =>
 const actionVerb = (a: string): string =>
   ({ trash: t("Move to Trash"), archive: t("Archive"), move: t("Move"),
      mark_read: t("Mark as read"), move_contents: t("Move"),
-     restore: t("audit.act.restore") } as Record<string, string>)[a] ?? a;
+     restore: t("audit.act.restore"),
+     remove_files: t("rmf.verb") } as Record<string, string>)[a]
+  ?? a;
 
 /** The account generation (bumped by switchAccount): a flow that awaits
  *  compares it before it sends. The one counter lives in accountGuard. */
@@ -850,6 +853,13 @@ export default function App() {
         } else if (fresh.length && fresh.every((u) => u.action === "trash")
             && !freshA.length) {
           text = t("toast.moved_trash", { n });
+        } else if (fresh.length && !freshA.length
+            && fresh.every((u) => u.action === "remove_files")) {
+          // "Keep the mails, remove the files": the mails stay, so the toast
+          // names files and mails (the originals wait in Trash)
+          text = t("rmf.toast", { files: nFiles(fresh.reduce(
+            (a, u) => a + Number(u.label_params?.files ?? 0), 0)),
+            mails: nMails(n) });
         } else text = t("done_moved", { n });    // also: both lists at once
         toast.show(text, {
           variant: "success",

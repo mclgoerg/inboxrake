@@ -204,7 +204,8 @@ mail reader that loads no remote content (a sender that mixes ads, order
 confirmations and shipping updates shows what it sends, so you can trash one
 kind or make a rule for it), a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,
-Attachments, rules and a scheduler (start one from a ready-made recipe) with
+Attachments (and "Keep the mails, remove the files": the mail stays, the
+file goes, one Undo puts it back), rules and a scheduler (start one from a ready-made recipe) with
 a checkup that finds rules that overlap, clash, point at a folder that is gone
 or never match,
 one-click and bulk unsubscribe with a

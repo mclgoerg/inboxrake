@@ -839,3 +839,20 @@ test("keep-safe: Duplicates never shows the box - a copy always stays, and a "
   expect(keepSafeCheck).not.toHaveBeenCalled();
   expect(keepSafePin).not.toHaveBeenCalled();
 });
+
+test("a lighter copy (files removed by Inboxrake) says so, in both languages",
+  async () => {
+  const light = { ...ver(6, 100), removed: 2 };
+  duplicateVersions.mockResolvedValue([dset("<rep@z.example>",
+    [light, ver(5, 900, "Archive")], { wasted: 0 })]);
+  duplicatesSummary.mockResolvedValue(summaryOf({ versions: 1 }));
+  show();
+  fireEvent.click(await screen.findByRole("tab", { name: /Versions/ }));
+  await screen.findByText(/Compare them; nothing is preselected/);
+  expect(screen.getAllByText("Files removed")).toHaveLength(1);   // only that copy
+  cleanup();
+  setLang("de");
+  show();
+  fireEvent.click(await screen.findByRole("tab", { name: /Versionen/ }));
+  expect(await screen.findByText("Dateien entfernt")).toBeTruthy();
+});

@@ -13,7 +13,7 @@ import type {
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
-  FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp,
+  FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp, RemoveCheck,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -239,6 +239,12 @@ const ERROR_CODES: Record<string, string> = {
   folder_rename_failed: "ferr.folder_rename_failed",
   folder_delete_failed: "ferr.folder_delete_failed",
   folder_recreate_failed: "ferr.folder_recreate_failed",
+  // Keep the mail, remove the file (backend/removefiles.py)
+  rm_nothing: "ferr.rm_nothing",
+  rm_not_scanned: "ferr.rm_not_scanned",
+  rm_changed: "ferr.rm_changed",
+  rm_zip_too_big: "ferr.rm_zip_too_big",
+  rm_failed: "ferr.rm_failed",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -341,7 +347,10 @@ export function errorText(detail: string): string {
  *  (key + params) the backend recorded for it, else the label as sent - a
  *  sender, a folder name, or an entry from before labels were structured. */
 export const undoLabel = (u: UndoLabelled): string =>
-  u.label_key ? t(u.label_key, u.label_params) : u.label;
+  // a removal of files names its files (the mails are the step's count)
+  u.label_key === "undo.remove_files" && u.label_params
+    ? t("rmf.n_files", { n: Number(u.label_params.files) })
+    : u.label_key ? t(u.label_key, u.label_params) : u.label;
 
 type UndoLabelled = Pick<UndoEntry, "label" | "label_key" | "label_params">;
 
@@ -349,6 +358,8 @@ type UndoLabelled = Pick<UndoEntry, "label" | "label_key" | "label_params">;
  *  see mailops.undo_last) worded in the user's language. */
 export function noticeParams(
     params: Record<string, string | number>): Record<string, string | number> {
+  // (`why`: the reason a removal of files left mails as they were)
+  if (typeof params.why === "string") params = { ...params, why: rmWhy(params.why) };
   const key = params.label_key;
   if (typeof key !== "string") return params;
   const sub: Record<string, string | number> = {};
@@ -356,6 +367,10 @@ export function noticeParams(
     if (k.startsWith("label_") && k !== "label_key") sub[k.slice(6)] = v;
   return { ...params, label: t(key, sub) };
 }
+
+/** The reasons a removal of files leaves a mail as it is (`why` of the
+ *  `remove_files_skipped` notice), in the user's language. */
+export const rmWhy = (why: string): string => t(`rmf.why.${why}`);
 
 async function req<T>(path: string, body?: unknown,
                       method?: "PUT" | "DELETE" | "PATCH",
@@ -659,6 +674,32 @@ export const api = {
   startAttachments: () => req<{ ok: boolean }>("/api/attachments", {}),
   attachments: () => req<AttMail[]>("/api/attachments"),
   attachmentsSummary: () => req<AttSummary>("/api/attachments/summary"),
+  // Keep the mail, remove the file (nothing changes by asking: `check`).
+  removeCheck: (items: [string, number][],
+                files: { name: string; size: number }[]) =>
+    req<RemoveCheck>("/api/attachments/remove/check", { items, files }),
+  removeFiles: (items: [string, number][],
+                files: { name: string; size: number }[], confirm: number,
+                lang: string) =>
+    req<{ ok: boolean; queued: number; job?: string }>(
+      "/api/attachments/remove", { items, files, confirm, lang }),
+  /** The files as one .zip, handed to the browser as a download. */
+  removeZip: async (items: [string, number][],
+                    files: { name: string; size: number }[]): Promise<void> => {
+    const res = await fetch(withAccount("/api/attachments/remove/zip"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, files }) });
+    if (!res.ok) {
+      let detail = await res.text();
+      try { detail = JSON.parse(detail).detail ?? detail; } catch { /* plain */ }
+      const parsed = parseErrorDetail(detail);
+      const err: Error & { code?: string } =
+        new Error(detail ? errorText(detail) : `HTTP ${res.status}`);
+      if (parsed) err.code = parsed.code;
+      throw err;
+    }
+    saveBlob("inboxrake-files.zip", await res.blob());
+  },
   duplicates: () => req<DupSet[]>("/api/duplicates"),
   duplicatesSummary: () => req<DupSummary>("/api/duplicates/summary"),
   duplicateVersions: () => req<DupSet[]>("/api/duplicates/versions"),

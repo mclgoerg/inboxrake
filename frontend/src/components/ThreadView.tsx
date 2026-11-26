@@ -224,7 +224,7 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
                           }} />
                         {!!body.atts?.length && (
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <AttachmentChips atts={body.atts} />
+                            <AttachmentChips atts={body.atts} mail={m} />
                           </div>
                         )}
                       </>

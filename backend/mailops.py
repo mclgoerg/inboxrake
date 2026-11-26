@@ -41,6 +41,7 @@ from . import demo
 from . import knownsenders
 from . import labelstore
 from . import mailkinds
+from . import mimecut
 from . import pastdate
 from . import pinstore
 from . import rhythm
@@ -295,6 +296,13 @@ FOLDER_CREATE_FAILED = "folder_create_failed"    # folder=
 FOLDER_RENAME_FAILED = "folder_rename_failed"    # folder=
 FOLDER_DELETE_FAILED = "folder_delete_failed"    # folder=
 FOLDER_RECREATE_FAILED = "folder_recreate_failed"    # folder=: undo
+
+# Keep the mail, remove the file (backend/removefiles.py)
+RM_NOTHING = "rm_nothing"            # no known mail holds a chosen file
+RM_NOT_SCANNED = "rm_not_scanned"    # scan first
+RM_CHANGED = "rm_changed"            # the mails differ from the confirm
+RM_ZIP_TOO_BIG = "rm_zip_too_big"    # mb=: too big to download in one piece
+RM_FAILED = "rm_failed"              # anything unexpected (see the log)
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -310,6 +318,7 @@ FOLDER_ERROR_CODES = frozenset({
     FOLDER_NOT_EMPTY, FOLDER_HAS_CHILDREN, FOLDER_USED_BY_RULES,
     FOLDER_RULES_CHANGED, FOLDER_CREATE_FAILED, FOLDER_RENAME_FAILED,
     FOLDER_DELETE_FAILED, FOLDER_RECREATE_FAILED,
+    RM_NOTHING, RM_NOT_SCANNED, RM_CHANGED, RM_ZIP_TOO_BIG, RM_FAILED,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,
@@ -1564,7 +1573,7 @@ def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
         "(UID FLAGS RFC822.SIZE INTERNALDATE "
         + ("X-GM-MSGID " if gm else "") +
         "BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO "
-        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST"
+        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST X-INBOXRAKE-REMOVED"
         + (" " + addresspick.HEADER_FIELDS if rcpt else "") + ")])")
     if status != "OK":
         return skipped
@@ -1586,7 +1595,11 @@ def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
             name, addr = parseaddr(header_text(msg.get("From")))
             addr = addr.strip().lower() or "(unparseable sender)"
             gmid = _GMID_RE.search(meta) if gm else None
+            # the lighter copies Inboxrake made (removefiles.py): one header
+            # per file taken out
+            removed = len(msg.get_all(REMOVED_HEADER) or [])
             messages.append({
+                **({"removed": removed} if removed else {}),
                 **({"gmid": gmid.group(1).decode()} if gmid else {}),
                 **({"to": addresspick.receiving_address(msg, rcpt)}
                    if rcpt else {}),
@@ -3188,6 +3201,86 @@ def _apply_removal(moved_uids: dict[str, set[int]], acc) -> dict:
     return meta
 
 
+def _apply_replacement(moved_uids: dict[str, set[int]],
+                       strips: dict[tuple[str, int], dict], acc) -> dict:
+    """A removal of files (lock held): the originals in `moved_uids` went to Trash
+    and each one's lighter copy (`strips[(folder, uid)]`) sits in the same
+    folder under a new UID. The index record and every group entry of a mail
+    follow it to the copy - same sender, date, read state and Message-ID, the
+    new UID and size, the files that stay - so the lists show the mail
+    without a rescan. A mail with no copy on record is dropped like
+    `_apply_removal` would. Returns the originals' metadata (for the undo
+    log) the same way."""
+    meta: dict[str, dict[int, dict]] = {}
+    swap: dict[tuple[str, int], tuple[int, int, int]] = {}
+    for folder, gone in moved_uids.items():
+        for uid in gone:
+            old = acc.index.pop(ikey(folder, uid), None)
+            if not old:
+                continue
+            meta.setdefault(folder, {})[uid] = old
+            s = strips.get((folder, uid))
+            if not s:
+                continue
+            gone_files = {(str(n).lower(), int(sz)) for n, sz in s["removed"]}
+            left = [a for a in old.get("atts") or ()
+                    if (a["name"].lower(), a["size"]) not in gone_files]
+            new = {k: v for k, v in old.items()
+                   if k not in ("atts", "att_size")}
+            new.update(uid=s["uid"], size=s["size"],
+                       removed=old.get("removed", 0) + len(s["removed"]))
+            if left:
+                new.update(atts=left, att_size=sum(a["size"] for a in left))
+            acc.index[ikey(folder, s["uid"])] = new
+            swap[(folder, uid)] = (s["uid"], s["size"] - old["size"],
+                                   old.get("att_size", 0)
+                                   - new.get("att_size", 0))
+    for recs in acc.state["groups"].values():
+        for key in list(recs):
+            rec = recs[key]
+            drop = dropped_size = dropped_unread = dropped_att = 0
+            for folder, gone in moved_uids.items():
+                uids = rec["folders"].get(folder)
+                if not uids:
+                    continue
+                kept = []
+                for u in uids:
+                    if u not in gone:
+                        kept.append(u)
+                    elif (folder, u) in swap:
+                        new_uid, delta, att_delta = swap[(folder, u)]
+                        kept.append(new_uid)
+                        rec["size"] = max(0, rec["size"] + delta)
+                        rec["att_size"] = max(
+                            0, rec.get("att_size", 0) - att_delta)
+                    else:
+                        drop += 1
+                        m = meta.get(folder, {}).get(u)
+                        if m:
+                            dropped_size += m["size"]
+                            dropped_unread += 0 if m["seen"] else 1
+                            dropped_att += m.get("att_size", 0)
+                if kept:
+                    rec["folders"][folder] = kept
+                else:
+                    rec["folders"].pop(folder)
+            rec["count"] -= drop
+            rec["size"] = max(0, rec["size"] - dropped_size)
+            rec["unread"] = max(0, rec["unread"] - dropped_unread)
+            rec["att_size"] = max(0, rec.get("att_size", 0) - dropped_att)
+            if rec["count"] <= 0:
+                recs.pop(key)
+    _refresh_smart_members(acc)
+    acc.state["groups_rev"] += 1
+    atts = acc.state["atts"]
+    if atts["status"] == "done":
+        # the page's header numbers follow the files that are left
+        held = [m["att_size"] for m in acc.index.values()
+                if m.get("att_size")]
+        atts.update(mails=len(held), size=sum(held))
+    return meta
+
+
 def _resolve_dest(conn, action: str, dest: str, acc=None) -> str:
     """Raw name of the folder an action moves mail into (via folder role)."""
     if action in ("trash", "archive"):
@@ -3389,7 +3482,8 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                  label_fields: dict | None = None,
                  copies: list[dict] | None = None,
                  audit_id: str = "", token: str = "",
-                 actor: str = "", job: str = "") -> str:
+                 actor: str = "", job: str = "",
+                 strips: dict | None = None) -> str:
     """Append a move job to the undo log (acc.lock held). A step of an AI
     assistant (`token` = the token's id, `actor` = its audit actor) goes to
     the assistant list instead, never into (or out of) the user's. `audit_id` is the
@@ -3426,6 +3520,12 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
                                    ("", 0))
             copy.setdefault("addr", addr)
             copy.setdefault("size", size)
+            # a removal of files: the lighter copy that now stands in the folder
+            # (Undo puts the original back and sends this one to Trash)
+            lighter = (strips or {}).get((copy["folder"], copy["source_uid"]))
+            if lighter:
+                copy["strip"] = {k: lighter[k] for k in (
+                    "uid", "uv", "size", "removed", "bytes") if k in lighter}
     entry = {"id": f"{time.time_ns():x}", "ts": int(time.time()), "label": label,
              "action": action, "count": len(items),
              "bytes": sum(w[1] for w in who),
@@ -3505,6 +3605,9 @@ def _delete_worker(acc) -> None:
 
         moved_uids: dict[str, set[int]] = {}
         copies: list[dict] = []
+        strips: dict[tuple[str, int], dict] = {}     # a removal of files: the copies
+        left_alone: list[tuple[str, int, str]] = []  # ... and what it skipped
+        step_label = [label]                 # the label the step ends up with
         cleaned_addrs: set[str] = set()      # senders whose mail left
         audit_id = auditlog.new_id()
         done = 0
@@ -3516,16 +3619,38 @@ def _delete_worker(acc) -> None:
             """acc.lock held: fold whatever WAS moved into the state."""
             if not moved_uids:
                 return
-            meta = _apply_removal(moved_uids, acc)
+            fields = None
+            if action == mimecut.ACTION:
+                meta = _apply_replacement(moved_uids, strips, acc)
+                n_files = sum(len(strips[(f, u)]["removed"])
+                              for f, us in moved_uids.items() for u in us
+                              if (f, u) in strips)
+                n_mails = sum(len(us) for us in moved_uids.values())
+                step_label[0] = (
+                    f"Removed {n_files} file{'' if n_files == 1 else 's'} "
+                    f"from {n_mails} mail{'' if n_mails == 1 else 's'}")
+                fields = {"label_key": "undo.remove_files", "files": n_files,
+                          "label_params": {"files": n_files, "n": n_mails}}
+            else:
+                meta = _apply_removal(moved_uids, acc)
             undo_id[0] = _record_undo(
-                label, meta, action, resolved[0], acc, copies=copies,
+                step_label[0], meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor,
-                job=job.get("job", "")) or undo_id[0]
+                job=job.get("job", ""), label_fields=fields,
+                strips=strips if action == mimecut.ACTION else None
+            ) or undo_id[0]
+            n = sum(len(s) for s in moved_uids.values())
+            acc.state["delete"]["moved"] += n
+            if action == mimecut.ACTION:
+                # what is freed is the files, the mails stay
+                freed[0] += sum(strips[(f, u)].get("bytes", 0)
+                                for f, us in moved_uids.items() for u in us
+                                if (f, u) in strips)
+                freed[1] += n
+                return
             # after the Undo step: nothing here may lose it
             cleaned_addrs.update(m["addr"] for by_uid in meta.values()
                                  for m in by_uid.values() if m.get("addr"))
-            n = sum(len(s) for s in moved_uids.values())
-            acc.state["delete"]["moved"] += n
             freed[0] += sum(m["size"] for by_uid in meta.values()
                             for m in by_uid.values())
             freed[1] += n
@@ -3541,6 +3666,19 @@ def _delete_worker(acc) -> None:
                 with acc.lock:
                     acc.state["delete"]["moved"] += done
                 statsmod.record_action("mark_read", done, 0, acc.name)
+            elif action == mimecut.ACTION:
+                from . import removefiles
+                # every copy is made AND checked first; only the originals
+                # whose copy passed are moved (to Trash, the usual way)
+                ready = removefiles.prepare(acc, job, progress_cb, strips,
+                                            left_alone)
+                moved = 0
+                if ready:
+                    moved, _, resolved[0] = _move_uids(
+                        ready, "trash", "", acc, progress_cb, moved_uids,
+                        copies)
+                with acc.lock:
+                    apply_partial()
             else:
                 moved, _, resolved[0] = _move_uids(
                     by_folder, action, dest, acc, progress_cb, moved_uids, copies)
@@ -3559,7 +3697,9 @@ def _delete_worker(acc) -> None:
                 acc.delete_pending.clear()
                 acc.state["notice"] = {"key": "action_cancelled", "params": {}}
         except Exception as exc:
-            error = error_text(exc)
+            # (a removal job never leaks the exception's text)
+            error = error_text(exc, generic=RM_FAILED
+                               if action == mimecut.ACTION else "")
             log.exception("action %r failed after %.1fs", action,
                           time.time() - t0)
             # Fold in whatever DID get moved before the failure, so the state
@@ -3567,15 +3707,25 @@ def _delete_worker(acc) -> None:
             with acc.lock:
                 apply_partial()
                 acc.state["delete"]["error"] = error
+        if strips:
+            # after the Undo step above: a copy whose original did not move
+            # (cancelled, a failure) is taken out again, so nothing is
+            # left twice
+            from . import removefiles
+            removefiles.discard_unmoved(acc, strips, moved_uids)
+        if left_alone:
+            from . import removefiles
+            with acc.lock:
+                acc.state["notice"] = removefiles.skipped_notice(left_alone)
         flush_undo(acc)
         if cleaned_addrs:
             senderchanges.note_cleaned(acc.name, cleaned_addrs)
-        if action != "mark_read" and freed[1]:
+        if action not in ("mark_read", mimecut.ACTION) and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
         auditlog.record(
             action, actor=actor, account=acc.name,
             count=done if action == "mark_read" else freed[1],
-            size=0 if action == "mark_read" else freed[0], label=label,
+            size=0 if action == "mark_read" else freed[0], label=step_label[0],
             outcome="error" if error else ("cancelled" if cancelled else "ok"),
             error=error, entry_id=audit_id)
         if job.get("completion") is not None:
@@ -3587,12 +3737,14 @@ def _delete_worker(acc) -> None:
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
-                  token: str = "") -> str:
+                  token: str = "", strip: dict | None = None) -> str:
     """Enqueue a background mail action (acc.lock held by caller). `token`
     (an AI assistant's token id) files the undo step in the assistant list.
+    `strip` is what the one other action (a removal of files) works from (the
+    files to take out of each mail, see removefiles.py).
     Returns the id of the queued job - its undo step carries it as `job` - or
     "" when there was nothing left to queue."""
-    if action not in ACTIONS:
+    if action not in ACTIONS and action != mimecut.ACTION:
         raise ValueError("bad action")
     if action == "move" and not dest:
         raise ValueError("move needs a target folder")
@@ -3617,7 +3769,8 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
     acc.delete_pending.append({"by_folder": by_folder, "label": label,
                             "action": action, "dest": dest, "actor": actor,
                             "token": token, "completion": completion,
-                            "job": job_id})
+                            "job": job_id,
+                            **({"strip": strip} if strip else {})})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
         # at start, so a stale "done" tick of an earlier job is not mistaken
@@ -4392,7 +4545,10 @@ def _dup_groups(mails: list[dict]) -> tuple[list[list[dict]],
     identical, versions = [], []
     for v in by_msgid.values():
         if len(v) > 1:
-            (identical if len({m["size"] for m in v}) == 1
+            # a lighter copy (files taken out by Inboxrake) and a mail that
+            # still has them are two versions even when the sizes agree
+            (identical if len({(m["size"], bool(m.get("removed")))
+                               for m in v}) == 1
              else versions).append(v)
     by_tuple: dict[tuple, list] = {}
     for m in mails:
@@ -4467,7 +4623,9 @@ def _dup_payload(sets: list[list[dict]], limit: int, kind: str,
                        "date": m["date"], "ts": m["ts"],
                        "subject": m["subject"], "addr": m["addr"],
                        "size": m["size"], "seen": m["seen"], "ai": None,
-                       "msgid": m["msgid"], "pinned": pin}
+                       "msgid": m["msgid"], "pinned": pin,
+                       **({"removed": m["removed"]} if m.get("removed")
+                          else {})}
                       for m, pin in zip(s, pins)]})
     # Reclaimable sets by what they would free, the rest by how much mail
     # they hold; the sort is stable, so ties keep their scan order.
@@ -4693,6 +4851,50 @@ def _exact_message_id_hits(conn, uids: list[bytes], msgid: str) -> list[bytes]:
     return exact
 
 
+REMOVED_HEADER = "X-Inboxrake-Removed"
+
+
+def _removed_marked(conn, uids: list[int]) -> set[int]:
+    """The UIDs among `uids` (selected folder) whose mail carries an
+    `X-Inboxrake-Removed` header: the lighter copies Inboxrake makes when it
+    takes files out of a mail (removefiles.py). They share the original's
+    Message-ID, so this header is what tells the two apart."""
+    out: set[int] = set()
+    for start in range(0, len(uids), FETCH_CHUNK):
+        part = uids[start:start + FETCH_CHUNK]
+        status, data = conn.uid(
+            "FETCH", ",".join(str(u) for u in part),
+            "(UID BODY.PEEK[HEADER.FIELDS (X-INBOXRAKE-REMOVED)])")
+        if status != "OK":
+            raise RuntimeError(CANNOT_READ_MOVED)
+        for item in data or []:
+            if isinstance(item, tuple) and len(item) >= 2:
+                m = _UID_RE.search(item[0])
+                if m and email.message_from_bytes(item[1]).get(
+                        REMOVED_HEADER) is not None:
+                    out.add(int(m.group(1)))
+    return out
+
+
+def _expunge_one(conn, uid: int) -> None:
+    """Delete exactly one mail of the selected (read-write) folder: \\Deleted
+    + UID EXPUNGE; without UIDPLUS a plain EXPUNGE, and only while nothing
+    else is flagged deleted (else the flag comes off again and this raises)."""
+    one = str(uid)
+    status, _ = conn.uid("STORE", one, "+FLAGS", r"(\Deleted)")
+    if status != "OK":
+        raise RuntimeError(CANNOT_FLAG)
+    if _supports_uidplus(conn):
+        status, _ = conn.uid("EXPUNGE", one)
+    elif _only_ours_deleted(conn, one):
+        status, _ = conn.expunge()
+    else:
+        status = "NO"
+    if status != "OK":
+        conn.uid("STORE", one, "-FLAGS", r"(\Deleted)")
+        raise RuntimeError(CANNOT_EXPUNGE)
+
+
 def _present_in_targets(conn, items) -> set[tuple[str, str]]:
     """The (folder, Message-ID) pairs of an undo entry whose mail already
     sits in its target folder (read-only look; a folder that cannot be
@@ -4733,10 +4935,24 @@ def _senders_of(conn, uids) -> dict[int, str]:
     return out
 
 
-def _present_strict(conn, mails: list[dict]) -> set[tuple[str, str]]:
+def _plain_uids(conn, found: list[bytes]) -> list[bytes]:
+    """`found` (UIDs of the selected folder) without the lighter copies
+    Inboxrake made by taking files out of a mail (REMOVED_HEADER): they share
+    their original's Message-ID but are never the mail a step moved when it
+    moved an original (a removal of files)."""
+    if not found:
+        return found
+    marked = _removed_marked(conn, [int(u) for u in found])
+    return [u for u in found if int(u) not in marked]
+
+
+def _present_strict(conn, mails: list[dict],
+                    originals: bool = False) -> set[tuple[str, str]]:
     """Like `_present_in_targets`, for a step whose Message-IDs may belong to
     OTHER mails (a restore step): a mail counts as already there only when a
-    mail with its Message-ID AND its recorded sender is in the folder."""
+    mail with its Message-ID AND its recorded sender is in the folder.
+    `originals`: the step is about the originals of a removal step, so a
+    lighter copy of the same Message-ID does not count as "already there"."""
     present: set[tuple[str, str]] = set()
     by_folder: dict[str, list[dict]] = {}
     for m in mails:
@@ -4748,6 +4964,8 @@ def _present_strict(conn, mails: list[dict]) -> set[tuple[str, str]]:
             continue
         for m in ms:
             found = _search_message_id(conn, m["msgid"])
+            if originals:
+                found = _plain_uids(conn, found)
             if found and m["addr"] in _senders_of(conn, found).values():
                 present.add((folder, m["msgid"]))
     return present
@@ -4952,6 +5170,11 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
     moved: list[int] = []
     trash = ""
     back: list[tuple[str, str, str, int]] = []
+    # a step about the originals of a removal step (re-armed after a
+    # restore was undone): the lighter copy of the same Message-ID is never
+    # one of them
+    originals = entry.get("action") == mimecut.ACTION \
+        or bool(entry.get("originals"))
     try:
         _recreate_folders(conn, entry)
         trash = entry.get("in") or folder_roles(conn, acc).get("trash")
@@ -4968,7 +5191,7 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
         if exact_copies is not None:
             present = set()
         elif entry.get("strict"):
-            present = _present_strict(conn, undo_mails(entry))
+            present = _present_strict(conn, undo_mails(entry), originals)
         else:
             present = _present_in_targets(conn, entry["items"])
         status, _ = conn.select(quote_folder(trash), readonly=False)
@@ -5014,6 +5237,8 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
             if not msgid or (folder, msgid) in present:
                 continue
             found = _search_message_id(conn, msgid)
+            if originals and entry.get("strict"):
+                found = _plain_uids(conn, found)
             if entry.get("strict") and found and (
                     len(found) > want[msgid] or (mail["addr"] and any(
                         a != mail["addr"]
@@ -5085,6 +5310,12 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
                                 log.warning("[%s] could not follow the "
                                             "restored mails' new UIDs",
                                             acc.name)
+        if exact_copies is not None and any(
+                c.get("strip") for c in exact_copies):
+            # an Undo of "remove the files": the originals are back, now the
+            # lighter copies go (never before their original is)
+            from . import removefiles
+            removefiles.trash_lighter_copies(conn, acc, exact_copies, trash)
         if unresolved:
             raise RuntimeError("undo_copy_unknown")
     finally:
@@ -5163,7 +5394,9 @@ def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
                 "who": [[m[2], m[3]] for m in mails], "count": len(mails),
                 "label": entry["label"],
                 # a Message-ID found more often than recorded is not moved
-                "strict": True}, run)
+                "strict": True,
+                "originals": part["head"].get("action") == mimecut.ACTION},
+                run)
 
 
 def _unmoved(entry: dict, run: dict) -> dict | None:
@@ -7167,13 +7400,18 @@ def _readable(acc, folder: str, uid: int) -> bool:
 
 
 def _message_detail(msg) -> dict:
-    return {
+    out = {
         "from": decode_mime(msg.get("From", "")),
         "to": decode_mime(msg.get("To", "")),
         "date": header_text(msg.get("Date", "")),
         "subject": decode_mime(msg.get("Subject", "")),
         "text": extract_text(msg),
     }
+    removed = mimecut.removed_of(msg)
+    if removed:
+        # files Inboxrake took out of this mail (see removefiles.py)
+        out["removed"] = removed
+    return out
 
 
 def _unsub_method(header: str, one_click: bool) -> str | None:

@@ -970,7 +970,9 @@ random.setstate(_state)
 
 
 def _server(mailbox: dict, **kw) -> FakeIMAP:
-    return FakeIMAP(mailbox, date_header=True, **kw)
+    # real_atts: the mails with attachments hold real files (Keep the mail,
+    # remove the file works on them)
+    return FakeIMAP(mailbox, date_header=True, real_atts=True, **kw)
 
 
 

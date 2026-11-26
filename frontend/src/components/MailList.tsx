@@ -8,7 +8,7 @@ import { t } from "../i18n";
 import { AiTag, Avatar, Button, MailRow, Meta, PinButton, SwipeRow, useBackLayer,
   type SwipeAction } from "./ui";
 import { BodyState, MailChips, MailHeader, MailText, RawHeaders, ReaderFrame,
-  UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
+  RemovedNote, UnsubCard, useReaderPin, type ReaderActions, type ReaderNav }
   from "./MailReader";
 import { ThreadView } from "./ThreadView";
 
@@ -66,7 +66,9 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
         <h2 className="mt-4 break-words type-title2 md:type-largetitle">
           {detail?.subject || mail.subject || t("(no subject)")}
         </h2>
-        <div className="mt-3"><MailChips mail={mail} detail={detail} /></div>
+        <div className="mt-3">
+          <MailChips mail={mail} detail={detail} onRemoved={onBack} />
+        </div>
         {headers && detail && <div className="mt-3"><RawHeaders detail={detail} /></div>}
         <div className="mt-5">
           {error ? <BodyState error={error} />
@@ -75,6 +77,7 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
               onToggleQuoted={() => setQuoted(!quoted)} />
             : <BodyState />}
         </div>
+        {!!detail?.removed?.length && <RemovedNote removed={detail.removed} />}
         {detail?.unsub && (
           <div className="mt-5"><UnsubCard mail={mail} unsub={detail.unsub} /></div>
         )}

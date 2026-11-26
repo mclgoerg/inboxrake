@@ -5,9 +5,9 @@
  * rendered, no remote content loaded and nothing is linkified (phishing). */
 
 import { Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, FileText,
-  FolderInput, HardDrive, Inbox, MailMinus, MessagesSquare, MousePointerClick,
-  MoreHorizontal, Paperclip, Pin, ShieldCheck, Trash2, User,
-  type LucideIcon } from "lucide-react";
+  FileX, FolderInput, HardDrive, Inbox, MailMinus, MessagesSquare,
+  MousePointerClick, MoreHorizontal, Paperclip, Pin, Scissors, ShieldCheck,
+  Trash2, User, type LucideIcon } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode } from "react";
 import { api, fmtSize, mailKey } from "../api";
@@ -17,10 +17,11 @@ import { fmtDate } from "../lib";
 import { nowDate } from "../clock";
 import { isForward, splitQuoted } from "../quoted";
 import type { Mail, MessageDetail, UnsubVia } from "../types";
+import { removeFiles } from "../removeFiles";
+import { KIND, extOf, kindOfName } from "./attKinds";
 import { FolderPicker } from "./FolderPicker";
-import { Avatar, Button, IconTile, Menu, MenuDivider, MenuItem, modalCount, Spinner,
-  Tag,
-  useMediaQuery, useOptionalToast } from "./ui";
+import { Avatar, Button, IconTile, Menu, MenuDivider, MenuHeading, MenuItem,
+  Modal, modalCount, Spinner, Tag, useMediaQuery, useOptionalToast } from "./ui";
 
 /* ------------------------------ app seams ------------------------------- */
 
@@ -408,14 +409,21 @@ export function MailHeader({ mail, detail, from, compact = false }: {
 const CHIP = "inline-flex items-center gap-1.5";
 const ATT_SHOWN = 6;
 
-/** The attachments the analysis found: name + size each. */
-export function AttachmentChips({ atts }: {
+/** The attachments the analysis found: name + size each. With `mail` every
+ *  chip is a button opening a small menu - "Remove the file, keep the mail..."
+ *  (a menu on a desktop, a sheet on a phone); `onRemoved` is told once the
+ *  removal started (the reader then goes back: the mail's UID is replaced). */
+export function AttachmentChips({ atts, mail, onRemoved }: {
   atts: { name: string; size: number }[];
+  mail?: Mail;
+  onRemoved?: () => void;
 }) {
   return (
     <>
       {atts.slice(0, ATT_SHOWN).map((a, i) => (
-        <Tag key={i} tone="attach"><span className={CHIP}>
+        mail ? <AttachmentChip key={i} file={a} mail={mail}
+          onRemoved={onRemoved} />
+        : <Tag key={i} tone="attach"><span className={CHIP}>
           <Paperclip size={14} aria-hidden />{a.name} · {fmtSize(a.size)}</span></Tag>
       ))}
       {atts.length > ATT_SHOWN && (
@@ -425,10 +433,126 @@ export function AttachmentChips({ atts }: {
   );
 }
 
+/** One attachment chip that opens the removal menu (see AttachmentChips). */
+function AttachmentChip({ file, mail, onRemoved }: {
+  file: { name: string; size: number }; mail: Mail; onRemoved?: () => void;
+}) {
+  const phone = useMediaQuery("(max-width: 639px)");
+  const toast = useOptionalToast();
+  const [sheet, setSheet] = useState(false);
+  const remove = async () => {
+    try {
+      const outcome = await removeFiles([{ name: file.name, size: file.size,
+        kind: kindOfName(file.name),
+        mails: [{ folder: mail.folder, uid: mail.uid, addr: mail.addr,
+          subject: mail.subject }] }]);
+      if (outcome === "started") onRemoved?.();
+    } catch (e: any) {
+      toast?.show(t("err.generic", { msg: e.message ?? e }),
+        { variant: "error" });
+    }
+  };
+  const label = t("rmf.chip_label", { name: file.name,
+    size: fmtSize(file.size) });
+  const face = (
+    <span className={CHIP}>
+      <Paperclip size={14} aria-hidden />{file.name} · {fmtSize(file.size)}
+    </span>);
+  // the chip's look is the attach Tag's; the control is a real button
+  const chip = `inline-flex min-h-6 cursor-pointer items-center rounded-full
+    bg-attach-bg px-2 py-0.5 type-caption text-attach-fg hover:opacity-80
+    focus-visible:outline-2 focus-visible:outline-accent coarse:min-h-11`;
+  const type = (extOf(file.name) || "file").toUpperCase();
+  if (phone) {
+    const k = KIND[kindOfName(file.name)];
+    return (
+      <>
+        <button type="button" className={chip} aria-label={label}
+          aria-haspopup="dialog" onClick={() => setSheet(true)}>{face}</button>
+        {sheet && (
+          <Modal size="sm" label={file.name} onClose={() => setSheet(false)}>
+            <div className="flex items-center gap-3 border-b border-line px-4
+              py-3">
+              <span aria-hidden className={`grid size-9 shrink-0
+                place-items-center rounded-control ${k.tile}`}>{k.icon}</span>
+              <span className="min-w-0">
+                <span className="block truncate type-body font-semibold">
+                  {file.name}</span>
+                <span className="block type-meta text-muted">
+                  {t("rmf.menu_sub", { size: fmtSize(file.size), type })}
+                </span>
+              </span>
+            </div>
+            <button type="button" className="flex min-h-12 w-full items-center
+              gap-3 px-4 text-left type-body hover:bg-chip"
+              onClick={() => { setSheet(false); void remove(); }}>
+              <Scissors size={18} aria-hidden />{t("rmf.menu")}
+            </button>
+            <div className="border-t border-line p-2">
+              <Button variant="secondary" className="min-h-11 w-full"
+                onClick={() => setSheet(false)}>{t("Cancel")}</Button>
+            </div>
+          </Modal>
+        )}
+      </>
+    );
+  }
+  return (
+    <Menu label={label} triggerClass={chip} trigger={face} align="left">
+      <MenuHeading>
+        {t("rmf.menu_sub", { size: fmtSize(file.size), type })}
+      </MenuHeading>
+      <MenuItem onClick={() => void remove()}>
+        <Scissors size={16} className="mr-2 inline align-text-bottom" />
+        {t("rmf.menu")}
+      </MenuItem>
+    </Menu>
+  );
+}
+
+/** The files Inboxrake took out of this mail ("Keep the mail, remove the
+ *  file"): one muted chip each, name and size. */
+export function RemovedChips({ removed }: {
+  removed: NonNullable<MessageDetail["removed"]>;
+}) {
+  return (
+    <>
+      {removed.map((r, i) => (
+        <Tag key={i}><span className={CHIP}>
+          <FileX size={14} aria-hidden />
+          {t("rmf.removed_chip", { name: r.name, size: fmtSize(r.size) })}
+        </span></Tag>
+      ))}
+    </>
+  );
+}
+
+/** The note under the text: which files were removed, when, and where the
+ *  original is. One paragraph per day. */
+export function RemovedNote({ removed }: {
+  removed: NonNullable<MessageDetail["removed"]>;
+}) {
+  const days = new Map<string, typeof removed>();
+  for (const r of removed) days.set(r.date, [...(days.get(r.date) ?? []), r]);
+  return (
+    <div className="mt-4 space-y-1.5 rounded-control bg-panel2 px-3 py-2
+      type-meta text-muted">
+      {[...days].map(([date, rs]) => (
+        <p key={date}>
+          {t("rmf.note", { n: rs.length, date: fmtDate(date, nowDate(),
+            { lang: getLang() }),
+            list: rs.map((r) => `${r.name} (${fmtSize(r.size)})`)
+              .join(", ") })}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /** Folder, size, what the body index found (tracking pixel - never loaded,
  *  click tracking) and the attachments, each only when known. */
-export function MailChips({ mail, detail }: {
-  mail: Mail; detail?: MessageDetail | null;
+export function MailChips({ mail, detail, onRemoved }: {
+  mail: Mail; detail?: MessageDetail | null; onRemoved?: () => void;
 }) {
   const tr = detail?.trackers;
   return (
@@ -447,7 +571,9 @@ export function MailChips({ mail, detail }: {
         <Tag tone="safe"><span className={CHIP}><ShieldCheck size={14} aria-hidden />
           {t("reader.no_trackers")}</span></Tag>
       )}
-      <AttachmentChips atts={detail?.atts ?? []} />
+      <AttachmentChips atts={detail?.atts ?? []} mail={mail}
+        onRemoved={onRemoved} />
+      {!!detail?.removed?.length && <RemovedChips removed={detail.removed} />}
     </div>
   );
 }

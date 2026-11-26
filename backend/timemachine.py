@@ -30,6 +30,7 @@ from . import accounts
 from . import auditlog
 from . import config as cfgmod
 from . import mailops
+from . import mimecut
 from . import rules as rulesmod
 from . import tenants
 
@@ -42,7 +43,8 @@ SENDERS_LISTED = 12        # senders named on a step's second line: the UI cuts
 # (by the same actor) are ONE step, "Unsubscribed from N senders"
 UNSUB_GROUP_S = 5 * 60
 
-_MOVES = ("trash", "archive", "move", "move_contents", "restore")
+_MOVES = ("trash", "archive", "move", "move_contents", "restore",
+          mimecut.ACTION)
 _STAYS = ("mark_read", "unsubscribe", "undo", "protect",
           "assistant_protect", "assistant_pin")
 _GONE = ("empty_trash", "purge")

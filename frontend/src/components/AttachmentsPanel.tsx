@@ -1,6 +1,6 @@
-import { Copy, Eye, File, FileArchive, FileText, Film, Image as ImageIcon,
-  LayoutGrid, List, Music, Paperclip, Trash2 } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { Copy, Eye, LayoutGrid, List, Paperclip, Scissors, Trash2 }
+  from "lucide-react";
+import type { MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { accountGuard } from "../accountGuard";
 import { api, fmtSize, mailKey } from "../api";
@@ -8,32 +8,13 @@ import { nowMs } from "../clock";
 import { t } from "../i18n";
 import { confirmTrashItems } from "../mailActions";
 import type { AppState, AttKind, AttMail, AttSummary, Mail } from "../types";
+import { removeFiles } from "../removeFiles";
+import { KIND, kindName } from "./attKinds";
 import { MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
 import { BarButton, BulkBar, Button, Checkbox, EmptyState, Loading, Modal,
   PanelHeader, PopupSelect, Segmented, ShortDate, Spinner, useOptionalToast }
   from "./ui";
-
-/** Look of each kind of file: icon + the token pair of its tile and its bar
- *  segment (colour is never the only signal - every use also prints the
- *  kind's name or extension). */
-const KIND: Record<AttKind, { icon: ReactNode; tile: string; fill: string }> = {
-  pdf: { icon: <FileText size={18} aria-hidden />,
-    tile: "bg-keep-bg text-keep-fg", fill: "bg-keep-fg" },
-  images: { icon: <ImageIcon size={18} aria-hidden />,
-    tile: "bg-info-bg text-info-fg", fill: "bg-info-fg" },
-  video: { icon: <Film size={18} aria-hidden />,
-    tile: "bg-attach-bg text-attach-fg", fill: "bg-attach-fg" },
-  audio: { icon: <Music size={18} aria-hidden />,
-    tile: "bg-safe-bg text-safe-fg", fill: "bg-safe-fg" },
-  archives: { icon: <FileArchive size={18} aria-hidden />,
-    tile: "bg-review-bg text-review-fg", fill: "bg-review-fg" },
-  documents: { icon: <FileText size={18} aria-hidden />,
-    tile: "bg-new-bg text-new-fg", fill: "bg-new-fg" },
-  other: { icon: <File size={18} aria-hidden />,
-    tile: "bg-chip text-muted", fill: "bg-faint" },
-};
-const kindName = (k: AttKind) => t(`atts.kind.${k}`);
 
 /** One file as a tile: the same (name, size) in several mails is ONE tile
  *  that stands for all of them. */
@@ -91,11 +72,20 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
   // A delete runs in the background and patches the index when it ends:
   // refresh the whole-mailbox numbers then.
   const wasDeleting = useRef(false);
+  // "Keep the mails, remove the files": the job swaps each mail for its
+  // lighter copy (new UID) - the list is read again once it has finished.
+  const removeSeq = useRef<number | null>(null);
   useEffect(() => {
     const now = state.delete?.status === "running";
     if (wasDeleting.current && !now && mails !== null) loadSummary();
     wasDeleting.current = now;
-  }, [state.delete?.status]);
+    if (removeSeq.current !== null && !now
+        && (state.delete?.seq ?? 0) > removeSeq.current) {
+      removeSeq.current = null;
+      setMails(null);
+      loadSummary();
+    }
+  }, [state.delete?.status, state.delete?.seq]);
 
   const analyze = async () => {
     setNote("");
@@ -217,6 +207,27 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
     }
   };
   const trash = () => trashMails(chosen);
+  // The files ticked on the page (every mail of the file is selected): what
+  // "Keep the mails, remove the files" takes out.
+  const picked = page.filter(fileSel);
+  const removeNow = async () => {
+    const switched = accountGuard();
+    try {
+      const seq = state.delete?.seq ?? 0;
+      const outcome = await removeFiles(picked.map((f) => ({
+        name: f.name, size: f.size, kind: f.kind,
+        mails: f.mails.map((m) => ({ folder: m.folder, uid: m.uid,
+          addr: m.addr, subject: m.subject })) })));
+      // the confirm can outlive this page: mail ids belong to one account
+      if (switched() || outcome !== "started") return;
+      removeSeq.current = seq;
+      setSel(new Set());
+      setNote(t("note.background", { verb: t("rmf.bar") }));
+      onDeleted();
+    } catch (e: any) {
+      setNote(t("err.generic", { msg: e.message ?? e }));
+    }
+  };
   // The reader's Trash: the same confirm and call for the one open mail.
   const readerActions: ReaderActions = {
     trash: async (m) => {
@@ -410,13 +421,19 @@ export function AttachmentsPanel({ state, onClose, onDeleted }: {
                 </span>
               </>}
               onClear={() => setSel(new Set())}
-              actions={
+              actions={<>
                 <BarButton icon={<Eye size={16} aria-hidden />}
                   disabled={chosen.length !== 1}
                   title={chosen.length !== 1 ? t("atts.open_one") : undefined}
                   onClick={() => setView(chosen[0])}>
                   {t("atts.open")}
-                </BarButton>}
+                </BarButton>
+                <BarButton variant="tinted" disabled={picked.length === 0}
+                  icon={<Scissors size={16} aria-hidden />}
+                  onClick={removeNow}>
+                  {t("rmf.bar")}
+                </BarButton>
+              </>}
               primary={
                 <Button variant="danger" size="sm"
                   className="inline-flex min-h-9 items-center gap-1.5

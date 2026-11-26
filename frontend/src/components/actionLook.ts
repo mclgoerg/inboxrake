@@ -1,6 +1,7 @@
 import { Archive, ArrowLeftRight, FolderInput, FolderPen, FolderPlus,
   FolderX, Globe, History, KeyRound, ListChecks, Mail,
-  MailCheck, Pin, RefreshCw, Send, ShieldCheck, Trash2, Undo2, BellOff, VenetianMask,
+  MailCheck, Pin, RefreshCw, Scissors, Send, ShieldCheck, Trash2, Undo2, BellOff,
+  VenetianMask,
   type LucideIcon } from "lucide-react";
 
 /** Icon + tint of an action's tile in the Activity timeline and in the
@@ -9,6 +10,7 @@ export const ACTION_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
   trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
   purge: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
   empty_trash: { icon: Trash2, tone: "bg-keep-bg text-keep-fg" },
+  remove_files: { icon: Scissors, tone: "bg-keep-bg text-keep-fg" },
   archive: { icon: Archive, tone: "bg-safe-bg text-safe-fg" },
   move: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },
   move_contents: { icon: FolderInput, tone: "bg-safe-bg text-safe-fg" },

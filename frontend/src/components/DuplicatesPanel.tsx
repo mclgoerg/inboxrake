@@ -367,6 +367,7 @@ export function DuplicatesPanel({ onClose, onDeleted, scannedTs, reloadKey }: {
             {mark === "keep" && <Tag tone="safe">{t("dups.keep_tag")}</Tag>}
             {mark === "remove" && <Tag tone="keep">{t("dups.remove_tag")}</Tag>}
             {i === largest && <Tag>{t("dups.largest")}</Tag>}
+            {!!m.removed && <Tag tone="info">{t("dups.removed")}</Tag>}
           </span>
         </button>
       </li>
