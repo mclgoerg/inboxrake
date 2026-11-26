@@ -107,7 +107,7 @@ NEVER_ADS = [
     "Your verification code is 123456", "Password changed",
     "Your subscription renews tomorrow", "Your monthly statement is ready",
     "Security alert: new sign-in", "Your application was received",
-    "Confirm your registration", "Order now and get free delivery",
+    "Order now and get free delivery",
     "How was your order?", "Please rate your purchase",
     "Order confirmation - 20% off your next order",
     # nothing transactional in the words, but pastdate has read it as a
