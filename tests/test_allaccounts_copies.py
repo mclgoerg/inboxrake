@@ -184,9 +184,9 @@ def test_the_finder_is_read_only(pair):
 
 # ------------------------------------------------------------- the one step
 
-def _trash(keep, drop):
+def _trash(keep, drop, expect=10_000):
     return client.post("/api/accounts/copies/trash",
-                       json={"keep": keep, "drop": drop})
+                       json={"keep": keep, "drop": drop, "expect": expect})
 
 
 def test_the_copies_in_the_chosen_account_go_to_trash_in_one_step_with_undo(pair):
@@ -286,6 +286,297 @@ def test_same_unknown_and_unscanned_accounts_are_refused(pair):
     assert not accountsmod.get("old").undo_log
 
 
+# ----------------------------- one mailbox twice, busy accounts, live checks
+
+def _one_box(monkeypatch, kind):
+    """Two accounts that reach ONE mailbox, scanned. kind: "login" (the same
+    host and login added twice) or "alias" (another host name and login that
+    land in the same mailbox). Returns the one fake server."""
+    mails = [_m(i, f"c{i}") for i in range(1, 6)]
+    box = FakeIMAP({"INBOX": mails, "Sent": [], "Trash": []})
+    login = {"host": "host-one", "user": "me@mine.example", "password": "pw"}
+    second = login if kind == "login" else {
+        "host": "host-two", "user": "alias@mine.example", "password": "pw"}
+    cfgmod.CONFIG_PATH.write_text(json.dumps({
+        "accounts": {"first": login, "second": second}}))
+    monkeypatch.setattr(mailops, "connect", lambda im, name=None: box)
+    for n in ("first", "second"):
+        mailops.run_scan(accountsmod.get(n))
+    return box
+
+
+def _renumber(name, by=1000):
+    """The account's index as if its mails had other UIDs (the index no longer
+    gives the one mailbox away)."""
+    acc = accountsmod.get(name)
+    with acc.lock:
+        rows = list(acc.index.values())
+        acc.index.clear()
+        for m in rows:
+            m["uid"] += by
+            acc.index[mailops.ikey(m["folder"], m["uid"])] = m
+
+
+@pytest.mark.parametrize("kind", ["login", "alias"])
+def test_one_mailbox_added_twice_is_no_pair_and_nothing_is_ever_trashed(
+        monkeypatch, kind):
+    box = _one_box(monkeypatch, kind)
+    # every mail of "first" has a "copy" in "second" - it is the same mails
+    assert _pairs() == {"pairs": [], "left_out": 0}
+    for keep, drop in (("first", "second"), ("second", "first")):
+        r = _trash(keep, drop)
+        assert r.status_code == 400 and r.json()["detail"] == "copy_same_mailbox"
+    assert len(box.mailbox["INBOX"]) == 5 and not box.mailbox["Trash"]
+    assert not accountsmod.get("first").undo_log
+    assert not accountsmod.get("second").undo_log
+    # "Just show them" shows nothing for it either
+    for acct, other in (("first", "second"), ("second", "first")):
+        r = client.get("/api/mails", params={"account": acct,
+                                             "finding": f"copies:{other}"})
+        assert r.json()["total"] == 0
+
+
+def test_the_same_login_is_refused_before_any_mail_server_is_asked(monkeypatch):
+    box = _one_box(monkeypatch, "login")
+    box.commands.clear()
+    assert _trash("first", "second").status_code == 400
+    assert box.commands == []
+
+
+def test_the_same_login_is_no_pair_even_when_the_scans_number_the_mails_apart(
+        monkeypatch):
+    """The settings alone say it is one mailbox - whatever the index looks
+    like (a rescan, another folder layout): not offered, not refused later."""
+    box = _one_box(monkeypatch, "login")
+    _renumber("second")
+    assert _pairs()["pairs"] == []
+    box.commands.clear()
+    r = _trash("first", "second")
+    assert r.status_code == 400 and r.json()["detail"] == "copy_same_mailbox"
+    assert box.commands == [] and len(box.mailbox["INBOX"]) == 5
+
+
+def test_a_job_that_starts_in_the_keeper_during_the_look_stops_the_step(
+        pair, monkeypatch):
+    """Checked once more right before the step is queued: a move the keeper
+    started while the two servers were being looked at."""
+    real = allaccounts._verify_live
+
+    def slow(*a, **kw):
+        out = real(*a, **kw)
+        accountsmod.get("proton").delete_pending.append(
+            {"by_folder": {"INBOX": {101}}})
+        return out
+    monkeypatch.setattr(allaccounts, "_verify_live", slow)
+    r = _trash("proton", "old")
+    assert r.status_code == 409 and r.json()["detail"] == "busy_action"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def test_two_accounts_whose_mails_sit_at_the_same_places_are_taken_for_one(
+        pair):
+    """Not one login in the settings (another host, another login), but the
+    shared mails have the same folder and UID in both: most of them - one
+    mailbox. No pair, no step, nothing moves."""
+    proton = accountsmod.get("proton")
+    with proton.lock:        # proton's index numbers c1..c5 as old's does
+        for m in proton.index.values():
+            if m["msgid"] in {f"<c{i}@x.example>" for i in range(1, 6)}:
+                m["uid"] -= 100
+        rows = list(proton.index.values())
+        proton.index.clear()
+        for m in rows:
+            proton.index[mailops.ikey(m["folder"], m["uid"])] = m
+    assert "proton" not in {p["b"] for p in _pairs()["pairs"]
+                            if p["a"] == "old"}
+    r = _trash("proton", "old")
+    assert r.status_code == 400 and r.json()["detail"] == "copy_same_mailbox"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not pair["host-proton"].mailbox["Trash"]
+
+
+def test_a_few_shared_places_do_not_make_two_mailboxes_one(pair):
+    """One coincidence out of nine is no mailbox: the pair is still offered."""
+    proton = accountsmod.get("proton")
+    with proton.lock:
+        m = next(m for m in proton.index.values()
+                 if m["msgid"] == "<c1@x.example>")
+        del proton.index[mailops.ikey(m["folder"], m["uid"])]
+        m["uid"] = 1                     # c1 is at INBOX 1 in old, too
+        proton.index[mailops.ikey(m["folder"], m["uid"])] = m
+    assert _row(_pairs(), "old", "proton")["mails"] == 9
+
+
+def test_an_alias_the_settings_and_the_index_cannot_tell_is_refused_live(
+        monkeypatch):
+    box = _one_box(monkeypatch, "alias")
+    _renumber("second")                  # the index gives nothing away now
+    assert _row(_pairs(), "first", "second")["mails"] == 5
+    box.commands.clear()
+    r = _trash("first", "second")
+    assert r.status_code == 400 and r.json()["detail"] == "copy_same_mailbox"
+    assert len(box.mailbox["INBOX"]) == 5 and not box.mailbox["Trash"]
+    assert not accountsmod.get("second").undo_log
+    # only reads were sent
+    assert not [c for c in box.commands if c[0] == "UID" and c[1] not in
+                ("FETCH", "SEARCH")]
+
+
+def test_a_check_that_cannot_be_answered_trashes_nothing(pair, monkeypatch):
+    monkeypatch.setattr(accountcopy, "same_server_mailbox", lambda a, b: None)
+    r = _trash("proton", "old")
+    assert r.status_code == 400 and r.json()["detail"] == "copies_unverified"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def test_an_unreachable_keeper_trashes_nothing(pair, monkeypatch):
+    real = mailops.connect
+
+    def connect(im, name=None):
+        if im["host"] == "host-proton":
+            raise OSError("connection refused")
+        return real(im, name)
+    monkeypatch.setattr(mailops, "connect", connect)
+    r = _trash("proton", "old")
+    assert r.status_code == 409
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def _server_side(pair, host, msgid):
+    return next(m for m in pair[host].mailbox["INBOX"] if m["msgid"] == msgid)
+
+
+def test_a_copy_that_left_the_keeping_account_since_the_scan_is_not_trashed(pair):
+    """The scan says proton holds c1; on the server it is gone (moved or
+    deleted by another client): old's c1 is then the only one - it stays."""
+    box = pair["host-proton"]
+    box.mailbox["INBOX"] = [m for m in box.mailbox["INBOX"]
+                            if m["msgid"] != "<c1@x.example>"]
+    r = _trash("proton", "old")
+    assert r.status_code == 200 and r.json()["queued"] == 4
+    _wait(accountsmod.get("old"))
+    assert "<c1@x.example>" in {m["msgid"] for m in
+                                pair["host-old"].mailbox["INBOX"]}
+    assert len(pair["host-old"].mailbox["Trash"]) == 4
+
+
+def test_a_copy_whose_twin_changed_on_the_server_is_not_trashed(pair):
+    _server_side(pair, "host-proton", "<c2@x.example>")["size"] = 999    # edited
+    _server_side(pair, "host-proton", "<c3@x.example>")["msgid"] = "<other@x>"
+    r = _trash("proton", "old")
+    assert r.json()["queued"] == 3
+    _wait(accountsmod.get("old"))
+    kept = {m["msgid"] for m in pair["host-old"].mailbox["INBOX"]}
+    assert {"<c2@x.example>", "<c3@x.example>"} <= kept
+
+
+def test_a_uid_that_now_holds_another_mail_in_the_keeper_is_not_a_twin(pair):
+    """The keeper's UID was reused by a different mail (UIDVALIDITY changed):
+    the Message-ID there is another one, so the copy in old stays."""
+    box = pair["host-proton"]
+    box.mailbox["INBOX"] = [m for m in box.mailbox["INBOX"]
+                            if m["msgid"] != "<c4@x.example>"]
+    box.mailbox["INBOX"].append(_m(104, "stranger"))
+    r = _trash("proton", "old")
+    assert r.json()["queued"] == 4
+    _wait(accountsmod.get("old"))
+    assert "<c4@x.example>" in {m["msgid"] for m in
+                                pair["host-old"].mailbox["INBOX"]}
+
+
+def test_a_copy_that_left_the_dropping_account_since_the_scan_is_not_asked_for(
+        pair):
+    box = pair["host-old"]
+    box.mailbox["INBOX"] = [m for m in box.mailbox["INBOX"]
+                            if m["msgid"] != "<c5@x.example>"]
+    box.mailbox["INBOX"].append(_m(16, "arrived"))   # (not as many as proton)
+    r = _trash("proton", "old")
+    assert r.status_code == 200 and r.json()["queued"] == 4
+    _wait(accountsmod.get("old"))
+    assert len(box.mailbox["Trash"]) == 4
+
+
+def test_when_no_twin_is_left_on_the_server_nothing_is_queued(pair):
+    pair["host-proton"].mailbox["INBOX"] = []
+    r = _trash("proton", "old")
+    assert r.status_code == 400 and r.json()["detail"] == "copies_none"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def test_the_look_at_the_keeping_account_only_reads(pair):
+    keeper = pair["host-proton"]
+    keeper.commands.clear()
+    assert _trash("proton", "old").status_code == 200
+    _wait(accountsmod.get("old"))
+    sent = keeper.commands
+    assert sent                                         # it did look
+    assert all(c[0] in ("SELECT", "UID") for c in sent), sent
+    assert all(c[2] is True for c in sent if c[0] == "SELECT"), sent
+    assert not [c for c in sent if c[0] == "UID" and c[1] not in
+                ("FETCH", "SEARCH")]
+    assert len(keeper.mailbox["INBOX"]) == 14 and not keeper.mailbox["Trash"]
+
+
+@pytest.mark.parametrize("who,field", [
+    ("proton", "pending"), ("proton", "inflight"), ("proton", "running"),
+    ("proton", "restore"), ("old", "pending"), ("old", "running")])
+def test_an_account_that_is_moving_mails_refuses_the_step(pair, who, field):
+    """A mail the keeper is already moving is still in its index: both copies
+    could end up in Trash. Refused (409) while either account is busy."""
+    acc = accountsmod.get(who)
+    with acc.lock:
+        if field == "pending":
+            acc.delete_pending.append({"by_folder": {"INBOX": {101}}})
+        elif field == "inflight":
+            acc.inflight = {"INBOX": {101}}
+        elif field == "running":
+            acc.state["delete"]["status"] = "running"
+        else:
+            acc.state["restore"]["status"] = "running"
+    r = _trash("proton", "old")
+    assert r.status_code == 409 and r.json()["detail"] == "busy_action"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def test_a_move_the_keeper_has_queued_for_real_stops_the_step(pair, monkeypatch):
+    """The user sends one of proton's copies to Trash (queued, not yet done);
+    "keep in proton, trash in old" must not also take old's twin."""
+    monkeypatch.setattr(mailops, "_delete_worker", lambda acc: None)
+    res = mailops.delete_messages([["INBOX", 101]], "trash",
+                                  acc=accountsmod.get("proton"))
+    assert res["queued"] == 1
+    r = _trash("proton", "old")
+    assert r.status_code == 409 and r.json()["detail"] == "busy_action"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+
+
+def test_more_copies_than_the_user_confirmed_are_refused(pair):
+    r = _trash("proton", "old", expect=4)
+    assert r.status_code == 409 and r.json()["detail"] == "copies_changed"
+    assert not pair["host-old"].mailbox["Trash"]
+    assert not accountsmod.get("old").undo_log
+    # the number that was confirmed goes through
+    assert _trash("proton", "old", expect=5).status_code == 200
+
+
+def test_fewer_copies_than_confirmed_are_fine(pair):
+    r = _trash("proton", "old", expect=500)
+    assert r.status_code == 200 and r.json()["queued"] == 5
+
+
+def test_a_step_without_the_confirmed_number_is_not_accepted(pair):
+    r = client.post("/api/accounts/copies/trash",
+                    json={"keep": "proton", "drop": "old"})
+    assert r.status_code == 422
+    assert not pair["host-old"].mailbox["Trash"]
+
+
 # --------------------------------------------------------- Just show them
 
 def test_just_show_them_lists_the_mails_with_a_copy_in_the_other_account(pair):
@@ -332,7 +623,7 @@ def test_another_users_accounts_never_appear_in_copies_or_search():
         assert c.get("/api/accounts/copies").status_code == 200
         assert c.get("/api/accounts/search", params={"q": "ab"}).status_code == 200
     r = bob.post("/api/accounts/copies/trash", json={
-        "keep": "alices-secret-name", "drop": "default"})
+        "keep": "alices-secret-name", "drop": "default", "expect": 1})
     assert r.status_code == 400
     assert "alices-secret-name" not in json.dumps(bob.get(
         "/api/accounts/search", params={"q": "ab"}).json())
@@ -343,7 +634,8 @@ def test_signed_out_users_get_nothing_in_login_mode():
     anon = TestClient(app)
     assert anon.get("/api/accounts/copies").status_code == 401
     assert anon.post("/api/accounts/copies/trash",
-                     json={"keep": "a", "drop": "b"}).status_code == 401
+                     json={"keep": "a", "drop": "b",
+                           "expect": 1}).status_code == 401
     assert anon.get("/api/accounts/search", params={"q": "ab"}).status_code == 401
 
 

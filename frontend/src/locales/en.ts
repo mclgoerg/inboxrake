@@ -665,7 +665,7 @@ export const EN: Record<string, string> = {
   "search.where": "Where to search",
   "search.where_this": "This account",
   "search.where_all": "All accounts",
-  "search.across_hint": "Opening a result switches to its account. Trash selected runs one step per account (the same confirm as “Trash in N”).",
+  "search.across_hint": "Opening a result switches to its account. Trash selected runs one step per account, after one confirm for all of them.",
   "search.note.body_off": "Mail text search is off here - only subjects and senders were searched.",
   "search.note.account_failed": "This account could not be searched.",
   "search.body_off": "Searching mail text is switched off for this account (Settings).",
@@ -879,6 +879,8 @@ export const EN: Record<string, string> = {
   "toast.delete_protected":
     "This sender is protected, so nothing was moved.",
   "toast.copies_none": "No exact copy is left to move to Trash.",
+  "toast.copies_changed": "There are more copies than the number you confirmed, so nothing was moved. Open Review again.",
+  "toast.copies_unverified": "We couldn't check these copies in the two accounts just now, so nothing was moved. Try again.",
   "pin.protect_tip":
     "Protect this mail - no bulk action, rule or AI pick will move it",
   "pin.unprotect_tip": "Remove this mail's protection",
@@ -1048,7 +1050,7 @@ export const EN: Record<string, string> = {
   "allp.copies_frees": "{account} frees {size} · nothing in {other} changes",
   "allp.copies_frees_only": "{account} frees {size}",
   "allp.copies_show": "Just show them",
-  "allp.copies_show_sub": "opens All mail in each account, filtered",
+  "allp.copies_show_sub": "opens All mail, filtered to them",
   "allp.copies_note": "One step in {account} with Undo. Pinned copies and protected senders are taken out of the {n} before it runs ({held} left out).",
   "allp.copies_note_none": "One step in {account} with Undo. Pinned copies and protected senders are taken out before it runs.",
   "allp.copies_show_note": "Opens All mail in {a}, narrowed to the mails that are also in {b}, with a link to the same view in {b}. Nothing is moved.",

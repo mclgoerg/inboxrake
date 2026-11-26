@@ -3131,15 +3131,18 @@ def get_accounts_copies():
 class CopiesTrashBody(BaseModel):
     keep: str = Field(min_length=1, max_length=200)
     drop: str = Field(min_length=1, max_length=200)
+    # how many copies the user confirmed: more than that is refused
+    expect: int = Field(ge=0, le=10_000_000)
 
 
 @app.post("/api/accounts/copies/trash")
 def post_accounts_copies_trash(body: CopiesTrashBody):
     """Move the copies in `drop` of the mails `keep` holds to Trash: one step
     in `drop` (its own Undo and Activity entry), worked out again here from
-    both accounts as they are now; `keep` is never touched."""
+    both accounts as they are now and checked on the two mail servers (read
+    only); never more than `expect`; `keep` is never touched."""
     try:
-        return allaccounts.trash_copies(body.keep, body.drop)
+        return allaccounts.trash_copies(body.keep, body.drop, body.expect)
     except KeyError as exc:
         raise HTTPException(400, str(exc.args[0]))
     except ValueError as exc:

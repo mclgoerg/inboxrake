@@ -175,6 +175,37 @@ test("a switch the panel did not ask for starts it over, as it always did", asyn
   expect(screen.getByRole("radio", { name: "This account" }).getAttribute("aria-checked")).toBe("true");
 });
 
+test("... and so do the time and folder choices (the old remount reset them too)", async () => {
+  const a = across();
+  const { again } = mount(a);
+  type("invoice");
+  await waitFor(() => expect(subj(1)).toBeTruthy());
+  const time = () => screen.getByRole("combobox", { name: "Time" }) as HTMLSelectElement;
+  const folder = () => screen.getByRole("combobox", { name: "Folder" }) as HTMLSelectElement;
+  fireEvent.change(time(), { target: { value: "year" } });
+  fireEvent.change(folder(), { target: { value: "INBOX" } });
+  expect([time().value, folder().value]).toEqual(["year", "INBOX"]);
+  again(across({ ...a, account: "old" }));          // the account menu
+  await waitFor(() => expect((field() as HTMLInputElement).value).toBe(""));
+  type("invoice");                                   // a new search
+  await waitFor(() => expect(subj(1)).toBeTruthy());
+  expect([time().value, folder().value]).toEqual(["any", ""]);
+});
+
+test("a switch the panel DID ask for keeps the time and folder choices with the results", async () => {
+  const a = across();
+  const { again } = mount(a);
+  type("invoice");
+  await pickAll();
+  await screen.findByText(/Hosting Co/);
+  const time = () => screen.getByRole("combobox", { name: "Time", hidden: true }) as HTMLSelectElement;
+  fireEvent.change(time(), { target: { value: "year" } });
+  fireEvent.click(subj(2));
+  again(across({ ...a, account: "work" }));
+  await screen.findByText("body text");
+  expect(time().value).toBe("year");
+});
+
 test("a sender of another account opens in that account", async () => {
   const a = across();
   mount(a);

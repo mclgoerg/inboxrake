@@ -6,7 +6,9 @@
  *    Undo and Activity entry - worked out AGAIN on the server from both
  *    accounts as they are now (what this dialog shows is not trusted); the
  *    account that keeps them is never touched. Pinned mails and mails of
- *    protected senders are taken out of the count before it runs;
+ *    protected senders are taken out of the count before it runs; the server
+ *    also looks at both mailboxes (read only) and refuses a step with more
+ *    copies than the number on the button;
  *  - just show them: All mail, filtered to those mails, in the account.
  *
  * The numbers are read again when the dialog opens. Esc is ignored while the
@@ -23,9 +25,12 @@ import { Button, DIALOG_ARM_MS, Loading, Modal, RadioRow } from "./ui";
 
 type Choice = "drop_a" | "drop_b" | "show";
 
-export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
-  onChanged, onClose }: {
+export function CopiesReview({ pair, current, exists, onFollow, onClaim,
+  onShow, onChanged, onClose }: {
   pair: CopiesPair;
+  /** The selected account: "Just show them" opens that one first when it is
+   *  one of the pair (nothing is switched), else the pair's first. */
+  current: string;
   /** Is this account still in the workspace? Asked right before the step. */
   exists: (account: string) => boolean;
   /** The move was queued: the app follows the job for ONE toast with Undo. */
@@ -33,13 +38,15 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
   /** Quiet / restore the selected account's own "moved" toast around it. */
   onClaim: (accounts: string[], on: boolean) => void;
   /** "Just show them": All mail in `account`, filtered to its copies of what
-   *  `other` holds. */
+   *  `other` holds (the other account is one tap away in a toast). */
   onShow: (account: string, other: string) => void;
   /** Something changed: the page reads the copies again. */
   onChanged: () => void;
   onClose: () => void;
 }) {
   const { a, b } = pair;
+  const first = current === b ? b : a;          // the one "Just show them" opens
+  const second = first === a ? b : a;
   // undefined = not read yet, null = read, nothing left between these two
   const [fresh, setFresh] = useState<CopiesPair | null | undefined>();
   const [choice, setChoice] = useState<Choice>("drop_a");
@@ -71,6 +78,18 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
       });
     return () => { live = false; };
   }, [a, b]);
+  // A refused step: the numbers on the buttons are read again (the server
+  // may have refused because there are more copies than were confirmed) and
+  // the button is disarmed again - the next confirm is of the new number.
+  const reread = () => {
+    api.accountsCopies()
+      .then((r) => {
+        if (!alive.current) return;
+        setFresh(r.pairs.find((p) => p.a === a && p.b === b) ?? null);
+        armedAt.current = Date.now();
+      })
+      .catch(() => {});
+  };
 
   const p = fresh ?? undefined;
   const dropped = (c: Choice) => c === "drop_a" ? a : c === "drop_b" ? b : "";
@@ -81,7 +100,7 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
   const go = async () => {
     if (choice === "show") {
       onClose();
-      onShow(a, b);
+      onShow(first, second);
       return;
     }
     const drop = dropped(choice);
@@ -94,7 +113,8 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
     setProblem("");
     onClaim([drop], true);
     try {
-      const r = await api.trashCopies(keep, drop);
+      // (the number on the button is what the user confirmed)
+      const r = await api.trashCopies(keep, drop, nTrash);
       if (r.job) onFollow({ kind: "trash", steps: [{ account: drop, job: r.job }] });
       else onClaim([drop], false);
       onChanged();
@@ -104,6 +124,7 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
       if (alive.current) {
         setRunning(false);
         setProblem(errorText(e?.message ?? String(e)));
+        reread();
       }
       onChanged();
     }
@@ -152,7 +173,7 @@ export function CopiesReview({ pair, exists, onFollow, onClaim, onShow,
             py-2 type-meta text-muted">
             <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
             <span>
-              {choice === "show" ? t("allp.copies_show_note", { a, b })
+              {choice === "show" ? t("allp.copies_show_note", { a: first, b: second })
                 : t(held > 0 ? "allp.copies_note" : "allp.copies_note_none",
                   { account: dropped(choice), n: p.mails, held })}
             </span>

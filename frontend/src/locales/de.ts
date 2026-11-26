@@ -275,6 +275,8 @@ export const DE: Record<string, string> = {
   "toast.delete_protected":
     "Dieser Absender ist geschützt - nichts wurde verschoben.",
   "toast.copies_none": "Es ist keine exakte Kopie mehr zum Verschieben in den Papierkorb übrig.",
+  "toast.copies_changed": "Es sind mehr Kopien da als die Zahl, die du bestätigt hast – deshalb wurde nichts verschoben. Öffne „Prüfen“ noch einmal.",
+  "toast.copies_unverified": "Wir konnten diese Kopien gerade nicht in den beiden Konten prüfen – deshalb wurde nichts verschoben. Versuche es erneut.",
   "pin.protect_tip":
     "Diese Mail schützen - keine Sammelaktion, Regel oder KI-Auswahl "
     + "verschiebt sie",
@@ -445,7 +447,7 @@ export const DE: Record<string, string> = {
   "allp.copies_frees": "{account} gibt {size} frei · in {other} ändert sich nichts",
   "allp.copies_frees_only": "{account} gibt {size} frei",
   "allp.copies_show": "Nur anzeigen",
-  "allp.copies_show_sub": "öffnet Alle Mails in jedem Konto, gefiltert",
+  "allp.copies_show_sub": "öffnet Alle Mails, darauf gefiltert",
   "allp.copies_note": "Ein Schritt in {account} mit Rückgängig. Angeheftete Kopien und geschützte Absender werden vorher aus den {n} herausgenommen ({held} ausgenommen).",
   "allp.copies_note_none": "Ein Schritt in {account} mit Rückgängig. Angeheftete Kopien und geschützte Absender werden vorher herausgenommen.",
   "allp.copies_show_note": "Öffnet Alle Mails in {a}, gefiltert auf die Mails, die auch in {b} liegen, mit einem Link zur gleichen Ansicht in {b}. Nichts wird verschoben.",
@@ -3138,7 +3140,7 @@ export const DE: Record<string, string> = {
   "search.where": "Wo gesucht wird",
   "search.where_this": "Dieses Konto",
   "search.where_all": "Alle Konten",
-  "search.across_hint": "Ein Treffer öffnet sich in seinem Konto. „Auswahl löschen“ führt einen Schritt pro Konto aus (dieselbe Bestätigung wie „Papierkorb in N“).",
+  "search.across_hint": "Ein Treffer öffnet sich in seinem Konto. „Auswahl löschen“ führt einen Schritt pro Konto aus, nach einer gemeinsamen Bestätigung.",
   "search.note.body_off": "Die Mailtext-Suche ist hier aus - gesucht wurde nur in Betreff und Absender.",
   "search.note.account_failed": "In diesem Konto konnte nicht gesucht werden.",
   "search.body_off": "Die Suche im Mailtext ist für dieses Konto ausgeschaltet (Einstellungen).",

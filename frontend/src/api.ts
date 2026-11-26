@@ -90,6 +90,8 @@ const ERROR_CODES: Record<string, string> = {
   all_pinned: "toast.all_pinned",
   delete_protected: "toast.delete_protected",
   copies_none: "toast.copies_none",
+  copies_changed: "toast.copies_changed",
+  copies_unverified: "toast.copies_unverified",
   // private sender knowledge (backend/knowledgestore.py)
   knowledge_bad_request: "know.err.bad_request",
   knowledge_bad_key: "know.err.bad_key",
@@ -558,10 +560,12 @@ export const api = {
   /** The exact copies between the accounts (read-only, no mail server). */
   accountsCopies: () => req<CopiesResp>("/api/accounts/copies"),
   /** Move the copies in `drop` of the mails `keep` holds to Trash: ONE step
-   *  in `drop`, worked out again on the server; `keep` is never touched. */
-  trashCopies: (keep: string, drop: string) =>
+   *  in `drop`, worked out again on the server and checked on the two mail
+   *  servers; `keep` is never touched. `expect` = the number the user
+   *  confirmed: the server refuses when there are more. */
+  trashCopies: (keep: string, drop: string, expect: number) =>
     req<{ ok: boolean; queued: number; job?: string; held: number }>(
-      "/api/accounts/copies/trash", { keep, drop }),
+      "/api/accounts/copies/trash", { keep, drop, expect }),
   folders: (account?: string) =>
     req<FoldersResp>(account
       ? `/api/folders?account=${encodeURIComponent(account)}`

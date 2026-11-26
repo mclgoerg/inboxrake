@@ -1,11 +1,12 @@
 """The "All accounts" page: one read-only look across every mailbox of the
 signed-in user's workspace.
 
-It is a PAGE, never a mode: nothing here selects an account, talks to a mail
-server or acts on a mailbox. It only reads what each account already holds in
-memory (its last scan: sender groups, index, counts) and the small
-per-account stores, one account after the other, each under its own lock -
-the accounts are never merged into one state. Acting stays per account: the
+It is a PAGE, never a mode: nothing here selects an account or acts on a
+mailbox on its own. It only reads what each account already holds in memory
+(its last scan: sender groups, index, counts) and the small per-account
+stores, one account after the other, each under its own lock - the accounts
+are never merged into one state. (The one step that trashes exact copies
+looks at both mailboxes themselves, read only, right before it is queued.) Acting stays per account: the
 UI runs one step per account through the ordinary per-account endpoints
 (`?account=`), each with its own Undo and Activity entry, and the
 unsubscribe of each account runs in that account (its method, its SMTP
@@ -30,6 +31,8 @@ Two parts:
 
 from __future__ import annotations
 
+import email
+import imaplib
 import logging
 import time
 
@@ -325,6 +328,100 @@ def _movable(name: str, keys: list, snaps: dict, info: dict) -> list[dict]:
     return out
 
 
+# From this share of the shared mails on, two accounts that hold them at the
+# very same place (the same folder and UID) are taken for ONE mailbox. Two
+# real mailboxes seldom number their mails alike; an alias, a second host name
+# or one login added twice always does - and "keep in A, trash in B" on one
+# mailbox would trash the only copies.
+SAME_PLACE_SHARE = 0.5
+
+
+def _one_mailbox(a: str, b: str, keys: list, snaps: dict) -> bool:
+    """Whether two accounts are one mailbox as far as the settings and the
+    last scans can tell: the same host and login, or most of the shared mails
+    sitting at the same (folder, UID) in both. Such a pair is never offered
+    and never trashed."""
+    if accountcopy.same_mailbox_configured(a, b):
+        return True
+    if not keys:
+        return False
+    same = sum(1 for k in keys
+               if (snaps[a][k]["folder"], snaps[a][k]["uid"])
+               == (snaps[b][k]["folder"], snaps[b][k]["uid"]))
+    return same > SAME_PLACE_SHARE * len(keys)
+
+
+def _busy(acc) -> bool:
+    """A move / deletion job is queued, running or being worked on, or a
+    restore runs (the account's mails are changing): its index is not what
+    the mailbox holds. acc.lock is taken here."""
+    with acc.lock:
+        return bool(acc.delete_pending or acc.inflight
+                    or acc.state["delete"]["status"] == "running"
+                    or acc.state["restore"]["status"] == "running")
+
+
+def _still_there(conn, wanted: dict[tuple[str, int], dict]) -> set:
+    """The keys of `wanted` ({(Message-ID, size): the index entry}) whose mail
+    is, right now, at the folder and UID the scan recorded with that very
+    Message-ID and size. Read only (EXAMINE + FETCH of the headers); a folder
+    or UID the server does not answer for simply is not in the result."""
+    by_folder: dict[str, dict[int, tuple[str, int]]] = {}
+    for key, m in wanted.items():
+        by_folder.setdefault(m["folder"], {})[m["uid"]] = key
+    found: set[tuple[str, int]] = set()
+    for folder, uids in by_folder.items():
+        status, _ = conn.select(mailops.quote_folder(folder), readonly=True)
+        if status != "OK":
+            continue
+        order = sorted(uids)
+        for start in range(0, len(order), mailops.FETCH_CHUNK):
+            part = order[start:start + mailops.FETCH_CHUNK]
+            status, data = conn.uid(
+                "FETCH", ",".join(str(u) for u in part),
+                "(UID RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+            if status != "OK":
+                continue
+            for item in data or []:
+                if not (isinstance(item, tuple) and len(item) >= 2):
+                    continue
+                um = mailops._UID_RE.search(item[0])
+                sm = mailops._SIZE_RE.search(item[0])
+                key = uids.get(int(um.group(1))) if um else None
+                if key is None or not sm:
+                    continue
+                mid = mailops.header_text(email.message_from_bytes(
+                    item[1]).get("Message-ID")).strip()[:300]
+                if (mid, int(sm.group(1))) == key:
+                    found.add(key)
+    return found
+
+
+def _verify_live(keep: str, drop: str, free: list[dict],
+                 snaps: dict) -> list[dict]:
+    """The copies of `free` that are still where the scans saw them - in
+    `drop` (they are about to move) and in `keep` (what stays) - checked on the
+    two mail servers, read only, by Message-ID and size. Whatever is not there
+    any more is left out. Nothing is queued - COPY_SAME_MAILBOX when the two
+    connections turn out to reach ONE mailbox, COPIES_UNVERIFIED when that
+    cannot be told or read."""
+    keys = [(m["msgid"], m["size"]) for m in free]
+    try:
+        with accountcopy.open_pair(accountsmod.get(keep),
+                                   accountsmod.get(drop)) as (a, b):
+            same = accountcopy.same_server_mailbox(a, b)
+            if same:
+                raise ValueError(mailops.COPY_SAME_MAILBOX)
+            if same is None:
+                raise ValueError(mailops.COPIES_UNVERIFIED)
+            there_keep = _still_there(a, {k: snaps[keep][k] for k in keys})
+            there_drop = _still_there(b, {k: snaps[drop][k] for k in keys})
+    except (imaplib.IMAP4.error, OSError) as exc:
+        raise ValueError(mailops.COPIES_UNVERIFIED) from exc
+    return [m for m, k in zip(free, keys)
+            if k in there_keep and k in there_drop]
+
+
 def copies() -> dict:
     """The exact copies across the accounts of the workspace, per pair:
     `{pairs: [{a, b, mails, size, first, last, in_a: {trash, size, held},
@@ -338,6 +435,8 @@ def copies() -> dict:
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             keys, made = _shared(a, b, snaps, info)
+            if _one_mailbox(a, b, keys, snaps):
+                continue            # one mailbox twice: nothing to trash there
             made_total += made
             if not keys:
                 continue
@@ -367,33 +466,56 @@ def copy_handles(name: str, other: str) -> frozenset[tuple[str, int]]:
         return frozenset()
     snaps, info = _pairs([name, other])
     keys, _made = _shared(name, other, snaps, info)
+    if _one_mailbox(name, other, keys, snaps):
+        return frozenset()
     return frozenset((snaps[name][k]["folder"], snaps[name][k]["uid"])
                      for k in keys)
 
 
-def trash_copies(keep: str, drop: str) -> dict:
+def trash_copies(keep: str, drop: str, expect: int | None = None) -> dict:
     """Move the copies in `drop` that are exact copies of mails in `keep` to
     Trash - ONE step in `drop` with its own Undo (the ordinary move job). The
     answer is worked out again HERE, from the two accounts as they are now:
-    nothing the caller saw is trusted. The account that keeps them is never
-    touched. Raises KeyError for an account that is not the workspace's,
-    ValueError(COPIES_NONE) when nothing is left, RuntimeError when a scan
-    is not finished in either account."""
+    nothing the caller saw is trusted, and each copy is looked at on the two
+    mail servers (read only) right before the step is queued. The account that
+    keeps them is never touched. `expect` = how many the user confirmed: more
+    than that is refused (fewer is fine). Raises KeyError for an account that
+    is not the workspace's, ValueError(COPIES_NONE / COPY_SAME_MAILBOX /
+    COPIES_UNVERIFIED) when nothing is left, the two are one mailbox or the
+    copies could not be checked, RuntimeError(BUSY_ACTION / COPIES_CHANGED)
+    when either account is changing or there are more copies than confirmed,
+    and RuntimeError when a scan is not finished in either account."""
     if keep == drop:
         raise ValueError("same account")
     kacc, dacc = accountsmod.get(keep), accountsmod.get(drop)
+    if accountcopy.same_mailbox_configured(keep, drop):
+        raise ValueError(mailops.COPY_SAME_MAILBOX)
     for acc in (kacc, dacc):
         with acc.lock:
             if acc.state["status"] != "done":
                 raise RuntimeError("No completed scan")
+        # a mail the other side is already moving is still in its index:
+        # both copies could end up in Trash
+        if _busy(acc):
+            raise RuntimeError(mailops.BUSY_ACTION)
     snaps, info = _pairs([keep, drop])
     keys, _made = _shared(keep, drop, snaps, info)
+    if _one_mailbox(keep, drop, keys, snaps):
+        raise ValueError(mailops.COPY_SAME_MAILBOX)
     free = _movable(drop, keys, snaps, info)
+    held = len(keys) - len(free)             # pinned / protected: stay put
     if not free:
         raise ValueError(mailops.COPIES_NONE)
+    if expect is not None and len(free) > expect:
+        raise RuntimeError(mailops.COPIES_CHANGED)
+    free = _verify_live(keep, drop, free, snaps)
+    if not free:
+        raise ValueError(mailops.COPIES_NONE)
+    if _busy(kacc) or _busy(dacc):      # something started meanwhile
+        raise RuntimeError(mailops.BUSY_ACTION)
     res = mailops.delete_messages([[m["folder"], m["uid"]] for m in free],
                                   "trash", acc=dacc)
-    return {**res, "keep": keep, "drop": drop, "held": len(keys) - len(free)}
+    return {**res, "keep": keep, "drop": drop, "held": held}
 
 
 # ------------------------------------------------- Search across accounts

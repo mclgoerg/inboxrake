@@ -418,28 +418,43 @@ test("Review > Trash: one step in the chosen account, one toast with Undo - the 
   fireEvent.click(screen.getByRole("button", { name: /^Trash\s38\scopies\sin\swork$/ }));
   expect(await screen.findByText("Moved 38 mails to Trash in 1 account")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
-  expect(trashCopies).toHaveBeenCalledWith("proton", "work");
+  expect(trashCopies).toHaveBeenCalledWith("proton", "work", 38);
   expect(setAccount).toHaveBeenCalledTimes(1);
   expect(selectedBefore()).toBe("proton");
 });
 
-test("Review > Just show them: All mail in the first account, filtered to its copies, with a way to the other",
+test("Review > Just show them: the selected account of the pair first - no switch - with a way to the other",
   async () => {
+  mount();                       // the selected account is proton, the pair is (work, proton)
+  await reviewFirst();
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
+    finding: "copies:work" })));
+  expect(await screen.findByText(/mails that are also in work/)).toBeTruthy();
+  expect(window.location.hash).toBe("#/all");
+  expect(setAccount).toHaveBeenCalledTimes(1);        // proton stayed selected
+  expect(selectedBefore()).toBe("proton");
+  // and the same view in the other account is one tap away
+  fireEvent.click(await screen.findByRole("button", { name: "Open in work" }));
+  await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("work"));
+  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
+    finding: "copies:proton" })));
+});
+
+test("Review > Just show them: a pair without the selected account opens its first account (a switch, like Open)",
+  async () => {
+  copiesCall.mockResolvedValue({ left_out: 0, pairs: [{ a: "work", b: "icloud",
+    mails: 40, size: 1000, first: 1_600_000_000, last: 1_700_000_000,
+    in_a: { trash: 38, size: 900, held: 2 }, in_b: { trash: 40, size: 1000, held: 0 } }] });
   mount();
   await reviewFirst();
   fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
   fireEvent.click(screen.getByRole("button", { name: "Show them" }));
-  // work is not the selected account: it switches there (like Open does), then lists
   await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("work"));
   await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
-    finding: "copies:proton" })));
-  expect(await screen.findByText(/mails that are also in proton/)).toBeTruthy();
-  expect(window.location.hash).toBe("#/all");
-  // and the same view in the other account is one tap away
-  fireEvent.click(await screen.findByRole("button", { name: "Open in proton" }));
-  await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("proton"));
-  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
-    finding: "copies:work" })));
+    finding: "copies:icloud" })));
+  expect(await screen.findByText(/mails that are also in icloud/)).toBeTruthy();
 });
 
 test("Search: This account is the default and today's search; All accounts lists every account",

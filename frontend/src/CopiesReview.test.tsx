@@ -34,7 +34,7 @@ const onChanged = vi.fn();
 const onClose = vi.fn();
 const mount = (props: Record<string, unknown> = {}) => render(
   <ToastProvider><DialogProvider>
-    <CopiesReview pair={pair()} exists={() => true} onFollow={onFollow}
+    <CopiesReview pair={pair()} current="work" exists={() => true} onFollow={onFollow}
       onClaim={onClaim} onShow={onShow} onChanged={onChanged}
       onClose={onClose} {...props} />
   </DialogProvider></ToastProvider>);
@@ -68,7 +68,7 @@ test("the board's dialog: title, the three choices, the note and the button", as
     .toBe("false");
   expect(screen.getByText(/^proton frees 60\.0\sMB$/)).toBeTruthy();
   expect(radio(/^Just show them/)).toBeTruthy();
-  expect(screen.getByText("opens All mail in each account, filtered")).toBeTruthy();
+  expect(screen.getByText("opens All mail, filtered to them")).toBeTruthy();
   expect(screen.getByText(/One step in old with Undo\. Pinned copies and protected senders are taken out of the 412 before it runs \(3 left out\)\./))
     .toBeTruthy();
   expect(button("Trash 409 copies in old")).toBeTruthy();
@@ -100,8 +100,9 @@ test("Trash: keep in the other account, ONE step in this one - its job is follow
   await ready();
   fireEvent.click(button("Trash 409 copies in old"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
-  // keep = proton, drop = old: the account that keeps them is the first argument
-  expect(trashCall).toHaveBeenCalledWith("proton", "old");
+  // keep = proton, drop = old: the account that keeps them is the first argument;
+  // the third is the number on the button - what the user confirmed
+  expect(trashCall).toHaveBeenCalledWith("proton", "old", 409);
   expect(trashCall).toHaveBeenCalledTimes(1);
   expect(onClaim.mock.calls[0]).toEqual([["old"], true]);
   expect(onClaim.mock.invocationCallOrder[0]).toBeLessThan(trashCall.mock.invocationCallOrder[0]);
@@ -117,7 +118,7 @@ test("the other direction keeps the first account and trashes in the second", as
   fireEvent.click(radio(/^Keep them in old, trash the copies in proton/));
   fireEvent.click(button("Trash 405 copies in proton"));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
-  expect(trashCall).toHaveBeenCalledWith("old", "proton");
+  expect(trashCall).toHaveBeenCalledWith("old", "proton", 405);
   expect(onFollow.mock.calls[0][0].steps).toEqual([{ account: "proton", job: "j-old" }]);
 });
 
@@ -142,6 +143,47 @@ test("a refusal from the server is shown, the claim let go and the dialog stays"
   expect(onFollow).not.toHaveBeenCalled();
   expect(onClaim).toHaveBeenLastCalledWith(["old"], false);
   expect(button("Trash 409 copies in old")).toBeTruthy();      // try again
+});
+
+test("Just show them opens the selected account of the pair first: no switch when it is the second", async () => {
+  mount({ current: "proton" });
+  await ready();
+  fireEvent.click(radio(/^Just show them/));
+  expect(screen.getByText(/^Opens All mail in proton, narrowed to the mails that are also in old, with a link to the same view in old\./))
+    .toBeTruthy();
+  fireEvent.click(button("Show them"));
+  expect(onShow).toHaveBeenCalledWith("proton", "old");
+});
+
+test("Just show them opens the first account of the pair when neither is selected, and the first when it is selected", async () => {
+  mount({ current: "work" });
+  await ready();
+  fireEvent.click(radio(/^Just show them/));
+  fireEvent.click(button("Show them"));
+  expect(onShow).toHaveBeenLastCalledWith("old", "proton");
+  cleanup();
+  mount({ current: "old" });
+  await ready();
+  fireEvent.click(radio(/^Just show them/));
+  fireEvent.click(button("Show them"));
+  expect(onShow).toHaveBeenLastCalledWith("old", "proton");
+});
+
+test("a step the server refuses as more than confirmed: the numbers are read again, the next confirm is of the new one", async () => {
+  trashCall.mockRejectedValueOnce(Object.assign(new Error("copies_changed"), { code: "copies_changed" }));
+  mount();
+  await ready();
+  copiesCall.mockResolvedValue({ pairs: [pair({ in_a: { trash: 420, size: 62 * MB, held: 3 } })],
+    left_out: 0 });
+  fireEvent.click(button("Trash 409 copies in old"));
+  expect(await screen.findByText(/more copies than the number you confirmed/)).toBeTruthy();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(await screen.findByRole("button", { name: flex("Trash 420 copies in old") })).toBeTruthy();
+  expect(copiesCall).toHaveBeenCalledTimes(2);
+  expect(trashCall).toHaveBeenCalledTimes(1);          // nothing runs by itself
+  fireEvent.click(button("Trash 420 copies in old"));
+  await waitFor(() => expect(trashCall).toHaveBeenCalledTimes(2));
+  expect(trashCall).toHaveBeenLastCalledWith("proton", "old", 420);
 });
 
 test("a move that queued nothing (no job) is not followed", async () => {

@@ -108,6 +108,9 @@ DELETE_PROTECTED = "delete_protected"   # delete_groups(skip_protected): the
                                      # selection is nothing but protected
 COPIES_NONE = "copies_none"          # the All accounts page: no exact copy
                                      # is left to move to Trash
+COPIES_CHANGED = "copies_changed"    # ... more copies than the user confirmed
+COPIES_UNVERIFIED = "copies_unverified"   # ... the copies could not be checked
+                                     # in the accounts themselves just now
 ROLE_NOT_CANDIDATE = "role_not_candidate"  # set_role_override: not that role's
 ROLE_AMBIGUOUS = "role_ambiguous"    # lookalike_*: choose the role folder first
 NOT_LOOKALIKE = "not_lookalike"      # lookalike_*: no look-alike of a role
@@ -293,7 +296,7 @@ FOLDER_ERROR_CODES = frozenset({
     ASSISTANT_TOKEN_LIMIT,
     ASSISTANT_TOKEN_UNKNOWN,
     NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED, DELETE_PROTECTED,
-    COPIES_NONE,
+    COPIES_NONE, COPIES_CHANGED, COPIES_UNVERIFIED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
     BUSY_PURGE,

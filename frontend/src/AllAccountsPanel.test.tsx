@@ -443,7 +443,7 @@ test("the step runs through the app: claimed, ONE job followed, nothing switched
   await screen.findByRole("radiogroup");
   fireEvent.click(screen.getByRole("button", { name: /^Trash\s409\scopies\sin\sold$/ }));
   await waitFor(() => expect(cb.onFollow).toHaveBeenCalled());
-  expect(trashCopies).toHaveBeenCalledWith("proton", "old");
+  expect(trashCopies).toHaveBeenCalledWith("proton", "old", 409);
   expect(cb.onClaim).toHaveBeenCalledWith(["old"], true);
   expect(cb.onFollow).toHaveBeenCalledWith({ kind: "trash", steps: [{ account: "old", job: "j-old" }] });
   expect(setAccount).not.toHaveBeenCalled();
@@ -459,6 +459,17 @@ test("Just show them goes through the app (it opens All mail there, like Open)",
   fireEvent.click(screen.getByRole("button", { name: "Show them" }));
   expect(cb.onShowCopies).toHaveBeenCalledWith("work", "icloud");
   expect(trashCopies).not.toHaveBeenCalled();
+});
+
+test("Just show them opens the selected account first when it is in the pair - nothing is switched", async () => {
+  show();                                              // the selected account is proton
+  await screen.findByTestId("copies-card");
+  fireEvent.click(within(copyRows()[0]).getByRole("button", { name: /^Review/ }));   // old + proton
+  await screen.findByRole("radiogroup");
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  expect(cb.onShowCopies).toHaveBeenCalledWith("proton", "old");
+  expect(setAccount).not.toHaveBeenCalled();
 });
 
 test("the copies are counted again once a move or a scan has ended", async () => {

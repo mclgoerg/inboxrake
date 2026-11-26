@@ -200,6 +200,8 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
     last.current = "";
     setQ(""); setRes(null); setSel(new Set()); setView(null); setNote("");
     setWhere("this"); setScope("meta"); setActing(null); setBusy(false);
+    // (the time and folder choices too: the old remount reset them)
+    setWhen("any"); setFolder("");
   }, [across?.account]);
   /** Open a hit in the reader; a hit of another account switches to it first
    *  (the reader reads in the selected account). */

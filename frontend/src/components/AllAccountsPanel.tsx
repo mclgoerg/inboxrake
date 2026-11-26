@@ -441,7 +441,8 @@ export function AllAccountsPanel({ cfg, names, current, scanRun, demo,
         </Modal>
       )}
       {review && (
-        <CopiesReview pair={review} exists={exists} onFollow={onFollow}
+        <CopiesReview pair={review} current={current} exists={exists}
+          onFollow={onFollow}
           onClaim={onClaim} onShow={onShowCopies}
           onChanged={() => { void reload(); void copies.reload(); }}
           onClose={() => setReview(null)} />
