@@ -17,6 +17,7 @@ const block = vi.fn();
 const keepCheck = vi.fn();
 const overviewCall = vi.fn();
 const undo = vi.fn();
+const scan = vi.fn();
 
 vi.mock("./api", () => ({
   api: {
@@ -38,7 +39,7 @@ vi.mock("./api", () => ({
     keepSafeCheck: (...a: unknown[]) => keepCheck(...a),
     keepSafePin: () => Promise.resolve({ pinned: 0, items: [] }),
     deleteRule: () => Promise.resolve(),
-    scan: () => Promise.resolve({ ok: true }),
+    scan: (...a: unknown[]) => scan(...a),
     mails: () => Promise.resolve({ items: [], total: 0 }),
     folders: () => Promise.resolve({ folders: [], wildcards: [] }),
   },
@@ -134,12 +135,13 @@ beforeEach(() => {
   unsubscribe.mockResolvedValue({ action: "done", via: "one_click", detail: "", addr: "x" });
   block.mockResolvedValue({ rule: { id: "r1" } });
   keepCheck.mockResolvedValue({ total: 1, kept: 0, classes: [] });
+  scan.mockResolvedValue({ ok: true });
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   for (const f of [setAccount, deleteGroups, unsubscribe, block, keepCheck,
-    overviewCall, undo]) f.mockReset();
+    overviewCall, undo, scan]) f.mockReset();
   setAccount.mockImplementation((n: string) => { current = n; });
   localStorage.clear();
   window.location.hash = "";
@@ -254,6 +256,19 @@ test("Unsubscribe and Block in N: also one call per account, none of them select
   fireEvent.click(await screen.findByRole("button", { name: /^Block in 3\saccounts$/ }));
   await waitFor(() => expect(block).toHaveBeenCalledTimes(3));
   expect(block.mock.calls.map((c) => c[4])).toEqual(["proton", "icloud", "work"]);
+  expect(setAccount).toHaveBeenCalledTimes(1);
+  expect(selectedBefore()).toBe("proton");
+});
+
+test("Scan all scans every account one after the other and selects none of them",
+  { timeout: 20000 }, async () => {
+  mount();
+  await openPage();
+  fireEvent.click(screen.getByRole("button", { name: "Scan all" }));
+  await waitFor(() => expect(scan).toHaveBeenCalledTimes(3), { timeout: 12000 });
+  expect(scan.mock.calls.map((c) => c[0])).toEqual(["proton", "icloud", "work"]);
+  expect(await screen.findByText("Scanned 3 accounts.", {}, { timeout: 12000 }))
+    .toBeTruthy();
   expect(setAccount).toHaveBeenCalledTimes(1);
   expect(selectedBefore()).toBe("proton");
 });
