@@ -43,6 +43,7 @@ from . import stats as statsmod
 from . import tenants
 from . import unsubstore
 from . import verdictstore
+from . import waiting
 
 log = logging.getLogger("inboxrake.digest")
 
@@ -87,10 +88,14 @@ _EN = {
     "still_sub_other": "{m} mails since you unsubscribed",
     "junk_one": "{n} mail in Junk",
     "junk_other": "{n} mails in Junk",
+    "waiting_one": "{n} person hasn't answered you",
+    "waiting_other": "{n} people haven't answered you",
+    "someone": "Someone",
     "ai_one": "The AI says {n} mail can go",
     "ai_other": "The AI says {n} mails can go",
     "btn_block": "Block",
     "btn_look": "Look",
+    "btn_show": "Show",
     "btn_review": "Review",
     "btn_rules": "Rules",
     "happened": "What happened",
@@ -152,10 +157,14 @@ _DE = {
     "still_sub_other": "{m} Mails seit der Abmeldung",
     "junk_one": "{n} Mail im Junk-Ordner",
     "junk_other": "{n} Mails im Junk-Ordner",
+    "waiting_one": "{n} Person hat dir nicht geantwortet",
+    "waiting_other": "{n} Personen haben dir nicht geantwortet",
+    "someone": "Jemand",
     "ai_one": "Die KI sagt: {n} Mail kann weg",
     "ai_other": "Die KI sagt: {n} Mails können weg",
     "btn_block": "Blockieren",
     "btn_look": "Ansehen",
+    "btn_show": "Zeigen",
     "btn_review": "Prüfen",
     "btn_rules": "Regeln",
     "happened": "Was passiert ist",
@@ -362,6 +371,16 @@ def _rows_data(S: dict, d: dict) -> tuple[list[dict], list[dict]]:
             "title": _plural(S, "ai", d["ai_mails"]),
             "sub": _fmt_bytes(d["ai_bytes"], lang_size),
             "btn": (S["btn_review"], "senders")})
+    if d.get("waiting"):        # asked-for reminders and overdue replies, open
+        # names as the push words them (name, else company); people without
+        # one are "Someone" - an address never reaches the mail
+        named = [n for n in d["waiting"] if n][:3]
+        if len(named) < min(3, len(d["waiting"])):
+            named.append(S["someone"])
+        needs.append({"icon": "…", "tone": "warn",
+                      "title": _plural(S, "waiting", len(d["waiting"])),
+                      "sub": ", ".join(named),
+                      "btn": (S["btn_show"], "waiting")})
 
     counts = d["counts"]
     parts = [S[k].format(n=counts[k]) for k in ("trash", "purge")
@@ -785,6 +804,11 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
                 ai_mails += rec["count"]
                 ai_bytes += rec["size"]
         junk = acc.state.get("junk_count") or 0
+    try:
+        waiting_names = waiting.reminded(acc, now)
+    except Exception:
+        log.exception("digest: waiting reminders unavailable")
+        waiting_names = []
     replied = mailops.load_replied(acc)
     junk_replied = sum(1 for m in mailops.role_mails("junk", acc)
                        if m.get("addr") in replied)
@@ -800,7 +824,9 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
             "weeks_in": weeks_in, "weeks_out": weeks_out,
             "size": size if indexed else None, "delta": delta,
             "still": len(still_senders), "still_mails": still_mails,
-            "junk": junk, "junk_replied": junk_replied, "ai_mails": ai_mails, "ai_bytes": ai_bytes}
+            "junk": junk, "junk_replied": junk_replied,
+            "waiting": waiting_names,
+            "ai_mails": ai_mails, "ai_bytes": ai_bytes}
 
 
 def _digest_cfg(account: str) -> tuple[str, str, bool]:

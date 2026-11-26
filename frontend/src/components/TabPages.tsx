@@ -1,5 +1,5 @@
 import { AtSign, BarChart3, ChevronRight, ClipboardList, Clock, Copy, Eye,
-  Ghost, History, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
+  Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
   from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -15,7 +15,7 @@ import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
-  SubscriptionsResp, TrackerReport, WrappedResp }
+  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
 import { ProposalBadge } from "./Sidebar";
@@ -36,7 +36,7 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
-  | "subscriptions" | "addresses" | "activity";
+  | "subscriptions" | "addresses" | "waiting" | "activity";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -305,13 +305,16 @@ function monthsEnding(last: string, n: number): string[] {
 
 /** The Insights tab: a preview widget per tool. Each widget loads what its
  *  tool loads (once per visit) and opens the tool on tap. */
-export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
-  onUnsubscribe }: {
+export function InsightsPage({ groups, state, subs, waiting, onOpen,
+  onRetryUnsub, onUnsubscribe }: {
   /** The Sender groups of the whole mailbox. */
   groups: Group[];
   state: AppState | null;
   /** The subscriptions found (null while unknown / not scanned). */
   subs?: SubscriptionsResp | null;
+  /** Mails you sent that nobody answered (null while unknown / not
+   *  scanned). */
+  waiting?: WaitingSummary | null;
   onOpen: (tool: TabTool) => void;
   /** Retry a failed unsubscribe on its group (toast + refresh are the
    *  caller's); without it the entries show no Retry. */
@@ -661,6 +664,28 @@ export function InsightsPage({ groups, state, subs, onOpen, onRetryUnsub,
         ) : <Skeleton className="h-48" />}
         </div>
       </section>
+
+      {/* the last card, after Recent activity */}
+      <button type="button" onClick={() => onOpen("waiting")}
+        className={CARD_BTN}>
+        <WidgetTitle icon={<Hourglass size={16} />} chevron>
+          {t("waiting.menu")}
+        </WidgetTitle>
+        <span className={`mt-2 block type-meta ${waiting?.overdue
+          ? "font-semibold text-review-fg" : "text-muted"}`}>
+          {waiting == null ? t("tab.waiting_sub")
+            : !waiting.watching ? t("tab.waiting_off")
+            : waiting.overdue > 0 ? t("tab.waiting_over", { n: waiting.overdue })
+            : t("tab.waiting_none")}
+        </span>
+        {waiting != null && waiting.watching && waiting.overdue > 0 && (
+          <span className="block truncate type-meta text-muted">
+            {t("tab.waiting_oldest", { n: waiting.oldest_days })}
+            {waiting.oldest_usual !== null
+              && ` \u00b7 ${t("waiting.usually", { n: waiting.oldest_usual })}`}
+          </span>
+        )}
+      </button>
     </div>
   );
 }

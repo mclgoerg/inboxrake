@@ -68,6 +68,8 @@ os.environ.update(
     SUBS_PATH=str(DATA / "subscriptions.json"),
     RULE_CHECKUP_PATH=str(DATA / "rule_checkup.json"),
     SENDER_CHANGES_PATH=str(DATA / "sender_changes.json"),
+    WAITING_PATH=str(DATA / "waiting.json"),
+    SENT_INDEX_PATH=str(DATA / "sent_index.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),
@@ -313,7 +315,7 @@ def _forget_the_last_visitor() -> None:
     import shutil
     from backend import (addresses, addressstore, dupstore, labelstore,
                          pinstore, rulecheckstore, senderchanges, substore,
-                         unsubstore, verdictstore)
+                         unsubstore, verdictstore, waitstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
             continue
@@ -324,6 +326,8 @@ def _forget_the_last_visitor() -> None:
     substore._cache.clear()
     rulecheckstore._cache.clear()
     senderchanges.reset_cache()
+    waitstore._cache.clear()
+    waitstore._index_cache.clear()
     addressstore._cache.clear()
     addresses._cache.clear()
     unsubstore._cache.clear()

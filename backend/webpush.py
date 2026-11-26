@@ -16,14 +16,18 @@ endpoint belongs to exactly one tenant (subscribing again from another
 identity moves it). Only jobs a person started push - never the auto-scan,
 rules or restore rescans - plus deliberate exceptions: an AI assistant's
 rule proposal (`proposal`, the maintainer's decision for the MCP endpoint), the
-notice of a new AI connection (`connection`) and a subscription reminder (`reminder`: the person switched that very reminder on,
-so it is theirs; backend/subscriptions.py) - and never to a device that
+notice of a new AI connection (`connection`), a subscription reminder (`reminder`: the person switched that very reminder on,
+so it is theirs; backend/subscriptions.py) and "no answer yet" on a mail you
+sent (`waiting`: a "Remind me" on one mail or "Tell me when a reply is
+overdue", both the person's own switch; backend/waiting.py) - and never to a device that
 reported the app visible a moment ago (presence): the in-app toast covers
 that. Whatever IS sent shows a notification (browsers revoke a subscription
 that gets silent pushes), and carries short generic text - never a subject or
 an address. The one thing a reminder adds is the service's name, the point of
 a reminder the person asked for, plus the amount and date it was announced
-with.
+with. A waiting push adds the person's name (or the company's, or just
+"Someone") and the days it has waited - and the mail's subject only when the
+person switched "Show the subject in the notification" on (default off).
 
 Files (per tenant, atomic write, tolerant read): push_subscriptions.json,
 `{"subscriptions": [{endpoint, p256dh, auth, lang, origin, created}]}`; the
@@ -437,6 +441,12 @@ STRINGS = {
         "reminder_amount": "{amount} around {date}",
         "reminder_date": "Expected around {date}",
         "reminder_signin": "last sign-in {date}",
+        "someone": "Someone",
+        "waiting_title": "No answer yet: {name}",
+        "waiting_days_one": "1 day",
+        "waiting_days_other": "{n} days",
+        "waiting_usual_one": "{days} - they usually answer within 1 day.",
+        "waiting_usual_other": "{days} - they usually answer within {n} days.",
         "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
                    "Sep", "Oct", "Nov", "Dec"],
         "test": "Notifications work",
@@ -467,6 +477,12 @@ STRINGS = {
         "reminder_amount": "{amount} etwa am {date}",
         "reminder_date": "Erwartet etwa am {date}",
         "reminder_signin": "letzte Anmeldung am {date}",
+        "someone": "Jemand",
+        "waiting_title": "Noch keine Antwort: {name}",
+        "waiting_days_one": "1 Tag",
+        "waiting_days_other": "{n} Tage",
+        "waiting_usual_one": "{days} - antwortet sonst innerhalb von 1 Tag.",
+        "waiting_usual_other": "{days} - antwortet sonst innerhalb von {n} Tagen.",
         "months": ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli",
                    "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
         "test": "Benachrichtigungen funktionieren",
@@ -518,11 +534,41 @@ def _reminder_payload(lang: str, account: str, prefix: bool,
             "tag": f"{account}:reminder:{digest}", "url": "/#/subscriptions"}
 
 
+def _waiting_payload(lang: str, account: str, prefix: bool,
+                     params: dict) -> dict:
+    """"No answer yet" on a mail you sent: who has not answered, for how long
+    and how fast that person usually answers (when known). Never an address;
+    the subject only when `subject` is in the params - the caller adds it
+    only when the person switched that on. Like the subscription reminder,
+    which names only the service, the page and the digest may show more."""
+    t = STRINGS.get(lang) or STRINGS["en"]
+    days = max(0, int(params.get("days") or 0))
+    name = str(params.get("name") or "").strip()[:80] or t["someone"]
+    how_long = (t["waiting_days_one"] if days == 1
+                else t["waiting_days_other"]).format(n=days)
+    usual = int(params.get("usual") or 0)
+    if usual > 0:
+        detail = (t["waiting_usual_one"] if usual == 1
+                  else t["waiting_usual_other"]).format(days=how_long, n=usual)
+    else:
+        detail = how_long
+    subject = str(params.get("subject") or "").strip()[:80]
+    body = " · ".join(p for p in ([account] if prefix else [])
+                      + ([f"\u201c{subject}\u201d"] if subject else [])
+                      + [detail] if p)
+    digest = hashlib.sha1(
+        f"{name}\0{params.get('ref') or ''}".encode()).hexdigest()[:8]
+    return {"title": t["waiting_title"].format(name=name), "body": body,
+            "tag": f"{account}:waiting:{digest}", "url": "/#/waiting"}
+
+
 def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
              n: int = 0, label: str = "", params: dict | None = None) -> dict:
     t = STRINGS.get(lang) or STRINGS["en"]
     if kind == "reminder":
         return _reminder_payload(lang, account, prefix, params or {})
+    if kind == "waiting":
+        return _waiting_payload(lang, account, prefix, params or {})
     if kind == "connection":
         # a hosted AI app was connected over OAuth: its host and level
         return {"title": t["connection"],
@@ -587,6 +633,17 @@ def reminder(acc, **params) -> None:
     never raises, devices that are looking at the app are left alone (the
     page shows it itself)."""
     job_finished(acc, "reminder", True, **params)
+
+
+def waiting(acc, **params) -> None:
+    """"No answer yet" on a mail you sent - a "Remind me" that is due or "Tell
+    me when a reply is overdue" (backend/waiting.py): `name` of the person
+    (empty = "Someone"), `days` open, `ref` (an opaque id, only to keep two
+    notifications apart) and how many days they `usual`ly take (0 / None =
+    unknown). Never an address; a `subject` only when the person switched
+    "Show the subject in the notification" on - the caller leaves it out
+    otherwise. Delivered like `reminder`."""
+    job_finished(acc, "waiting", True, **params)
 
 
 def _deliver(acc, kind: str, ok: bool, params: dict) -> None:

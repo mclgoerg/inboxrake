@@ -21,6 +21,7 @@ import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { SubscriptionsSettings } from "./SubscriptionsSettings";
+import { WaitingNotifySettings, WaitingSettings } from "./WaitingSettings";
 import { BUILTIN_CATEGORIES, CategoryList,
   parseCategories as parseCategoryText, ProtectedList }
   from "./SettingsLists";
@@ -208,7 +209,7 @@ type SecDef = {
 export function SettingsPage({ cfg, account, section, routeAccount = null,
   onSection, onClose, onAddAccount, onSaved, onAccountsChanged, aiAnswers = 0,
   onKnowledgeChanged = () => {}, scanState = null, controlRef,
-  onShowAssistantSteps, onMoveAccount }: {
+  onShowAssistantSteps, onMoveAccount, onWaitingChanged }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
   /** The open section (`#/settings/<section>`); null = the phone root list
@@ -240,6 +241,9 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   controlRef?: MutableRefObject<SettingsControl | null>;
   /** Settings > an account > "Move to another account…" (the copy page). */
   onMoveAccount?: (account: string) => void;
+  /** Waiting for a reply: its switch or a notification setting changed (the
+   *  Overview row and the phone card follow). */
+  onWaitingChanged?: () => void;
 }) {
   const wide = useSidebar();
   const toast = useToast();
@@ -793,12 +797,13 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       [t("preset.row"), t("Host"), t("IMAP port"), t("imap.security"),
         t("User"), t("Password"), t("smtp.host"), t("SMTP port"),
         t("smtp.security"), t("cafile.label"), t("folders.discover"),
-        t("account.rename"), t("account.add")]),
+        t("account.rename"), t("account.add"), t("waiting.settings_watch")]),
     general: sec("general", <SettingsIcon size={16} />, "neutral", undefined,
       [t("Appearance"), t("Language"), t("settings.new_badge"),
         t("smart.min_label"), t("body_search.label"), t("sub.settings_row")]),
     notifications: sec("notifications", <Bell size={16} />, "keep", undefined,
-      [t("notify.title")]),
+      [t("notify.title"), t("waiting.notify_tell"), t("waiting.after"),
+        t("waiting.subject")]),
     protected: sec("protected", <Shield size={16} />, "safe",
       cfg.protected?.length ? String(cfg.protected.length) : undefined, []),
     keepsafe: sec("keepsafe", <ShieldCheck size={16} />, "safe", undefined,
@@ -1213,6 +1218,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         setWildcards={setWildcards}
         reload={() => discoverFolders(editAcct, true)} />
     )}
+    <WaitingSettings account={editAcct} onChanged={onWaitingChanged} />
     <SettingsGroup header={t("settings.advanced")} footnote={t("smtp.help")}>
       <SettingsRow label={t("account.smtp_row")} expanded={smtpOpen}
         value={`${smtpHost || t("account.same_as_imap")} · ${f.smtpPort}`}
@@ -1365,6 +1371,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         </SettingsRow>
       </SettingsGroup>
     )}
+    <WaitingNotifySettings notificationsOn={notifyOn}
+      onChanged={onWaitingChanged} />
     </>
   );
 

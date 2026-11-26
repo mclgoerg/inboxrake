@@ -161,6 +161,8 @@ export const DE: Record<string, string> = {
   "overview.row_back_never": "{name} \u00b7 du hast bisher nichts davon geöffnet",
   "overview.row_back_quiet": "{name} \u00b7 {months} Monate lang still",
   "overview.row_back_more": "{name} und {n} weitere",
+  "overview.row_waiting": "{n} Antworten \u00fcberf\u00e4llig",
+  "overview.row_waiting_one": "1 Antwort \u00fcberf\u00e4llig",
   "overview.next": "Nächste Schritte",
   "overview.next_hint": "jeder Schritt zeigt dir zuerst, was passiert",
   "overview.subs_title": "{n} Abos, die du vielleicht nicht nutzt",
@@ -336,6 +338,13 @@ export const DE: Record<string, string> = {
   "tab.subs_services": "{n}\u00a0Dienste",
   "tab.subs_services_one": "1\u00a0Dienst",
   "tab.subs_empty": "Sieh, wofür du noch zahlst",
+  "tab.waiting_sub": "Sieh, wer dir nicht geantwortet hat",
+  "tab.waiting_none": "Keine Antwort ist \u00fcberf\u00e4llig",
+  "tab.waiting_off": "F\u00fcr dieses Konto aus",
+  "tab.waiting_over": "{n}\u00a0Antworten \u00fcberf\u00e4llig",
+  "tab.waiting_over_one": "1\u00a0Antwort \u00fcberf\u00e4llig",
+  "tab.waiting_oldest": "\u00e4lteste: {n}\u00a0Tage",
+  "tab.waiting_oldest_one": "\u00e4lteste: 1\u00a0Tag",
   "tab.space_scan": "Scanne dein Postfach, um die größten Absender zu sehen.",
   "tab.space_empty": "Noch nichts zu zeigen.",
   "tab.year_stories": "{year} in {n}\u00a0Geschichten",
@@ -540,6 +549,124 @@ export const DE: Record<string, string> = {
   "sub.ics_note":
     "Aus den Belegen in deinem Postfach erwartet. Inboxrake kann es nicht "
     + "für dich kündigen.",
+  "waiting.menu": "Warten auf Antwort",
+  "waiting.sub": "Mails von dir, bei denen du das letzte Wort hast \u00b7 {account}",
+  "waiting.sub_phone": "{n} \u00fcberf\u00e4llig \u00b7 {m} offen",
+  "waiting.pane_title": "Warten auf Antwort",
+  "waiting.tile_overdue": "\u00fcberf\u00e4llig - l\u00e4nger, als sie sonst brauchen",
+  "waiting.tile_open": "offen - du hast zuletzt geschrieben, noch keine Antwort",
+  "waiting.tile_usual": "so schnell antworten deine Kontakte meist",
+  "waiting.tile_days": "{n}\u00a0Tage",
+  "waiting.tile_days_one": "{n}\u00a0Tag",
+  "waiting.tabs": "Anzeigen",
+  "waiting.tab_open": "Offen \u00b7 {n}",
+  "waiting.tab_answered": "Beantwortet \u00b7 {n}",
+  "waiting.tab_needed": "Keine Antwort n\u00f6tig \u00b7 {n}",
+  "waiting.sorted": "Am l\u00e4ngsten \u00fcberf\u00e4llig zuerst",
+  "waiting.newest": "Neueste zuerst",
+  "waiting.you_wrote": "du hast am {date} geschrieben",
+  "waiting.n_days": "{n}\u00a0Tage",
+  "waiting.n_days_one": "{n}\u00a0Tag",
+  "waiting.usually": "meist {n}",
+  "waiting.d": "{n} T",
+  "waiting.usu": "meist {n} T",
+  "waiting.answered_same": "am selben Tag beantwortet",
+  "waiting.answered_after": "nach {n}\u00a0Tagen beantwortet",
+  "waiting.answered_after_one": "nach 1\u00a0Tag beantwortet",
+  "waiting.empty_open": "Niemand l\u00e4sst dich warten",
+  "waiting.empty_hint":
+    "Eine Mail von dir erscheint hier, sobald sie niemand beantwortet hat.",
+  "waiting.empty_answered": "Keine beantworteten Mails in den letzten 90 Tagen",
+  "waiting.empty_needed": "Keine Mail ist als \u201eKeine Antwort n\u00f6tig\u201c markiert",
+  "waiting.off_title": "Die gesendeten Mails dieses Kontos werden nicht beobachtet",
+  "waiting.off_hint":
+    "Schalte \u201eGesendete Mails auf Antworten beobachten\u201c unter "
+    + "Einstellungen \u203a Konto ein. Der erste Scan danach liest die "
+    + "Kopfzeilen der letzten 90 Tage deines Gesendet-Ordners - keinen "
+    + "Mailtext.",
+  "waiting.off_action": "Einstellungen \u00f6ffnen",
+  "waiting.scan_first":
+    "Scanne zuerst dein Postfach, dann siehst du hier, wer dir nicht geantwortet hat.",
+  "waiting.load_failed": "Die Liste konnte nicht geladen werden.",
+  "waiting.swipe_hint":
+    "Nach links wischen: Keine Antwort n\u00f6tig \u00b7 nach rechts: Erinnere mich",
+  "waiting.swipe_needed": "Nicht n\u00f6tig",
+  "waiting.swipe_remind": "Erinnern",
+  "waiting.footnote":
+    "Gez\u00e4hlt: Mails, die du an eine Person geschickt hast (nicht an eine "
+    + "Liste oder eine No-Reply-Adresse), in den letzten 90 Tagen, auf die "
+    + "nichts Neueres von ihr kam. Abgeglichen \u00fcber die Mail-Kopfzeilen "
+    + "- es wird kein Mailtext gelesen.",
+  "waiting.conversation": "Die Unterhaltung",
+  "waiting.you": "Du",
+  "waiting.they": "Gegen\u00fcber",
+  "waiting.ev_text": "{who}: \u201e{subject}\u201c",
+  "waiting.ev_answered": "nach {n} Tagen beantwortet",
+  "waiting.ev_answered_one": "nach 1 Tag beantwortet",
+  "waiting.ev_answered_same": "am selben Tag beantwortet",
+  "waiting.ev_last": "das letzte Wort hast du \u00b7 an {n} Personen",
+  "waiting.ev_last_one": "das letzte Wort hast du \u00b7 an 1 Person",
+  "waiting.today": "Heute",
+  "waiting.ev_none": "seit {n} Tagen keine Antwort",
+  "waiting.ev_none_one": "seit 1 Tag keine Antwort",
+  "waiting.ev_none_today": "noch keine Antwort",
+  "waiting.ev_usual":
+    "meist {n} Tage ({m} fr\u00fchere Unterhaltungen)",
+  "waiting.ev_usual_one":
+    "meist 1 Tag ({m} fr\u00fchere Unterhaltungen)",
+  "waiting.ev_rule": "\u00fcberf\u00e4llig nach {n} Tagen (deine Einstellung)",
+  "waiting.ev_news":
+    "seitdem {n} Newsletter von ihnen - sie z\u00e4hlen nicht als Antwort",
+  "waiting.ev_news_one":
+    "seitdem 1 Newsletter von ihnen - er z\u00e4hlt nicht als Antwort",
+  "waiting.notice_head": "Seit {n}\u00a0Tagen keine Antwort.",
+  "waiting.notice_head_one": "Seit 1\u00a0Tag keine Antwort.",
+  "waiting.notice_today": "Heute gesendet, noch keine Antwort.",
+  "waiting.notice_usual":
+    "Die Person antwortet dir sonst innerhalb von {n}\u00a0Tagen ({m} "
+    + "fr\u00fchere Unterhaltungen).",
+  "waiting.notice_usual_one":
+    "Die Person antwortet dir sonst innerhalb von 1\u00a0Tag ({m} "
+    + "fr\u00fchere Unterhaltungen).",
+  "waiting.notice_rule": "Mails gelten nach {n}\u00a0Tagen als \u00fcberf\u00e4llig.",
+  "waiting.notice_answered": "Die Person hat nach {n}\u00a0Tagen geantwortet.",
+  "waiting.notice_answered_one": "Die Person hat nach 1\u00a0Tag geantwortet.",
+  "waiting.notice_answered_same": "Die Person hat am selben Tag geantwortet.",
+  "waiting.notice_needed": "Als \u201eKeine Antwort n\u00f6tig\u201c markiert.",
+  "waiting.remind": "Erinnere mich",
+  "waiting.rem_tomorrow": "Morgen {time}",
+  "waiting.rem_week": "In einer Woche",
+  "waiting.rem_pick": "Datum w\u00e4hlen\u2026",
+  "waiting.rem_pick_label": "Erinnere mich am",
+  "waiting.rem_hint":
+    "Ein Push an deine Ger\u00e4te mit Benachrichtigungen (und eine Zeile "
+    + "im Aktivit\u00e4tsbericht, wenn er an ist). Erledigt sich von selbst, wenn die Person "
+    + "antwortet.",
+  "waiting.rem_set": "Erinnerung gesetzt f\u00fcr {when}",
+  "waiting.rem_cancel": "Erinnerung l\u00f6schen",
+  "waiting.rem_off_device": "Benachrichtigungen sind auf diesem Ger\u00e4t aus.",
+  "waiting.rem_turn_on": "Einschalten",
+  "waiting.open": "Unterhaltung lesen",
+  "waiting.no_need": "Keine Antwort n\u00f6tig",
+  "waiting.bring_back": "Zur\u00fcck auf die Liste",
+  "waiting.open_sender": "Absender \u00f6ffnen",
+  "waiting.no_sender": "Keine Mail von ihr in diesem Postfach, daher gibt es keine "
+    + "Absenderseite.",
+  "waiting.never_sends":
+    "Inboxrake sendet nie Mails in deinem Namen - du antwortest in deiner "
+    + "eigenen Mail-App.",
+  "waiting.toast_needed": "{name}: keine Antwort n\u00f6tig.",
+  "waiting.toast_back": "Wieder auf der Liste.",
+  "waiting.toast_remind": "Erinnerung gesetzt f\u00fcr {when} ({name}).",
+  "waiting.toast_remind_off": "Erinnerung gel\u00f6scht.",
+  "waiting.reminder_n": "Noch keine Antwort: {name} \u00b7 {n} Tage",
+  "waiting.reminder_n_one": "Noch keine Antwort: {name} \u00b7 1 Tag",
+  "waiting.show": "Zeigen",
+  "waiting.line": "Du wartest seit {date} auf eine Antwort",
+  "waiting.line_usual":
+    "Du wartest seit {date} auf eine Antwort \u00b7 meist {n} Tage",
+  "waiting.line_usual_one":
+    "Du wartest seit {date} auf eine Antwort \u00b7 meist 1 Tag",
   "addr.menu": "Deine Adressen",
   "addr.title": "Deine Adressen",
   "addr.sub": "{n}\u00a0Adressen haben Mail erhalten",
@@ -2080,6 +2207,21 @@ export const DE: Record<string, string> = {
   "notify.atts_done": "Anhang-Analyse abgeschlossen.",
   "notify.unsub_done": "Massenabbestellen abgeschlossen.",
   "notify.proposal": "{name} schlägt eine Regel vor. Sieh sie dir unter Regeln an.",
+  "waiting.notify_title": "Warten auf Antwort",
+  "waiting.notify_tell": "Sag mir Bescheid, wenn eine Antwort \u00fcberf\u00e4llig ist",
+  "waiting.notify_tell_sub":
+    "F\u00fcr Konten, die ihre gesendeten Mails beobachten (Einstellungen \u203a Konto).",
+  "waiting.notify_needs":
+    "Braucht eingeschaltete Benachrichtigungen - schalte sie oben ein.",
+  "waiting.after": "\u00dcberf\u00e4llig nach",
+  "waiting.after_sub": "Der \u00fcblichen Antwortzeit der Person, aus fr\u00fcheren Unterhaltungen",
+  "waiting.after_usual": "\u00dcblicher Zeit",
+  "waiting.after_fixed": "Festen Tagen",
+  "waiting.days": "Tage",
+  "waiting.days_sub":
+    "Gilt, solange es noch keinen Verlauf gibt - oder immer, mit festen Tagen",
+  "waiting.subject": "Betreff in der Benachrichtigung zeigen",
+  "waiting.subject_sub": "Aus: nur wer und wie lange (Sperrbildschirm)",
   "preset.label": "Anbieter-Preset (füllt die Felder unten vor)",
   "preset.row": "Anbieter",
   "preset.row_sub": "Füllt die Felder unten vor",
@@ -2967,6 +3109,14 @@ export const DE: Record<string, string> = {
     "Liest den letzten Beleg jedes Abos, dessen Betreff keinen Betrag nennt - "
     + "nur auf diesem Server. Nur der Betrag und seine Währung werden "
     + "behalten; nichts wird irgendwohin gesendet.",
+  "waiting.settings_title": "Gesendete Mails",
+  "waiting.settings_watch": "Gesendete Mails auf Antworten beobachten",
+  "waiting.settings_watch_sub":
+    "Merkt sich die Kopfzeilen der letzten 90 Tage deines Gesendet-Ordners "
+    + "(Message-ID, Datum, Betreff, Empf\u00e4nger), um zu sehen, welche "
+    + "Mails niemand beantwortet hat - nie den Mailtext. Der erste Scan nach "
+    + "dem Einschalten liest sie. Aus: Es wird nichts zus\u00e4tzlich "
+    + "gelesen und der Index wird gel\u00f6scht.",
   "auto_scan.align": "Startminute (0-59)",
   "auto_scan.help":
     "Scannt dieses Konto in festen Abständen neu, unabhängig von "

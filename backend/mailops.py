@@ -54,6 +54,7 @@ from . import trackers
 from . import undostore
 from . import unsubstore
 from . import verdictstore
+from . import waiting
 from . import webpush
 
 FETCH_CHUNK = 500
@@ -2914,6 +2915,9 @@ def run_scan(acc=None, push: bool = False) -> None:
                 replied |= new_replied
                 save_replied(acc)
             mailkinds.stamp(messages)            # what kind of mail each is
+            # the same connection, headers only: the sent index behind
+            # "Waiting for a reply" (a no-op with the switch off)
+            waiting.update_sent_index(conn, roles, acc, progress_cb)
             knownsenders.update_scan(acc.name, {m["addr"] for m in messages})
             # Re-read: the threshold/protected list may have changed during
             # a long scan.
@@ -2981,6 +2985,7 @@ def run_scan(acc=None, push: bool = False) -> None:
             senderchanges.record_scan(acc.name, prev_mails, prev_ts, messages)
             addressstore.set_picked_main(acc.name, rcpt.main)
             save_snapshot(acc)
+            waiting.after_scan(acc)          # answers clear their reminders
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
             outcome = True
         finally:
@@ -7249,17 +7254,30 @@ def thread_conversation(folder: str, uid: int, acc=None,
     budget = THREAD_SENT_BUDGET_S if budget is None else budget
     with acc.lock:
         rec = _thread_rec(acc, folder, uid)
-        if rec is None:
+    anchor = None
+    if rec is None:
+        # A mail you sent that nobody answered is in no scanned thread:
+        # Waiting for a reply keeps its headers (an account that watches its
+        # sent mail), so the conversation can still be read from it.
+        anchor = waiting.sent_anchor(acc, folder, uid)
+        if anchor is None:
             raise RuntimeError("unknown message")
-        key, label = rec["key"], rec["label"]
-        members = [acc.index[ikey(f, u)]
-                   for f, us in rec["folders"].items() for u in us
-                   if ikey(f, u) in acc.index]
+    with acc.lock:
+        if anchor is None:
+            key, label = rec["key"], rec["label"]
+            members = [acc.index[ikey(f, u)]
+                       for f, us in rec["folders"].items() for u in us
+                       if ikey(f, u) in acc.index]
+        else:
+            key, label = "", anchor["label"]
+            members = [acc.index[ikey(f, u)] for f, u in anchor["members"]
+                       if ikey(f, u) in acc.index]
         own = {_own_id(m) for m in members}
         wanted = sorted({i for m in members for i in (m.get("irt") or [])}
                         - own)[:THREAD_SENT_MAX_IDS]
         sent = acc.folder_roles.get("sent")
-    rows = group_mails("thread", key, acc=acc)
+    rows = group_mails("thread", key, acc=acc) if anchor is None \
+        else _member_rows(acc, members)
     notes: list[dict] = []
     if wanted and sent:
         found: list[dict] = []
@@ -7280,8 +7298,30 @@ def thread_conversation(folder: str, uid: int, acc=None,
                   "ts": m["ts"], "subject": m["subject"], "addr": m["addr"],
                   "size": m["size"], "seen": True, "ai": None,
                   "pinned": False, "sent": True} for m in found]
+    # Your own mails of this conversation that Waiting for a reply keeps: the
+    # open one (no scanned mail answers it, so the lookup above cannot find
+    # it) and the ones nobody replied to.
+    have = {(r["folder"], r["uid"]) for r in rows}
+    mine = anchor["sent"] if anchor else waiting.conversation_sent(
+        acc, {i for m in members for i in [_own_id(m), *(m.get("irt") or []),
+                                           *(m.get("refs") or [])] if i})
+    rows += [r for r in mine if (r["folder"], r["uid"]) not in have]
     rows.sort(key=lambda r: (r["ts"], r["folder"], r["uid"]))
     return {"key": key, "label": label, "mails": rows, "notes": notes}
+
+
+def _member_rows(acc, members: list[dict]) -> list[dict]:
+    """The reading view's rows for scanned mails (what `group_mails` gives a
+    thread), for a conversation that is no scanned thread."""
+    verdict_of = _mail_verdict_fn(acc, cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected")))
+    pinned = pinstore.load_account(acc.name)
+    with acc.lock:
+        return [{"uid": m["uid"], "folder": m["folder"], "date": m["date"],
+                 "ts": m["ts"], "subject": m["subject"], "addr": m["addr"],
+                 "size": m["size"], "seen": m["seen"], "ai": verdict_of(m),
+                 "pinned": m["msgid"] in pinned, "kind": mailkinds.of(m)}
+                for m in members]
 
 
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
