@@ -3,7 +3,7 @@
  * per-mail selection with the honest capsule, empty states and the
  * ConfirmDialog flow for trashing. */
 
-import { cleanup, fireEvent, render, screen, waitFor }
+import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { AttachmentsPanel } from "./components/AttachmentsPanel";
@@ -20,6 +20,12 @@ const deleteMessages = vi.fn();
 const summary = vi.fn();
 const keepSafeCheck = vi.fn();
 const keepSafePin = vi.fn();
+const removeFlow = vi.fn();
+
+// "Keep the mails, remove the files": its own flow (RemoveFiles.test.tsx)
+vi.mock("./removeFiles", () => ({
+  removeFiles: (...a: unknown[]) => removeFlow(...a),
+}));
 
 vi.mock("./api", () => ({
   api: { attachments: () => attachments(),
@@ -77,6 +83,7 @@ afterEach(() => {
   deleteMessages.mockReset();
   keepSafeCheck.mockReset();
   keepSafePin.mockReset();
+  removeFlow.mockReset();
   summary.mockReset();
   localStorage.clear();
   setClockShift(0);
@@ -441,4 +448,135 @@ test("keep-safe: the same trash of 20 mails or fewer is never checked",
   expect((await findDialog()).textContent).not.toContain("look worth keeping");
   expect(keepSafeCheck).not.toHaveBeenCalled();
   await cancelDialog();
+});
+
+/* ------------------- keep the mails, remove the files ------------------- */
+
+test("the bar offers 'Keep the mails, remove the files…' before Move to "
+  + "Trash, which stays rightmost with its hint", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  const bar = screen.getByRole("region", { name: /selection/i });
+  const names = within(bar).getAllByRole("button").map((b) => b.textContent);
+  expect(names.slice(-3)).toEqual(["Open",
+    "Keep the mails, remove the files…", "Move to Trash"]);
+  expect(within(bar).getByText(
+    "The whole mail goes to Trash, not only the file.")).toBeTruthy();
+});
+
+test("the removal gets the ticked files with every mail that holds them",
+  async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  removeFlow.mockResolvedValue("started");
+  const onDeleted = vi.fn();
+  render(<DialogProvider>
+    <AttachmentsPanel state={state("done")} onClose={() => {}}
+      onDeleted={onDeleted} />
+  </DialogProvider>);
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button",
+    { name: "Keep the mails, remove the files…" }));
+  await waitFor(() => expect(removeFlow).toHaveBeenCalledTimes(1));
+  const [files] = removeFlow.mock.calls[0];
+  expect(files).toEqual([{ name: "scan.pdf", size: 2e6, kind: "pdf",
+    mails: [1, 2].map((uid) => ({ folder: "INBOX", uid, addr: "a@x.example",
+      subject: `Scan ${uid}` })) }]);
+  // started: the selection goes, the page says it runs in the background
+  await waitFor(() => expect(screen.queryByText("2 mails · 2 MB")).toBeNull());
+  expect(screen.getByText(
+    "Keep the mails, remove the files… - running in the background…"))
+    .toBeTruthy();
+  expect(onDeleted).toHaveBeenCalled();
+  expect(deleteMessages).not.toHaveBeenCalled();
+});
+
+test("cancelled or stopped: the selection stays", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  removeFlow.mockResolvedValue("stopped");
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button",
+    { name: "Keep the mails, remove the files…" }));
+  await waitFor(() => expect(removeFlow).toHaveBeenCalled());
+  await new Promise((r) => setTimeout(r, 30));
+  expect(screen.getByText("2 mails · 2 MB")).toBeTruthy();
+});
+
+test("a refused check shows its words in the page", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  removeFlow.mockRejectedValue(new Error("Scan the account first."));
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button",
+    { name: "Keep the mails, remove the files…" }));
+  await screen.findByText(/Scan the account first\./);
+});
+
+test("when the job has finished the list is read again: the mails have new "
+  + "copies", async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  removeFlow.mockResolvedValue("started");
+  const ui = (seq: number, status: string) => (<DialogProvider>
+    <AttachmentsPanel state={{ ...state("done"),
+      delete: { status, seq } } as unknown as AppState}
+      onClose={() => {}} onDeleted={() => {}} />
+  </DialogProvider>);
+  const r = render(ui(5, "idle"));
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("Select scan.pdf"));
+  fireEvent.click(screen.getByRole("button",
+    { name: "Keep the mails, remove the files…" }));
+  await waitFor(() => expect(removeFlow).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByText("2 mails · 2 MB")).toBeNull());
+  expect(attachments).toHaveBeenCalledTimes(1);
+  r.rerender(ui(6, "running"));
+  r.rerender(ui(6, "idle"));
+  await waitFor(() => expect(attachments).toHaveBeenCalledTimes(2));
+});
+
+test("German: the new button's words; Move to Trash is as it was", async () => {
+  setLang("de");
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  fireEvent.click(screen.getByLabelText("scan.pdf auswählen"));
+  const bar = screen.getByRole("region", { name: /Aktionen/i });
+  const names = within(bar).getAllByRole("button").map((b) => b.textContent);
+  expect(names.slice(-2)).toEqual(["Mails behalten, Dateien entfernen…",
+    "In den Papierkorb"]);
+});
+
+test("everything the Attachments page had is still there (INVENTORY)",
+  async () => {
+  attachments.mockResolvedValue(three());
+  summary.mockResolvedValue(SUMMARY);
+  show();
+  await screen.findByText("scan.pdf");
+  // Analyze / Re-analyze, the space-by-kind bar, Same file sent again
+  expect(screen.getByRole("button", { name: "Re-analyze" })).toBeTruthy();
+  expect(screen.getByText("in attachments, by kind of file")).toBeTruthy();
+  expect(screen.getByText("Same file, sent again")).toBeTruthy();
+  // the kind and "Older than" filters, Tiles / List
+  expect(screen.getByRole("radio", { name: "PDF" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Older than/ })).toBeTruthy();
+  expect(screen.getByRole("radio", { name: "Tiles" })).toBeTruthy();
+  expect(screen.getByRole("radio", { name: "List" })).toBeTruthy();
+  // select, Open and Move to Trash (the whole mail, with its hint)
+  fireEvent.click(screen.getByLabelText("Select beach.jpg"));
+  expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Move to Trash" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Clear selection" })).toBeTruthy();
+  expect(screen.getByText(
+    "The whole mail goes to Trash, not only the file.")).toBeTruthy();
 });

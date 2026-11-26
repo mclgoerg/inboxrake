@@ -306,6 +306,11 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
     case "empty_trash":
       title = counted("empty_trash");
       break;
+    case "remove_files":
+      // "Keep the mails, remove the files": the headline says it all
+      title = counted("remove_files");
+      detail = "";
+      break;
     case "rule_execute": {
       // the entry is about the rule; the move it caused is its own entry
       const rule = rules.find((r) => `rule:${r.id}` === e.actor);

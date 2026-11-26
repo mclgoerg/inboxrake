@@ -237,6 +237,13 @@ export interface AttMail extends Mail {
   atts: AttFile[];
 }
 
+/** One file of the Attachments page as the removal sees it: the same name +
+ *  size in several mails is one file. */
+export interface RemoveFile {
+  name: string; size: number; kind: AttKind;
+  mails: { folder: string; uid: number; addr: string; subject?: string }[];
+}
+
 /** One attachment of a mail; `copies` = mails carrying the same name + size. */
 export interface AttFile {
   name: string; size: number; kind: AttKind; ext: string; copies: number;
@@ -693,6 +700,10 @@ export interface Mail {
   protected?: boolean;
   msgid?: string;     // duplicate lists only (Compare)
   sent?: boolean;     // conversation reader: the user's own mail (Sent)
+  /** Duplicate lists only: how many files Inboxrake took out of this copy
+   *  ("Keep the mail, remove the file") - it is the lighter version of the
+   *  mail that shares its Message-ID. */
+  removed?: number;
 }
 
 export interface MailsResp {
@@ -718,6 +729,30 @@ export interface MessageDetail {
   trackers?: { pixel: boolean; click: boolean; hosts: string[] } | null;
   unsub?: { method: "one_click" | "mailto" | "http"; one_click: boolean }
     | null;
+  /** Files Inboxrake took out of this mail ("Keep the mail, remove the
+   *  file"): name, size in bytes, the day (YYYY-MM-DD). */
+  removed?: { name: string; size: number; date: string }[];
+}
+
+/** Keep the mail, remove the file: what `/api/attachments/remove/check`
+ *  says about a removal (nothing is changed by asking). */
+export interface RemoveCheckMail {
+  folder: string; uid: number; subject: string; addr: string; size: number;
+  /** positions in the asked files of the ones this mail holds */
+  files: number[];
+  /** the Keep-safe class that covers this mail ("" = none) */
+  safe: KeepSafeClass | "";
+  /** why the mail would be left as it is ("" = it will be changed) */
+  skip: string;
+}
+export interface RemoveCheck {
+  mails: RemoveCheckMail[];
+  /** pinned mails and protected senders: they stop the action */
+  blocked: { folder: string; uid: number; subject: string; addr: string;
+    size: number; why: "pinned" | "protected" }[];
+  files: { name: string; size: number; mails: number; safe: number;
+    classes: KeepSafeClass[] }[];
+  zip: { bytes: number; cap: number };
 }
 
 export interface ConversationResp {

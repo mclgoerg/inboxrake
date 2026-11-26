@@ -30,6 +30,7 @@ from . import accounts
 from . import auditlog
 from . import config as cfgmod
 from . import mailops
+from . import mimecut
 from . import rules as rulesmod
 from . import tenants
 
@@ -42,7 +43,8 @@ SENDERS_LISTED = 12        # senders named on a step's second line: the UI cuts
 # (by the same actor) are ONE step, "Unsubscribed from N senders"
 UNSUB_GROUP_S = 5 * 60
 
-_MOVES = ("trash", "archive", "move", "move_contents", "restore")
+_MOVES = ("trash", "archive", "move", "move_contents", "restore",
+          mimecut.ACTION)
 _STAYS = ("mark_read", "unsubscribe", "undo", "protect",
           "assistant_protect", "assistant_pin")
 _GONE = ("empty_trash", "purge")
@@ -331,9 +333,15 @@ def _assess(acc, entry: dict, live: dict, skip,
         return {"come": [], "lost": lost, "skipped": skipped,
                 "untracked": False}
     if entry.get("parts") is not None:
-        for p in entry["parts"]:
-            if mailops._netted(skip, p):
-                continue
+        live = [p for p in entry["parts"] if not mailops._netted(skip, p)]
+        if any(p["head"].get("action") == mimecut.ACTION for p in live):
+            # undoing it would leave original and lighter copy in Trash
+            # (mailops._undo_parts refuses): it is left as it is
+            n = sum(len(p["mails"]) for p in live)
+            lost["untracked"] += n
+            return {"come": [], "lost": lost, "skipped": skipped,
+                    "untracked": True}
+        for p in live:
             for m in p["mails"]:
                 why = skip.reason(m[2], m[1], p["head"]["in"])
                 if why:

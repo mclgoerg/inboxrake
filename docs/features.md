@@ -259,7 +259,9 @@ big subject, chips for attachments and tracking, quoted history folded away
 that says how it unsubscribes. The body is always plain text: HTML is
 converted, no remote content is loaded and no tracking pixel fires. A
 toolbar acts on the open mail: Trash, Pin, Move, Conversation and a More
-menu (Open sender, Copy address, Show headers, Block sender); previous / next
+menu (Open sender, Copy address, Show headers, Block sender); tapping an
+attachment chip opens a menu with **Remove the file, keep the mail…**
+([Attachments](#keep-the-mail-remove-the-file)); previous / next
 arrows walk the list you came from. **Conversation** shows the whole thread
 as cards, oldest first, with your own replies from Sent marked "from Sent";
 a card's text is fetched when you expand it. Mails in Sent are read-only.
@@ -619,9 +621,51 @@ BODYSTRUCTURE pass (structure only, no content downloaded). It shows how much
 space each kind of file (PDF, images, video, archives, …) takes, which files
 were sent again in several mails, and one tile (or list row) per file that
 you can filter by kind and age. It adds a 📎 aggregate to groups and
-enables the `att:>10m` filter. IMAP can't strip single attachments, so
-selecting a file selects its mail(s) and cleanup means moving the whole mail
-to Trash (reversible as always).
+enables the `att:>10m` filter. Selecting a file selects its mail(s); **Move
+to Trash** moves the whole mail (reversible as always), and **Keep the mails,
+remove the files…** (before it in the selection bar) frees the space and keeps
+the messages - see below.
+
+#### Keep the mail, remove the file
+
+An IMAP mailbox cannot change a mail, so Inboxrake makes a new one: it reads
+the full mail from your server (never anywhere else, and never sent to an AI),
+builds the same mail without the chosen files - every header, the Message-ID,
+the text and the files you keep are as they were, a short note says what was
+removed and when - and saves it in the same folder with the original's date and
+flags. Only after it has read the copy back and checked it (same Message-ID, the
+kept parts byte for byte, the files gone, flags and date) does the original go
+to Trash, as any other move, with one **Undo** step that swaps them back (the
+original out of Trash, the lighter copy into it) until Trash is emptied. Space
+is freed when Trash is emptied, as today.
+
+The confirm lists each file with a tick (files in mails that Keep-safe covers -
+invoices, contracts… - start unticked, with the reason) and offers **Download
+the files first** (.zip, built on your server from the originals; nothing
+leaves it otherwise). In the mail reader, tapping an attachment chip opens a
+menu with **Remove the file, keep the mail…** for that one file. The mail shows
+chips for the removed files and a note under its text.
+
+What it will not do: a **pinned** mail or one from a **protected sender** stops
+the whole action and is named (untick or unpin first, as for Move to Trash);
+**signed or encrypted** mail (S/MIME, PGP) is left as it is, because taking a
+part out would break the signature; a mail over 64 MB, one without a
+Message-ID, one flagged for deletion, and a Proton Bridge mail that also sits in
+a `Labels/…` folder (or lives in one) are left too, each with its reason. **Gmail
+accounts are off**: Gmail keeps one mail per Message-ID, so a copy that has to
+share the original's Message-ID cannot be made there without risking the mail.
+A mail is cut only of the files the confirm listed for it, and the feature waits
+while a scan, a move or a folder operation runs. A copy that does not pass the
+check is taken out again so the original is the only one - and so is a copy a
+crash left behind (Inboxrake writes down each copy before it makes it and
+settles what is left at the next start or the next removal - holding the
+mailbox like a folder operation, so no removal can start meanwhile - and only ever
+a copy whose original is still there). The copy carries an `X-Inboxrake-Removed` header
+(one line per file): that - not the shared Message-ID - is how Undo, the Time
+machine and Duplicates tell the copy from the original (a copy never counts as
+an identical copy; Duplicates tags it **Files removed**). A Time machine restore
+that went back through such a step cannot be undone as one step - it is refused
+with a reason, nothing moves, and the originals stay in their folders.
 
 ### Trash
 

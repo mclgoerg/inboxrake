@@ -60,6 +60,8 @@ from . import oauthserver
 from . import overview as overviewmod
 from . import pastdate
 from . import pinstore
+from . import removefiles
+from . import removejournal
 from . import presets as presetsmod
 from . import rhythm as rhythmmod
 from . import rulecheck as rulecheckmod
@@ -221,6 +223,7 @@ async def _lifespan(app: FastAPI):
                 mailops.load_snapshot(accountsmod.get(name))
                 mailops.load_undo(accountsmod.get(name))
     accountcopy.resume_all()
+    removefiles.start_sweep()
     rulesmod.start_scheduler()
     presetsmod.publish()
     digestmod.start_scheduler()
@@ -1936,6 +1939,68 @@ def get_attachments_summary(account: str | None = Query(None)):
     return mailops.attachments_summary(acc=_acc(account))
 
 
+class RemoveFilesBody(BaseModel):
+    """Keep the mail, remove the file: the mails (folder, uid) and the files
+    (name + size, as the attachment list shows them) to take out of them."""
+    items: list[tuple[str, int]] = Field(
+        min_length=1, max_length=removefiles.ITEMS_MAX)
+    files: list[dict] = Field(min_length=1, max_length=removefiles.FILES_MAX)
+    confirm: int = 0                 # the number of mails the confirm named
+    lang: str = Field("en", max_length=8)   # the language of the note in a mail
+
+
+def _removal(acc, call, *args):
+    """A removal call: its refusals come back as a coded `refused` (409),
+    anything unexpected is the usual 500."""
+    try:
+        out = call(acc, *args)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+    if isinstance(out, dict) and out.get("refused"):
+        raise HTTPException(409, out["refused"])
+    return out
+
+
+@app.post("/api/attachments/remove/check")
+def post_remove_check(body: RemoveFilesBody, account: str | None = Query(None)):
+    """What taking the files out of the mails would do (nothing is changed):
+    the numbers for the confirm, the mails that stop it (pinned / protected),
+    the ones that would stay as they are and why, the Keep-safe ones."""
+    return _removal(_acc(account), removefiles.check, body.items, body.files)
+
+
+@app.post("/api/attachments/remove")
+def post_remove_files(body: RemoveFilesBody, account: str | None = Query(None)):
+    """Take the files out of the mails and keep the mails: one background
+    job that copies each mail without them, checks the copy and only then
+    moves the original to Trash (one Undo step puts it all back)."""
+    return _removal(_acc(account), removefiles.start, body.items, body.files,
+                    body.confirm, body.lang)
+
+
+@app.post("/api/attachments/remove/zip")
+def post_remove_zip(body: RemoveFilesBody, account: str | None = Query(None)):
+    """"Download the files first": the files as one .zip, read from the mails
+    and built here."""
+    got = _removal(_acc(account), removefiles.build_zip, body.items,
+                   body.files)
+    fh, size = got
+
+    def chunks():
+        try:
+            while True:
+                block = fh.read(1 << 20)
+                if not block:
+                    break
+                yield block
+        finally:
+            fh.close()
+    return StreamingResponse(
+        chunks(), media_type="application/zip",
+        headers={"Content-Length": str(size), "Content-Disposition":
+                 'attachment; filename="inboxrake-files.zip"'})
+
+
 @app.get("/api/duplicates")
 def get_duplicates(account: str | None = Query(None)):
     return mailops.duplicates_list(acc=_acc(account))
@@ -3289,6 +3354,8 @@ def post_config(body: dict, request: Request, response: Response):
         accountsmod.drop(str(body["delete_account"]))
         mailops.drop_snapshot(str(body["delete_account"]))
         mailops.drop_undo(str(body["delete_account"]))
+        removejournal.drop(str(body["delete_account"]),
+                           tenants.current(), mailops.SNAPSHOT_DIR)
         bodyindex.drop(str(body["delete_account"]))
         unsubstore.drop_account(str(body["delete_account"]))
         aisortstore.drop_account(str(body["delete_account"]))
@@ -3319,6 +3386,8 @@ def post_config(body: dict, request: Request, response: Response):
             accountsmod.rename(old, new)
             mailops.rename_snapshot(old, new)
             mailops.rename_undo(old, new)
+            removejournal.rename(old, new, tenants.current(),
+                                 mailops.SNAPSHOT_DIR)
             bodyindex.rename(old, new)
             verdictstore.rename_account(old, new)
             aisortstore.rename_account(old, new)

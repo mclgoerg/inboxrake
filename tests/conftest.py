@@ -265,11 +265,16 @@ class FakeIMAP:
                  noselect: dict[str, str] | None = None,
                  date_header: bool = False,
                  quota: tuple[int, int] | None = None,
-                 namespace: str | None = None):
+                 namespace: str | None = None, real_atts: bool = False):
         # `date_header`: also serve each mail's date as an RFC 2822 `Date:`
         # header (the demo's viewer shows it); off, mails carry none, as
         # the suite has always had them.
         self.date_header = date_header
+        # `real_atts`: a mail with `atts` [(name, size)] is served as a real
+        # multipart/mixed whose files are `size` octets of base64 (what its
+        # BODYSTRUCTURE says), so the files can be read, downloaded and taken
+        # out of the mail - the demo uses it; the suite's mails stay bodiless
+        self.real_atts = real_atts
         # parent-only folders: name -> the LIST flag (`\\Noselect` or
         # `\\NonExistent`); SELECT answers NO. The gmail fake does this for
         # a "[Gmail]" folder, like the real server.
@@ -341,6 +346,7 @@ class FakeIMAP:
         return "OK", out
 
     # Instances pickled into an older demo seed lack these attributes.
+    real_atts = False
     quota = None
     append_hook = None
     namespace_prefix = None
@@ -419,6 +425,13 @@ class FakeIMAP:
             lines.append(f"List-Unsubscribe: {m['unsub']}")
         if m["unsub_post"]:
             lines.append("List-Unsubscribe-Post: List-Unsubscribe=One-Click")
+        if m.get("raw"):
+            # an appended mail keeps the header Inboxrake marks its lighter
+            # copies with (one line per file taken out)
+            for value in email.message_from_bytes(m["raw"]).get_all(
+                    "X-Inboxrake-Removed") or []:
+                lines.append("X-Inboxrake-Removed: "
+                             + " ".join(str(value).split()))
         if m.get("html") is not None:
             # `html` serves an HTML part: alone as text/html, or beside a
             # `body` text as multipart/alternative.
@@ -428,6 +441,29 @@ class FakeIMAP:
             else:
                 lines.append('Content-Type: text/html; charset=utf-8')
         return ("\r\n".join(lines) + "\r\n\r\n").encode()
+
+    def _attached(self, m) -> bytes:
+        """The whole mail of `m` with its `atts` as real parts (`real_atts`)."""
+        import base64
+        import hashlib
+        head = self._header_blob(m)[:-4].decode("latin-1")
+        text = (m.get("body") or "Hello mail body")
+        out = [head, "MIME-Version: 1.0",
+               'Content-Type: multipart/mixed; boundary="mbatt"', "",
+               "--mbatt", 'Content-Type: text/plain; charset="utf-8"', "",
+               text, ""]
+        data = "\r\n".join(out).encode("utf-8")
+        for name, size in m["atts"]:
+            line = base64.b64encode(hashlib.sha256(name.encode()).digest()
+                                    [:57]).replace(b"\n", b"") + b"\r\n"
+            body = line * (size // len(line))
+            body += b" " * (size - len(body))       # exactly `size` octets
+            data += (b"--mbatt\r\nContent-Type: application/octet-stream; "
+                     b'name="' + name.encode() + b'"\r\n'
+                     b"Content-Transfer-Encoding: base64\r\n"
+                     b'Content-Disposition: attachment; filename="'
+                     + name.encode() + b'"\r\n\r\n' + body + b"\r\n")
+        return data + b"--mbatt--\r\n"
 
     def _payload(self, m) -> bytes:
         """The message body after the header blob."""
@@ -441,7 +477,42 @@ class FakeIMAP:
                 f'Content-Type: text/html; charset=utf-8\r\n\r\n'
                 f'{m["html"]}\r\n--mbbound--\r\n').encode()
 
+    @staticmethod
+    def _bs_of_raw(raw: bytes) -> str:
+        """BODYSTRUCTURE of a real message, from its own MIME tree."""
+        from backend import mimecut
+        root = mimecut.parse(raw)
+
+        def node(part) -> str:
+            if part.multipart and part.children:
+                sub = part.ctype.split("/", 1)[1]
+                return ("(" + "".join(node(c) for c in part.children)
+                        + f' "{sub}" ("boundary" "b") NIL NIL)')
+            main, _, sub = part.ctype.partition("/")
+            enc = str(part.msg.get("Content-Transfer-Encoding", "7bit")
+                      ).strip().lower() or "7bit"
+            name = mimecut._param(part.msg, "name", "Content-Type")
+            fname = mimecut._param(part.msg, "filename",
+                                   "Content-Disposition")
+            dispo = (part.msg.get_content_disposition() or "")
+            params = f'("name" "{name}")' if name else "NIL"
+            ext = ""
+            if dispo:
+                fp = f'("filename" "{fname}")' if fname else "NIL"
+                ext = f' ("{dispo}" {fp}) NIL'
+            elif main == "text":
+                params = '("charset" "utf-8")'
+            lines = " 5" if main == "text" else ""
+            return (f'("{main}" "{sub}" {params} NIL NIL "{enc}" '
+                    f"{part.size}{lines}{' NIL' if ext and not lines else ''}"
+                    f"{ext})")
+        return node(root)
+
     def _bodystructure(self, m) -> str:
+        if m.get("bs"):
+            return m["bs"]              # a test's own (signed, encrypted, ...)
+        if m.get("raw"):
+            return self._bs_of_raw(m["raw"])
         text = '("text" "plain" ("charset" "utf-8") NIL NIL "7bit" 100 5)'
         if not m.get("atts"):
             return text
@@ -453,6 +524,14 @@ class FakeIMAP:
                 f'("attachment" ("filename" "{name}")) NIL)')
         return "(" + "".join(parts) + ' "mixed" ("boundary" "b1") NIL NIL)'
 
+    def _labels_text(self, m) -> str:
+        """` X-GM-LABELS (...)` of a Gmail fake's message (`labels` key)."""
+        if not self.gmail or m.get("labels") is None:
+            return ""
+        return " X-GM-LABELS (" + " ".join(
+            x if x.startswith("\\") else '"' + x + '"'
+            for x in m["labels"]) + ")"
+
     def _gm(self, m) -> str:
         """` X-GM-MSGID <n>` for a Gmail fake's message (empty otherwise)."""
         if not self.gmail or not m.get("gmid"):
@@ -461,10 +540,12 @@ class FakeIMAP:
 
     @staticmethod
     def _flags_text(m) -> str:
-        return " ".join(f for f, key in (("\\Seen", "seen"),
-                                         ("\\Flagged", "flagged"),
-                                         ("\\Answered", "answered"))
-                        if m.get(key))
+        return " ".join([f for f, key in (("\\Seen", "seen"),
+                                          ("\\Flagged", "flagged"),
+                                          ("\\Answered", "answered"),
+                                          ("\\Draft", "draft"),
+                                          ("\\Deleted", "deleted"))
+                         if m.get(key)] + list(m.get("keywords") or ()))
 
     def uid(self, cmd, *args):
         self._log("UID", cmd, *args)
@@ -538,7 +619,13 @@ class FakeIMAP:
                 data = []
                 for i, m in enumerate(msgs):
                     if m["uid"] in wanted:
-                        data.append(f"{i+1} (UID {m['uid']} BODYSTRUCTURE "
+                        extra = ""
+                        if "FLAGS" in args[1]:
+                            extra += f" FLAGS ({self._flags_text(m)})"
+                        if "X-GM-LABELS" in args[1]:
+                            extra += self._labels_text(m)
+                        data.append(f"{i+1} (UID {m['uid']}{extra} "
+                                    f"BODYSTRUCTURE "
                                     f"{self._bodystructure(m)})".encode())
                 return "OK", data
             if "BODY.PEEK[]" in args[1]:
@@ -548,8 +635,11 @@ class FakeIMAP:
                 data = []
                 for i, m in enumerate(msgs):
                     if m["uid"] in wanted:
-                        body = m.get("raw") or (self._header_blob(m)
-                                                + self._payload(m))
+                        body = m.get("raw") or (
+                            self._attached(m) if self.real_atts
+                            and m.get("atts") and m.get("html") is None
+                            and "<" not in args[1] else
+                            self._header_blob(m) + self._payload(m))
                         # FLAGS / INTERNALDATE only when asked for, as a
                         # real server answers them
                         extra = ""
@@ -557,6 +647,8 @@ class FakeIMAP:
                             extra += f" FLAGS ({self._flags_text(m)})"
                         if "INTERNALDATE" in args[1]:
                             extra += f' INTERNALDATE "{m["date"]}"'
+                        if "X-GM-LABELS" in args[1]:
+                            extra += self._labels_text(m)
                         data += [(f"{i+1} (UID {m['uid']}{extra} BODY[] "
                                   f"{{{len(body)}}}".encode(), body), b")"]
                 return "OK", data or [None]
@@ -769,6 +861,8 @@ class FakeIMAP:
         parsed = email.message_from_bytes(message)
         names = {f.lstrip("\\").lower()
                  for f in (flags or "").strip("()").split() if f}
+        keywords = [f for f in (flags or "").strip("()").split()
+                    if f and not f.startswith("\\")]
         held.append({
             "uid": top + 1, "from": parsed.get("From", ""),
             "subject": parsed.get("Subject", ""),
@@ -779,9 +873,15 @@ class FakeIMAP:
             "size": len(message), "atts": [], "raw": bytes(message),
             "seen": "seen" in names, "flagged": "flagged" in names,
             "answered": "answered" in names, "deleted": "deleted" in names,
+            "draft": "draft" in names, "keywords": keywords,
+            **({"labels": ["\\Inbox"] if name == "INBOX" else [name]}
+               if self.gmail else {}),
             "date": (date_time or "").strip('"')
             or time.strftime("%d-%b-%Y %H:%M:%S +0000", time.gmtime())})
-        return "OK", [b"[APPENDUID 1 %d] Append completed" % (top + 1)]
+        if not self.uidplus:
+            return "OK", [b"Append completed"]
+        return "OK", [b"[APPENDUID %d %d] Append completed"
+                      % (self.uv.get(name, 1), top + 1)]
 
     def getquotaroot(self, qname):
         self._log("GETQUOTAROOT", qname.strip('"'))
