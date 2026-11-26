@@ -650,15 +650,21 @@ What it will not do: a **pinned** mail or one from a **protected sender** stops
 the whole action and is named (untick or unpin first, as for Move to Trash);
 **signed or encrypted** mail (S/MIME, PGP) is left as it is, because taking a
 part out would break the signature; a mail over 64 MB, one without a
-Message-ID, one flagged for deletion, and - where labels cannot be carried over
-to a copy - a Gmail mail with labels other than its folder, or a Proton Bridge
-mail that also sits in a `Labels/…` folder, are left too, each with its reason.
-It waits while a scan, a move or a folder operation runs, and a copy that does
-not pass the check is taken out again so the original is the only one. The
-copy carries an `X-Inboxrake-Removed` header (one line per file): that - not
-the shared Message-ID - is how Undo, the Time machine and Duplicates tell the
-copy from the original (a copy never counts as an identical copy; Duplicates
-tags it **Files removed**).
+Message-ID, one flagged for deletion, and a Proton Bridge mail that also sits in
+a `Labels/…` folder (or lives in one) are left too, each with its reason. **Gmail
+accounts are off**: Gmail keeps one mail per Message-ID, so a copy that has to
+share the original's Message-ID cannot be made there without risking the mail.
+A mail is cut only of the files the confirm listed for it, and the feature waits
+while a scan, a move or a folder operation runs. A copy that does not pass the
+check is taken out again so the original is the only one - and so is a copy a
+crash left behind (Inboxrake writes down each copy before it makes it and
+settles what is left at the next start or the next removal, only ever a copy
+whose original is still there). The copy carries an `X-Inboxrake-Removed` header
+(one line per file): that - not the shared Message-ID - is how Undo, the Time
+machine and Duplicates tell the copy from the original (a copy never counts as
+an identical copy; Duplicates tags it **Files removed**). A Time machine restore
+that went back through such a step cannot be undone as one step - it is refused
+with a reason, nothing moves, and the originals stay in their folders.
 
 ### Trash
 

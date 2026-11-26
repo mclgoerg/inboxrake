@@ -245,6 +245,7 @@ const ERROR_CODES: Record<string, string> = {
   rm_changed: "ferr.rm_changed",
   rm_zip_too_big: "ferr.rm_zip_too_big",
   rm_failed: "ferr.rm_failed",
+  undo_through_removal: "ferr.undo_through_removal",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)

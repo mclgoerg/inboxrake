@@ -244,13 +244,16 @@ def _name_matches(a: Attach, want: str) -> bool:
     return want in (a.name[:NAME_MAX].casefold(), a.index_name.casefold())
 
 
-def pick(root: Part, files: list[tuple[str, int]]) -> tuple[list[Attach],
-                                                            list[tuple]]:
+def pick(root: Part, files: list[tuple[str, int]],
+         near: set[tuple[str, int]] | None = None
+         ) -> tuple[list[Attach], list[tuple]]:
     """`(parts to remove, files not found)`: every attachment named and sized
     like one of `files` (name, size as the attachment index lists them). The
-    size must be exact; where a server counts a line break more or less, the
-    closest part within a few bytes stands in - but never one the exact pass
-    already took."""
+    size must be exact. Only for a file in `near` (lower-cased name, size) -
+    the ones the mail itself lists once under that name - a server that counts
+    a line break more or less may be stood in for by the one part of that name
+    within a few bytes: never a part another request took, and never a
+    different file of the mail with the same name."""
     found: list[Attach] = []
     taken: set[int] = set()
     missing: list[tuple] = []
@@ -258,11 +261,12 @@ def pick(root: Part, files: list[tuple[str, int]]) -> tuple[list[Attach],
     for name, size in files:
         same = [a for a in pool if _name_matches(a, name) and a.size == size
                 and id(a.part) not in taken]
-        if not same:
-            near = [a for a in pool if _name_matches(a, name)
-                    and id(a.part) not in taken
-                    and abs(a.size - size) <= max(4, size // 1000)]
-            same = sorted(near, key=lambda a: abs(a.size - size))[:1]
+        if not same and (name.lower(), size) in (near or ()):
+            like = [a for a in pool if _name_matches(a, name)]
+            close = [a for a in like if id(a.part) not in taken
+                     and abs(a.size - size) <= max(4, size // 1000)]
+            # a second part of that name makes the choice a guess: none
+            same = close if len(like) == 1 else []
         if not same:
             missing.append((name, size))
         for a in same:

@@ -147,13 +147,19 @@ def test_exact_size_wins_and_a_missing_file_is_reported():
     raw = raw_mail("<a@x.example>", FILES)
     root = mimecut.parse(raw)
     size = _sizes(FILES)[0][1]
-    found, missing = mimecut.pick(root, [("scan-1.pdf", size),
-                                         ("nothere.pdf", 10),
-                                         ("scan-2.pdf", size + 2)])
-    assert [a.name for a in found] == ["scan-1.pdf", "scan-2.pdf"]   # +2: a CRLF
+    asked = [("scan-1.pdf", size), ("nothere.pdf", 10),
+             ("scan-2.pdf", size + 2)]
+    # exact sizes only, unless the mail itself lists the file once (a server
+    # that counts a line break more: +2)
+    found, missing = mimecut.pick(root, asked)
+    assert [a.name for a in found] == ["scan-1.pdf"]
+    found, missing = mimecut.pick(root, asked,
+                                  near={("scan-2.pdf", size + 2)})
+    assert [a.name for a in found] == ["scan-1.pdf", "scan-2.pdf"]
     assert missing == [("nothere.pdf", 10)]
     # a size far off is another file
-    assert mimecut.pick(root, [("scan-1.pdf", size + 500)])[0] == []
+    assert mimecut.pick(root, [("scan-1.pdf", size + 500)],
+                        near={("scan-1.pdf", size + 500)})[0] == []
     # the same name twice in a mail, only one of them the asked size
     twin = raw_mail("<t@x.example>", [("a.pdf", blob(1, 3000)),
                                        ("a.pdf", blob(2, 900))])
@@ -161,6 +167,9 @@ def test_exact_size_wins_and_a_missing_file_is_reported():
     sizes = [a.size for a in mimecut.attachments(r2)]
     got, _ = mimecut.pick(r2, [("a.pdf", sizes[1])])
     assert [a.size for a in got] == [sizes[1]]
+    # no guessing between two parts of one name: a near size takes neither
+    assert mimecut.pick(r2, [("a.pdf", sizes[1] + 3)],
+                        near={("a.pdf", sizes[1] + 3)})[0] == []
 
 
 def test_the_same_file_twice_in_one_mail_goes_twice():

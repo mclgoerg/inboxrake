@@ -73,6 +73,15 @@ test("coded refusals come back in the user's language, code kept", async () => {
   expect(z.code).toBe("rm_zip_too_big");
   expect(z.message).toBe("Die Dateien sind für einen Download zu groß (über 256 MB). "
     + "Entferne sie ohne Download oder wähle weniger aus.");
+  // undoing a restore that went back through a removal is refused
+  reply(409, { detail: "undo_through_removal" });
+  const u: any = await api.removeFiles(ITEMS, FILES, 1, "de").catch((x) => x);
+  expect(u.code).toBe("undo_through_removal");
+  expect(u.message).toMatch(/nicht in einem Schritt zurücknehmen/);
+  setLang("en");
+  expect(((await api.removeFiles(ITEMS, FILES, 1, "en").catch((x) => x)) as any)
+    .message).toMatch(/cannot be undone as one step\. Nothing was moved/);
+  setLang("de");
   // the pinned / protected guard is the one Move to Trash has
   reply(409, { detail: "pinned_mails" });
   expect(((await api.removeFiles(ITEMS, FILES, 1, "de").catch((x) => x)) as any)

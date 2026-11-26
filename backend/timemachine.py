@@ -333,9 +333,15 @@ def _assess(acc, entry: dict, live: dict, skip,
         return {"come": [], "lost": lost, "skipped": skipped,
                 "untracked": False}
     if entry.get("parts") is not None:
-        for p in entry["parts"]:
-            if mailops._netted(skip, p):
-                continue
+        live = [p for p in entry["parts"] if not mailops._netted(skip, p)]
+        if any(p["head"].get("action") == mimecut.ACTION for p in live):
+            # undoing it would leave original and lighter copy in Trash
+            # (mailops._undo_parts refuses): it is left as it is
+            n = sum(len(p["mails"]) for p in live)
+            lost["untracked"] += n
+            return {"come": [], "lost": lost, "skipped": skipped,
+                    "untracked": True}
+        for p in live:
             for m in p["mails"]:
                 why = skip.reason(m[2], m[1], p["head"]["in"])
                 if why:

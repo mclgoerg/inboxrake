@@ -186,24 +186,43 @@ def test_the_time_machine_goes_back_through_a_removal(monkeypatch):
     assert _ids(fake, "Trash", marked=True) == IDS
 
 
-def test_undoing_a_restore_that_went_back_through_a_removal(monkeypatch):
-    """Original and copy share a Message-ID: the re-armed step still moves
-    the original (not the copy) and never gets confused by the namesake."""
+def test_undoing_a_restore_that_went_back_through_a_removal_is_refused(
+        monkeypatch):
+    """Undoing it would send the original back to Trash and leave the lighter
+    copy there too - emptying Trash would then lose the mail. It is refused
+    with a code, nothing moves, and the mail stays in its folder."""
     fake, originals = _world(monkeypatch)
     _remove()
     _restore_all()
-    # undo the restore: the originals go back to Trash (found in the folder
-    # by Message-ID; the copies are in Trash already)
-    assert _undo().status_code == 200
-    assert fake.mailbox["INBOX"] == []
-    assert sorted(m["msgid"] for m in fake.mailbox["Trash"]) == sorted(IDS * 2)
-    # the removal is undoable again: Trash holds the original AND the copy of
-    # each Message-ID - only the original may be picked
+    before = {f: [(m["uid"], m["raw"]) for m in ms]
+              for f, ms in fake.mailbox.items()}
     r = _undo()
-    assert r.status_code == 200 and r.json()["restored"] == 3
+    assert r.status_code == 409 and r.json()["detail"] == "undo_through_removal"
+    assert {f: [(m["uid"], m["raw"]) for m in ms]
+            for f, ms in fake.mailbox.items()} == before
     assert {m["msgid"]: m["raw"] for m in fake.mailbox["INBOX"]} == originals
-    assert _ids(fake, "Trash", marked=True) == IDS
-    assert _ids(fake, "Trash", marked=False) == []
+    assert _ids(fake, "Trash", marked=False) == []      # no original in Trash
+    # Trash may be emptied: the mail is in its folder, whole
+    fake.mailbox["Trash"] = []
+    assert {m["msgid"]: m["raw"] for m in fake.mailbox["INBOX"]} == originals
+    # (the restore step stays on its list: asking again says the same)
+    assert _undo().status_code == 409
+
+
+def test_the_time_machine_preview_does_not_promise_that_undo(monkeypatch):
+    """A later restore would have to undo the earlier one: it says it cannot
+    (untracked) instead of failing half-way."""
+    fake, _ = _world(monkeypatch)
+    _remove()
+    _restore_all()
+    acc = accountsmod.get()
+    with acc.lock:
+        (restore,) = [e for e in acc.undo_log if e.get("action") == "restore"]
+    live = timemachine._live(acc, [restore])
+    skip = mailops.undo_skipper(acc)
+    res = timemachine._assess(acc, restore, live, skip, set())
+    assert res["untracked"] is True and res["come"] == []
+    assert res["lost"]["untracked"] == 3
 
 
 # ---------------------------------------------------------------- Duplicates

@@ -170,6 +170,6 @@ test("one mail left alone: the singular notice, in German too", async () => {
   await mount({ ...baseState,
     notice: { key: "remove_files_skipped", params: { n: 1, why: "labels" } } });
   expect(await screen.findByText(
-    /1 Mail blieb unverändert: sie trägt Labels, die dieser Server an einer Kopie nicht behält\./))
+    /1 Mail blieb unverändert: sie liegt auch in einem Label-Ordner, dem eine Kopie nicht beitreten würde\./))
     .toBeTruthy();
 });

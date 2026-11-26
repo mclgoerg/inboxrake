@@ -303,6 +303,7 @@ RM_NOT_SCANNED = "rm_not_scanned"    # scan first
 RM_CHANGED = "rm_changed"            # the mails differ from the confirm
 RM_ZIP_TOO_BIG = "rm_zip_too_big"    # mb=: too big to download in one piece
 RM_FAILED = "rm_failed"              # anything unexpected (see the log)
+UNDO_THROUGH_REMOVAL = "undo_through_removal"   # a restore across a removal
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -319,6 +320,7 @@ FOLDER_ERROR_CODES = frozenset({
     FOLDER_RULES_CHANGED, FOLDER_CREATE_FAILED, FOLDER_RENAME_FAILED,
     FOLDER_DELETE_FAILED, FOLDER_RECREATE_FAILED,
     RM_NOTHING, RM_NOT_SCANNED, RM_CHANGED, RM_ZIP_TOO_BIG, RM_FAILED,
+    UNDO_THROUGH_REMOVAL,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,
@@ -3525,7 +3527,8 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
             lighter = (strips or {}).get((copy["folder"], copy["source_uid"]))
             if lighter:
                 copy["strip"] = {k: lighter[k] for k in (
-                    "uid", "uv", "size", "removed", "bytes") if k in lighter}
+                    "uid", "uv", "size", "removed", "bytes", "wrote")
+                    if k in lighter}
     entry = {"id": f"{time.time_ns():x}", "ts": int(time.time()), "label": label,
              "action": action, "count": len(items),
              "bytes": sum(w[1] for w in who),
@@ -3715,7 +3718,7 @@ def _delete_worker(acc) -> None:
             # (cancelled, a failure) is taken out again, so nothing is
             # left twice
             from . import removefiles
-            removefiles.discard_unmoved(acc, strips, moved_uids)
+            removefiles.finish(acc, strips, moved_uids)
         if left_alone:
             from . import removefiles
             with acc.lock:
@@ -4938,24 +4941,10 @@ def _senders_of(conn, uids) -> dict[int, str]:
     return out
 
 
-def _plain_uids(conn, found: list[bytes]) -> list[bytes]:
-    """`found` (UIDs of the selected folder) without the lighter copies
-    Inboxrake made by taking files out of a mail (REMOVED_HEADER): they share
-    their original's Message-ID but are never the mail a step moved when it
-    moved an original (a removal of files)."""
-    if not found:
-        return found
-    marked = _removed_marked(conn, [int(u) for u in found])
-    return [u for u in found if int(u) not in marked]
-
-
-def _present_strict(conn, mails: list[dict],
-                    originals: bool = False) -> set[tuple[str, str]]:
+def _present_strict(conn, mails: list[dict]) -> set[tuple[str, str]]:
     """Like `_present_in_targets`, for a step whose Message-IDs may belong to
     OTHER mails (a restore step): a mail counts as already there only when a
-    mail with its Message-ID AND its recorded sender is in the folder.
-    `originals`: the step is about the originals of a removal step, so a
-    lighter copy of the same Message-ID does not count as "already there"."""
+    mail with its Message-ID AND its recorded sender is in the folder."""
     present: set[tuple[str, str]] = set()
     by_folder: dict[str, list[dict]] = {}
     for m in mails:
@@ -4967,8 +4956,6 @@ def _present_strict(conn, mails: list[dict],
             continue
         for m in ms:
             found = _search_message_id(conn, m["msgid"])
-            if originals:
-                found = _plain_uids(conn, found)
             if found and m["addr"] in _senders_of(conn, found).values():
                 present.add((folder, m["msgid"]))
     return present
@@ -5173,11 +5160,6 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
     moved: list[int] = []
     trash = ""
     back: list[tuple[str, str, str, int]] = []
-    # a step about the originals of a removal step (re-armed after a
-    # restore was undone): the lighter copy of the same Message-ID is never
-    # one of them
-    originals = entry.get("action") == mimecut.ACTION \
-        or bool(entry.get("originals"))
     try:
         _recreate_folders(conn, entry)
         trash = entry.get("in") or folder_roles(conn, acc).get("trash")
@@ -5194,7 +5176,7 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
         if exact_copies is not None:
             present = set()
         elif entry.get("strict"):
-            present = _present_strict(conn, undo_mails(entry), originals)
+            present = _present_strict(conn, undo_mails(entry))
         else:
             present = _present_in_targets(conn, entry["items"])
         status, _ = conn.select(quote_folder(trash), readonly=False)
@@ -5240,8 +5222,6 @@ def _restore_entry(conn, acc, entry: dict, run: dict) -> None:
             if not msgid or (folder, msgid) in present:
                 continue
             found = _search_message_id(conn, msgid)
-            if originals and entry.get("strict"):
-                found = _plain_uids(conn, found)
             if entry.get("strict") and found and (
                     len(found) > want[msgid] or (mail["addr"] and any(
                         a != mail["addr"]
@@ -5385,7 +5365,13 @@ def _rebase_chain(conn, acc, folder: str, back: str, state: dict,
 
 def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
     """Undo a restore step: put every mail it brought back where it was
-    before, the steps in the reverse of the order the restore undid them."""
+    before, the steps in the reverse of the order the restore undid them.
+    Refused (nothing moves) when the restore went back through a removal of
+    files: it would send the originals back to Trash but leave the lighter
+    copies there too, and emptying Trash would then lose the mail."""
+    if any(p["head"].get("action") == mimecut.ACTION
+           for p in entry["parts"]):
+        raise RuntimeError(UNDO_THROUGH_REMOVAL)
     for part in reversed(entry["parts"]):
         target = part["head"]["in"]
         by_src: dict[str, list[tuple]] = {}
@@ -5397,9 +5383,7 @@ def _undo_parts(conn, acc, entry: dict, run: dict) -> None:
                 "who": [[m[2], m[3]] for m in mails], "count": len(mails),
                 "label": entry["label"],
                 # a Message-ID found more often than recorded is not moved
-                "strict": True,
-                "originals": part["head"].get("action") == mimecut.ACTION},
-                run)
+                "strict": True}, run)
 
 
 def _unmoved(entry: dict, run: dict) -> dict | None:

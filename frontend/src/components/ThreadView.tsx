@@ -26,6 +26,9 @@ type ThreadViewProps = {
   backLabel?: string;
   /** The pin state of `mail` when a single-mail view already owns it. */
   pin?: PinState;
+  /** A file of one of the conversation's mails was removed (the removal
+   *  started): the reader leaves - the mail's UID is replaced by its copy. */
+  onRemoved?: () => void;
 };
 
 /** Keyed by the mail: moving to another mail (previous / next) starts the
@@ -38,7 +41,7 @@ export function ThreadView(props: ThreadViewProps) {
 }
 
 function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
-  backLabel }: ThreadViewProps) {
+  backLabel, onRemoved }: ThreadViewProps) {
   const host = useReaderHost();
   const [conv, setConv] = useState<ConversationResp | null>(null);
   const [error, setError] = useState("");
@@ -224,7 +227,8 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
                           }} />
                         {!!body.atts?.length && (
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <AttachmentChips atts={body.atts} mail={m} />
+                            <AttachmentChips atts={body.atts} mail={m}
+                              onRemoved={onRemoved} />
                           </div>
                         )}
                       </>

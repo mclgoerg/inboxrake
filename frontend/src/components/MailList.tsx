@@ -51,7 +51,7 @@ export function MessageView({ mail, onBack, actions, nav, backLabel }: {
   if (reading) {
     return <ThreadView mail={mail} initial={detail ?? undefined} pin={pin}
       actions={actions} nav={nav} backLabel={t("reader.mail")}
-      onBack={() => setReading(false)} />;
+      onBack={() => setReading(false)} onRemoved={onBack} />;
   }
 
   return (

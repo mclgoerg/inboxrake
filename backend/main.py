@@ -61,6 +61,7 @@ from . import overview as overviewmod
 from . import pastdate
 from . import pinstore
 from . import removefiles
+from . import removejournal
 from . import presets as presetsmod
 from . import rhythm as rhythmmod
 from . import rulecheck as rulecheckmod
@@ -222,6 +223,7 @@ async def _lifespan(app: FastAPI):
                 mailops.load_snapshot(accountsmod.get(name))
                 mailops.load_undo(accountsmod.get(name))
     accountcopy.resume_all()
+    removefiles.start_sweep()
     rulesmod.start_scheduler()
     presetsmod.publish()
     digestmod.start_scheduler()
@@ -3352,6 +3354,8 @@ def post_config(body: dict, request: Request, response: Response):
         accountsmod.drop(str(body["delete_account"]))
         mailops.drop_snapshot(str(body["delete_account"]))
         mailops.drop_undo(str(body["delete_account"]))
+        removejournal.drop(str(body["delete_account"]),
+                           tenants.current(), mailops.SNAPSHOT_DIR)
         bodyindex.drop(str(body["delete_account"]))
         unsubstore.drop_account(str(body["delete_account"]))
         aisortstore.drop_account(str(body["delete_account"]))
@@ -3382,6 +3386,8 @@ def post_config(body: dict, request: Request, response: Response):
             accountsmod.rename(old, new)
             mailops.rename_snapshot(old, new)
             mailops.rename_undo(old, new)
+            removejournal.rename(old, new, tenants.current(),
+                                 mailops.SNAPSHOT_DIR)
             bodyindex.rename(old, new)
             verdictstore.rename_account(old, new)
             aisortstore.rename_account(old, new)

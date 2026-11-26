@@ -12,10 +12,12 @@ existing move job, which records the Undo step. Undo swaps them back: the
 original out of Trash, the copy to Trash (`trash_lighter_copies`).
 
 Nothing is lost on the way: any failure before the move leaves the original
-untouched and takes a half-made copy out again (`discard_unmoved`); the copy
+untouched and takes a half-made copy out again (`finish`, and `sweep` after a
+crash, see removejournal.py); the copy
 is only ever moved to Trash after its original is back; a mail is never
 touched when it is pinned, from a protected sender, signed, encrypted, too
-big, or when the server keeps labels it cannot carry over to a copy.
+big, when it also sits in a Proton Bridge label folder, or on a Gmail account
+(where one Message-ID is one mail, so the copy cannot be made safely).
 Refusals are coded (`mailops.coded`), exception text never reaches a client.
 """
 
@@ -35,6 +37,7 @@ from . import keepsafe
 from . import mailops
 from . import mimecut
 from . import pinstore
+from . import removejournal
 from . import yourfolders
 
 log = logging.getLogger("inboxrake.removefiles")
@@ -49,6 +52,7 @@ LANGS = ("en", "de")
 # why a mail is left as it is (`rmf.why.<reason>` in the interface)
 SIGNED, ENCRYPTED = "signed", "encrypted"
 TOO_BIG, NO_MSGID, LABELS = "too_big", "no_msgid", "labels"
+GMAIL = "gmail"
 LABEL_FOLDER, DELETED, NOT_FOUND = "label_folder", "deleted", "not_found"
 UNKNOWN, UNSUPPORTED, CHANGED = "unknown", "unsupported", "changed"
 PINNED, PROTECTED = "pinned", "protected"
@@ -205,33 +209,29 @@ def _bs_secure(node) -> str:
     return ""
 
 
-def _labels_of(blob: bytes) -> list[str] | None:
-    """Gmail's X-GM-LABELS of one FETCH answer, None when it has none."""
-    at = blob.find(b"X-GM-LABELS (")
-    if at < 0:
-        return None
-    parsed = mailops._bs_parse(mailops._bs_tokenize(
-        blob[at + len(b"X-GM-LABELS "):]))
-    return [str(x) for x in parsed[0]] if parsed and isinstance(
-        parsed[0], list) else []
-
-
 class _Server:
-    """What the checks need to know of the account's folders (one LIST, once)
-    and the labels of the mails (Gmail: X-GM-LABELS; Proton Bridge: the
-    Message-IDs the label folders hold)."""
+    """What the checks need to know of the account's folders (one LIST, once):
+    whether it is a Gmail account (the feature is off there) and, for Proton
+    Bridge, the Message-IDs the label folders hold."""
 
     def __init__(self, conn, acc):
         self.conn = conn
         self.acc = acc
         self.ctx = yourfolders._Ctx(conn, acc)
-        self.gmail = self.ctx.gmail
+        try:
+            preset = cfgmod.account_imap(acc.name).get("preset")
+        except Exception:
+            preset = ""
+        # Gmail keeps ONE mail per Message-ID (a second one with the same id
+        # is merged into the first), so a lighter copy that must share the
+        # original's Message-ID cannot be made there without risking the
+        # mail: the feature is off for Gmail accounts
+        self.gmail = bool(self.ctx.gmail) or preset == "gmail"
         self._label_ids: set[str] | None = None
 
     def label_folder(self, folder: str) -> bool:
-        """Is `folder` a label (Proton's `Labels/...`)? Not a home for a mail.
-        Every Gmail folder is one, but there the mail's own label is the
-        folder: see `label_guard`."""
+        """Is `folder` a Proton Bridge label (`Labels/...`)? Not a home for a
+        mail."""
         return not self.gmail and self.ctx.is_label(folder)
 
     def _proton_label_ids(self) -> set[str]:
@@ -252,16 +252,12 @@ class _Server:
             self._label_ids = ids
         return self._label_ids
 
-    def label_guard(self, folder: str, msgid: str, labels) -> str:
-        """"" when the mail has no label a copy in `folder` would lose, else
-        LABELS / LABEL_FOLDER."""
+    def label_guard(self, folder: str, msgid: str) -> str:
+        """"" when nothing stands against a copy in `folder`: GMAIL on a Gmail
+        account, LABEL_FOLDER for a label folder, LABELS for a mail that also
+        sits in a Proton label folder."""
         if self.gmail:
-            if labels is None:
-                return LABELS    # the server did not say: cannot be proven
-            own = "\\inbox" if folder.upper() == "INBOX" \
-                else mailops.decode_mutf7(folder).casefold()
-            return LABELS if any(str(x).casefold() != own for x in labels) \
-                else ""
+            return GMAIL
         if self.label_folder(folder):
             return LABEL_FOLDER
         return LABELS if msgid in self._proton_label_ids() else ""
@@ -284,12 +280,11 @@ def _flags_of(blob: bytes) -> set[str]:
     return {f.decode("latin-1") for f in m.group(1).split()} if m else set()
 
 
-def _fetch_one(conn, uid: int, gmail: bool = False) -> dict | None:
-    """`{raw, flags, idate, labels}` of one mail of the selected folder
-    (BODY.PEEK: nothing is marked read), None when the server has none."""
+def _fetch_one(conn, uid: int) -> dict | None:
+    """`{raw, flags, idate}` of one mail of the selected folder (BODY.PEEK:
+    nothing is marked read), None when the server has none."""
     status, data = conn.uid(
-        "FETCH", str(uid), "(UID FLAGS INTERNALDATE "
-        + ("X-GM-LABELS " if gmail else "") + "BODY.PEEK[])")
+        "FETCH", str(uid), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
     if status != "OK":
         raise imaplib.IMAP4.error("FETCH failed")
     meta = raw = None
@@ -305,8 +300,7 @@ def _fetch_one(conn, uid: int, gmail: bool = False) -> dict | None:
         return None
     dm = _IDATE_RE.search(meta)
     return {"raw": raw, "flags": _flags_of(meta),
-            "idate": dm.group(1).decode() if dm else None,
-            "labels": _labels_of(meta) if gmail else None}
+            "idate": dm.group(1).decode() if dm else None}
 
 
 def _idate_epoch(text: str | None) -> float | None:
@@ -331,6 +325,10 @@ def _live_look(conn, acc, rows: list[dict], srv: _Server) -> None:
     folder, a mail flagged deleted, a signature or encryption (from the
     BODYSTRUCTURE - the job looks at the whole mail again), Gmail labels or
     Proton label folders."""
+    if srv.gmail:
+        for r in rows:
+            r["skip"] = GMAIL
+        return
     by_folder: dict[str, list[dict]] = {}
     for r in rows:
         by_folder.setdefault(r["m"]["folder"], []).append(r)
@@ -357,8 +355,7 @@ def _live_look(conn, acc, rows: list[dict], srv: _Server) -> None:
             chunk = group[start:start + mailops.FETCH_CHUNK]
             status, data = conn.uid(
                 "FETCH", ",".join(str(r["m"]["uid"]) for r in chunk),
-                "(UID FLAGS BODYSTRUCTURE"
-                + (" X-GM-LABELS)" if srv.gmail else ")"))
+                "(UID FLAGS BODYSTRUCTURE)")
             if status != "OK":
                 raise imaplib.IMAP4.error("FETCH failed")
             for item in data or []:
@@ -381,8 +378,7 @@ def _live_look(conn, acc, rows: list[dict], srv: _Server) -> None:
                 if kind:
                     r["skip"] = kind
                     continue
-            why = srv.label_guard(folder, r["m"]["msgid"],
-                                  _labels_of(rec) if srv.gmail else None)
+            why = srv.label_guard(folder, r["m"]["msgid"])
             if why:
                 r["skip"] = why
 
@@ -478,7 +474,10 @@ def start(acc, items, files, confirm: int, lang: str = "en") -> dict:
     for r in ready:
         by_folder.setdefault(r["m"]["folder"], set()).add(r["m"]["uid"])
     n = sum(len(v) for v in by_folder.values())
-    spec = {"files": [list(f) for f in files],
+    # each mail is cut only of the files the confirm listed FOR IT
+    per_mail = {f"{r['m']['folder']}\0{r['m']['uid']}": r["files"]
+                for r in ready}
+    spec = {"files": [list(f) for f in files], "per_mail": per_mail,
             "lang": lang if lang in LANGS else "en", "ts": int(time.time())}
     with acc.lock:
         try:
@@ -491,6 +490,17 @@ def start(acc, items, files, confirm: int, lang: str = "en") -> dict:
 
 
 # --------------------------------------------------------------------- job
+
+def _pick_for(root, m: dict, files, positions):
+    """The parts of ONE mail that are the files asked for it (`positions`
+    into `files`, from the mail's own index entry): exact name + size; a
+    server that counts a line break more may be stood in for only by the one
+    part of that name the mail's index lists once."""
+    mine = [tuple(files[i]) for i in positions]
+    own = [a["name"].lower() for a in m.get("atts") or ()]
+    near = {(n.lower(), sz) for n, sz in mine if own.count(n.lower()) == 1}
+    return mimecut.pick(root, mine, near)
+
 
 def _requested_flags(flags: set[str]) -> str:
     keep = sorted(f for f in flags
@@ -506,13 +516,15 @@ def prepare(acc, job: dict, progress_cb, strips: dict, skipped: list
     the originals that may now go to Trash (`{folder: uids}`); a copy that
     passed is also in `strips[(folder, uid)]`, what could not be done is in
     `skipped` as (folder, uid, reason). Cancelling or a lost connection
-    raises; what was copied until then is in `strips` for `discard_unmoved`."""
+    raises; what was copied until then is in `strips` for `finish`."""
     spec = job["strip"]
     files = _clean_files(spec["files"])
+    per_mail = spec.get("per_mail") or {}
     when = time.gmtime(spec["ts"])
     ready: dict[str, set[int]] = {}
     total = sum(len(u) for u in job["by_folder"].values())
     done = 0
+    sweep(acc)          # copies a crashed earlier run may have left
     conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     try:
         srv = _Server(conn, acc)
@@ -524,7 +536,8 @@ def prepare(acc, job: dict, progress_cb, strips: dict, skipped: list
                 if mailops.cancel_requested("delete", acc):
                     raise mailops.Cancelled()
                 try:
-                    got = _one(conn, acc, srv, folder, uid, files, when,
+                    got = _one(conn, acc, srv, folder, uid, files,
+                               per_mail.get(f"{folder}\0{uid}"), when,
                                spec["lang"])
                 except (imaplib.IMAP4.abort, OSError):
                     raise
@@ -547,15 +560,33 @@ def prepare(acc, job: dict, progress_cb, strips: dict, skipped: list
     return ready
 
 
-def _one(conn, acc, srv: _Server, folder: str, uid: int, files, when,
-         lang: str):
-    """Copy one mail: the strip record `{uid, uv, size, removed, bytes}` once
-    its lighter copy stands in the folder and has been checked, else the
-    reason it is left alone."""
+def _uidnext(conn, folder: str) -> int | None:
+    """The folder's UIDNEXT: every UID the server hands out from now on is
+    at least this. None when it cannot be read."""
+    try:
+        st, d = conn.status(mailops.quote_folder(folder), "(UIDNEXT)")
+    except imaplib.IMAP4.error:
+        return None
+    m = re.search(rb"UIDNEXT (\d+)", b" ".join(
+        x for x in d or [] if isinstance(x, bytes)))
+    return int(m.group(1)) if st == "OK" and m else None
+
+
+def _present(conn, folder: str, uid: int) -> bool:
+    """Is the mail with this UID still in the folder?"""
+    status, _ = conn.select(mailops.quote_folder(folder), readonly=True)
+    return status == "OK" and uid in mailops._fetch_msgid_map(conn, [uid])
+
+
+def _one(conn, acc, srv: _Server, folder: str, uid: int, files, positions,
+         when, lang: str):
+    """Copy one mail: the strip record once its lighter copy stands in the
+    folder and has been checked, else the reason it is left alone. `positions`
+    are the files (of `files`) the confirm listed for THIS mail."""
     with acc.lock:
         m = acc.index.get(mailops.ikey(folder, uid))
         m = dict(m) if m else None
-    if m is None:
+    if m is None or not positions:
         return CHANGED
     pinned = pinstore.load_account(acc.name)
     plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
@@ -565,12 +596,15 @@ def _one(conn, acc, srv: _Server, folder: str, uid: int, files, when,
         return PINNED
     if (why := _static_skip(m)):
         return why
+    why = srv.label_guard(folder, m["msgid"])
+    if why:
+        return why
     status, _ = conn.select(mailops.quote_folder(folder), readonly=True)
     expected = acc.folder_uv.get(folder)
     uv = mailops.uidvalidity(conn)
     if status != "OK" or (expected and uv and uv != expected):
         return CHANGED
-    got = _fetch_one(conn, uid, srv.gmail)
+    got = _fetch_one(conn, uid)
     if got is None:
         return CHANGED
     raw, flags = got["raw"], got["flags"]
@@ -587,20 +621,38 @@ def _one(conn, acc, srv: _Server, folder: str, uid: int, files, when,
     kind = mimecut.secure_kind(root, raw)
     if kind:
         return kind
-    why = srv.label_guard(folder, m["msgid"], got["labels"])
-    if why:
-        return why
-    found, missing = mimecut.pick(root, files)
+    found, missing = _pick_for(root, m, files, positions)
     if not found:
         return NOT_FOUND
+    mine = [list(files[i]) for i in positions]
     notes = [mimecut.note_text(a.name, a.size, when, lang) for a in found]
     lines = [mimecut.removed_header_line(a.name, a.size, when) for a in found]
     new = mimecut.build_copy(raw, root, found, notes, lines)
     want_flags = _requested_flags(flags)
-    new_uid, new_uv = _append(conn, folder, uv, want_flags, got["idate"],
-                              new, m["msgid"], srv)
-    if new_uid is None:
+    # Everything the server hands out from now on is >= floor: only such a
+    # UID (and never the original's) can be our copy.
+    floor = _uidnext(conn, folder)
+    if floor is None:
         return FAILED
+    base, tenant = mailops.SNAPSHOT_DIR, acc.tenant
+    try:
+        jid = removejournal.add(acc.name, tenant, base, {
+            "folder": folder, "uv": uv, "floor": floor, "orig": uid,
+            "msgid": m["msgid"]})
+    except OSError:
+        return FAILED          # no record of what is about to be made: none made
+    new_uid, new_uv, sent = _append(conn, folder, uv, want_flags,
+                                    got["idate"], new, m["msgid"], floor, uid)
+    if new_uid is None:
+        if not sent:           # nothing was stored: nothing to settle
+            removejournal.clear(acc.name, tenant, base, [jid])
+        return FAILED          # (stored but not identified: the sweep looks)
+    removejournal.update(acc.name, tenant, base, jid, uid=new_uid)
+    if not _present(conn, folder, uid):
+        # the original is gone (a server that merges mails by Message-ID, or
+        # another client): the copy is now the mail, never touched
+        removejournal.clear(acc.name, tenant, base, [jid])
+        return CHANGED
     try:
         ok = _verify(conn, folder, new_uv, new_uid, raw, root, found, files,
                      want_flags, got["idate"], m["msgid"], lines)
@@ -611,47 +663,46 @@ def _one(conn, acc, srv: _Server, folder: str, uid: int, files, when,
                     exc_info=True)
         ok = False
     if not ok:
-        _discard(conn, folder, new_uv, new_uid)
+        if _discard(conn, folder, new_uv, new_uid, floor, uid):
+            removejournal.clear(acc.name, tenant, base, [jid])
         return VERIFY_FAILED
-    sizes = {id(a): a.size for a in found}
     return {"uid": new_uid, "uv": new_uv, "size": len(new),
-            "removed": [list(f) for f in files if f not in missing],
-            "bytes": sum(sizes.values())}
+            "removed": [f for f in mine
+                        if tuple(f) not in {tuple(x) for x in missing}],
+            "bytes": sum(a.size for a in found), "jid": jid, "floor": floor,
+            # what the copy's header says, to know it again
+            "wrote": [[mimecut._clean_name(a.name), a.size] for a in found]}
 
 
 def _append(conn, folder: str, uv: int, flags: str, idate: str | None,
-            data: bytes, msgid: str, srv: _Server):
-    """APPEND the copy to `folder` with `flags` and `idate`; `(uid,
-    UIDVALIDITY)` of the new mail, `(None, None)` when the server refused or
-    its UID cannot be established with certainty."""
-    uidplus = mailops._supports_uidplus(conn)
-    nxt = None
-    if not uidplus:
-        st, d = conn.status(mailops.quote_folder(folder), "(UIDNEXT)")
-        m = re.search(rb"UIDNEXT (\d+)", b" ".join(
-            x for x in d or [] if isinstance(x, bytes)))
-        if st != "OK" or not m:
-            return None, None
-        nxt = int(m.group(1))
+            data: bytes, msgid: str, floor: int, orig: int):
+    """APPEND the copy to `folder` with `flags` and `idate`. Returns `(uid,
+    UIDVALIDITY, sent)`: the new mail's UID only when it can be trusted - at
+    least `floor` and not the original's (a server that merges the copy into
+    the mail it already holds answers with that mail's UID, or with none) -
+    else `(None, None, sent)`; `sent` says whether the server took it."""
     stamp = f'"{idate}"' if idate else None
     status, answer = conn.append(mailops.quote_folder(folder), flags or None,
                                  stamp, data)
     if status != "OK":
-        return None, None
+        return None, None, False
     text = b" ".join(x for x in answer or [] if isinstance(x, bytes))
     m = _APPENDUID_RE.search(text)
     if m:
-        return int(m.group(2)), int(m.group(1))
-    # no APPENDUID: the new mail is the one with our header above UIDNEXT
+        got_uv, uid = int(m.group(1)), int(m.group(2))
+        if uid >= floor and uid != orig and (not uv or got_uv == uv):
+            return uid, got_uv, True
+        return None, None, True
+    # no APPENDUID: the new mail is the one with our header above `floor`
     status, _ = conn.select(mailops.quote_folder(folder), readonly=True)
     if status != "OK":
-        return None, None
+        return None, None, True
     hits = [int(u) for u in mailops._search_message_id(conn, msgid)
-            if nxt is None or int(u) >= nxt]
+            if int(u) >= floor and int(u) != orig]
     hits = sorted(set(hits) & _marked(conn, hits)) if hits else []
     if len(hits) != 1:
-        return None, None
-    return hits[0], mailops.uidvalidity(conn)
+        return None, None, True
+    return hits[0], mailops.uidvalidity(conn), True
 
 
 def _marked(conn, uids) -> set[int]:
@@ -702,17 +753,24 @@ def _verify(conn, folder: str, uv: int, uid: int, raw: bytes, root, found,
     return not any(mimecut.find_exact(root2, a.name, a.size) for a in found)
 
 
-def _discard(conn, folder: str, uv: int, uid: int) -> bool:
-    """Take our own half-made copy out of `folder`: only the UID the APPEND
-    reported, only in the UIDVALIDITY it was reported for and only while the
-    mail carries our `X-Inboxrake-Removed` header (a mail without it - the
-    original, anything of the user's - is never touched), and only with a UID
+def _discard(conn, folder: str, uv: int, uid: int, floor: int,
+             orig: int) -> bool:
+    """Take our own half-made copy out of `folder`. Only the UID the APPEND
+    reported, and only when ALL of this holds: it is at least `floor` (the
+    folder's UIDNEXT before the APPEND) and not the original's UID, the
+    UIDVALIDITY is the one it was reported for, the mail carries our
+    `X-Inboxrake-Removed` header, and the ORIGINAL is still in the folder (a
+    copy whose original is gone is the mail itself). Deleted with a UID
     EXPUNGE (or a plain one when nothing else is flagged deleted). Returns
     whether it is gone. Never raises."""
     try:
+        if uid < floor or uid == orig:
+            return False
         status, _ = conn.select(mailops.quote_folder(folder), readonly=False)
         if status != "OK" or (uv and mailops.uidvalidity(conn) != uv):
             return False
+        if orig not in mailops._fetch_msgid_map(conn, [orig]):
+            return False            # the copy is the only mail now
         if uid not in mailops._fetch_msgid_map(conn, [uid]):
             return True             # gone already
         if uid not in mailops._removed_marked(conn, [uid]):
@@ -725,29 +783,121 @@ def _discard(conn, folder: str, uv: int, uid: int) -> bool:
         return False
 
 
-def discard_unmoved(acc, strips: dict, moved: dict[str, set[int]]) -> None:
+def finish(acc, strips: dict, moved: dict[str, set[int]]) -> None:
     """After a removal job (cancelled, failed or done): every copy whose
     original did NOT go to Trash is taken out again, so no mail is left
-    twice. A copy that cannot be removed stays and is logged."""
+    twice; the journal lines of the copies that are settled (the mail, or
+    gone) are cleared. A copy that cannot be removed stays and the sweep gets
+    it later. Never raises."""
+    base, tenant = mailops.SNAPSHOT_DIR, acc.tenant
+    settled = [s.get("jid") for (f, u), s in strips.items()
+               if u in moved.get(f, ())]
     todo = [(f, u, s) for (f, u), s in strips.items()
             if u not in moved.get(f, ())]
-    if not todo:
-        return
+    if todo:
+        try:
+            conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
+        except Exception:
+            log.warning("remove files: could not reach the server to take "
+                        "%d unused copies out", len(todo))
+            conn = None
+        if conn is not None:
+            try:
+                for folder, uid, s in todo:
+                    if _discard(conn, folder, s["uv"], s["uid"],
+                                s.get("floor", 1 << 62), uid):
+                        settled.append(s.get("jid"))
+                    else:
+                        log.warning("remove files: a copy stayed in a folder")
+            finally:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+    removejournal.clear(acc.name, tenant, base, settled)
+
+
+def _sweep_one(conn, e: dict) -> bool:
+    """Settle one journal line of a run that did not finish: True when it is
+    settled (clear it). Deletes a copy only if its original is still in the
+    folder, the copy is above the recorded UIDNEXT and carries our header."""
+    folder, orig, msgid = e["folder"], e["orig"], e.get("msgid", "")
+    status, _ = conn.select(mailops.quote_folder(folder), readonly=False)
+    if status != "OK":
+        return True             # the folder is gone: nothing to settle
+    uv = e.get("uv")
+    if uv and mailops.uidvalidity(conn) != uv:
+        return True             # a new generation: the UIDs mean nothing
+    if not msgid or mailops._fetch_msgid_map(conn, [orig]).get(orig) != msgid \
+            or orig in mailops._removed_marked(conn, [orig]):
+        return True             # the original moved on: the copy is the mail
+    hits = [int(u) for u in mailops._search_message_id(conn, msgid)
+            if int(u) >= e["floor"] and int(u) != orig]
+    for uid in sorted(set(hits) & mailops._removed_marked(conn, hits)):
+        mailops._expunge_one(conn, uid)
+    return True
+
+
+def sweep(acc, startup: bool = False) -> None:
+    """Take out the copies a crashed run left behind (see removejournal):
+    at the start of the next removal and, with `startup`, after a restart
+    (then only lines of an earlier boot - never one of a run in progress).
+    Never raises; a line that cannot be settled now stays."""
+    base, tenant = mailops.SNAPSHOT_DIR, acc.tenant
     try:
+        lines = [e for e in removejournal.load(acc.name, tenant, base)
+                 if not startup or e.get("boot") != removejournal.BOOT]
+        if not lines:
+            return
         conn = mailops.connect(cfgmod.account_imap(acc.name), acc.name)
     except Exception:
-        log.warning("remove files: could not reach the server to take "
-                    "%d unused copies out", len(todo))
         return
     try:
-        for folder, uid, s in todo:
-            if not _discard(conn, folder, s["uv"], s["uid"]):
-                log.warning("remove files: a copy stayed in a folder")
+        for e in lines:
+            try:
+                if _sweep_one(conn, e):
+                    removejournal.clear(acc.name, tenant, base, [e["id"]])
+            except (imaplib.IMAP4.abort, OSError):
+                break
+            except Exception:
+                log.warning("remove files: could not settle a copy left by "
+                            "an earlier run", exc_info=True)
     finally:
         try:
             conn.logout()
         except Exception:
             pass
+
+
+def start_sweep() -> None:
+    """At start-up: a thread that settles what a crashed run left - only
+    when some account has a journal at all (a normal start starts nothing)."""
+    from . import accounts as accountsmod
+    from . import tenants
+    found = False
+    for tenant in tenants.known():
+        with tenants.use(tenant):
+            for name in accountsmod.names():
+                acc = accountsmod.get(name)
+                found = found or bool(removejournal.load(
+                    acc.name, acc.tenant, mailops.SNAPSHOT_DIR))
+    if found:
+        import threading
+        threading.Thread(target=sweep_startup, daemon=True).start()
+
+
+def sweep_startup() -> None:
+    """After a restart: settle what a crashed run left, for every account that
+    has a journal (a thread of its own - the servers may be slow)."""
+    from . import accounts as accountsmod
+    from . import tenants
+    for tenant in tenants.known():
+        with tenants.use(tenant):
+            for name in accountsmod.names():
+                acc = accountsmod.get(name)
+                if removejournal.load(acc.name, acc.tenant,
+                                      mailops.SNAPSHOT_DIR):
+                    sweep(acc, startup=True)
 
 
 def skipped_notice(left: list[tuple[str, int, str]]) -> dict:
@@ -788,20 +938,61 @@ def trash_lighter_copies(conn, acc, copies: list[dict], trash: str) -> None:
         s["done"] = True
 
 
+def _removed_lines(conn, uids) -> dict[int, list[dict]]:
+    """`{uid: [{name, size, date}]}` of the `X-Inboxrake-Removed` lines of
+    these mails (selected folder)."""
+    out: dict[int, list[dict]] = {}
+    ids = [int(u) for u in uids]
+    for start in range(0, len(ids), mailops.FETCH_CHUNK):
+        part = ids[start:start + mailops.FETCH_CHUNK]
+        status, data = conn.uid(
+            "FETCH", ",".join(str(u) for u in part),
+            "(UID BODY.PEEK[HEADER.FIELDS (X-INBOXRAKE-REMOVED)])")
+        if status != "OK":
+            raise imaplib.IMAP4.error("FETCH failed")
+        for item in data or []:
+            if isinstance(item, tuple) and len(item) >= 2:
+                um = _UID_RE.search(item[0])
+                if um:
+                    out[int(um.group(1))] = mimecut.removed_of(
+                        email.message_from_bytes(item[1]))
+    return out
+
+
+def _fresh_uids(conn, c: dict) -> set[int]:
+    """The UIDs that came into the (selected) folder with the restore that is
+    undoing the step - the mails it brought back - as far as it noted what the
+    folder held before."""
+    attempt = c.get("attempt")
+    if not attempt or attempt.get("uv") != mailops.uidvalidity(conn):
+        return set()
+    return set(mailops._list_uids(conn)) - set(attempt.get("before") or ())
+
+
 def _find_copy(conn, c: dict, s: dict) -> int | None:
-    """The UID of the lighter copy in the selected folder, or None."""
+    """The UID of the lighter copy in the selected folder, or None. First by
+    its UID (same UIDVALIDITY, our header, the Message-ID); else by
+    Message-ID, accepting a mail only if its `X-Inboxrake-Removed` lines
+    include EVERY file this step removed - so never the original that was
+    just brought back, which on a second removal is itself a copy of the
+    first - and it is not one of the UIDs the restore just brought in."""
     msgid = c.get("msgid", "")
     if s.get("uid") and mailops.uidvalidity(conn) == s.get("uv"):
         if s["uid"] in mailops._removed_marked(conn, [s["uid"]]) \
                 and mailops._fetch_msgid_map(
                     conn, [s["uid"]]).get(s["uid"]) == msgid:
             return s["uid"]
-    if not msgid:
+    wrote = s.get("wrote")
+    if not msgid or not wrote:
         return None
-    hits = [int(u) for u in mailops._search_message_id(conn, msgid)]
-    hits = sorted(set(hits) & mailops._removed_marked(conn, hits)) \
-        if hits else []
-    return hits[0] if len(hits) == 1 else None
+    fresh = _fresh_uids(conn, c)
+    hits = [int(u) for u in mailops._search_message_id(conn, msgid)
+            if int(u) not in fresh]
+    lines = _removed_lines(conn, hits) if hits else {}
+    good = [u for u, got in lines.items()
+            if all(any(g["name"] == w[0] and g["size"] == w[1] for g in got)
+                   for w in wrote)]
+    return good[0] if len(good) == 1 else None
 
 
 # --------------------------------------------------------------------- zip
@@ -867,7 +1058,7 @@ def _fill_zip(conn, acc, rows: list[dict], files, zf) -> None:
             root = mimecut.parse(raw)
         except mimecut.MimeError:
             continue
-        found, _ = mimecut.pick(root, [files[i] for i in r["files"]])
+        found, _ = _pick_for(root, m, files, r["files"])
         for a in found:
             data = mimecut.payload(raw, a.part)
             key = (a.name.casefold(), hashlib.sha256(data).hexdigest())

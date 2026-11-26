@@ -257,3 +257,37 @@ test("German: title, zip, reason, button and the note's language", async () => {
   await outcome;
   expect(removeFilesApi).toHaveBeenCalledWith(IDS, [ASKED[1]], 3, "de");
 });
+
+test("Gmail: every mail stays as it is, with the reason, and nothing can be "
+  + "removed", async () => {
+  removeCheck.mockResolvedValue(check({
+    mails: [1, 2, 3].map((uid) => ({ folder: "INBOX", uid, addr: WHO,
+      subject: `Scans ${uid}`, size: 7_000_000, files: [0, 1], safe: "" as const,
+      skip: "gmail" })),
+    files: ASKED.map((f) => ({ ...f, mails: 0, safe: 0, classes: [] })) }));
+  const outcome = start();
+  const dlg = await findDialog();
+  expect(within(dlg).getByText(
+    "3 mails stay as they are: Gmail keeps one mail per Message-ID, so a copy cannot be made safely there."))
+    .toBeTruthy();
+  expect((within(dlg).getByRole("button", { name: /^Remove 0 files$/ }) as
+    HTMLButtonElement).disabled).toBe(true);
+  expect((within(dlg).getByRole("checkbox", { name: "Select scan-1.pdf" }) as
+    HTMLInputElement).disabled).toBe(true);
+  await cancelDialog();
+  await outcome;
+  expect(removeFilesApi).not.toHaveBeenCalled();
+});
+
+test("German: the stop names what to do - untick, unpin or unprotect", async () => {
+  setLang("de");
+  removeCheck.mockResolvedValue(check({ blocked: [
+    { folder: "INBOX", uid: 2, subject: "Scans 2", addr: WHO, size: 1,
+      why: "pinned" }] }));
+  const outcome = start();
+  const dlg = await findDialog();
+  expect(within(dlg).getByText(/Wähle sie ab oder löse zuerst das Anheften bzw\. den Schutz\./))
+    .toBeTruthy();
+  fireEvent.click(within(dlg).getByRole("button", { name: "Schließen" }));
+  expect(await outcome).toBe("stopped");
+});

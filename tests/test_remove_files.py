@@ -326,7 +326,7 @@ def test_a_half_made_copy_that_is_not_ours_is_never_deleted(monkeypatch):
     conn.select('"INBOX"')
     other = mail(9, IDS[0], FILES)               # same id, no header
     fake.mailbox["INBOX"].append(other)
-    assert removefiles._discard(conn, "INBOX", 1, 9) is False
+    assert removefiles._discard(conn, "INBOX", 1, 9, 5, 1) is False
     assert any(m["uid"] == 9 for m in fake.mailbox["INBOX"])
 
 
@@ -421,6 +421,7 @@ def test_pinned_mail_stops_the_action_and_is_named(monkeypatch):
     assert [m["raw"] for m in fake.mailbox["INBOX"]] == originals
     # untick (leave it out) and the rest goes
     assert _remove(items=[["INBOX", 1]]).status_code == 200
+    wait_delete_done()
 
 
 def test_protected_sender_stops_the_action_too(monkeypatch):
@@ -517,30 +518,50 @@ def test_nothing_starts_while_something_else_changes_the_mailbox(monkeypatch):
         acc.folder_lock.release()
     assert _commands(fake, "APPEND") == []
     assert _remove(items=items).status_code == 200
+    wait_delete_done()
 
 
 # ------------------------------------------------------------------ servers
 
-def test_gmail_labels_that_a_copy_would_lose_stop_the_mail(monkeypatch):
+def test_the_feature_is_off_on_gmail_with_the_reason(monkeypatch):
+    """Gmail keeps one mail per Message-ID (a second one is merged into the
+    first), so a copy that must share the original's Message-ID cannot be made
+    there without risking the mail: nothing is read, appended or moved."""
     plain = mail(1, IDS[0], [*FILES, KEEP])
     plain["gmid"] = "1001"
     plain["labels"] = ["\\Inbox"]
-    labelled = mail(2, IDS[1], [*FILES, KEEP])
-    labelled["gmid"] = "1002"
-    labelled["labels"] = ["\\Inbox", "Holiday"]
-    fake = server(monkeypatch, [plain, labelled], gmail=True,
+    other = mail(2, IDS[1], [*FILES, KEEP])
+    other["gmid"] = "1002"
+    other["labels"] = ["\\Inbox", "Holiday"]
+    fake = server(monkeypatch, [plain, other], gmail=True,
                   extra_folders={"[Gmail]/Trash": []})
     analyse(client)
     items = [["INBOX", 1], ["INBOX", 2]]
     chk = client.post("/api/attachments/remove/check",
                       json=body(SIZES, items)).json()
-    assert [m["skip"] for m in chk["mails"]] == ["", "labels"]
-    _remove(items=items)
+    assert [m["skip"] for m in chk["mails"]] == ["gmail", "gmail"]
+    assert [f["mails"] for f in chk["files"]] == [0, 0]
+    assert _remove(items=items).status_code == 200      # (a stale confirm)
     wait_delete_done()
-    assert len(_commands(fake, "APPEND")) == 1
-    assert _notice()["params"] == {"n": 1, "why": "labels"}
-    left = [m for m in fake.mailbox["INBOX"] if m["msgid"] == IDS[1]]
-    assert len(left) == 1 and left[0]["uid"] == 2     # untouched
+    assert _commands(fake, "APPEND") == []
+    assert [c for c in fake.commands if c[:2] == ("UID", "MOVE")] == []
+    assert not [c for c in fake.commands if c[0] == "UID" and c[1] == "FETCH"
+                and "BODY.PEEK[]" in c[3]]                 # not even read
+    assert _notice()["params"] == {"n": 2, "why": "gmail"}
+    assert [m["uid"] for m in fake.mailbox["INBOX"]] == [1, 2]
+
+
+def test_a_gmail_account_is_off_by_its_preset_too(monkeypatch):
+    fake = server(monkeypatch, [mail(1, IDS[0], [*FILES, KEEP])])
+    cfgmod.update_config({"accounts": {accountsmod.get().name: {
+        **cfgmod.account_imap(accountsmod.get().name), "preset": "gmail"}}})
+    analyse(client)
+    chk = client.post("/api/attachments/remove/check", json=body(
+        SIZES, [["INBOX", 1]])).json()
+    assert [m["skip"] for m in chk["mails"]] == ["gmail"]
+    _remove(items=[["INBOX", 1]])
+    wait_delete_done()
+    assert _commands(fake, "APPEND") == []
 
 
 def test_proton_label_folders_stop_a_mail_that_also_sits_in_one(monkeypatch):

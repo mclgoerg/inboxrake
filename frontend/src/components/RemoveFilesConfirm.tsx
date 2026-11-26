@@ -56,15 +56,14 @@ export function RemoveFilesConfirm({ files, check, run, onResult }: {
   const freed = chosen.reduce((n, m) => n + m.files.filter((i) => ticked.has(i))
     .reduce((s, i) => s + check.files[i].size, 0), 0);
   const zipBytes = [...ticked].reduce((n, i) => n + check.files[i].size, 0);
-  // the mails that stay as they are, by reason (only those holding a file
-  // that is ticked)
+  // the mails that stay as they are, by reason: every one that holds an
+  // asked file - the reason is the answer even when nothing can be removed
   const left = useMemo(() => {
     const by = new Map<string, number>();
     for (const m of check.mails)
-      if (m.skip && m.files.some((i) => ticked.has(i)))
-        by.set(m.skip, (by.get(m.skip) ?? 0) + 1);
+      if (m.skip) by.set(m.skip, (by.get(m.skip) ?? 0) + 1);
     return [...by];
-  }, [check, ticked]);
+  }, [check]);
   const go = async () => {
     const answer = { ticked: [...ticked].sort((a, b) => a - b),
       zip: zip && zipFits };
