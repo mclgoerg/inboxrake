@@ -666,8 +666,7 @@ def _rename_state(acc, fn) -> None:
     try:
         mailops.save_snapshot(acc)
     except Exception:
-        log.exception("[%s] could not persist the snapshot after a rename",
-                      acc.name)
+        log.exception("could not persist the snapshot after a rename")
 
 
 def _rename_config(acc, ctx: _Ctx, old: str, new: str, fn) -> None:
@@ -750,7 +749,7 @@ def create(acc, name: str) -> dict:
         _scanned_after_create(acc, raw)
         auditlog.record("folder_create", account=acc.name, label=_name(raw),
                         entry_id=auditlog.new_id())
-        log.info("[%s] folder created", acc.name)
+        log.info("a folder was created")
         return {"raw": raw, "name": _name(raw)}
 
 
@@ -787,8 +786,7 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
             try:
                 run()
             except Exception:
-                log.exception("[%s] rename: could not update the %s",
-                              acc.name, step)
+                log.exception("rename: could not update the %s", step)
                 failed.append(step)
         auditlog.record("folder_rename", account=acc.name,
                         label=f"{_name(folder)} → {_name(raw)}",
@@ -821,7 +819,7 @@ def _drop(conn, acc, raw: str) -> None:
     _forget_folder(acc, raw)
     auditlog.record("folder_delete", account=acc.name, label=_name(raw),
                     entry_id=auditlog.new_id())
-    log.info("[%s] an empty folder deleted", acc.name)
+    log.info("an empty folder was deleted")
 
 
 def delete(acc, folder: str, uv: int = 0) -> dict:
@@ -939,7 +937,7 @@ def _record_merge(acc, folder, target, copies, moved, audit_id, affected,
                     outcome="ok" if failure is None else "partial",
                     error="" if failure is None else str(failure),
                     entry_id=audit_id)
-    log.info("[%s] merged %d mails into another folder", acc.name, moved)
+    log.info("merged %d mails into another folder", moved)
     return undo
 
 
@@ -948,7 +946,7 @@ def _repoint(acc, folder: str, target: str) -> list[dict]:
         return rulesmod.repoint_dest(
             acc.name, lambda d: target if d == folder else d)
     except Exception:
-        log.exception("[%s] merge: could not repoint the rules", acc.name)
+        log.exception("merge: could not repoint the rules")
         return []
 
 

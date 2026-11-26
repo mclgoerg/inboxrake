@@ -5298,7 +5298,7 @@ def _run_undo(acc, entry: dict, pos: int, only=None,
             from . import yourfolders
             yourfolders.undo_rules(acc, entry)
         except Exception:
-            log.exception("[%s] could not point the rules back", acc.name)
+            log.exception("could not point the rules back")
     return run
 
 

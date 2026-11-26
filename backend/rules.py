@@ -876,8 +876,7 @@ def repoint_dest(account: str, remap, ids=None) -> list[dict]:
         if changed:
             _save(rules)
     if changed:
-        log.info("%d rule(s) of %r pointed at another folder", len(changed),
-                 account)
+        log.info("%d rule(s) pointed at another folder", len(changed))
     return changed
 
 
