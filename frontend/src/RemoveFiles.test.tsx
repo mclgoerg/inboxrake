@@ -182,7 +182,8 @@ test("a file in no changeable mail cannot be ticked", async () => {
   const dlg = await findDialog();
   const second = within(dlg).getByRole("checkbox",
     { name: "Select scan-2.pdf" }) as HTMLInputElement;
-  expect(second.disabled).toBe(true) && expect(second.checked).toBe(false);
+  expect(second.disabled).toBe(true);
+  expect(second.checked).toBe(false);
   expect(within(dlg).getByText("Remove 1 file from 3 mails?")).toBeTruthy();
   await cancelDialog();
   await outcome;

@@ -126,7 +126,8 @@ export function RemoveFilesConfirm({ files, check, run, onResult }: {
               );
             })}
           </ul>
-          <Checkbox checked={zip && zipFits} disabled={!zipFits || busy}
+          <Checkbox checked={zip && zipFits && ticked.size > 0}
+            disabled={!zipFits || busy || ticked.size === 0}
             className="type-body text-body"
             label={zipFits ? t("rmf.zip", { size: fmtSize(zipBytes) })
               : t("rmf.zip_big", { size: fmtSize(check.zip.cap) })}

@@ -3622,9 +3622,12 @@ def _delete_worker(acc) -> None:
             fields = None
             if action == mimecut.ACTION:
                 meta = _apply_replacement(moved_uids, strips, acc)
-                n_files = sum(len(strips[(f, u)]["removed"])
-                              for f, us in moved_uids.items() for u in us
-                              if (f, u) in strips)
+                # (the files, as the confirm counted them: one file sent
+                # in three mails is one file)
+                n_files = len({(str(n).lower(), int(sz))
+                               for f, us in moved_uids.items() for u in us
+                               if (f, u) in strips
+                               for n, sz in strips[(f, u)]["removed"]})
                 n_mails = sum(len(us) for us in moved_uids.values())
                 step_label[0] = (
                     f"Removed {n_files} file{'' if n_files == 1 else 's'} "

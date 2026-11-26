@@ -446,7 +446,7 @@ class FakeIMAP:
         """The whole mail of `m` with its `atts` as real parts (`real_atts`)."""
         import base64
         import hashlib
-        head = self._header_blob(m)[:-2].decode("latin-1")
+        head = self._header_blob(m)[:-4].decode("latin-1")
         text = (m.get("body") or "Hello mail body")
         out = [head, "MIME-Version: 1.0",
                'Content-Type: multipart/mixed; boundary="mbatt"', "",

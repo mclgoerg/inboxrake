@@ -129,7 +129,7 @@ def test_one_undo_step_activity_entry_and_the_reader(monkeypatch):
     step = st["undo"][0]
     assert step["action"] == "remove_files" and step["count"] == 3
     assert step["label_key"] == "undo.remove_files"
-    assert step["label_params"] == {"files": 6, "n": 3}
+    assert step["label_params"] == {"files": 2, "n": 3}   # 2 files, 3 mails
     entry = auditlog.load(accountsmod.get().name, 0, 10)["entries"][0]
     assert entry["action"] == "remove_files" and entry["count"] == 3
     assert entry["bytes"] == 3 * sum(
@@ -330,6 +330,27 @@ def test_a_half_made_copy_that_is_not_ours_is_never_deleted(monkeypatch):
     assert any(m["uid"] == 9 for m in fake.mailbox["INBOX"])
 
 
+def test_the_copy_is_looked_for_in_the_folder_generation_it_was_made_in(
+        monkeypatch):
+    """The folder was renumbered while the copy was made: UIDs of the old
+    generation mean nothing, so the copy is not trusted - the original stays
+    where it is."""
+    fake, originals = _world(monkeypatch)
+    real = fake.append
+
+    def renumbering(q, f, d, msg):
+        answer = real(q, f, d, msg)
+        fake.uv["INBOX"] = 42            # the server starts a new generation
+        return answer
+    fake.append = renumbering
+    _remove(items=[["INBOX", 1]])
+    wait_delete_done()
+    assert originals[0] in [m["raw"] for m in fake.mailbox["INBOX"]]
+    assert fake.mailbox["Trash"] == []
+    assert not [c for c in fake.commands if c[:2] == ("UID", "MOVE")]
+    assert _notice()["params"] == {"n": 1, "why": "verify_failed"}
+
+
 # ------------------------------------------------------------ what is skipped
 
 def _skip_world(monkeypatch, **kw):
@@ -433,6 +454,17 @@ def test_a_mail_without_a_message_id_and_a_huge_one_are_left(monkeypatch):
     r = _remove(items=items)
     assert r.status_code == 409 and r.json()["detail"] == "rm_nothing"
     assert _commands(fake, "APPEND") == []
+
+
+def test_the_job_leaves_a_mail_that_was_flagged_deleted_since_the_check(
+        monkeypatch):
+    fake, originals = _skip_world(monkeypatch)
+    fake.mailbox["INBOX"][0]["deleted"] = True        # flagged by a client
+    _remove(items=[["INBOX", 1], ["INBOX", 2]])
+    wait_delete_done()
+    assert len(_commands(fake, "APPEND")) == 1
+    assert fake.mailbox["INBOX"][0]["raw"] == originals[0]
+    assert _notice()["params"] == {"n": 1, "why": "deleted"}
 
 
 def test_a_mail_flagged_deleted_or_in_a_changed_folder_is_left(monkeypatch):
