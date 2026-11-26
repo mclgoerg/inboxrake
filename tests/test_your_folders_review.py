@@ -454,11 +454,19 @@ def test_the_scheduler_also_waits_for_a_folder_change_of_the_other_name(
 
 # ------------------- a rename follows to the other name of the mailbox
 
+def _wait_job(account):
+    import time
+    end = time.time() + 5
+    while time.time() < end and (account.delete_pending or account.inflight
+                                 or account.state["delete"]["status"]
+                                 == "running"):
+        time.sleep(0.01)
+
+
 def test_a_rename_reaches_the_other_names_undo_steps_and_scan_switch(twins):
     one, two = accountsmod.get("one"), accountsmod.get("two")
     mailops.delete_messages([["Bills 2019", 9]], "trash", acc=two)
-    wait_delete_done()
-    wait_scan_done()
+    _wait_job(two)
     assert {f for f, _ in two.undo_log[-1]["items"]} == {"Bills 2019"}
     cfgmod.update_config({"account": "two", "excluded_folders": [
         "Bills 2019", "Trash"]})
@@ -471,12 +479,16 @@ def test_a_rename_reaches_the_other_names_undo_steps_and_scan_switch(twins):
     assert "Bills 2019" not in two.state["folders_raw"]
 
 
-def test_a_merge_and_a_delete_reach_the_other_names_index(twins):
+def test_a_merge_and_a_delete_reach_the_other_names_index(twins, monkeypatch):
     one, two = accountsmod.get("one"), accountsmod.get("two")
+    assert any(m["folder"] == "Bills 2019" for m in two.index.values())
+
+    def busy(*a, **k):                  # no scan: the index itself must follow
+        raise RuntimeError("busy")
+    monkeypatch.setattr(mailops, "start_scan", busy)
     chk = yf.check(one, "merge", "Bills 2019", "Bills")
     yf.merge(one, "Bills 2019", "Bills", chk["uv"], chk["max_uid"],
              delete_after=True, rules=[])
-    wait_scan_done()
     assert "Bills 2019" not in twins.mailbox
     assert not any(m["folder"] == "Bills 2019" for m in two.index.values())
     assert "Bills 2019" not in two.state["folders_raw"]
