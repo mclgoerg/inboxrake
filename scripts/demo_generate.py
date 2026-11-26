@@ -628,6 +628,41 @@ PROTON_INBOX += (
 )
 
 
+# Sender changes (Overview "Last week", Statistics, is:louder / is:back): two
+# senders that got louder (a steady weekly rhythm, then a busy week) and one
+# that came back after more than a year. Fixed dates and no random draws (own
+# UID range), so nothing else in the demo shifts.
+_CH_UID = iter(range(600000, 650000))
+
+
+def _ch_mail(frm, subject, days_ago, *, seen=False):
+    uid = next(_CH_UID)
+    return make_msg(uid, frm=frm, subject=subject,
+                    msgid=f"<demo-ch-{uid}@demo.example>", size=14000,
+                    seen=seen, date=_date(days_ago),
+                    unsub="<https://unsub.example/u>")
+
+
+def _steady(frm, subject, every, weeks, first, busy):
+    """Mail every `every` days from `first` days ago back over `weeks` weeks,
+    then `busy` mails in the last six days."""
+    out = [_ch_mail(frm, subject, first + k * every)
+           for k in range(round(weeks * 7 / every))]
+    return out + [_ch_mail(frm, subject, d) for d in busy]
+
+
+PROTON_INBOX += (
+    _steady('"Parkside Market" <deals@parkside-market.example>',
+            "Fresh picks this week", 7, 18, 10, (0.6, 1.4, 2.5, 3.6, 5.2))
+    + _steady('"Trailhead Club" <news@trailhead-club.example>',
+              "Trail report and gear offers", 3.5, 14, 8.5,
+              (0.8, 1.9, 3.2, 4.4, 5.6))
+    + [_ch_mail('"Harbor Books" <hello@harborbooks.example>',
+                "New in the shop: spring reads", d)
+       for d in (462, 468, 475, 6, 4, 2)]
+)
+
+
 # --- long tail ------------------------------------------------------------
 # Real mailboxes are 80% senders with < 10 mails. Generated from a separate
 # seeded stream, so the hand-written senders above keep their exact data.

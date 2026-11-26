@@ -43,7 +43,8 @@ changed against a month ago and an 8-week chart of mails that arrived versus
 mails you cleaned (lighter bars are estimates from the mails still in the
 mailbox). Beside it a **Last week | Since last visit** card (new mails, new
 senders, senders still mailing after you unsubscribed, mails in Junk, new AI
-verdicts), "Next steps" (the [Suggestions](#suggestions)), "Biggest
+verdicts and - only when there is one - which [senders got louder or came
+back](#sender-changes)), "Next steps" (the [Suggestions](#suggestions)), "Biggest
 senders" with a storage bar and "What fills your inbox" (the last 30 days by
 kind). Everything else is one click away in the sidebar (on screens 1024 px
 and wider) or the tab bar at the bottom (phones and tablets: Overview,
@@ -322,6 +323,41 @@ menu (`is:new`), so it doesn't get lost among a thousand others - block,
 protect or unsubscribe right from there. Purely a read-only signal (first
 scan seeds silently, nothing is ever auto-actioned); the window it stays
 flagged for (default 7 days) is configurable in settings.
+
+### Sender changes
+
+<small class="where">Overview → Last week · Senders → `is:louder` / `is:back` · Insights → Statistics</small>
+
+A sender waking up often means your address was passed on, or a win-back
+campaign. Each scan keeps a small number per sender and week (how many mails
+reached the mailbox - no subjects, about 26 weeks, per user and account) and
+the time of the sender's last mail, because the mail still in the mailbox cannot
+tell: a sender you cleaned would look "louder" next to the few mails left.
+
+- **Got louder** - in the window of the card (the last 7 days, or the part of
+  "since your last visit" inside them) the sender sent more than twice its usual
+  week (the median of its counted weeks, up to 26) and at least 4 mails. A sender
+  needs three weeks of history to have a usual week at all.
+- **Came back** - the first mail after 6 or more months of silence.
+- Before 8 weeks of counts exist, only senders you never cleaned are compared
+  (Inboxrake remembers whose mail it moved out; for what happened earlier the
+  audit log is read). A "came back" that rests on mail from before the counting
+  began is held to the same rule.
+
+The Overview's **Last week** card gets up to two more rows after its other ones -
+"2 senders got louder" and "1 came back after 14 months" - only when there is
+something. Each opens Senders with the new filter word `is:louder` or `is:back`
+(group filters in both parsers, so [rules](filters.md) can use them too; `in:`
+narrows the window). The rows stay as they are, no new pill; one line above the
+list says why they are there, and the sender's arrival strip gets one line ("Last
+7 days: 4 mails - more than twice its usual week"). **Statistics** gets a card
+**Changes in the last 30 days** after When mail arrives, with the fitting action
+per sender - Unsubscribe…, Block… (asks first, as everywhere) or Show mails
+(protected senders only get Show mails); senders already named in What stands out
+are left out, and without a change there is no card. "Went quiet" is left out on
+purpose - Inactive, the quiet-senders card and Subscriptions' "Looks unused"
+cover it. Nothing changes by itself; there is no AI in it. An older release
+ignores the new file (`SENDER_CHANGES_PATH`).
 
 ### Never replied signal
 

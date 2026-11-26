@@ -63,6 +63,9 @@ export interface OverviewProps {
   onOpenJunk: () => void;
   /** New AI verdicts: Senders, the ones the AI called safe, in the window. */
   onOpenAiVerdicts: (window: string) => void;
+  /** Senders that got louder / came back (`is:louder` / `is:back`). */
+  onOpenLouder?: (window: string) => void;
+  onOpenBack?: (window: string) => void;
   /** The subscriptions found (null while unknown): when some look unused,
    *  Next steps gets a line for them. */
   subs?: SubscriptionsResp | null;
@@ -275,7 +278,8 @@ export function Overview(p: OverviewProps) {
               onRetry={retry}
               onOpenAllMail={p.onOpenAllMail} onOpenNew={p.onOpenNewSenders}
               onOpenStill={p.onOpenStillMailing} onOpenJunk={p.onOpenJunk}
-              onOpenAi={p.onOpenAiVerdicts} />
+              onOpenAi={p.onOpenAiVerdicts}
+              onOpenLouder={p.onOpenLouder} onOpenBack={p.onOpenBack} />
           </div>
           {hasNext && (
             <div className="max-xl:order-3">

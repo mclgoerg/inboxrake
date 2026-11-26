@@ -36,9 +36,11 @@ domain or subject), its label, or its sub-label. `shop` finds
 | `is:noreply-ever` | You never wrote to any of its senders. | |
 | `is:new` | A recently first-seen sender (see `NEW_SENDER_WINDOW_DAYS` in [Configuration](configuration.md)). | |
 | `is:still-mailing` | Mail kept arriving after a successful unsubscribe. | |
+| `is:louder` | The sender got louder: in the last 7 days it sent more than twice its usual week (the median of its counted weeks, up to 26) and at least 4 mails. See [Sender changes](features.md#sender-changes). | |
+| `is:back` | The sender came back: its first mail after 6 or more months of silence arrived in the last 30 days. | |
 | `has:pinned` | The group contains at least one pinned mail. | |
 | `has:tracker` | A checked mail carries a tracking pixel or click tracking (needs the local body index). | |
-| `in:<N>(min\|h\|d)` | A time window of N minutes, hours or days back from now, only valid next to `is:new`, `is:still-mailing` or `ai:` (see below). | `is:new in:7d` |
+| `in:<N>(min\|h\|d)` | A time window of N minutes, hours or days back from now, only valid next to `is:new`, `is:still-mailing`, `is:louder`, `is:back` or `ai:` (see below). | `is:new in:7d` |
 | `eng:low\|medium\|high` | How much you engage with the sender: scores up to 33 are low, 34-66 medium, 67 and up high. | `eng:low` |
 | `from:<address>` | Exactly this sender address (sender grouping only). | `from:news@shop.example` |
 | `domain:<domain>` | Exactly this domain (domain grouping). | `domain:shop.example` |
@@ -48,17 +50,22 @@ the same.
 
 > [!NOTE]
 > **`in:` time windows.** `in:<N>min`, `in:<N>h` or `in:<N>d` narrows one of
-> three time-aware conditions to the last N minutes, hours or days. With `is:new`
+> the time-aware conditions to the last N minutes, hours or days. With `is:new`
 > the sender must have been first seen in that window - the window *replaces* the
 > configured new-sender window (`NEW_SENDER_WINDOW_DAYS`), so it can widen it.
 > With `is:still-mailing` a late mail must have arrived in the window, and with
 > `ai:` the AI verdict must have been given in it; for these two it narrows.
+> With `is:louder` the mails are counted over the window (never more than the
+> last 7 days - louder is a weekly idea, so a longer window counts those 7 days);
+> with `is:back` the mail that broke the silence must have arrived in it, and the
+> window *replaces* the default 30 days (up to the 26 weeks the counts are kept).
 > `in:` alone is refused in a rule (it would act on every match), changes nothing
 > on the Senders page, and in the **All mails** list means "mails that arrived in
 > the window" (the Overview's "Last week" rows open it that way). A bad value
 > such as `in:7w` is read as a free word in the filter box, but a rule refuses
 > it. A rule also allows only one `in:`.
-> Examples: `is:new in:7d`, `is:still-mailing in:2d`, `ai:safe in:1h`.
+> Examples: `is:new in:7d`, `is:still-mailing in:2d`, `ai:safe in:1h`,
+> `is:louder in:2d`, `is:back in:60d`.
 
 > [!WARNING]
 > **Typos can widen a filter.** An unknown qualifier name, or a bad value for

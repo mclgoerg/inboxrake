@@ -1268,3 +1268,46 @@ describe("DetailPanel keep-safe", () => {
     expect(deleteMessages).not.toHaveBeenCalled();
   });
 });
+
+describe("DetailPanel: sender changes in the arrival strip", () => {
+  beforeEach(() => setLang("en"));
+  afterEach(cleanup);
+  const daily = () => Array.from({ length: 14 }, (_, d) => mkMail(d + 1, {
+    ts: new Date(2026, 0, d + 1, 6, 10).getTime() / 1000 }));
+  const NOW_S = Math.floor(Date.now() / 1000);
+  const louder = { addr: "s@x.example", label: "Sender", n: 5, usual: 1,
+    factor: 5, ts: [NOW_S - 3600, NOW_S - 86400, NOW_S - 2 * 86400,
+      NOW_S - 3 * 86400, NOW_S - 4 * 86400] };
+  const back = { addr: "s@x.example", label: "Sender", ts: NOW_S - 5 * 86400,
+    gap_days: 456, n: 3, never_opened: true };
+
+  it("a louder sender: its strip gains one line, nothing else moves", async () => {
+    renderPanel(daily(), { group: mkGroup({ louder }) });
+    await screen.findByText("Usually 06:00 - 07:00, every day");
+    expect(screen.getByTestId("strip-change").textContent)
+      .toBe("Last 7 days: 5 mails - more than twice its usual week");
+    expect(screen.getByText("1 a day")).toBeTruthy();
+    expect(screen.getByText("Mon")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /Mails of this sender per hour/ }))
+      .toBeTruthy();
+  });
+
+  it("a sender that came back says so, in German too", async () => {
+    setLang("de");
+    renderPanel(daily(), { group: mkGroup({ back }) });
+    await screen.findByText("Meist 06:00 - 07:00 Uhr, jeden Tag");
+    expect(screen.getByTestId("strip-change").textContent)
+      .toMatch(/^3 Mails seit .+, davor 14 Monate still$/);
+  });
+
+  it("no line without a change, and none for a pool or another grouping",
+    async () => {
+      const { unmount } = renderPanel(daily());
+      await screen.findByText("Usually 06:00 - 07:00, every day");
+      expect(screen.queryByTestId("strip-change")).toBeNull();
+      unmount();
+      renderPanel(daily(), { group: mkGroup({ louder }), grouping: "domain" });
+      await screen.findByText("Mail 1");
+      expect(screen.queryByTestId("strip-change")).toBeNull();
+    });
+});

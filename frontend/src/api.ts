@@ -5,7 +5,7 @@ import type {
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
   Mail, MessageDetail, SubReminder, SubscriptionsResp,
-  LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
+  LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SenderChangesResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
@@ -594,6 +594,8 @@ export const api = {
   overview: (since?: number | null) =>
     req<OverviewResp>("/api/overview"
       + (since == null ? "" : `?since=${Math.floor(since)}`)),
+  /** The Statistics card: senders that got louder / came back (30 days). */
+  senderChanges: () => req<SenderChangesResp>("/api/sender-changes"),
   audit: (offset = 0, limit = 50, by: AuditBy = "all") =>
     req<AuditResp>(`/api/audit?offset=${offset}&limit=${limit}`
       + (by === "all" ? "" : `&by=${by}`)),

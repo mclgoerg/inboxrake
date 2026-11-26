@@ -68,6 +68,21 @@ test("still-mailing flag emits the is:still-mailing DSL token", () => {
   expect(parseFilter(s.get()).stillMailing).toBe(true);
 });
 
+test("louder and came-back flags emit the is:louder / is:back tokens", () => {
+  const s = setup();
+  fireEvent.click(screen.getByText("got louder"));
+  expect(s.get()).toBe("is:louder");
+  expect(parseFilter(s.get()).louder).toBe(true);
+  cleanup();
+  const b = setup();
+  fireEvent.click(screen.getByText("came back after 6+ months"));
+  expect(b.get()).toBe("is:back");
+  expect(parseFilter(b.get()).back).toBe(true);
+  // the flags that were there stay
+  expect(screen.getByText("still mailing after unsubscribe")).toBeTruthy();
+  expect(screen.getByText("new senders")).toBeTruthy();
+});
+
 test("tokens are never added twice", () => {
   const s = setup("is:unsub");
   fireEvent.click(screen.getByText("with unsubscribe link"));

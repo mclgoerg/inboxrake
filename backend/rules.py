@@ -43,6 +43,7 @@ from . import demo
 from . import keepsafe
 from . import mailops
 from . import pinstore
+from . import senderchanges
 from . import tenants
 
 log = logging.getLogger("inboxrake.rules")
@@ -107,6 +108,7 @@ def parse_filter(q: str) -> dict:
            "from_addr": None, "domain": None, "new_only": False,
            "pinned_only": False, "eng": None,
            "still_mailing": False, "tracker_only": False,
+           "louder": False, "back": False,
            "in_seconds": None}
     for tok in (q or "").strip().lower().split():
         m = _QUAL_RE.match(tok)
@@ -143,6 +145,10 @@ def parse_filter(q: str) -> dict:
             out["new_only"] = True
         elif kind == "is" and val == "still-mailing":
             out["still_mailing"] = True
+        elif kind == "is" and val == "louder":
+            out["louder"] = True
+        elif kind == "is" and val == "back":
+            out["back"] = True
         elif kind == "eng" and val in ("low", "medium", "high"):
             out["eng"] = val
         elif kind == "has" and val == "pinned":
@@ -197,15 +203,19 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
      "example": "unread:>80"},
     {"qualifier": "is",
      "values": ("unsub", "unsubscribed", "not-unsubscribed", "protected",
-                "replied", "noreply-ever", "new", "still-mailing"),
+                "replied", "noreply-ever", "new", "still-mailing", "louder",
+                "back"),
      "syntax": "is:unsub|unsubscribed|not-unsubscribed|protected|replied"
-               "|noreply-ever|new|still-mailing",
+               "|noreply-ever|new|still-mailing|louder|back",
      "meaning": "unsub = has an unsubscribe link; unsubscribed = already "
                 "unsubscribed; not-unsubscribed = some sender still could "
                 "be; protected = contains protected senders; replied = the "
                 "user has written to the sender; noreply-ever = never "
                 "written to; new = a recently first-seen sender; still-mailing = "
-                "keeps mailing after the user unsubscribed",
+                "keeps mailing after the user unsubscribed; louder = more "
+                "than twice its usual week in the last 7 days (at least 4 "
+                "mails); back = the first mail after 6+ months of silence, in "
+                "the last 30 days",
      "example": "is:unsub"},
     {"qualifier": "has", "values": ("pinned", "tracker"),
      "syntax": "has:pinned|tracker",
@@ -230,8 +240,11 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
                 "It is only valid together with is:new (the sender was first "
                 "seen in the window; the window REPLACES the configured "
                 "new-sender window, so it can widen it), is:still-mailing "
-                "(a late mail arrived in it) or ai:... (the verdict was given "
-                "in it) - for the last two it narrows. Alone it is refused",
+                "(a late mail arrived in it), is:louder (counted over the "
+                "window, at most the last 7 days), is:back (the mail that "
+                "broke the silence arrived in it; it REPLACES the default 30 "
+                "days) or ai:... (the verdict was given in it) - for these it "
+                "narrows. Alone it is refused",
      "example": "is:new in:7d"},
     {"qualifier": "from", "values": None, "check": "text",
      "syntax": "from:<address>",
@@ -292,7 +305,8 @@ def validate_filter(q: str, tags=None) -> list[str]:
     be part of (a substring of) one of them. Free words are always valid.
     A single-value qualifier given twice (`_slot`) reports the repeat: the
     parsers keep the last one, which could widen the match unnoticed.
-    `in:<N>…` is only valid next to is:new / is:still-mailing / ai:...: alone
+    `in:<N>…` is only valid next to is:new / is:still-mailing / is:louder /
+    is:back / ai:...: alone
     it would act on ALL matches (a rule `in:7d tag:newsletter` would take
     every newsletter), while in the All mail list it means "arrived in the
     window" - so it is refused rather than silently ignored."""
@@ -313,7 +327,8 @@ def validate_filter(q: str, tags=None) -> list[str]:
             seen.add(slot)
         windowed = windowed or kind == "in"
         timed = timed or kind == "ai" or (
-            kind == "is" and val in ("new", "still-mailing"))
+            kind == "is" and val in ("new", "still-mailing", "louder",
+                                     "back"))
     if windowed and not timed:
         bad.extend(t for t in q.strip().lower().split()
                    if t.startswith("in:") and t not in bad)
@@ -362,6 +377,19 @@ def match_group(g: dict, f: dict, now: float | None = None) -> bool:
     if f["still_mailing"]:
         sm = g.get("still_mailing")
         if not sm or (start is not None and (sm.get("last_ts") or 0) < start):
+            return False
+    if f["louder"]:
+        # the last 7 days; `in:` counts over a shorter window (see
+        # senderchanges.louder_in_window - same rule as lib.ts)
+        lo = g.get("louder")
+        if not lo or senderchanges.louder_in_window(
+                lo, start if start is not None else 0) is None:
+            return False
+    if f["back"]:
+        b = g.get("back")
+        since = start if start is not None else (
+            (now or time.time()) - senderchanges.BACK_DAYS * 86400)
+        if not b or (b.get("ts") or 0) < since:
             return False
     if f["pinned_only"] and not g.get("pinned"):
         return False
@@ -465,6 +493,7 @@ _PURGE_UNSUPPORTED = (
     ("protected_only", "is:protected"), ("replied", "is:replied"),
     ("unsubscribed", "is:unsubscribed"), ("new_only", "is:new"),
     ("still_mailing", "is:still-mailing"),
+    ("louder", "is:louder"), ("back", "is:back"),
     ("pinned_only", "has:pinned"), ("eng", "eng:"), ("att_min", "att:"),
     ("domain", "domain:"), ("in_seconds", "in:"))
 

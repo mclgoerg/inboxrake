@@ -2,7 +2,8 @@
 series, the "last week" / "since last visit" counts, the last 30 days by
 kind and the size trend from the scan history.
 
-Read-only and metadata only (counts, no subjects or addresses): one pass
+Read-only and metadata only (counts, no subjects or addresses; the name of
+the one loudest sender and the one that came back most recently): one pass
 over the scan index under the account lock, plus the small per-account
 stores (first-seen senders, AI verdicts, unsubscribe records, scan
 history). Windows are rolling (the last 7 days, not calendar weeks), so
@@ -13,9 +14,11 @@ from __future__ import annotations
 
 import time
 
+from . import config as cfgmod
 from . import knownsenders
 from . import labelstore
 from . import mailops
+from . import senderchanges
 from . import stats as statsmod
 from . import unsubstore
 from . import verdictstore
@@ -89,7 +92,36 @@ def weekly_arrivals(scans: list[dict], estimate: list[int],
 def _empty_window(start: float) -> dict:
     return {"from": int(start), "mails": 0, "senders": 0, "newsletters": 0,
             "new_senders": 0, "still_mailing": 0, "verdicts": 0,
-            "verdicts_safe": 0}
+            "verdicts_safe": 0, "louder": 0, "louder_top": None,
+            "back": 0, "back_top": None}
+
+
+def _sender_changes(w: dict, changed: dict, start: float) -> None:
+    """Fill the window's `louder` / `back` counts (senders), and the loudest /
+    latest one by name. Louder is a weekly idea: a louder sender carries the
+    arrival times of its last 7 days only, so a window longer than that counts
+    those 7 days and a shorter one counts what is inside it - the same rule
+    `is:louder in:<window>` applies, so a row and the list it opens agree.
+    Came back: the first mail after the silence arrived in the window."""
+    louder = []
+    for addr, row in changed["louder"].items():
+        n = senderchanges.louder_in_window(row, start)
+        if n is not None:
+            louder.append((row["factor"], n, addr, row))
+    if louder:
+        _, n, _, row = max(louder, key=lambda x: x[:3])
+        w["louder"] = len(louder)
+        w["louder_top"] = {"label": row["label"], "n": n,
+                           "usual": row["usual"]}
+    back = [(row["ts"], addr, row) for addr, row in changed["back"].items()
+            if row["ts"] >= start]
+    if back:
+        _, _, row = max(back, key=lambda x: x[:2])
+        w["back"] = len(back)
+        w["back_top"] = {"label": row["label"],
+                         "months": senderchanges.months_of(
+                             min(r["gap_days"] for _, _, r in back)),
+                         "never_opened": row["never_opened"]}
 
 
 def build(acc, since: int | None = None, now: float | None = None) -> dict:
@@ -114,6 +146,7 @@ def build(acc, since: int | None = None, now: float | None = None) -> dict:
     # the user's, which has no date): its sender is left out of the count
     by_user = labelstore.verdicts(acc.name)
 
+    changed = senderchanges.changes(acc, now)     # takes the lock itself
     with acc.lock:
         sender_groups = acc.state["groups"].get("sender") or {}
         kind_by_addr: dict[str, str] = {}
@@ -145,6 +178,7 @@ def build(acc, since: int | None = None, now: float | None = None) -> dict:
 
     for name, start in starts.items():
         w = out[name]
+        _sender_changes(w, changed, start)
         w["senders"] = len(senders[name])
         w["still_mailing"] = len(still[name])
         # first_seen 0 = known before the first scan: never "new"
@@ -170,3 +204,38 @@ def build(acc, since: int | None = None, now: float | None = None) -> dict:
             "kinds": {"days": KIND_DAYS, "total": sum(kinds.values()),
                       "items": items},
             "trend": trend(acc.name, now, history)}
+
+
+def changes_card(acc, now: float | None = None) -> dict:
+    """The Statistics card "Changes in the last 30 days" (GET
+    /api/sender-changes): the senders that got louder (loudest first) and
+    those that came back (newest first), with what the card needs to offer
+    the fitting action - `unsub` (an unsubscribe is open), `protected`."""
+    now = now if now is not None else time.time()
+    changed = senderchanges.changes(acc, now)
+    entries = unsubstore.load_account(acc.name)
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    floor = now - senderchanges.BACK_DAYS * 86400
+    back = {a: r for a, r in changed["back"].items() if r["ts"] >= floor}
+    wanted = set(changed["louder"]) | set(back)
+    with acc.lock:
+        recs = acc.state["groups"].get("sender") or {}
+        unsub = {a: bool((recs.get(a) or {}).get("unsub")) for a in wanted}
+    protected = {a for a in wanted if cfgmod.is_protected(a, plist)}
+
+    def extra(addr: str) -> dict:
+        done = (entries.get(addr) or {}).get("status") == "done"
+        return {"key": addr, "unsub": unsub[addr] and not done,
+                "protected": addr in protected}
+
+    louder = [{**extra(a), "label": r["label"], "n": r["n"],
+               "usual": r["usual"], "factor": r["factor"],
+               "start": r["start"], "end": r["end"]}
+              for a, r in changed["louder"].items()]
+    louder.sort(key=lambda r: (-r["factor"], -r["n"], r["key"]))
+    came = [{**extra(a), "label": r["label"], "ts": r["ts"],
+             "gap_days": r["gap_days"], "n": r["n"]}
+            for a, r in back.items()]
+    came.sort(key=lambda r: (-r["ts"], r["key"]))
+    return {"days": senderchanges.CARD_DAYS, "since": changed["since"],
+            "louder": louder, "back": came}

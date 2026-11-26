@@ -45,6 +45,7 @@ import { SettingsPage, type SettingsControl } from "./components/SettingsPage";
 import { Welcome } from "./components/Welcome";
 import { Wizard, WIZARD_RESUME_KEY, type WizardStep } from "./components/Wizard";
 import { SpaceMapPanel } from "./components/SpaceMapPanel";
+import { ChangesNote } from "./components/SenderChanges";
 import { StatsPanel } from "./components/StatsPanel";
 import type { ArrivalSlot } from "./rhythm";
 import { AiFilterPanel } from "./components/AiFilterPanel";
@@ -889,6 +890,12 @@ export default function App() {
 
   // "Select all N matches": the groups the active filter matches that can be
   // selected (protected ones stay out), across all pages.
+  // is:louder / is:back in the filter: one line says why these rows are here
+  const changeNote = useMemo(() => {
+    const f = parseFilter(filter);
+    return f.louder || f.back ? <ChangesNote filter={f} groups={groups} />
+      : null;
+  }, [filter, groups]);
   const matchKeys = useMemo(() => filter.trim()
     ? groups.filter((g) => !g.protected).map((g) => g.key) : [],
     [groups, filter]);
@@ -2757,6 +2764,15 @@ export default function App() {
         onUnsubscribe={(key) => {
           if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
         }}
+        onBlock={(key) => {
+          const g = state?.groups.sender?.[key];
+          if (g) blockGroup(g, "sender");
+        }}
+        onShowMails={(key) => {
+          setStatsOpen(false);
+          openAllMailNewest(`from:${key}`);
+        }}
+        blockedKeys={new Set(blockedRules.keys())}
         onOpenRecipe={(id) => {
           setStatsOpen(false); setRulesRecipe(id); openTool("rules");
         }} />
@@ -3401,6 +3417,8 @@ export default function App() {
               `is:still-mailing in:${w}`)}
             onOpenJunk={() => openTool("junk")}
             onOpenAiVerdicts={(w) => openSendersFiltered(`ai:safe in:${w}`)}
+            onOpenLouder={(w) => openSendersFiltered(`is:louder in:${w}`)}
+            onOpenBack={(w) => openSendersFiltered(`is:back in:${w}`)}
             subs={subs}
             onReviewSubscriptions={() => {
               setSubsOnlyUnused(true);
@@ -3420,7 +3438,8 @@ export default function App() {
         <GroupTable
           groups={groups}
           selected={selected}
-          banner={(subset || matchKeys.length > 0) && (<>
+          banner={(subset || matchKeys.length > 0 || changeNote) && (<>
+            {changeNote}
             {subset && (
               <CheckupChip n={groups.length} mails={false}
                 className="bg-accent-tint px-3 py-2.5"

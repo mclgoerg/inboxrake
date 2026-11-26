@@ -161,6 +161,16 @@ export function visitSince(rec: VisitRec | null, now: number): number | null {
   return now - rec.left < VISIT_GAP_MS ? rec.since : rec.left;
 }
 
+/** The window the "got louder" row opens: louder is a weekly idea, so a
+ *  window of more than the last 7 days counts as those 7 days; a shorter
+ *  "since last visit" is used as it is (backend overview.py does the same). */
+export function louderWindow(range: "week" | "since", sinceMs: number | null,
+    nowMs: number): string {
+  if (range === "week" || sinceMs === null
+      || nowMs - sinceMs >= 7 * DAY_MS) return "7d";
+  return windowTerm(range, sinceMs, nowMs);
+}
+
 /** The `in:` window (filter term value) of one of the Last-week views, so
  *  the list a row opens covers the window its count did. "Last week" is the
  *  last 7 days; "since last visit" runs from `sinceMs` to `nowMs`, in whole

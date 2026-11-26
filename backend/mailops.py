@@ -44,6 +44,7 @@ from . import pinstore
 from . import rhythm
 from . import aisortstore
 from . import knowledgestore
+from . import senderchanges
 from . import smartkinds
 from . import stats as statsmod
 from . import tenants
@@ -152,7 +153,7 @@ RULE_PURGE_FILTER_DOMAIN = "rule_purge_filter_domain"    # names=
 RULE_FILTER_INVALID = "rule_filter_invalid"              # names=
 RULE_FILTER_INVALID_RUN = "rule_filter_invalid_run"      # names=
 # `in:` without the condition it is a window for (is:new / is:still-mailing /
-# ai:...): it would act on every match
+# is:louder / is:back / ai:...): it would act on every match
 RULE_FILTER_WINDOW = "rule_filter_window"                # names=
 RULE_FILTER_WINDOW_RUN = "rule_filter_window_run"        # names=
 RULE_FILTER_TOO_LONG = "rule_filter_too_long"            # max=
@@ -2576,6 +2577,40 @@ def _new_fields(first_seen: int | None, cutoff: float) -> dict:
             "new_ts": max(first_seen or 0, 0)}
 
 
+def _group_changes(rec: dict, louder: dict, back: dict, acc,
+                   grouping: str = "") -> dict:
+    """`louder` / `back` of a group (lock held; keys only when there is one,
+    like `trackers`): the senders of its mails that got louder in the last 7
+    days / came back, as the sender-changes check found them
+    (senderchanges.changes). A group of several senders shows the loudest /
+    the latest one, named by `addr` and `label`. `louder.ts` (arrival times of
+    its last 7 days) lets `in:` narrow the window."""
+    if not louder and not back:
+        return {}
+    if grouping == "sender":
+        addrs = {rec["key"]}
+    elif rec.get("addr"):                    # a Smart row of one sender
+        addrs = {rec["addr"]}
+    else:
+        addrs = {m["addr"] for folder, uids in rec["folders"].items()
+                 for uid in uids if (m := acc.index.get(ikey(folder, uid)))}
+    out: dict = {}
+    hit = [(a, louder[a]) for a in addrs if a in louder
+           and louder[a].get("ts")]
+    if hit:
+        a, row = max(hit, key=lambda kv: (kv[1]["factor"], kv[1]["n"], kv[0]))
+        out["louder"] = {"addr": a, "label": row["label"], "n": row["n"],
+                         "usual": row["usual"], "factor": row["factor"],
+                         "ts": row["ts"]}
+    hit = [(a, back[a]) for a in addrs if a in back]
+    if hit:
+        a, row = max(hit, key=lambda kv: (kv[1]["ts"], kv[0]))
+        out["back"] = {"addr": a, "label": row["label"], "ts": row["ts"],
+                       "gap_days": row["gap_days"], "n": row["n"],
+                       "never_opened": row["never_opened"]}
+    return out
+
+
 def _group_first_seen(rec: dict, first_seen: dict[str, int],
                       acc) -> int | None:
     """The newest first-seen time among the senders of this group (lock
@@ -2743,6 +2778,7 @@ def public_state(acc=None) -> dict:
     pinned = pinstore.load_account(acc.name)
     tsig, tmap = trackers.tracker_map_sig(acc)   # {} without a body index
     now = time.time()
+    changed = senderchanges.changes(acc, now)    # takes the lock itself
     with acc.lock:
         paddrs = _protected_addrs(plist, acc)
         tmemo = trackers.GroupMemo(acc, tmap, tsig)
@@ -2759,6 +2795,9 @@ def public_state(acc=None) -> dict:
                                   new_cutoff),
                     "still_mailing": _group_still_mailing(
                         rec, still_cut, unsub_entries, acc),
+                    # got louder / came back (keys only when there is one)
+                    **_group_changes(rec, changed["louder"], changed["back"],
+                                     acc, g),
                     # Recomputed from the CURRENT aggregates: unread/count
                     # move after a scan (mark read, removals) and recency
                     # moves with the clock; the stored value is the
@@ -2877,9 +2916,9 @@ def run_scan(acc=None, push: bool = False) -> None:
             cached = apply_verdicts(groups, acc.name, sp.protected)
             with acc.lock:
                 # new since the previous scan (for the Overview's balance)
-                arrived = statsmod.arrivals(
-                    list(acc.index.values()),
-                    acc.state.get("scanned_ts") or acc.prev_scan_ts, messages)
+                prev_mails = list(acc.index.values())
+                prev_ts = acc.state.get("scanned_ts") or acc.prev_scan_ts
+                arrived = statsmod.arrivals(prev_mails, prev_ts, messages)
                 acc.index.clear()
                 for m in messages:
                     acc.index[ikey(m["folder"], m["uid"])] = m
@@ -2929,6 +2968,8 @@ def run_scan(acc=None, push: bool = False) -> None:
             statsmod.record_scan(len(messages),
                                  sum(m["size"] for m in messages),
                                  len(groups["sender"]), acc.name, arrived)
+            # the per-sender weekly counts behind "got louder" / "came back"
+            senderchanges.record_scan(acc.name, prev_mails, prev_ts, messages)
             addressstore.set_picked_main(acc.name, rcpt.main)
             save_snapshot(acc)
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
@@ -3404,6 +3445,7 @@ def _delete_worker(acc) -> None:
 
         moved_uids: dict[str, set[int]] = {}
         copies: list[dict] = []
+        cleaned_addrs: set[str] = set()      # senders whose mail left
         audit_id = auditlog.new_id()
         done = 0
         t0 = time.time()
@@ -3415,6 +3457,8 @@ def _delete_worker(acc) -> None:
             if not moved_uids:
                 return
             meta = _apply_removal(moved_uids, acc)
+            cleaned_addrs.update(m["addr"] for by_uid in meta.values()
+                                 for m in by_uid.values())
             undo_id[0] = _record_undo(
                 label, meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor) or undo_id[0]
@@ -3462,6 +3506,8 @@ def _delete_worker(acc) -> None:
                 apply_partial()
                 acc.state["delete"]["error"] = error
         flush_undo(acc)
+        if cleaned_addrs:
+            senderchanges.note_cleaned(acc.name, cleaned_addrs)
         if action != "mark_read" and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
         auditlog.record(

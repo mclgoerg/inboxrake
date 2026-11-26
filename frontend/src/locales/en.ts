@@ -592,6 +592,8 @@ export const EN: Record<string, string> = {
   "qb.is_protected": "protected",
   "qb.is_new": "new senders",
   "qb.is_still_mailing": "still mailing after unsubscribe",
+  "qb.is_louder": "got louder",
+  "qb.is_back": "came back after 6+ months",
   "ai.shared_note":
     "No own key - AI runs on the server's shared key "
     + "(your monthly cap: {cap}).",
@@ -1355,6 +1357,14 @@ export const EN: Record<string, string> = {
   "overview.row_verdicts_one": "1 new AI verdict",
   "overview.verdicts_safe": "{n} safe to delete",
   "overview.verdicts_none_safe": "none safe to delete",
+  "overview.row_louder": "{n} senders got louder",
+  "overview.row_louder_one": "1 sender got louder",
+  "overview.row_louder_sub": "{name}: {n} {when}, usually {usual} a week",
+  "overview.row_back": "{n} came back after {months}+ months",
+  "overview.row_back_one": "1 came back after {months} months",
+  "overview.row_back_never": "{name} \u00b7 you never opened it before",
+  "overview.row_back_quiet": "{name} \u00b7 quiet for {months} months",
+  "overview.row_back_more": "{name} and {n} more",
   "overview.next": "Next steps",
   "overview.next_hint": "each step shows what it does first",
   "overview.subs_title": "{n} subscriptions you may not use",
@@ -2186,6 +2196,24 @@ export const EN: Record<string, string> = {
   "rhythm.strip_title": "When it arrives",
   "rhythm.strip_label": "Mails of this sender per hour of the day",
   "rhythm.hours_label": "Hours with mail:",
+  "changes.title": "Changes in the last 30 days",
+  "changes.hint": "vs each sender's usual week",
+  "changes.got_louder": "Got louder",
+  "changes.came_back": "Came back",
+  "changes.louder_now": "{n} a week, usually {usual}",
+  "changes.louder_then": "{n} in the {days} days to {date}, usually {usual} a week",
+  "changes.back_desc": "{n} mails since {date}, quiet for {months} months before",
+  "changes.back_desc_one": "1 mail since {date}, quiet for {months} months before",
+  "changes.left_out": "Senders already named in \u201cWhat stands out\u201d are left out here.",
+  "changes.show_mails": "Show mails",
+  "changes.block": "Block\u2026",
+  "changes.strip_louder": "Last 7 days: {n} mails - more than twice its usual week",
+  "changes.note_louder": "Got louder: their last {window} vs their usual week",
+  "changes.note_back": "Came back after 6+ months of silence: first mail in the last {window}",
+  "changes.days7": "7 days",
+  "changes.days30": "30 days",
+  "changes.n_months": "{n} months",
+  "changes.more": "and {n} more",
   "sieve.button": "Sieve filter",
   "sieve.intro": "Auto-handle future mail from this sender in Proton:",
   "sieve.fileinto": "Move to folder",
@@ -3734,11 +3762,12 @@ export const EN: Record<string, string> = {
     "This filter has parts Inboxrake doesn't understand: {names}",
   "ferr.rule_filter_window":
     "A time window ({names}) only works together with is:new, "
-    + "is:still-mailing or ai:... - alone it would match everything.",
+    + "is:still-mailing, is:louder, is:back or ai:... - alone it would match "
+    + "everything.",
   "ferr.rule_filter_window_run":
     "The filter has a time window ({names}) without is:new, "
-    + "is:still-mailing or ai:... - edit the rule. Its execute runs are "
-    + "skipped until then.",
+    + "is:still-mailing, is:louder, is:back or ai:... - edit the rule. Its "
+    + "execute runs are skipped until then.",
   "ferr.rule_filter_invalid_run":
     "The filter has parts Inboxrake doesn't understand: {names} - edit the "
     + "rule. Its execute runs are skipped until then.",

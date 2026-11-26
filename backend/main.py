@@ -61,6 +61,7 @@ from . import presets as presetsmod
 from . import rhythm as rhythmmod
 from . import rulecheck as rulecheckmod
 from . import rulecheckstore
+from . import senderchanges
 from . import rules as rulesmod
 from . import secretbox
 from . import stats as statsmod
@@ -1895,6 +1896,14 @@ def get_overview(since: int | None = Query(None, ge=0),
     return overviewmod.build(_acc(account), since)
 
 
+@app.get("/api/sender-changes")
+def get_sender_changes(account: str | None = Query(None)):
+    """The senders of ONE account that got louder (more than twice their
+    usual week) or came back after 6+ months, in the last 30 days - the
+    Statistics card. Read-only; the numbers are kept by each scan."""
+    return overviewmod.changes_card(_acc(account))
+
+
 @app.get("/api/wrapped")
 def get_wrapped(year: int | None = Query(None, ge=1970, le=9999),
                 tz: int = Query(0, ge=-840, le=840),
@@ -2980,6 +2989,7 @@ def post_config(body: dict, request: Request, response: Response):
         pinstore.drop_account(str(body["delete_account"]))
         substore.drop_account(str(body["delete_account"]))
         rulecheckstore.drop_account(str(body["delete_account"]))
+        senderchanges.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
@@ -3011,6 +3021,7 @@ def post_config(body: dict, request: Request, response: Response):
             pinstore.rename_account(old, new)
             substore.rename_account(old, new)
             rulecheckstore.rename_account(old, new)
+            senderchanges.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)

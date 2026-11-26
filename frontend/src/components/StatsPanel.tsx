@@ -1,14 +1,15 @@
 import { BarChart3, HardDrive, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, fmtSize } from "../api";
-import { nowDate } from "../clock";
+import { nowDate, nowMs } from "../clock";
 import { categoryHues, categoryName } from "../categories";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
-import type { StatsResp } from "../types";
+import type { SenderChangesResp, StatsResp } from "../types";
 import type { ArrivalSlot } from "../rhythm";
 import { RhythmCard } from "./RhythmCard";
+import { ChangesRows } from "./SenderChanges";
 import {
   Avatar, Button, Donut, hueFillAt, IconTile, Loading, MiniBars, Modal,
   PanelHeader, ProgressBar, Ring, Segmented, useMediaQuery,
@@ -202,7 +203,7 @@ function Columns({ rows }: {
  *  and domains, engagement, AI coverage, cleanup progress and scan history.
  *  `onOpenSender` (top senders are buttons when given) opens a sender. */
 export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
-  onUnsubscribe, onOpenRecipe }: {
+  onUnsubscribe, onOpenRecipe, onBlock, onShowMails, blockedKeys }: {
   onClose: () => void; onWrapped?: () => void;
   onOpenSender?: (key: string) => void;
   /** Opens All mail filtered to a slot of "When mail arrives". */
@@ -211,12 +212,22 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
   onUnsubscribe?: (key: string) => void;
   /** Opens New rule > From a recipe with this recipe marked. */
   onOpenRecipe?: (id: string) => void;
+  /** Changes in the last 30 days: Block… (with its own confirm) and Show
+   *  mails (All mail of that sender); `blockedKeys` = senders already
+   *  blocked. */
+  onBlock?: (key: string) => void;
+  onShowMails?: (key: string) => void;
+  blockedKeys?: ReadonlySet<string>;
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
   const [period, setPeriod] = useState<Period>("12m");
   const [allSenders, setAllSenders] = useState(false);
   const [allDomains, setAllDomains] = useState(false);
+  // Changes in the last 30 days: what the scans found, and the senders "What
+  // stands out" already names (null = not known yet) - left out of the card
+  const [changes, setChanges] = useState<SenderChangesResp | null>(null);
+  const [named, setNamed] = useState<string[] | null>(null);
   const wide = useMediaQuery("(min-width: 640px)");   // tables, not stacked rows
 
   useEffect(() => {
@@ -226,6 +237,18 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => { alive = false; };
   }, []);
+  useEffect(() => {
+    let alive = true;
+    // (a throw before the request - an older API object - just hides the card)
+    Promise.resolve().then(() => api.senderChanges())
+      .then((c) => alive && setChanges(c))
+      .catch(() => { /* no card */ });
+    return () => { alive = false; };
+  }, []);
+  const namedSet = new Set(named ?? []);
+  const showChanges = !!changes && named !== null
+    && (changes.louder.some((r) => !namedSet.has(r.key))
+      || changes.back.some((r) => !namedSet.has(r.key)));
 
   const thisMonth = stats?.actions?.[month()];
   const months = Object.keys(stats?.actions ?? {}).sort().reverse();
@@ -444,7 +467,17 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
             {stats.mails > 0 && (
               <RhythmCard period={per} className={TWO_COLS}
                 onOpenSlot={(s) => onOpenSlot?.(s)} onUnsubscribe={onUnsubscribe}
-                onOpenRecipe={onOpenRecipe} />
+                onOpenRecipe={onOpenRecipe} onNamed={setNamed} />
+            )}
+
+            {showChanges && changes && (
+              <ChartCard title={t("changes.title")} hint={t("changes.hint")}>
+                <ChangesRows data={changes} named={namedSet}
+                  nowS={Math.floor(nowMs() / 1000)}
+                  blocked={blockedKeys ?? new Set()}
+                  onUnsubscribe={onUnsubscribe} onBlock={onBlock}
+                  onShowMails={onShowMails} />
+              </ChartCard>
             )}
 
             <div className={`grid items-start gap-3 ${TWO_COLS}`}>

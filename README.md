@@ -194,7 +194,8 @@ security; you add user and password.
 
 ## Features
 
-An Overview start page with cleanup suggestions, five views (Sender, Smart
+An Overview start page with cleanup suggestions (and which senders got
+louder or came back after months of silence), five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content, a Filter menu and filter builder,
 optional AI review and a "describe a filter" box, Triage, Duplicates,

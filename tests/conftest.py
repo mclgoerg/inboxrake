@@ -34,6 +34,7 @@ from backend import mailops                   # noqa: E402
 from backend import pinstore                  # noqa: E402
 from backend import presets as presetsmod     # noqa: E402
 from backend import rulecheckstore           # noqa: E402
+from backend import senderchanges            # noqa: E402
 from backend import rules as rulesmod         # noqa: E402
 from backend import stats as statsmod         # noqa: E402
 from backend import substore                 # noqa: E402
@@ -91,6 +92,9 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(rulecheckstore, "RULE_CHECKUP_PATH",
                         tmp_path / "rule_checkup.json")
     rulecheckstore._cache.clear()
+    monkeypatch.setattr(senderchanges, "SENDER_CHANGES_PATH",
+                        tmp_path / "sender_changes.json")
+    senderchanges.reset_cache()
     monkeypatch.setattr(accountcopy, "ACCOUNT_COPY_PATH",
                         tmp_path / "account_copy.json")
     monkeypatch.setattr(accountcopy, "LEDGER_PATH",
@@ -139,6 +143,7 @@ def isolate(tmp_path, monkeypatch):
     dupstore._cache.clear()
     substore._cache.clear()
     rulecheckstore._cache.clear()
+    senderchanges.reset_cache()
     accountsmod.reset()
 
 
