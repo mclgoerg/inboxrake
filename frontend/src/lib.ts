@@ -67,8 +67,11 @@ export const fmtTs = (ts: number, lang: "en" | "de", time = true): string => {
 export const fmtUsd = (c: number): string =>
   `$${fmtNum(c, { digits: c < 0.1 ? 4 : 2 })}`;
 
-export const mailKey = (m: { folder: string; uid: number }): string =>
-  `${m.folder} ${m.uid}`;
+/** A mail's key in a list. Across accounts (Search: All accounts) the same
+ *  folder and UID are two mails in two accounts, so the account is part of it. */
+export const mailKey = (m: { folder: string; uid: number;
+  account?: string }): string =>
+  m.account ? `${m.account}\u0000${m.folder} ${m.uid}` : `${m.folder} ${m.uid}`;
 
 /** Compact relative age for "{ago} ago" / "vor {ago}" texts: "3m", "2h", "5d"
  *  in English, "3 Min.", "2 Std.", "5 Tagen" in German (empty for

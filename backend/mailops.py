@@ -106,6 +106,11 @@ PROTECTED_MAILS = "protected_mails"  # role_move trash: needs force
 ALL_PINNED = "all_pinned"            # delete_groups: nothing but pinned mails
 DELETE_PROTECTED = "delete_protected"   # delete_groups(skip_protected): the
                                      # selection is nothing but protected
+COPIES_NONE = "copies_none"          # the All accounts page: no exact copy
+                                     # is left to move to Trash
+COPIES_CHANGED = "copies_changed"    # ... more copies than the user confirmed
+COPIES_UNVERIFIED = "copies_unverified"   # ... the copies could not be checked
+                                     # in the accounts themselves just now
 ROLE_NOT_CANDIDATE = "role_not_candidate"  # set_role_override: not that role's
 ROLE_AMBIGUOUS = "role_ambiguous"    # lookalike_*: choose the role folder first
 NOT_LOOKALIKE = "not_lookalike"      # lookalike_*: no look-alike of a role
@@ -291,6 +296,7 @@ FOLDER_ERROR_CODES = frozenset({
     ASSISTANT_TOKEN_LIMIT,
     ASSISTANT_TOKEN_UNKNOWN,
     NO_MESSAGE_ID, PINNED_MAILS, PROTECTED_MAILS, ALL_PINNED, DELETE_PROTECTED,
+    COPIES_NONE, COPIES_CHANGED, COPIES_UNVERIFIED,
     ROLE_NOT_CANDIDATE, ROLE_AMBIGUOUS, NOT_LOOKALIKE, MOVE_UNSAFE,
     BUSY_ACTION,
     BUSY_PURGE,
@@ -3907,9 +3913,11 @@ def delete_messages(items: list, action: str = "trash",
         if not by_folder:
             raise RuntimeError("no known messages selected")
         n = sum(len(s) for s in by_folder.values())
-        _start_delete(by_folder, f"{n} selected mails", acc, action, dest,
-                      actor, completion, token)
-    return {"ok": True, "queued": sum(len(s) for s in by_folder.values())}
+        job_id = _start_delete(by_folder, f"{n} selected mails", acc, action,
+                               dest, actor, completion, token)
+    # `job`: the queued job's id - its undo step carries the same id
+    return {"ok": True, "queued": sum(len(s) for s in by_folder.values()),
+            "job": job_id}
 
 
 # ------------------------------------------------------------- attachments

@@ -23,6 +23,7 @@ import { TONE_BAR } from "./spaceUi";
 import { cardsFor } from "./WrappedStory";
 import { retryableGroup } from "../unsub";
 import { useAllAccounts } from "../useAllAccounts";
+import { useCopies } from "../useCopies";
 import { busiest, hh, periodTitle, slotText, standsOut, type RhythmResp }
   from "../rhythm";
 import { HeatGrid, HeatLegend } from "./RhythmCard";
@@ -705,6 +706,8 @@ function AllAccountsCard({ names, onOpen }: {
 }) {
   // read once: no polling behind a card on a tab
   const { data } = useAllAccounts(names, false);
+  const { data: cp } = useCopies(names);
+  const copied = cp?.pairs.reduce((n, p) => n + p.mails, 0) ?? 0;
   return (
     <button type="button" onClick={onOpen} className={CARD_BTN}>
       <WidgetTitle icon={<Boxes size={16} />} chevron>
@@ -718,6 +721,7 @@ function AllAccountsCard({ names, onOpen }: {
       {data && (
         <span className="block type-meta text-muted">
           {t("allp.card_same", { n: data.same_sender.length })}
+          {copied > 0 && ` \u00b7 ${t("allp.card_copies", { n: copied })}`}
         </span>
       )}
     </button>

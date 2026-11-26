@@ -102,6 +102,7 @@ State files default to names inside `/data` and normally need no change:
 | `DIGEST_PATH` | `digest.json` | When each account's activity digest was last sent. |
 | `PRESETS_PATH` | `presets.json` | Saved filter presets. |
 | `PINS_PATH` | `pinned_mails.json` | Pinned mails. |
+| `COPIED_PATH` | `copied_mails.json` | The Message-IDs [Move to another account](features.md#move-to-another-account) copied, per account: the All accounts page never offers those copies for removal. An older release ignores the file. |
 | `ACCOUNT_COPY_PATH` | `account_copy.json` | The copy to another account (its progress, and which senders you already told). |
 | `ACCOUNT_COPY_LEDGER_PATH` | `account_copy_ledger.jsonl` | Which mails of that copy are done, so it carries on after a restart without copying twice. |
 | `ADDRESSES_PATH` | `addresses.json` | Your addresses: retired aliases and the "not a leak" marks (per user and account). |

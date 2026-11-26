@@ -85,7 +85,14 @@ matching filter. Scope: "Subject & sender" or "Also mail text" (see "Local
 mail-text search index" below for how that is searched); results can be
 narrowed by time and folder, selected and moved to Trash with the usual
 confirm, and a mail opens in the reader. At most the newest 500 matches are
-shown.
+shown. With two accounts or more a second choice sits beside the scope: **This
+account | All accounts** (default: this account). **All accounts** searches
+every mailbox of your workspace: the hits (and the matching senders) carry an
+account chip, opening one switches to its account like the account switcher
+does, and **Select / Select all / Trash selected** run one step per account
+through one confirm (see [All accounts](#all-accounts)); pinned mails and mails of
+protected senders are taken out first. With "This account" Search is exactly as
+before.
 
 ### Multiple accounts
 
@@ -909,8 +916,33 @@ the Accounts sheet.
   never stops the others, an unticked account is never called, and Esc does
   nothing while the steps run.
 
+- **Same mails in several accounts**: **exact copies** - the same Message-ID **and**
+  the same size - held by two of your accounts, typically a forward (old →
+  proton) or mail that was sent to two of your addresses. Per pair of accounts
+  the page counts them and offers **Review…**: *keep them in A, trash the copies
+  in B*, the other way round, or *just show them* (All mail in the account,
+  narrowed to those mails, with a link to the same view in the other). A move to
+  Trash is **one step in the account that gives them up**, with its own Undo and
+  Activity entry; the account that keeps them is never touched. The step is worked
+  out again on the server from both accounts as they are then, and **each copy is
+  looked at on both mail servers (read only) right before it moves** - one that is
+  no longer there with the same Message-ID and size stays - and it is refused while
+  either account is moving mail, or when there are more copies than the number
+  you confirmed. Left out, always: two accounts that are **one mailbox** (the
+  same login added twice, an alias, a second host name: they are not offered and
+  never trashed), a mail without a Message-ID, a Message-ID that is in one account
+  more than once (Duplicates handles that), pinned mails and mails of protected
+  senders (in the account that would lose them), and every mail that **Move to
+  another account** copied - Inboxrake keeps a lasting record of those Message-IDs
+  for both accounts (`copied_mails.json`; the job's own ledger keeps only the last
+  job), and the page says how many it left out. A copy is trashed, so it is
+  reversible; the page reads the scan each account last ran, so scan first if you
+  moved mail elsewhere meanwhile.
+
 No AI, no mail server contacted to draw the page (it reads what each account's
-last scan holds), nothing new stored on disk.
+last scan holds); only the step that trashes copies looks at the two mailboxes,
+read only. Nothing is stored for the page except the record of copied
+Message-IDs.
 
 ### Your addresses
 

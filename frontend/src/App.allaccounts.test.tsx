@@ -18,6 +18,11 @@ const keepCheck = vi.fn();
 const overviewCall = vi.fn();
 const undo = vi.fn();
 const scan = vi.fn();
+const copiesCall = vi.fn();
+const trashCopies = vi.fn();
+const mailsCall = vi.fn();
+const accountsSearch = vi.fn();
+const deleteMessages = vi.fn();
 
 vi.mock("./api", () => ({
   api: {
@@ -40,7 +45,16 @@ vi.mock("./api", () => ({
     keepSafePin: () => Promise.resolve({ pinned: 0, items: [] }),
     deleteRule: () => Promise.resolve(),
     scan: (...a: unknown[]) => scan(...a),
-    mails: () => Promise.resolve({ items: [], total: 0 }),
+    accountsCopies: (...a: unknown[]) => copiesCall(...a),
+    trashCopies: (...a: unknown[]) => trashCopies(...a),
+    mails: (...a: unknown[]) => mailsCall(...a),
+    accountsSearch: (...a: unknown[]) => accountsSearch(...a),
+    search: () => Promise.resolve({ mails: [], notes: [] }),
+    deleteMessages: (...a: unknown[]) => deleteMessages(...a),
+    message: () => Promise.resolve({ from: "x", to: "", date: "d",
+      subject: "s", text: "body text of the mail", thread: null }),
+    thread: () => new Promise(() => {}),
+    messages: () => Promise.resolve({ messages: [] }),
     folders: () => Promise.resolve({ folders: [], wildcards: [] }),
   },
   setAccount: (n: string) => setAccount(n),
@@ -137,12 +151,30 @@ beforeEach(() => {
   block.mockResolvedValue({ rule: { id: "r1" } });
   keepCheck.mockResolvedValue({ total: 1, kept: 0, classes: [] });
   scan.mockResolvedValue({ ok: true });
+  copiesCall.mockResolvedValue({ left_out: 0, pairs: [{ a: "work", b: "proton",
+    mails: 40, size: 1000, first: 1_600_000_000, last: 1_700_000_000,
+    in_a: { trash: 38, size: 900, held: 2 }, in_b: { trash: 40, size: 1000, held: 0 } }] });
+  trashCopies.mockResolvedValue({ ok: true, queued: 38, job: "j-work", held: 2 });
+  mailsCall.mockResolvedValue({ total: 3, offset: 0, mails: [], ignored: [] });
+  accountsSearch.mockResolvedValue({ notes: [],
+    mails: [
+      { uid: 1, folder: "INBOX", date: "2026-01-02", ts: 9, subject: "Invoice one",
+        addr: "billing@cloudbox.example", size: 10, seen: true, ai: null,
+        account: "proton", pinned: false, protected: false },
+      { uid: 2, folder: "INBOX", date: "2026-01-02", ts: 8, subject: "Invoice two",
+        addr: "billing@hosting.example", size: 10, seen: true, ai: null,
+        account: "work", pinned: false, protected: false }],
+    senders: [{ account: "work", key: "deals@dealsdaily.example", label: "Hosting Co",
+      count: 12, size: 1024 }] });
+  deleteMessages.mockImplementation((...a: unknown[]) => Promise.resolve(
+    { ok: true, queued: (a[0] as unknown[]).length, job: `j-${a[4]}` }));
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   for (const f of [setAccount, deleteGroups, unsubscribe, block, keepCheck,
-    overviewCall, undo, scan]) f.mockReset();
+    overviewCall, undo, scan, copiesCall, trashCopies, mailsCall, accountsSearch,
+    deleteMessages]) f.mockReset();
   setAccount.mockImplementation((n: string) => { current = n; });
   localStorage.clear();
   window.location.hash = "";
@@ -357,4 +389,128 @@ test("German: the row, the sidebar item and the page", async () => {
     { name: "Hauptnavigation" })).getByRole("button", { name: "Alle Konten" }));
   expect(await screen.findByText("Gleicher Absender, mehrere Konten")).toBeTruthy();
   expect(document.body.textContent).not.toMatch(/Konto auswählen/);
+});
+
+
+/* ---------------- Same mails in several accounts / Search: All accounts --------------- */
+
+const reviewFirst = async () => {
+  await openPage();
+  const card = within(await screen.findByTestId("copies-card"));
+  fireEvent.click(card.getByRole("button", { name: /^Review/ }));
+  await screen.findByRole("radiogroup");
+};
+
+test("Review > Trash: one step in the chosen account, one toast with Undo - the selected account is unchanged",
+  async () => {
+  let queued = false;
+  trashCopies.mockImplementation(() => { queued = true;
+    return Promise.resolve({ ok: true, queued: 38, job: "j-work", held: 2 }); });
+  overviewCall.mockImplementation(() => Promise.resolve(overview({
+    accounts: ["proton", "icloud", "work"].map((n) => ({ ...overview().accounts[0],
+      name: n, busy: false, undo_jobs: (queued && n === "work"
+        ? { "j-work": { id: "s", ts: 7, label: "mail", count: 38, action: "trash" } }
+        : {}) as Record<string, { id: string; ts: number; label: string;
+          count: number; action: string }> })),
+    same_sender: [dealsRow()] })));
+  mount();
+  await reviewFirst();
+  fireEvent.click(screen.getByRole("button", { name: /^Trash\s38\scopies\sin\swork$/ }));
+  expect(await screen.findByText("Moved 38 mails to Trash in 1 account")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+  expect(trashCopies).toHaveBeenCalledWith("proton", "work", 38);
+  expect(setAccount).toHaveBeenCalledTimes(1);
+  expect(selectedBefore()).toBe("proton");
+});
+
+test("Review > Just show them: the selected account of the pair first - no switch - with a way to the other",
+  async () => {
+  mount();                       // the selected account is proton, the pair is (work, proton)
+  await reviewFirst();
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
+    finding: "copies:work" })));
+  expect(await screen.findByText(/mails that are also in work/)).toBeTruthy();
+  expect(window.location.hash).toBe("#/all");
+  expect(setAccount).toHaveBeenCalledTimes(1);        // proton stayed selected
+  expect(selectedBefore()).toBe("proton");
+  // and the same view in the other account is one tap away
+  fireEvent.click(await screen.findByRole("button", { name: "Open in work" }));
+  await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("work"));
+  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
+    finding: "copies:proton" })));
+});
+
+test("Review > Just show them: a pair without the selected account opens its first account (a switch, like Open)",
+  async () => {
+  copiesCall.mockResolvedValue({ left_out: 0, pairs: [{ a: "work", b: "icloud",
+    mails: 40, size: 1000, first: 1_600_000_000, last: 1_700_000_000,
+    in_a: { trash: 38, size: 900, held: 2 }, in_b: { trash: 40, size: 1000, held: 0 } }] });
+  mount();
+  await reviewFirst();
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("work"));
+  await waitFor(() => expect(mailsCall).toHaveBeenCalledWith(expect.objectContaining({
+    finding: "copies:icloud" })));
+  expect(await screen.findByText(/mails that are also in icloud/)).toBeTruthy();
+});
+
+test("Search: This account is the default and today's search; All accounts lists every account",
+  async () => {
+  mount();
+  fireEvent.click(within(await side()).getByRole("button", { name: /Search all mails/ }));
+  const box = await screen.findByRole("searchbox");
+  expect(screen.getByRole("radio", { name: "This account" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(screen.getByRole("radio", { name: "All accounts" }));
+  fireEvent.change(box, { target: { value: "invoice" } });
+  await waitFor(() => expect(accountsSearch).toHaveBeenCalledWith("invoice", false));
+  expect(await screen.findByText(/Hosting Co/)).toBeTruthy();
+  expect(setAccount).toHaveBeenCalledTimes(1);        // searching selects nothing
+  expect(selectedBefore()).toBe("proton");
+});
+
+test("Search: opening a hit of another account switches to it and keeps the results; a sender opens there",
+  async () => {
+  mount();
+  fireEvent.click(within(await side()).getByRole("button", { name: /Search all mails/ }));
+  const box = await screen.findByRole("searchbox");
+  fireEvent.click(screen.getByRole("radio", { name: "All accounts" }));
+  fireEvent.change(box, { target: { value: "invoice" } });
+  await screen.findByText(/Hosting Co/);
+  const two = screen.getAllByText((_c, el) => el?.tagName === "SPAN"
+    && el.classList.contains("truncate") && el.textContent === "Invoice two")[0];
+  fireEvent.click(two);
+  await waitFor(() => expect(setAccount).toHaveBeenLastCalledWith("work"));
+  expect(selectedBefore()).toBe("work");
+  expect(await screen.findByText("body text of the mail")).toBeTruthy();
+  // the results were not thrown away by the switch
+  expect((screen.getByRole("searchbox", { hidden: true }) as HTMLInputElement).value).toBe("invoice");
+});
+
+test("Search: Trash selected across accounts is one confirm, one step per account, none selects an account",
+  async () => {
+  mount();
+  fireEvent.click(within(await side()).getByRole("button", { name: /Search all mails/ }));
+  const box = await screen.findByRole("searchbox");
+  fireEvent.click(screen.getByRole("radio", { name: "All accounts" }));
+  fireEvent.change(box, { target: { value: "invoice" } });
+  await screen.findByText(/Hosting Co/);
+  fireEvent.click(screen.getByText(/^Select all 2$/));
+  fireEvent.click(screen.getByRole("button", { name: /^Trash selected \(2\)$/ }));
+  const dlg = await screen.findByRole("dialog", { name: /Move\s2\smails\sto\sTrash\sin\s2\saccounts\?/ });
+  fireEvent.click(within(dlg).getByRole("button", { name: /^Trash\s2\smails\sin\s2\saccounts$/ }));
+  await waitFor(() => expect(deleteMessages).toHaveBeenCalledTimes(2));
+  expect(deleteMessages.mock.calls.map((c) => c[4])).toEqual(["proton", "work"]);
+  expect(setAccount).toHaveBeenCalledTimes(1);
+  expect(selectedBefore()).toBe("proton");
+});
+
+test("German: the copies card and the search choice", async () => {
+  setLang("de");
+  mount();
+  fireEvent.click(within(await screen.findByRole("navigation", { name: "Hauptnavigation" }))
+    .getByRole("button", { name: "Alle Konten" }));
+  expect(await screen.findByText("Gleiche Mails in mehreren Konten")).toBeTruthy();
 });

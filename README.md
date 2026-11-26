@@ -219,7 +219,8 @@ map, statistics (including when your mail arrives, by weekday and hour),
 an earlier point), multiple strictly separate
 accounts with a copy-to-another-account wizard for a provider switch and an
 "All accounts" page that shows them side by side (the senders that write to
-several of them, with one confirm and one step per account),
+several of them, with one confirm and one step per account, and the exact
+copies of a mail held by two accounts), Search across all of them,
 system/light/dark appearance, phone layout, English and
 German. An optional MCP endpoint lets your own AI assistant
 ask questions about the mailbox and propose rules for you to approve

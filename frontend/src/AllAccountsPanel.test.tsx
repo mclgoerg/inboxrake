@@ -9,11 +9,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const overviewCall = vi.fn();
+const copiesCall = vi.fn();
+const trashCopies = vi.fn();
 const setAccount = vi.fn();
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   setAccount: (...a: unknown[]) => setAccount(...a),
-  api: { accountsOverview: (...a: unknown[]) => overviewCall(...a) },
+  api: { accountsOverview: (...a: unknown[]) => overviewCall(...a),
+    accountsCopies: (...a: unknown[]) => copiesCall(...a),
+    trashCopies: (...a: unknown[]) => trashCopies(...a) },
 }));
 
 import { AllAccountsPanel } from "./components/AllAccountsPanel";
@@ -42,7 +46,7 @@ const viewport = (width: number, coarse = false) =>
 
 const cb = {
   onScanAll: vi.fn(), onClose: vi.fn(), onOpen: vi.fn(), onFix: vi.fn(),
-  onOpenSender: vi.fn(), onFollow: vi.fn(), onClaim: vi.fn(),
+  onOpenSender: vi.fn(), onFollow: vi.fn(), onClaim: vi.fn(), onShowCopies: vi.fn(),
   onAdd: vi.fn() };
 
 const NAMES = ["proton", "icloud", "work", "old"];
@@ -58,12 +62,21 @@ beforeEach(() => {
   restore = clockShiftFor(NOW);
   viewport(1440);
   overviewCall.mockResolvedValue(overview());
+  copiesCall.mockResolvedValue({ left_out: 1204, pairs: [
+    { a: "old", b: "proton", mails: 412, size: 61 * 1048576, first: 1_679_000_000,
+      last: 1_700_000_000, in_a: { trash: 409, size: 61 * 1048576, held: 3 },
+      in_b: { trash: 412, size: 61 * 1048576, held: 0 } },
+    { a: "work", b: "icloud", mails: 96, size: 18 * 1048576, first: 1_690_000_000,
+      last: 1_700_000_000, in_a: { trash: 96, size: 18 * 1048576, held: 0 },
+      in_b: { trash: 96, size: 18 * 1048576, held: 0 } }] });
+  trashCopies.mockResolvedValue({ ok: true, queued: 409, job: "j-old", held: 3 });
 });
 afterEach(() => {
   cleanup();
   restore();
   vi.unstubAllGlobals();
-  for (const f of [overviewCall, setAccount, ...Object.values(cb)]) f.mockReset();
+  for (const f of [overviewCall, copiesCall, trashCopies, setAccount,
+    ...Object.values(cb)]) f.mockReset();
   localStorage.clear();
   setLang("en");
 });
@@ -371,4 +384,120 @@ test("every part of the existing UI is untouched: this panel adds, it removes no
   await screen.findByText("Where your 7.3 GB are");
   expect(cards().map((c) => c.querySelector("div")!.textContent))
     .toEqual(r.accounts.map((a) => expect.stringContaining(a.name)));
+});
+
+
+/* ------------------------ Same mails in several accounts ------------------------ */
+
+const copyRows = () => screen.getAllByTestId("copies-row");
+
+test("the card lists each pair of accounts with its exact copies, size and a Review", async () => {
+  show();
+  const card = within(await screen.findByTestId("copies-card"));
+  expect(card.getByText("Same mails in several accounts")).toBeTruthy();
+  expect(card.getByText("exact copies: same Message-ID and size")).toBeTruthy();
+  expect(copyRows()).toHaveLength(2);
+  expect(within(copyRows()[0]).getByText(/^412\smails · 61\.0\sMB in old and proton$/)).toBeTruthy();
+  expect(within(copyRows()[0]).getByText(/^since /)).toBeTruthy();
+  expect(within(copyRows()[1]).getByText(/^96\smails · 18\.0\sMB in work and icloud$/)).toBeTruthy();
+  // what "Move to another account" made is named, not offered
+  expect(card.getByText(/^Left out: 1,204\scopies you made yourself with “Move to another account”\. Duplicates inside one account stay in Duplicates\.$/))
+    .toBeTruthy();
+  // the page is still the page: the cards and the same-sender list are there
+  expect(screen.getAllByTestId("account-card")).toHaveLength(4);
+  expect(screen.getAllByTestId("same-row")).toHaveLength(4);
+});
+
+test("without copies the card says so, and still names the Duplicates", async () => {
+  copiesCall.mockResolvedValue({ pairs: [], left_out: 0 });
+  show();
+  const card = within(await screen.findByTestId("copies-card"));
+  expect(card.getByText("No mail is in more than one of your accounts.")).toBeTruthy();
+  expect(card.getByText("Duplicates inside one account stay in Duplicates.")).toBeTruthy();
+});
+
+test("a failing read leaves the page without the card, nothing else", async () => {
+  copiesCall.mockRejectedValue(new Error("x"));
+  show();
+  await screen.findByText("Where your 7.3 GB are");
+  await waitFor(() => expect(copiesCall).toHaveBeenCalled());
+  expect(screen.queryByTestId("copies-card")).toBeNull();
+  expect(screen.getAllByTestId("same-row")).toHaveLength(4);
+});
+
+test("Review opens the dialog of that pair - and opening it selects no account", async () => {
+  show();
+  await screen.findByTestId("copies-card");
+  fireEvent.click(within(copyRows()[0]).getByRole("button", { name: "Review the copies in old and proton" }));
+  expect(await screen.findByText(/^412\smails are in both old and proton$/)).toBeTruthy();
+  expect(setAccount).not.toHaveBeenCalled();
+  for (const f of [cb.onOpen, cb.onFix, cb.onOpenSender, cb.onShowCopies]) {
+    expect(f).not.toHaveBeenCalled();
+  }
+});
+
+test("the step runs through the app: claimed, ONE job followed, nothing switched", async () => {
+  show();
+  await screen.findByTestId("copies-card");
+  fireEvent.click(within(copyRows()[0]).getByRole("button", { name: /^Review/ }));
+  await screen.findByRole("radiogroup");
+  fireEvent.click(screen.getByRole("button", { name: /^Trash\s409\scopies\sin\sold$/ }));
+  await waitFor(() => expect(cb.onFollow).toHaveBeenCalled());
+  expect(trashCopies).toHaveBeenCalledWith("proton", "old", 409);
+  expect(cb.onClaim).toHaveBeenCalledWith(["old"], true);
+  expect(cb.onFollow).toHaveBeenCalledWith({ kind: "trash", steps: [{ account: "old", job: "j-old" }] });
+  expect(setAccount).not.toHaveBeenCalled();
+  expect(cb.onOpen).not.toHaveBeenCalled();
+});
+
+test("Just show them goes through the app (it opens All mail there, like Open)", async () => {
+  show();
+  await screen.findByTestId("copies-card");
+  fireEvent.click(within(copyRows()[1]).getByRole("button", { name: /^Review/ }));
+  await screen.findByRole("radiogroup");
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  expect(cb.onShowCopies).toHaveBeenCalledWith("work", "icloud");
+  expect(trashCopies).not.toHaveBeenCalled();
+});
+
+test("Just show them opens the selected account first when it is in the pair - nothing is switched", async () => {
+  show();                                              // the selected account is proton
+  await screen.findByTestId("copies-card");
+  fireEvent.click(within(copyRows()[0]).getByRole("button", { name: /^Review/ }));   // old + proton
+  await screen.findByRole("radiogroup");
+  fireEvent.click(screen.getByRole("radio", { name: /^Just show them/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  expect(cb.onShowCopies).toHaveBeenCalledWith("proton", "old");
+  expect(setAccount).not.toHaveBeenCalled();
+});
+
+test("the copies are counted again once a move or a scan has ended", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const busy = overview();
+    busy.accounts[0] = { ...busy.accounts[0], busy: true };
+    overviewCall.mockResolvedValueOnce(busy).mockResolvedValue(overview());
+    show();
+    await screen.findByTestId("copies-card");
+    const n = copiesCall.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(2500);
+    await waitFor(() => expect(copiesCall.mock.calls.length).toBeGreaterThan(n));
+  } finally { vi.useRealTimers(); }
+});
+
+test("phone: the card is on the page too, with the same Review", async () => {
+  viewport(390, true);
+  show();
+  const card = within(await screen.findByTestId("copies-card"));
+  expect(card.getAllByRole("button", { name: /^Review/ })).toHaveLength(2);
+});
+
+test("German card", async () => {
+  setLang("de");
+  show();
+  const card = within(await screen.findByTestId("copies-card"));
+  expect(card.getByText("Gleiche Mails in mehreren Konten")).toBeTruthy();
+  expect(card.getAllByRole("button", { name: /^Die Kopien in/ })).toHaveLength(2);
+  expect(card.getByText(/^Nicht dabei: 1\.204\sKopien, die du selbst mit „Auf ein anderes Konto umziehen“/)).toBeTruthy();
 });

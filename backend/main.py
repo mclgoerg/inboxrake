@@ -41,6 +41,7 @@ from . import bodyindex
 from . import bodylimit
 from . import autoscan as autoscanmod
 from . import config as cfgmod
+from . import copystore
 from . import csvsafe
 from . import digest as digestmod
 from . import dupstore
@@ -2845,7 +2846,7 @@ def get_mails(offset: int = Query(0, ge=0),
               slot_days: str = Query("0,1,2,3,4,5,6", max_length=20),
               tz: str = Query("", max_length=64),
               tzoff: int = Query(0, ge=-840, le=840),
-              finding: str = Query("", max_length=16),
+              finding: str = Query("", max_length=80),
               account: str | None = Query(None)):
     """Flat "All mails" view: one page of the scan index as
     {total, offset, mails, ignored}. `finding` (a Rule checkup finding's
@@ -2865,7 +2866,16 @@ def get_mails(offset: int = Query(0, ge=0),
             raise HTTPException(400, "bad slot")
     acc = _acc(account)
     only = None
-    if finding == pastdate.KEPT_VIEW:   # "Show them" of Mail past its date
+    if finding.startswith(allaccounts.COPIES_VIEW):
+        # "Just show them" of the All accounts page: the mails that have an
+        # exact copy in that other account (a name that is not the
+        # workspace's is a 400 like everywhere)
+        try:
+            only = allaccounts.copy_handles(
+                acc.name, finding[len(allaccounts.COPIES_VIEW):])
+        except KeyError as exc:
+            raise HTTPException(400, str(exc.args[0]))
+    elif finding == pastdate.KEPT_VIEW:   # "Show them" of Mail past its date
         only = pastdate.kept_handles(acc)
     elif finding:               # "Show the N mails" of a Rule checkup finding
         if not rulecheckstore.valid_fingerprint(finding):
@@ -3109,6 +3119,49 @@ def get_accounts_overview(since: str | None = Query(None, max_length=4000)):
     return allaccounts.build(marks)
 
 
+@app.get("/api/accounts/copies")
+def get_accounts_copies():
+    """"Same mails in several accounts": the exact copies (same Message-ID and
+    size) per pair of accounts, with what a move to Trash in either would take
+    (pinned and protected taken out) - see allaccounts.py. Read-only, no mail
+    server, selects nothing."""
+    return allaccounts.copies()
+
+
+class CopiesTrashBody(BaseModel):
+    keep: str = Field(min_length=1, max_length=200)
+    drop: str = Field(min_length=1, max_length=200)
+    # how many copies the user confirmed: more than that is refused
+    expect: int = Field(ge=0, le=10_000_000)
+
+
+@app.post("/api/accounts/copies/trash")
+def post_accounts_copies_trash(body: CopiesTrashBody):
+    """Move the copies in `drop` of the mails `keep` holds to Trash: one step
+    in `drop` (its own Undo and Activity entry), worked out again here from
+    both accounts as they are now and checked on the two mail servers (read
+    only); never more than `expect`; `keep` is never touched."""
+    try:
+        return allaccounts.trash_copies(body.keep, body.drop, body.expect)
+    except KeyError as exc:
+        raise HTTPException(400, str(exc.args[0]))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, None)
+
+
+@app.get("/api/accounts/search")
+def get_accounts_search(q: str = Query(..., max_length=500),
+                        scope: Literal["meta", "body"] = Query("meta")):
+    """Search over EVERY account of this workspace (see allaccounts.search):
+    hits and notes carry their account, hits whether they are pinned or from
+    a protected sender, plus the senders that match. Nothing is selected."""
+    return allaccounts.search(q, body=scope == "body")
+
+
 def _keep_caller_signed_in(request: Request, response: Response,
                            old_sub: str | None) -> None:
     """After THIS request signed everyone out (new epoch) the person who did
@@ -3182,6 +3235,7 @@ def post_config(body: dict, request: Request, response: Response):
         rulesmod.drop_account(str(body["delete_account"]))
         autoscanmod.drop_account(str(body["delete_account"]))
         accountcopy.drop_account(str(body["delete_account"]))
+        copystore.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
         # The config rename succeeded - carry every per-account artifact
         # (runtime state, verdicts, unsubscribes, replied cache, stats,
@@ -3212,6 +3266,7 @@ def post_config(body: dict, request: Request, response: Response):
             dupstore.rename_account(old, new)
             autoscanmod.rename_account(old, new)
             accountcopy.rename_account(old, new)
+            copystore.rename_account(old, new)
             auditlog.rename_account(old, new)
             assistanttokens.rename_account(tenants.current().id, old, new)
             logging.getLogger("inboxrake.mail").info(

@@ -20,9 +20,9 @@ import zlib
 from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
-from backend import (accounts, aliasservice, bodyindex, demo, knowledgestore,
-                     mailops, pinstore, rules, unsubstore, verdictstore,
-                     waitstore)
+from backend import (accounts, aliasservice, bodyindex, copystore, demo,
+                     knowledgestore, mailops, pinstore, rules, unsubstore,
+                     verdictstore, waitstore)
 
 if "CONFIG_PATH" not in os.environ:
     raise RuntimeError("demo_generate is imported by demo.py, which isolates "
@@ -948,6 +948,16 @@ ICLOUD_INBOX += (
             ["Weekend SALE - up to 70% off", "Your points expire soon"], 12,
             span_days=120, unread=0.9, unsub=True))
 random.setstate(_rs)
+# "Same mails in several accounts": this address forwards some of its mail to
+# the Proton one, so the very same message (Message-ID and size) sits in both
+# mailboxes - shipping updates and a newsletter - and a dozen shipping mails
+# were brought over with "Move to another account" (recorded for good: they are
+# never offered for removal). Two mails of a protected sender are copies too.
+ICLOUD_FWD = copies(_by(PROTON_INBOX, "paketfix")[:30]
+                    + _by(PROTON_INBOX, "techdigest")[:18]
+                    + _by(PROTON_INBOX, "mailfox")[:2])
+ICLOUD_MOVED = copies(_by(PROTON_INBOX, "paketfix")[30:42])
+ICLOUD_INBOX += ICLOUD_FWD + ICLOUD_MOVED
 _fruit = [m for m in _by(ICLOUD_INBOX, "fruitstore")
           if "has shipped" in m["subject"]]
 ICLOUD_COPIES = (copies(_by(ICLOUD_INBOX, "cloudphotos")[:3])
@@ -1641,6 +1651,11 @@ def generate() -> dict:
                      if m["addr"] == "anna.weber@mailfox.example"),
                     key=lambda m: m["uid"])[:3]:
         pinstore.set_pinned(m["msgid"], True, "proton")
+    # "Same mails in several accounts": three of the forwarded copies are pinned
+    # in iCloud (they stay when its copies go), the dozen that "Move to another
+    # account" brought over are on record.
+    pinstore.set_many({m["msgid"] for m in ICLOUD_FWD[:3]}, True, "icloud")
+    copystore.record("proton", "icloud", [m["msgid"] for m in ICLOUD_MOVED])
     # Bodies come last: the Proton body index above must not hold them (see
     # fill_bodies).
     for fake in FAKES.values():

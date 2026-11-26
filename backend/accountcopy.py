@@ -24,6 +24,7 @@ the user's ticks.
 from __future__ import annotations
 
 import base64
+import contextlib
 import email
 import email.parser
 import hashlib
@@ -39,6 +40,7 @@ from pathlib import Path
 from . import accounts
 from . import auditlog
 from . import config as cfgmod
+from . import copystore
 from . import demo
 from . import mailops
 from . import pinstore
@@ -200,6 +202,15 @@ def _identity(name: str) -> tuple[str, str]:
     return (host, user)
 
 
+def same_mailbox_configured(a: str, b: str) -> bool:
+    """Whether the SETTINGS of two accounts name one mailbox (the same host
+    and login): one login added twice. An alias or a second host name for one
+    mailbox is not visible here - the live check (`same_server_mailbox`)
+    catches those."""
+    ia, ib = _identity(a), _identity(b)
+    return bool(ia[0]) and ia == ib
+
+
 def _resolve(source: str, target: str):
     """(source AccountState, target AccountState) - two different accounts
     of the CURRENT tenant that point at two different mailboxes, else a
@@ -209,8 +220,7 @@ def _resolve(source: str, target: str):
         raise ValueError(mailops.COPY_UNKNOWN_ACCOUNT)
     if source == target:
         raise ValueError(mailops.COPY_SAME_ACCOUNT)
-    a, b = _identity(source), _identity(target)
-    if a[0] and a == b:
+    if same_mailbox_configured(source, target):
         raise ValueError(mailops.COPY_SAME_MAILBOX)
     src, tgt = accounts.get(source), accounts.get(target)
     tid = tenants.current().id
@@ -526,13 +536,14 @@ def judge_distinct(src_name: str, tgt_name: str, a, b) -> None:
                     tgt_name)
 
 
-def ensure_distinct(src, tgt) -> None:
-    """The identity check on fresh connections (see `judge_distinct`)."""
+@contextlib.contextmanager
+def open_pair(src, tgt):
+    """Fresh connections to two accounts, `(a, b)`, logged out again after."""
     a = _connect(src)
     try:
         b = _connect(tgt)
         try:
-            judge_distinct(src.name, tgt.name, a, b)
+            yield a, b
         finally:
             try:
                 b.logout()
@@ -543,6 +554,12 @@ def ensure_distinct(src, tgt) -> None:
             a.logout()
         except Exception:
             pass
+
+
+def ensure_distinct(src, tgt) -> None:
+    """The identity check on fresh connections (see `judge_distinct`)."""
+    with open_pair(src, tgt) as (a, b):
+        judge_distinct(src.name, tgt.name, a, b)
 
 
 def folder_check(tgt, name: str) -> dict:
@@ -1278,6 +1295,12 @@ def _work() -> None:
                 else:
                     job["missing"] += 1
             _ledger_append(rows)        # on disk BEFORE the counters say so
+            # the lasting record of what was copied (the ledger keeps the
+            # last job only): both accounts remember these Message-IDs
+            copystore.record(job["source"], job["target"],
+                             [k for k, st in rows
+                              if st in ("ok", "unchecked")
+                              and not k.startswith("fp:")])
             now = time.monotonic()
             took, last = now - last, now
             job["active_s"] += took
@@ -1316,6 +1339,25 @@ def _work() -> None:
         _audit(job)
     if job["status"] == "done":
         _rescan_target(job["target"])
+
+
+def fold_last_job() -> None:
+    """Fold the copies of the job on file (the ledger belongs to it alone) into
+    the lasting record once - for a job that ran before the record existed,
+    or whose chunk hook never ran. A job that is still going is folded as far
+    as it got and again later."""
+    with _LOCK:
+        job = _read()["job"]
+    if not job or not job.get("id") or copystore.job_known(job["id"]):
+        return
+    if job.get("source") not in accounts.names() \
+            or job.get("target") not in accounts.names():
+        return
+    done = [k for k, st in _ledger_read(job["id"]).items()
+            if st in ("ok", "unchecked") and not k.startswith("fp:")]
+    copystore.record(job["source"], job["target"], done)
+    if job.get("status") in ("done", "cancelled", "error"):
+        copystore.mark_job(job["id"])
 
 
 def _audit(job: dict) -> None:

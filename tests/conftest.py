@@ -31,6 +31,7 @@ from backend import knownsenders              # noqa: E402
 from backend import dupstore                  # noqa: E402
 from backend import labelstore                # noqa: E402
 from backend import mailops                   # noqa: E402
+from backend import copystore                  # noqa: E402
 from backend import pinstore                  # noqa: E402
 from backend import presets as presetsmod     # noqa: E402
 from backend import rulecheckstore           # noqa: E402
@@ -85,6 +86,8 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(knownsenders, "KNOWN_SENDERS_PATH",
                         tmp_path / "known_senders.json")
     monkeypatch.setattr(pinstore, "PINS_PATH", tmp_path / "pinned_mails.json")
+    monkeypatch.setattr(copystore, "COPIED_PATH",
+                        tmp_path / "copied_mails.json")
     monkeypatch.setattr(labelstore, "LABELS_PATH",
                         tmp_path / "sender_labels.json")
     monkeypatch.setattr(dupstore, "DUPS_PATH",
@@ -120,6 +123,7 @@ def isolate(tmp_path, monkeypatch):
     verdictstore._mails_cache.clear()
     unsubstore._cache.clear()
     pinstore._cache.clear()
+    copystore._cache.clear()
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
@@ -145,6 +149,7 @@ def isolate(tmp_path, monkeypatch):
     verdictstore._mails_cache.clear()
     unsubstore._cache.clear()
     pinstore._cache.clear()
+    copystore._cache.clear()
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()

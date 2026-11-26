@@ -27,6 +27,9 @@ const SORTS: { k: MailSort; label: string }[] = [
 const PAGE = 100;
 /** The `finding` that lists the receipts Mail past its date keeps. */
 export const KEPT_VIEW = "past-kept";
+/** The `finding` prefix of "Just show them" on the All accounts page:
+ *  `copies:<account>` lists the mails that have an exact copy in that account. */
+export const COPIES_VIEW = "copies:";
 // Sender reads A→Z first; date and size biggest/newest first.
 const naturalDir = (k: MailSort): "asc" | "desc" =>
   k === "sender" ? "asc" : "desc";
@@ -316,7 +319,11 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       {finding && (
         <CheckupChip n={total} mails className="mb-2"
           label={finding.id === KEPT_VIEW
-            ? t("past.chip_kept", { n: total }) : undefined}
+            ? t("past.chip_kept", { n: total })
+            : finding.id.startsWith(COPIES_VIEW)
+              ? t("allp.copies_chip", { n: total,
+                account: finding.id.slice(COPIES_VIEW.length) })
+              : undefined}
           onClear={() => setFinding(null)} />
       )}
       {ignored.length > 0 && (

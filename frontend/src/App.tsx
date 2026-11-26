@@ -32,6 +32,7 @@ import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
 import { AllAccountsPanel } from "./components/AllAccountsPanel";
+import { COPIES_VIEW } from "./components/AllMailsView";
 import { canOpenAllAccounts } from "./allAccounts";
 import { useAcrossRuns } from "./useAcrossRuns";
 import { showReminderToast } from "./subscriptions";
@@ -1170,17 +1171,39 @@ export default function App() {
       setUndoRev((n) => n + 1);
       if (accounts.includes(stateRef.current?.account ?? "")) refresh();
     } });
+  // "Just show them" (All accounts > Same mails in several accounts): All mail
+  // in this account, narrowed to the mails that have an exact copy in `other`,
+  // and a way to see the same in the other account.
+  const openCopiesView = (other: string) => {
+    const here = stateRef.current?.account ?? account;
+    setAllMailsQuery(""); setAllMailsSlot(null);
+    setAllMailsFinding({ id: `${COPIES_VIEW}${other}`, n: 0 });
+    setFlat(true);
+    toast.show(t("allp.copies_other", { account: other }), {
+      action: { label: t("allp.open_in", { account: other }),
+        onClick: () => showCopies(other, here) } });
+  };
+  const showCopies = (name: string, other: string) => {
+    setAllAccountsOpen(false);
+    if (name === (stateRef.current?.account ?? account)) {
+      openCopiesView(other);
+      return;
+    }
+    setPendingOpen({ account: name, copies: other });
+    switchAccount(name);
+  };
   // "Open in <account>" from the page: switch there, then open the sender once
   // that account's state is loaded. Cleared when the account changes to
   // another one meanwhile - it must never fire later, on a return.
-  const [pendingOpen, setPendingOpen] =
-    useState<{ account: string; addr: string } | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<{ account: string;
+    addr?: string; copies?: string } | null>(null);
   useEffect(() => {
     if (!pendingOpen) return;
     if (account !== pendingOpen.account) { setPendingOpen(null); return; }
     if (state?.account !== pendingOpen.account) return;
-    const g = state.groups.sender?.[pendingOpen.addr];
     setPendingOpen(null);
+    if (pendingOpen.copies) { openCopiesView(pendingOpen.copies); return; }
+    const g = state.groups.sender?.[pendingOpen.addr ?? ""];
     if (g) openSender(g);
     else notify(t("allp.sender_gone", { account: pendingOpen.account }), "info");
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2896,7 +2919,24 @@ export default function App() {
   // there (`toolShown`; each panel's own close then leaves the page).
   const toolPanels = (<>
     {toolShown("search") && (
-      <SearchPanel key={account}
+      <SearchPanel
+        // (no key: the panel keeps its results when a hit of another account
+        // switches to it, and starts over itself on any other switch)
+        across={multiAccount ? {
+          account, names: accountNames,
+          exists: (a) => !!cfgRef.current?.accounts[a],
+          onSwitchAccount: (a) => { if (a !== account) switchAccount(a); },
+          onOpenSender: (a, addr) => {
+            setSearchOpen(false);
+            if (a === account) {
+              const g = state?.groups.sender?.[addr];
+              if (g) openSender(g);
+              return;
+            }
+            setPendingOpen({ account: a, addr });
+            switchAccount(a);
+          },
+          onFollow: across.follow, onClaim: across.claim } : undefined}
         bodySearch={acct?.body_search !== "disabled"}
         bodyMode={acct?.body_search === "local" ? "local" : "server"}
         onClose={() => closeTool(() => { setSearchOpen(false); refresh(); })}
@@ -3062,6 +3102,7 @@ export default function App() {
         onScanAll={() => { void across.scanAll(accountNames); }}
         exists={(a) => !!cfgRef.current?.accounts[a]}
         onFollow={across.follow} onClaim={across.claim}
+        onShowCopies={showCopies}
         onAdd={() => { setAllAccountsOpen(false);
           setWizard({ mode: "add", previous: account }); }}
         onClose={() => closeTool(() => setAllAccountsOpen(false))}
