@@ -37,7 +37,9 @@ beforeEach(() => {
       Travel: 2 } });
   createRule.mockResolvedValue({});
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); setLang("en"); });
+afterEach(() => {
+  cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); setLang("en");
+});
 
 const mount = (over: Record<string, unknown> = {}) => {
   const onPick = vi.fn().mockResolvedValue(true);
@@ -72,6 +74,8 @@ test("it asks for a name, makes the folder, lists it last and chooses it", async
   expect(within(prompt).getByText("New folder")).toBeTruthy();
   fireEvent.change(within(prompt).getByRole("textbox"),
     { target: { value: " Warranty " } });
+  // a press inside the prompt is outside the popover: it must not close it
+  fireEvent.mouseDown(within(prompt).getByRole("textbox"));
   await pressDialog("Create");
   await waitFor(() => expect(createFolder).toHaveBeenCalledWith("Warranty", "acc"));
   // the picker is still open (the prompt's clicks are not outside clicks)
@@ -150,4 +154,29 @@ test("a renamed folder keeps its place among the recent targets", () => {
   expect(loadRecent("acc")).toHaveLength(2);
   renameRecent("other", "Travel", "X");            // another account: untouched
   expect(loadRecent("other")).toEqual([]);
+});
+
+// last: it leaves a history layer of the popover behind
+test("on a wide screen (a popover) the prompt's own presses and Esc leave it open", async () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({
+    matches: /min-width:\s*(\d+)px/.test(q)
+      ? 1280 >= +/min-width:\s*(\d+)px/.exec(q)![1] : false,
+    media: q, addEventListener: () => {}, removeEventListener: () => {} }));
+  createFolder.mockResolvedValue({ raw: "Warranty", name: "Warranty" });
+  const { onClose } = mount();
+  const dlg = await findPicker();
+  fireEvent.click(within(dlg).getByRole("button", { name: "New folder…" }));
+  const prompt = await findDialog();
+  fireEvent.change(within(prompt).getByRole("textbox"),
+    { target: { value: "Warranty" } });
+  fireEvent.mouseDown(within(prompt).getByRole("textbox"));
+  fireEvent.keyDown(within(prompt).getByRole("textbox"), { key: "a" });
+  expect(onClose).not.toHaveBeenCalled();
+  await pressDialog("Create");
+  await within(dlg).findByRole("button", { name: /^Warranty/ });
+  expect(onClose).not.toHaveBeenCalled();
+  // ... and once the prompt is gone an outside press closes it again
+  await new Promise((r) => setTimeout(r, 30));
+  fireEvent.mouseDown(document.body);
+  expect(onClose).toHaveBeenCalled();
 });

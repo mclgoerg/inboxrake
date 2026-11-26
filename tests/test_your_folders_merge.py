@@ -121,6 +121,8 @@ def test_undo_recreates_the_deleted_folder_and_points_the_rule_back(box):
     assert [x["id"] for x in out["rules"]] == [r["id"]]
     got = rule_of(r["id"])
     assert got["dest"] == "Receipts" and got["mode"] == "report"
+    shown = next(x for x in mailops.STATE["rules"] if x["id"] == r["id"])
+    assert shown["mode"] == "report"            # the UI is told, too
     assert "Receipts 2019" not in box.mailbox
     res = mailops.undo_last()
     wait_scan_done()

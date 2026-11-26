@@ -143,9 +143,9 @@ test("one chip per row: look-alike, empty, quiet, not scanned, excluded by a pat
 test("the inbox and the archive are locked rows; the footer names the special folders", async () => {
   show();
   await screen.findAllByTestId("folder-row");
-  expect(within(row("INBOX")).getByLabelText(/special folder/)).toBeTruthy();
-  expect(within(row("Archive")).getByLabelText(/special folder/)).toBeTruthy();
-  expect(within(row("Travel")).queryByLabelText(/special folder/)).toBeNull();
+  expect(within(row("INBOX")).getByLabelText("Locked: no rename, merge or delete here")).toBeTruthy();
+  expect(within(row("Archive")).getByLabelText("Locked: no rename, merge or delete here")).toBeTruthy();
+  expect(within(row("Travel")).queryByLabelText("Locked: no rename, merge or delete here")).toBeNull();
   expect(screen.getByText(
     "Sent, Drafts, Junk and Trash are special folders: not part of the cleanup scan, set in"))
     .toBeTruthy();
@@ -350,6 +350,31 @@ test("merge: picking another folder asks the server again; the old answer is not
   "proton"));
 });
 
+test("merge: a ticked 'then delete' does not survive a target that cannot be deleted after", async () => {
+  folderCheck.mockImplementation((b: { target: string }) => Promise.resolve(
+    b.target === "Archive" ? mergeCheck({ target: "Archive", rules: [],
+      can_delete: "children" }) : mergeCheck({ rules: [] })));
+  mergeFolder.mockResolvedValue({ moved: 41, undo: null, rules: [],
+    deleted: false, kept: "" });
+  show();
+  await open("Receipts 2019");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Merge into/ }));
+  const dlg = await findDialog();
+  await within(dlg).findByText(/41\smails move to Receipts/);
+  fireEvent.click(within(dlg).getByRole("checkbox"));
+  expect((within(dlg).getByRole("checkbox") as HTMLInputElement).checked)
+    .toBe(true);
+  fireEvent.click(within(dlg).getAllByRole("radio")
+    .find((r) => r.textContent?.startsWith("Archive"))!);
+  await within(dlg).findByText("It has subfolders: delete or move them first.");
+  expect((within(dlg).getByRole("checkbox") as HTMLInputElement).checked)
+    .toBe(false);
+  await pressDialog(/^Move 41\smails$/);
+  await waitFor(() => expect(mergeFolder).toHaveBeenCalledWith(
+    expect.objectContaining({ target: "Archive", delete_after: false }),
+    "proton"));
+});
+
 test("merge: Cancel moves nothing", async () => {
   folderCheck.mockResolvedValue(mergeCheck());
   show();
@@ -465,6 +490,17 @@ test("Rename…: subfolders and an exclude pattern are said before; Cancel keeps
     .toBeTruthy();
   await pressDialog("Cancel");
   await new Promise((r) => setTimeout(r, 50));
+  expect(renameFolder).not.toHaveBeenCalled();
+});
+
+test("Rename…: the same name asks nothing and changes nothing", async () => {
+  show();
+  await open("Travel");
+  fireEvent.click(within(pane()).getByRole("button", { name: /Rename/ }));
+  typeInto(await findDialog(), "  Travel ");
+  await pressDialog("Rename");
+  await new Promise((r) => setTimeout(r, 80));
+  expect(folderCheck).not.toHaveBeenCalled();
   expect(renameFolder).not.toHaveBeenCalled();
 });
 

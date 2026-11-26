@@ -3717,6 +3717,7 @@ export const DE: Record<string, string> = {
   "yf.scan_pattern": "Ausgeschlossen durch das Muster {pattern} – ändere es unter Einstellungen \u203a Konto.",
   "yf.scan_saved_on": "„{name}“ gehört jetzt zum Aufräum-Scan. Der nächste Scan liest ihn.",
   "yf.scan_saved_off": "„{name}“ bleibt aus dem Aufräum-Scan heraus.",
+  "yf.locked": "Gesperrt: hier kein Umbenennen, Zusammenführen oder Löschen",
   "yf.why.inbox": "Der Posteingang lässt sich nicht umbenennen, zusammenführen oder löschen.",
   "yf.why.role": "Das ist ein Spezialordner (Archiv, Gesendet, Entwürfe, Spam oder Papierkorb): Er lässt sich hier nicht umbenennen, zusammenführen oder löschen.",
   "yf.why.provider": "Dein Mail-Anbieter behält diesen Ordner für sich: Er lässt sich hier nicht umbenennen, zusammenführen oder löschen.",

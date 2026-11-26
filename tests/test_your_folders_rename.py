@@ -1,6 +1,8 @@
 """Your folders: rename, and the guards every folder operation shares (one at
 a time, nothing while a job runs)."""
 
+import json
+
 import pytest
 
 from backend import accountcopy
@@ -63,6 +65,13 @@ def test_rename_points_rules_at_the_new_name_and_back_to_report(box):
     assert got["dest"] == "Receipts 2020" and got["mode"] == "report"
     assert got["report_runs"] == 0
     assert rule_of(other["id"])["dest"] == "Travel"
+    # what the file holds and what the UI is told is Report only too - not
+    # merely what a later read of the rules would make of it
+    on_disk = next(r for r in json.loads(rulesmod.RULES_PATH.read_text())[
+        "rules"] if r["id"] == active["id"])
+    assert on_disk["mode"] == "report" and on_disk["reset_reason"] == "edited"
+    shown = next(r for r in mailops.STATE["rules"] if r["id"] == active["id"])
+    assert shown["mode"] == "report" and shown["dest"] == "Receipts 2020"
 
 
 def test_rename_refuses_when_the_rules_are_not_the_ones_the_confirm_named(box):

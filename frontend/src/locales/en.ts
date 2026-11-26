@@ -3493,6 +3493,7 @@ export const EN: Record<string, string> = {
   "yf.scan_pattern": "Excluded by the pattern {pattern} - change it in Settings \u203a Account.",
   "yf.scan_saved_on": "\u201c{name}\u201d is part of the cleanup scan now. The next scan reads it.",
   "yf.scan_saved_off": "\u201c{name}\u201d is left out of the cleanup scan.",
+  "yf.locked": "Locked: no rename, merge or delete here",
   "yf.why.inbox": "The inbox cannot be renamed, merged or deleted.",
   "yf.why.role": "This is a special folder (Archive, Sent, Drafts, Junk or Trash): it cannot be renamed, merged or deleted here.",
   "yf.why.provider": "Your mail provider keeps this folder for itself: it cannot be renamed, merged or deleted here.",

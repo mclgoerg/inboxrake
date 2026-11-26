@@ -299,7 +299,7 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
           <span className={`truncate type-body font-medium
             ${numbers(r) ? "" : "text-muted"}`}>{r.name}</span>
           {r.lock && (
-            <Lock size={14} aria-label={t("yf.why.role")} className="shrink-0
+            <Lock size={14} aria-label={t("yf.locked")} className="shrink-0
               text-faint" />
           )}
           <Chip row={r} />
@@ -324,8 +324,8 @@ export function YourFoldersPanel({ account, scannedTs, hasSender, onClose,
         <span className="flex items-center gap-2">
           <span className={`truncate type-body-mobile font-medium
             ${numbers(r) ? "" : "text-muted"}`}>{r.name}</span>
-          {r.lock && <Lock size={14} aria-hidden className="shrink-0
-            text-faint" />}
+          {r.lock && <Lock size={14} aria-label={t("yf.locked")}
+            className="shrink-0 text-faint" />}
         </span>
         <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1
           type-meta text-muted">
