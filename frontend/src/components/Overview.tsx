@@ -81,6 +81,12 @@ export interface OverviewProps {
   expired?: ExpiredResp | null;
   /** Review of that line: the sheet with the reasons. */
   onReviewExpired?: () => void;
+  /** "You keep doing this": how many rules are suggested from what the user
+   *  does by hand (0 = none or switched off). Next steps gets one more line
+   *  AFTER the lines above. */
+  habits?: number;
+  /** Review of that line: the Rules page, at the suggestions. */
+  onReviewHabits?: () => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -263,7 +269,11 @@ export function Overview(p: OverviewProps) {
       about: p.expired.reasons.filter((r) => r.mails > 0).slice(0, 3)
         .map((r) => t(`past.about_${r.id}`)).join(", "),
       onReview: p.onReviewExpired } : null;
-  const hasNext = cards.length > 0 || !!subsLine || !!pastLine;
+  // You keep doing this: a line of its own after the others, with only a
+  // Review (it never joins the cards either)
+  const habitLine = (p.habits ?? 0) > 0 && p.onReviewHabits
+    ? { n: p.habits!, onReview: p.onReviewHabits } : null;
+  const hasNext = cards.length > 0 || !!subsLine || !!pastLine || !!habitLine;
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
     saveDismissed(account, next);
@@ -287,7 +297,8 @@ export function Overview(p: OverviewProps) {
             <div className="max-xl:order-2">
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
-                onCleanUp={p.onCleanUp} subs={subsLine} past={pastLine} />
+                onCleanUp={p.onCleanUp} subs={subsLine} past={pastLine}
+                habit={habitLine} />
             </div>
           )}
         </div>

@@ -1681,6 +1681,26 @@ def generate() -> dict:
     # cleaning, so they are in the log and in this month's statistics too
     _tm_rows, _tm_user, _tm_bots = _time_machine(NOW, PROTON, sweep["id"])
     _au.extend(_tm_rows)
+    # "You keep doing this": cleanups the visitor did by hand again and again
+    # (the habit miner reads what a manual step records: the sender key, how
+    # many mails were unread and how old the youngest was). Fixed days and
+    # hours, no random draws, so nothing else in the log changes.
+    for _key, _act, _lbl, _steps in (
+            ("prizes@win-big.example", "trash", "Prize Center",
+             # (days ago, mails, unread, youngest mail in days)
+             [(18, 9, 9, 6), (15, 8, 8, 5), (11, 7, 7, 4), (7, 8, 8, 5),
+              (2, 9, 9, 3)]),
+            ("photos@mailfox.example", "archive", "Mailfox Photos",
+             [(24, 5, 2, 9), (17, 6, 3, 8), (10, 5, 1, 10), (3, 6, 2, 7)]),
+            # two days so far: trashing this sender once more, by hand, on a
+            # third day makes the suggestion appear (the toast's Automate…)
+            ("hi@cryptodaily.example", "trash", "Crypto Daily",
+             [(12, 3, 3, 6), (6, 2, 2, 5)])):
+        for _d, _n, _unread, _young in _steps:
+            _au.append(("proton", _act, int(NOW - _d * 86400 - 9 * 3600), _n,
+                        "ok", "user", _lbl,
+                        {"keys": [_key], "unread": _unread,
+                         "youngest_days": _young}))
     # the three Rule checkup rules draw their times from a generator of their
     # own, so the stamps of everything above and below stay what they were
     _hours2 = random.Random(11)

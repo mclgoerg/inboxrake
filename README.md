@@ -212,6 +212,8 @@ a checkup that finds rules that overlap, clash, point at a folder that is gone
 or never match,
 "Mute this conversation" (a busy group thread's new mail is archived and
 marked as read after each scan, until you unmute it),
+suggestions for the cleanups you keep doing by hand ("You keep doing this":
+one click makes them a rule, in Report only),
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,

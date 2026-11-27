@@ -37,6 +37,7 @@ from . import auditlog
 from . import bodyindex
 from . import config as cfgmod
 from . import dupstore
+from . import habitlog
 from . import demo
 from . import grades
 from . import knownsenders
@@ -3676,6 +3677,20 @@ def _delete_worker(acc) -> None:
         step_label = [label]                 # the label the step ends up with
         cleaned_addrs: set[str] = set()      # senders whose mail left
         audit_id = auditlog.new_id()
+        # what the habit miner needs of a manual step, read before the mails
+        # leave the index (see habitlog.py)
+        habit_src: dict[tuple[str, int], tuple[str, int, bool]] = {}
+        if habitlog.is_manual(actor) and action in habitlog.HABIT_ACTIONS:
+            with acc.lock:
+                for folder, uids in by_folder.items():
+                    for uid in uids:
+                        m = acc.index.get(ikey(folder, uid))
+                        if m:
+                            # (a record may lack a field: never break the
+                            # step for the sake of a suggestion)
+                            habit_src[(folder, uid)] = (
+                                m.get("addr") or "", m.get("ts") or 0,
+                                bool(m.get("seen", True)))
         done = 0
         t0 = time.time()
         log.info("action %r started: %d mails (%s)", action,
@@ -3792,12 +3807,18 @@ def _delete_worker(acc) -> None:
             senderchanges.note_cleaned(acc.name, cleaned_addrs)
         if action not in ("mark_read", mimecut.ACTION) and freed[1]:
             statsmod.record_action(action, freed[1], freed[0], acc.name)
+        habit = {}
+        if habit_src and not error and not cancelled:
+            touched = (by_folder if action == "mark_read" else moved_uids)
+            habit = habitlog.step_facts(
+                [habit_src[(f, u)] for f, uids in touched.items() for u in uids
+                 if (f, u) in habit_src], action, resolved[0], time.time())
         auditlog.record(
             action, actor=actor, account=acc.name,
             count=done if action == "mark_read" else freed[1],
             size=0 if action == "mark_read" else freed[0], label=step_label[0],
             outcome="error" if error else ("cancelled" if cancelled else "ok"),
-            error=error, entry_id=audit_id)
+            error=error, entry_id=audit_id, habit=habit)
         if job.get("completion") is not None:
             job["completion"].update(moved=done if action == "mark_read" else freed[1],
                                      error=error or ("action_cancelled" if cancelled else ""),

@@ -30,6 +30,8 @@ log = logging.getLogger("inboxrake.auditlog")
 
 AUDIT_PATH = Path(os.environ.get("AUDIT_LOG_PATH", "/data/audit_log.jsonl"))
 MAX_ENTRIES = 10_000
+# additive fields of a manual step the habit miner reads (habitlog.py)
+HABIT_FIELDS = ("keys", "per", "unread", "youngest_days", "dest")
 
 _LOCK = threading.Lock()
 
@@ -74,7 +76,8 @@ def record(action: str, actor: str = "user", account: str | None = None,
           outcome: str = "ok", error: str = "", entry_id: str = "",
           from_role: str = "", undoes: dict | None = None,
           kept_safe: int = 0,
-          undoes_many: list[dict] | None = None) -> None:
+          undoes_many: list[dict] | None = None,
+          habit: dict | None = None) -> None:
     """Append one entry. Never raises - a logging failure must not break
     the mailbox action it is recording.
 
@@ -83,7 +86,10 @@ def record(action: str, actor: str = "user", account: str | None = None,
     `undoes` ({id, count}: this undo entry restored `count` mails of the
     entry with that `id`), `undoes_many` (a list of those: a Time machine
     restore undoes several steps in one entry) and `kept_safe` (a
-    rule run left that many mails alone because they look worth keeping)."""
+    rule run left that many mails alone because they look worth keeping).
+    `habit` (habitlog.step_facts of a manual step: `keys`, `per`, `unread`,
+    `youngest_days`, `dest`) is what the habit miner reads; entries without
+    it are never mined."""
     account = account or accounts.default_name()
     entry = {"ts": int(time.time()), "account": account, "actor": actor,
              "action": action, "count": count, "bytes": size,
@@ -99,6 +105,8 @@ def record(action: str, actor: str = "user", account: str | None = None,
         entry["kept_safe"] = int(kept_safe)
     if undoes_many:
         entry["undoes_many"] = undoes_many
+    if habit:
+        entry.update({k: v for k, v in habit.items() if k in HABIT_FIELDS})
     try:
         with _LOCK:
             path = _path()
@@ -142,7 +150,9 @@ def _load_all(account: str) -> list[dict]:
             # additive fields: only present on entries that carry them
             **{k: entry[k] for k in ("id", "from_role", "undoes", "kept_safe",
                                      "undoes_many")
-               if entry.get(k)}})
+               if entry.get(k)},
+            # zeros are facts here (0 unread, youngest mail 0 days old)
+            **{k: entry[k] for k in HABIT_FIELDS if k in entry}})
     return out
 
 

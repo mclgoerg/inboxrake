@@ -7,13 +7,15 @@ import { api, errorText } from "../api";
 import { fmtNum } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtTs, matchGroup, parseFilter } from "../lib";
+import { habitAsRule } from "../habits";
 import { isProposal } from "../proposals";
-import type { AppState, CheckupFinding, Grouping, KeepSafeClass, Rule, RuleRun,
-  RuleScope } from "../types";
+import type { AppState, CheckupFinding, Grouping, Habit, KeepSafeClass, Rule,
+  RuleRun, RuleScope } from "../types";
 import { KIND_IDS, kindLabel, kindOnly } from "../kinds";
 import { type Recipe, recipeBody, recipeFolder,
   recipeFolderName } from "../recipes";
 import { AiFilterPanel } from "./AiFilterPanel";
+import { HabitSection } from "./HabitCards";
 import { CheckupBadges, type CheckupHost, CheckupSheet, CheckupWhatSheet,
   CompareSheet, RuleCheckupCard, useRuleCheckup } from "./RuleCheckup";
 import { QueryBuilder } from "./QueryBuilder";
@@ -522,8 +524,16 @@ function RuleCard({ rule, busy, error, fresh, badges, onRun, onEdit, onReport,
 }
 
 export function RulesModal({ state, onClose, onChanged, initialQuery = "",
-  initialRecipe, ai, onShowSenders, onShowMails }: {
+  initialRecipe, ai, onShowSenders, onShowMails, habits = [], habitFocus,
+  onHabitsChanged }: {
   state: AppState;
+  /** "You keep doing this": the suggestions of this account (backend/
+   *  habits.py), their card sits after the Rule checkup and before the
+   *  rules; `habitFocus` = the one to bring into view ("Automate…", the
+   *  Overview line); `onHabitsChanged` after Make it a rule / Not this one. */
+  habits?: Habit[];
+  habitFocus?: string;
+  onHabitsChanged?: () => void;
   /** The Rule checkup's "Show the N senders" / "Show the N mails": the page
    *  that lists them, narrowed to those (the sender addresses / the finding's
    *  id). */
@@ -1198,6 +1208,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
           <RuleCheckupCard checkup={checkup.data} host={checkupHost}
             phone={phone} onOpen={() => setSheet({})}
             onWhat={() => setWhat(true)} />
+          <HabitSection habits={habits} phone={phone} focusId={habitFocus}
+            renderSentence={(h) => <RuleSentence rule={habitAsRule(h)} />}
+            onChanged={() => { onHabitsChanged?.(); onChanged(); }} />
           {rules.filter((r) => !isProposal(r)).map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}

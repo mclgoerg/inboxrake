@@ -401,6 +401,9 @@ DEFAULT_CONFIG = {
     # offers to keep, and whether rule runs skip them too.
     "keep_safe": {"invoices": True, "bookings": True, "contracts": True,
                   "jobs": True, "accounts": False, "rules": True},
+    # "You keep doing this" (backend/habits.py): suggest a rule when the
+    # same cleanup is done by hand again and again. Local, no AI.
+    "habits": {"suggest": True},
     "ai": {
         # anthropic | foundry | openai | ollama (any OpenAI-compatible
         # endpoint works via "ollama" + base URL, e.g. LM Studio, vLLM).
@@ -633,6 +636,8 @@ def load_config() -> dict:
             for key in cfg["keep_safe"]:
                 if isinstance(saved["keep_safe"].get(key), bool):
                     cfg["keep_safe"][key] = saved["keep_safe"][key]
+        if isinstance(saved.get("habits"), dict):
+            cfg["habits"]["suggest"] = saved["habits"].get("suggest") is not False
     except (OSError, json.JSONDecodeError):
         pass
     for block in cfg["accounts"].values():
@@ -1010,6 +1015,9 @@ def update_config(body: dict, *, safe_import: bool = False) -> dict:
             for key in cfg["keep_safe"]:
                 if key in keep_in:
                     cfg["keep_safe"][key] = bool(keep_in[key])
+        habits_in = body.get("habits")
+        if isinstance(habits_in, dict) and "suggest" in habits_in:
+            cfg["habits"]["suggest"] = bool(habits_in["suggest"])
         auth_in = body.get("auth") or {}
         shared_in = body.get("shared_ai") or {}
         assistants_in = body.get("assistants") or {}
@@ -1174,6 +1182,11 @@ def keep_safe_of(cfg: dict) -> dict:
     return {**DEFAULT_CONFIG["keep_safe"], **(cfg.get("keep_safe") or {})}
 
 
+def habits_of(cfg: dict) -> dict:
+    """The "suggest rules from what I do" switch of a config (on by default)."""
+    return {**DEFAULT_CONFIG["habits"], **(cfg.get("habits") or {})}
+
+
 def masked_config(cfg: dict) -> dict:
     admin = is_admin()
     ai_eff, ai_source = effective_ai(cfg)
@@ -1198,6 +1211,7 @@ def masked_config(cfg: dict) -> dict:
         "new_sender_window_days": cfg.get("new_sender_window_days",
                                           knownsenders.NEW_SENDER_WINDOW_DAYS),
         "keep_safe": keep_safe_of(cfg),
+        "habits": habits_of(cfg),
         # Non-admins get the mode (their UI needs it) but none of the
         # server-side login details - the allow-list alone would leak
         # every other tenant's address.

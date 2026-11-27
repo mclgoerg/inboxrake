@@ -1227,6 +1227,42 @@ at the end of the sentence ("overlaps 1", "folder gone") that opens the
 finding; when all is well the card shrinks to one line, "Rule checkup: all
 fine". On a phone the card is one row that opens the same list.
 
+### You keep doing this
+
+<small class="where">Clean up → Rules (below the Rule checkup) · Overview → Next steps (one more line) · Settings › General</small>
+
+Every cleanup you do by hand is written to Activity. A small local check (on
+your server, no AI, nothing sent anywhere) looks at the last 60 days for **the
+same action on the same sender, done by hand, at least 3 times on at least 3
+different days** - trash, archive, move to the same folder, or mark as read -
+and turns each find into a ready rule: *Deals Daily → move to Trash if older
+than 3 days · daily*. The age is the youngest mail you moved each time, rounded
+down to 1, 3, 7, 14 or 30 days; the schedule is daily when you did it every few
+days and weekly otherwise. Steps you undid never count, nor do the steps of
+rules or assistants; a protected sender, a sender an existing rule already
+covers, or one you hid is never suggested. Only cleanups you do after the
+update count (older Activity entries do not say which sender they were about),
+so the first suggestion appears with the third repeat.
+
+The suggestions are a **You keep doing this** card on the Rules page, after the
+Rule checkup and before your rules (on a phone, a box after the checkup row),
+and one line at the end of Overview → Next steps (a **Review** button that opens
+the card; outside the top three and outside "Review N"). Each suggestion shows
+what you did and how often ("every 3-5 days · 41 mails · all unread"), the rule
+as a sentence like the ones on your rule cards, and **Would catch N mails now**.
+**Make it a rule** creates an ordinary rule - it starts in **Report only** and
+its report runs once, so nothing moves until you switch it to Active - and
+**Not this one** hides that sender for good. **Why these?** lists every step
+each suggestion is based on, with its date. When the toast of a cleanup you just
+did made a suggestion appear, it also offers **Automate…** next to Undo. These
+suggestions come from your own Activity and are separate from the proposals an
+AI assistant makes (those keep their card and **Approve…**).
+
+**Settings › General** ends with **Suggest rules from what I do** (on by
+default; off: no suggestions, no Overview line, no **Automate…** button) and
+**Hidden suggestions · Show**, which brings back the senders you said "Not this
+one" to.
+
 ### Rule recipes
 
 <small class="where">Clean up → Rules → New rule → From a recipe</small>

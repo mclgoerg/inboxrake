@@ -39,6 +39,7 @@ import { COPIES_VIEW } from "./components/AllMailsView";
 import { canOpenAllAccounts } from "./allAccounts";
 import { useAcrossRuns } from "./useAcrossRuns";
 import { showReminderToast } from "./subscriptions";
+import { HABIT_ACTIONS, habitList, newHabit, useHabits } from "./habits";
 import { shortName } from "./waiting";
 
 const VISIBLE_KEY = "pmc_visible_at";
@@ -78,7 +79,8 @@ import { AccountAvatar, BarButton, BulkBar, Button,
   choiceDialog, confirmDialog, EmptyState, ensureAiAck, FILTER_ROW, Input, isModalOpen, LINK,
   Menu, MenuItem, Meta, Modal, Notice, ProgressBar,
   promptDialog, PopupSelect, Segmented, Spinner, useAppearance, useMediaQuery, useToast,
-  PageHeader, PageSlot, SectionLabel, type ToastVariant, useBulkBarHeight }
+  PageHeader, PageSlot, SectionLabel, type ToastOptions, type ToastVariant,
+  useBulkBarHeight }
   from "./components/ui";
 import { nowDate, nowMs } from "./clock";
 import { confirmTrash } from "./keepsafe";
@@ -294,6 +296,9 @@ export default function App() {
   // A filter handed to the rules form ("Save as rule" of the AI filter panel).
   const [rulesSeed, setRulesSeed] = useState("");
   const [rulesRecipe, setRulesRecipe] = useState("");
+  // The "You keep doing this" suggestion the Rules page brings into view
+  // ("Automate…" of a toast, Review of the Overview line).
+  const [habitFocus, setHabitFocus] = useState("");
   const [aiFilterOpen, setAiFilterOpen] = useState(false);
   const [attsOpen, setAttsOpen] = useState(false);
   const [dupsOpen, setDupsOpen] = useState(false);
@@ -563,6 +568,7 @@ export default function App() {
   const seenProposals = useRef<{ account: string; ids: Set<string> } | null>(
     null);
   const openRulesRef = useRef<() => void>(() => {});
+  const openHabitRef = useRef<(id: string) => void>(() => {});
   useEffect(() => {
     if (!state) return;
     const open = openProposals(state.rules);
@@ -636,6 +642,19 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, authOk, state?.scanned_ts, state?.status, state?.groups_rev,
     overview]);
+
+  /* "You keep doing this" (backend/habits.py): the same cleanup done by hand
+     again and again, as ready rules. Mined from this account's Activity on
+     the server; fetched when the account, its mailbox, its rules or the
+     setting change. */
+  const habitsSig = `${state?.groups_rev ?? ""}|${state?.delete?.seq ?? ""}|${
+    (state?.rules ?? []).map((r) => r.id).join(",")}|${
+    cfg?.habits?.suggest ?? ""}`;
+  const habitsApi = useHabits(account,
+    authOk && state?.status === "done", habitsSig);
+  const habits = habitList(habitsApi.data);
+  const openHabit = (id: string) => { setHabitFocus(id); openTool("rules"); };
+  openHabitRef.current = openHabit;
 
   /* A reminder the user asked for fired (3 days before a subscription's next
      receipt): the server also pushes it to devices that are not looking at the
@@ -866,7 +885,7 @@ export default function App() {
             (a, u) => a + Number(u.label_params?.files ?? 0), 0)),
             mails: nMails(n) });
         } else text = t("done_moved", { n });    // also: both lists at once
-        toast.show(text, {
+        const opts: ToastOptions = {
           variant: "success",
           action: mineOnly ? { label: t("Undo"), onClick: () => {
             const i = stateRef.current?.undo.findIndex(
@@ -877,7 +896,25 @@ export default function App() {
               (u) => undoId(u) === undoId(botOnly)) ?? -1;
             if (i >= 0) void undo(i, false, true);
           } } : undefined,
-        });
+        };
+        // A step of the user's own that made "You keep doing this" find a new
+        // suggestion gets Automate… next to Undo (it opens that card). The
+        // toast itself stays as it is: it asks the server once, briefly, and
+        // never waits longer than that for it.
+        const before = habitsApi.dataRef.current;
+        const ownStep = !freshA.length && botName === null
+          && (!del.actor || del.actor === "user")
+          && HABIT_ACTIONS.includes(del.action ?? "");
+        if (!ownStep || !before?.enabled) {
+          toast.show(text, opts);
+        } else {
+          const known = new Set(before.suggestions.map((h) => h.id));
+          void newHabit(habitsApi.reload, known).then((h) => {
+            toast.show(text, h ? { ...opts, action2: {
+              label: t("habit.automate"),
+              onClick: () => openHabitRef.current(h.id) } } : opts);
+          });
+        }
         if (del.error) notify(t("err.generic", { msg: errorText(del.error) }), "error");
       }
     }
@@ -3263,14 +3300,16 @@ export default function App() {
     {toolShown("rules") && state && (
       <RulesModal key={account}
         state={state} initialQuery={rulesSeed} initialRecipe={rulesRecipe || undefined}
+        habits={habits} habitFocus={habitFocus || undefined}
+        onHabitsChanged={() => { void habitsApi.reload(); }}
         ai={aiEnabled || demo ? { disabled: demo,
           hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {
-          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
         })}
         onShowSenders={(keys) => {
           // the Rule checkup's senders: the Sender list, narrowed to them
-          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
           setFlat(false); setMode("sender");
           setSelected(new Set()); setFocusIdx(-1); cancelFollow();
           setDetail(null);
@@ -3278,7 +3317,7 @@ export default function App() {
           setSenderSubset(new Set(keys));
         }}
         onShowMails={(id, n) => {
-          setRulesOpen(false); setRulesSeed(""); setRulesRecipe("");
+          setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
           setAllMailsQuery(""); setAllMailsSlot(null);
           setAllMailsFinding({ id, n });
           setFlat(true);
@@ -3814,7 +3853,9 @@ export default function App() {
             }}
             expired={expired}
             onReviewExpired={() => setExpiredOpen(true)}
-            waiting={waiting} onOpenWaiting={() => openTool("waiting")} />
+            waiting={waiting} onOpenWaiting={() => openTool("waiting")}
+            habits={habits.length}
+            onReviewHabits={() => openHabit(habits[0]?.id ?? "")} />
         )
       ) : flat ? (
         state && (
@@ -3987,6 +4028,7 @@ export default function App() {
           }}
           aiAnswers={aiSortedCount} onKnowledgeChanged={refresh}
           onWaitingChanged={loadWaiting}
+          onHabitsChanged={() => { void habitsApi.reload(); }}
           scanState={state ? { account: state.account, status: state.status,
             scanned_ts: state.scanned_ts, error: state.error } : null}
           onAccountsChanged={(next, name) => {
