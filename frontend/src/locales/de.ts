@@ -175,9 +175,18 @@ export const DE: Record<string, string> = {
   "past.about_parcels": "angekommene Pakete",
   "past.about_events": "vergangene Termine",
   "past.about_offers": "beendete Angebote",
+  "past.about_ooo": "Abwesenheitsnotizen",
+  "past.about_bounces": "Zustellfehler",
+  "past.about_answers": "Lesebestätigungen",
   "past.title": "Abgelaufene Mails",
   "past.lead": "Gefunden an Betreff und Datum, auf deinem Server · "
     + "geschützte Mails und geschützte Absender werden nie aufgelistet.",
+  // dieselbe Zeile mit dem Satzteil zu automatischen Mails (breite Bildschirme)
+  // und dieser Satzteil als eigene Zeile (Handy, dort bleibt die Zeile oben)
+  "past.lead_auto": "Gefunden an Betreff und Datum, auf deinem Server · "
+    + "automatische Mails auch an ihren Kopfzeilen · geschützte Mails und "
+    + "geschützte Absender werden nie aufgelistet.",
+  "past.lead_headers": "Automatische Mails auch an ihren Kopfzeilen.",
   "past.codes": "Anmeldecodes und -links, älter als ein Tag",
   "past.codes_ex": "„Dein Anmeldecode“, „E-Mail bestätigen“",
   "past.parcels": "Meldungen zu Paketen, die angekommen sind",
@@ -188,6 +197,14 @@ export const DE: Record<string, string> = {
     + "„Dein Tisch am Freitag“",
   "past.offers": "Angebote, die beendet sind",
   "past.offers_ex": "„Aktion endet um Mitternacht“, „Nur heute: Blitzpreise“",
+  "past.ooo": "Abwesenheitsnotizen, älter als eine Woche",
+  "past.ooo_ex": "„Automatische Antwort: …“, „Abwesenheitsnotiz: …“",
+  "past.bounces": "Zustellfehler, älter als eine Woche",
+  "past.bounces_ex": "„Undelivered Mail Returned to Sender“, "
+    + "„Unzustellbar: …“",
+  "past.answers": "Lesebestätigungen und Kalenderantworten",
+  "past.answers_ex": "nur mit der passenden Kopfzeile, älter als eine "
+    + "Woche - „Gelesen: …“, „Zugesagt: Teamessen“",
   "past.kept_lead": "Bleibt erhalten:",
   "past.kept": "die {n} Bestellbestätigungen, Rechnungen und Buchungen zu "
     + "diesen Paketen und Terminen.",
@@ -3059,6 +3076,7 @@ export const DE: Record<string, string> = {
   "qb.mail_read": "gelesen",
   "qb.mail_pinned": "geschützt",
   "qb.mail_expired": "abgelaufen",
+  "qb.mail_auto": "automatische Mail",
   "qb.flags": "Nur Gruppen…",
   "qb.is_unsub": "mit Abmeldelink",
   "qb.is_unsubscribed": "vollständig abbestellt",

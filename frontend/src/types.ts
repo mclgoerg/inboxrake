@@ -1300,10 +1300,14 @@ export interface SubscriptionsResp {
   items: Subscription[];
 }
 /** `GET /api/expired`: Mail past its date (backend/pastdate.py). */
-export type ExpiredReasonId = "codes" | "parcels" | "events" | "offers";
+export type ExpiredReasonId = "codes" | "parcels" | "events" | "offers"
+  // automatic mail, last: out-of-office replies, delivery failures, read
+  // receipts + calendar answers
+  | "ooo" | "bounces" | "answers";
 export interface ExpiredReason {
   id: ExpiredReasonId; mails: number; size: number;
-  /** the server's suggestion: offers that have ended start unticked */
+  /** the server's suggestion: offers that have ended, read receipts and
+   *  calendar answers start unticked */
   ticked: boolean;
 }
 export interface ExpiredResp {

@@ -197,8 +197,10 @@ security; you add user and password.
 An Overview start page with cleanup suggestions (and which senders got
 louder or came back after months of silence; a line for mail that is past
 its date - old sign-in codes, updates of parcels that have arrived,
-reminders of things that are over, ended offers - found from the subject and
-the date, with the receipts kept), five views (Sender, Smart
+reminders of things that are over, ended offers, and the automatic mail -
+out-of-office replies, delivery failures, read receipts and calendar answers
+- found from the subject, the date and the mail's headers, with the receipts
+kept), five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content (a sender that mixes ads, order
 confirmations and shipping updates shows what it sends, so you can trash one

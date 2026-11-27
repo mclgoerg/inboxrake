@@ -425,6 +425,13 @@ class FakeIMAP:
             lines.append(f"List-Unsubscribe: {m['unsub']}")
         if m["unsub_post"]:
             lines.append("List-Unsubscribe-Post: List-Unsubscribe=One-Click")
+        if m.get("auto_submitted"):
+            # automatic mail: `Auto-Submitted: auto-replied`
+            lines.append(f"Auto-Submitted: {m['auto_submitted']}")
+        if m.get("report"):
+            # a delivery status / read receipt report: `report` is the type
+            lines.append('Content-Type: multipart/report; '
+                         f'report-type={m["report"]}; boundary="mbreport"')
         if m.get("raw"):
             # an appended mail keeps the header Inboxrake marks its lighter
             # copies with (one line per file taken out)

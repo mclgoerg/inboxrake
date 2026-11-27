@@ -738,6 +738,78 @@ _PD.append(_pd_mail(_HARVEST, "Deal ends tomorrow", 0.2, size=52000,
 PROTON_INBOX += _PD
 
 
+# Automatic mail (Mail past its date, is:auto): out-of-office replies, delivery
+# failures, read receipts and calendar answers - what the mails' own headers
+# say (Auto-Submitted, a delivery-status / disposition-notification report, a
+# text/calendar part with METHOD:REPLY; the calendar ones are read by the
+# Attachments analysis the demo runs), next to look-alikes a subject alone
+# must never list. Fixed dates, no random draws and an own UID range, so
+# nothing else in the demo shifts.
+_AM_UID = iter(range(960000, 970000))
+_CAL_REPLY_BS = (
+    '(("text" "plain" ("charset" "utf-8") NIL NIL "7bit" 100 5)'
+    '("text" "calendar" ("method" "REPLY" "charset" "utf-8") NIL NIL "7bit" '
+    '420 12) "mixed" ("boundary" "b") NIL NIL)')
+
+
+def _am_mail(frm, subject, days_ago, *, size=6000, seen=True, **headers):
+    """`headers`: `auto_submitted`, `report` (the report type) or `bs` (a
+    BODYSTRUCTURE with a calendar part) - what the fake server serves."""
+    uid = next(_AM_UID)
+    return make_msg(uid, frm=frm, subject=subject,
+                    msgid=f"<demo-am-{uid}@demo.example>", size=size,
+                    seen=seen, date=_date(days_ago)) | headers
+
+
+_MARTA = '"Marta Lindqvist" <marta.lindqvist@northfield-studio.example>'
+_JONAS = '"Jonas Brandt" <jonas.brandt@harborlight.example>'
+_TOMAS = '"Tomas Weber" <tomas.weber@brightpath.example>'
+_DAEMON = '"Mailer Robot" <mailer-daemon@mx.demo-mail.example>'
+_AM: list[dict] = []
+# out-of-office replies: by their subject, and by the Auto-Submitted header
+for _ago, _what in ((9, "Meeting notes"), (16, "Budget review"),
+                    (27, "Launch checklist"), (44, "Quarterly plan")):
+    _AM.append(_am_mail(_MARTA, f"Automatic reply: {_what}", _ago))
+_AM.append(_am_mail(_MARTA, "Abwesenheitsnotiz: Projektplan", 33))
+for _ago, _what in ((12, "Back in January"), (21, "Away until the 5th"),
+                    (38, "Away from my desk")):
+    _AM.append(_am_mail(_JONAS, _what, _ago, auto_submitted="auto-replied"))
+# delivery failures: a delivery status report, and a subject alone
+for _ago in (11, 19, 30):
+    _AM.append(_am_mail(_DAEMON, "Undelivered Mail Returned to Sender", _ago,
+                        report="delivery-status", size=9000))
+for _ago in (14, 25):
+    _AM.append(_am_mail(_DAEMON, "Delivery Status Notification (Failure)",
+                        _ago, report="delivery-status", size=8000))
+_AM.append(_am_mail(_DAEMON, "Unzustellbar: Einladung zum Sommerfest", 40,
+                    size=7000))
+# read receipts (a disposition-notification report) and calendar answers (a
+# text/calendar part with METHOD:REPLY): unticked on the sheet
+for _ago, _what in ((10, "Meeting notes"), (18, "Budget review"),
+                    (29, "Launch checklist")):
+    _AM.append(_am_mail(_MARTA, f"Read: {_what}", _ago,
+                        report="disposition-notification", size=4000))
+_AM.append(_am_mail(_MARTA, "Gelesen: Projektplan", 36,
+                    report="disposition-notification", size=4000))
+for _ago, _what in ((13, "Accepted: Team dinner"), (22, "Accepted: Offsite"),
+                    (35, "Declined: Planning call")):
+    _AM.append(_am_mail(_TOMAS, _what, _ago, bs=_CAL_REPLY_BS, size=5000))
+# never listed: the same subjects without the header evidence, a mail that is
+# under a week old, and a job application (Keep-safe's class) whatever the
+# headers say
+_AM += [
+    _am_mail(_MARTA, "Read: Quarterly plan", 20, size=3500),
+    _am_mail(_TOMAS, "Accepted: Team lunch", 17, size=3500),
+    _am_mail(_MARTA, "Automatic reply: Release notes", 2, size=6000,
+             seen=False),
+    _am_mail(_JONAS, "Automatic reply: Your application for Product Designer",
+             24, size=6000),
+    _am_mail(_TOMAS, "Accepted: your application", 26, bs=_CAL_REPLY_BS,
+             size=5000),
+]
+PROTON_INBOX += _AM
+
+
 # What they send (the sender pane's box): the Northwind shop also sends ads
 # (with a List-Unsubscribe header, like a mailing list) and shipping updates
 # next to its order confirmations - three kinds from one address. Fixed dates,

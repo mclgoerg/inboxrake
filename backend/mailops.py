@@ -1575,7 +1575,8 @@ def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
         "(UID FLAGS RFC822.SIZE INTERNALDATE "
         + ("X-GM-MSGID " if gm else "") +
         "BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO "
-        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST X-INBOXRAKE-REMOVED"
+        "REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST X-INBOXRAKE-REMOVED "
+        + pastdate.HEADER_FIELDS
         + (" " + addresspick.HEADER_FIELDS if rcpt else "") + ")])")
     if status != "OK":
         return skipped
@@ -1602,6 +1603,8 @@ def _fetch_full_chunk(conn, folder: str, chunk: list[bytes],
             removed = len(msg.get_all(REMOVED_HEADER) or [])
             messages.append({
                 **({"removed": removed} if removed else {}),
+                # automatic mail: Auto-Submitted + the report type
+                **pastdate.header_evidence(msg),
                 **({"gmid": gmid.group(1).decode()} if gmid else {}),
                 **({"to": addresspick.receiving_address(msg, rcpt)}
                    if rcpt else {}),
@@ -1675,15 +1678,23 @@ def _refresh_flags_chunk(conn, folder: str, chunk: list[bytes],
 
 def _backfill_chunk(conn, chunk: list[bytes], cached: dict, messages: list,
                     gm: bool, rcpt: addresspick.Context) -> None:
-    """The flags refresh of `_refresh_flags_chunk` plus the receiving-address
-    header fields, for cached mails from before the index kept `to` (one
-    header-only FETCH per chunk, like the Sent folder's `TO CC` pass). A mail
-    the server does not answer for, or whose headers do not parse, is stored
-    with `to: ""` so it is not fetched again on every scan."""
+    """The flags refresh of `_refresh_flags_chunk` plus the header fields a
+    cached mail lacks - the receiving address (`to`, for mails from before
+    the index kept it) and the automatic-mail headers (`auto` / `rpt`, for
+    mails from before the index read them): one header-only FETCH per chunk,
+    like the Sent folder's `TO CC` pass, and only the fields some mail of the
+    chunk is missing. A mail the server does not answer for, or whose
+    headers do not parse, is stored with the empty value so it is not
+    fetched again on every scan."""
+    need_to = any("to" not in cached[int(u)] for u in chunk)
+    need_auto = any("auto" not in cached[int(u)] for u in chunk)
+    fields = " ".join(f for f in (addresspick.HEADER_FIELDS if need_to else "",
+                                  pastdate.HEADER_FIELDS if need_auto else "")
+                      if f)
     status, data = conn.uid(
         "FETCH", b",".join(chunk).decode(),
         "(UID FLAGS " + ("X-GM-MSGID " if gm else "")
-        + "BODY.PEEK[HEADER.FIELDS (" + addresspick.HEADER_FIELDS + ")])")
+        + "BODY.PEEK[HEADER.FIELDS (" + fields + ")])")
     if status != "OK":
         _refresh_flags_chunk(conn, "", chunk, cached, messages, gm)
         return
@@ -1694,6 +1705,9 @@ def _backfill_chunk(conn, chunk: list[bytes], cached: dict, messages: list,
         m = _UID_RE.search(item[0])
         if not m:
             continue
+        old = cached.get(int(m.group(1)))
+        if old is None:
+            continue
         fm = _FLAGS_RE.search(item[0])
         gm_m = _GMID_RE.search(item[0]) if gm else None
         upd: dict = {}
@@ -1702,15 +1716,23 @@ def _backfill_chunk(conn, chunk: list[bytes], cached: dict, messages: list,
         if gm_m:
             upd["gmid"] = gm_m.group(1).decode()
         try:
-            upd["to"] = addresspick.receiving_address(
-                email.message_from_bytes(item[1]), rcpt)
+            msg = email.message_from_bytes(item[1])
         except Exception:
-            upd["to"] = ""
+            msg = None
+        if "to" not in old:
+            try:
+                upd["to"] = addresspick.receiving_address(msg, rcpt)
+            except Exception:
+                upd["to"] = ""
+        if "auto" not in old:
+            upd.update(pastdate.header_evidence(msg)
+                       if msg is not None else {"auto": ""})
         found[int(m.group(1))] = upd
     for u in chunk:
         old = cached.get(int(u))
         if old is not None:
-            messages.append({**old, "to": "", **found.get(int(u), {})})
+            gap = {k: "" for k in ("to", "auto") if k not in old}
+            messages.append({**old, **gap, **found.get(int(u), {})})
 
 
 def scan_folder(conn, folder: str, messages: list, progress_cb,
@@ -1779,7 +1801,8 @@ def scan_folder(conn, folder: str, messages: list, progress_cb,
         if cancel_requested("scan", acc):
             raise Cancelled()
         chunk = existing_uids[start:start + FETCH_CHUNK]
-        old = [u for u in chunk if rcpt and "to" not in cached[int(u)]]
+        old = [u for u in chunk if rcpt and ("to" not in cached[int(u)]
+                                             or "auto" not in cached[int(u)])]
         if old:
             _backfill_chunk(conn, old, cached, messages, gm, rcpt)
             if len(old) < len(chunk):
@@ -4192,6 +4215,24 @@ def _bs_attachments(node, out: list) -> None:
                     "size": size})
 
 
+def _bs_calendar_reply(node) -> bool:
+    """The message holds a calendar answer: a text/calendar (or application/
+    ics) part whose `method` parameter is REPLY (RFC 6047 puts the iCalendar
+    METHOD there). Only the message's own parts count - a forwarded message
+    (message/rfc822) is not walked into. A part without the parameter says
+    nothing, so it is never read as an answer."""
+    if not isinstance(node, list) or not node:
+        return False
+    if isinstance(node[0], list):                      # multipart container
+        return any(_bs_calendar_reply(child) for child in node)
+    if len(node) < 3 or not isinstance(node[0], str) \
+            or not isinstance(node[1], str):
+        return False
+    return (f"{node[0]}/{node[1]}".lower() in ("text/calendar",
+                                                "application/ics")
+            and _bs_param(node[2], "method").strip().upper() == "REPLY")
+
+
 _BS_UID_RE = re.compile(rb"UID (\d+)")
 
 
@@ -4266,17 +4307,24 @@ def _run_atts(acc) -> None:
                         try:
                             parsed = _bs_parse(_bs_tokenize(blob))
                             atts: list = []
+                            cal = False
                             if parsed:
                                 _bs_attachments(parsed[0], atts)
+                                cal = _bs_calendar_reply(parsed[0])
                         except Exception:
                             continue
-                        if not atts:
+                        if not atts and not cal:
                             continue
                         with acc.lock:
                             m = acc.index.get(ikey(folder, uid))
                             if m is not None:
-                                m["atts"] = atts
-                                m["att_size"] = sum(a["size"] for a in atts)
+                                if atts:
+                                    m["atts"] = atts
+                                    m["att_size"] = sum(a["size"]
+                                                        for a in atts)
+                                if cal:
+                                    # a calendar answer (pastdate.ANSWERS)
+                                    m["cal"] = "reply"
         finally:
             try:
                 conn.logout()
@@ -7158,9 +7206,13 @@ def parse_mail_query(q: str) -> dict:
     `folder:text` (the name contains it) or `folder:"Two Words"` (exactly
     that folder), `is:unread|read`, `is:expired` (mail past its date: a
     stale code, a parcel update of a parcel that has arrived, a reminder of
-    something over, an offer that has ended - see pastdate.py; a per-mail
-    word only, no group or rule word), `kind:ads|orders|shipping|invoices|
-    appointments|jobs|support|accounts` (what kind of mail it is, read from
+    something over, an offer that has ended, and automatic mail - see
+    pastdate.py; a per-mail word only, no group or rule word), `is:auto`
+    (the automatic mail among those: out-of-office replies, delivery
+    failures, read receipts and calendar answers - the same list, narrowed
+    to its last three reasons; per-mail only too),
+    `kind:ads|orders|shipping|invoices|appointments|jobs|support|accounts`
+    (what kind of mail it is, read from
     its subject - see mailkinds.py; a per-mail word only, no group or rule
     word; two different kinds match nothing), `has:pinned`, `in:7d|12h|90min`
     (arrived within that window - the same term the group filter takes).
@@ -7173,8 +7225,8 @@ def parse_mail_query(q: str) -> dict:
                  "att_min": None, "from_addr": None, "domain": None,
                  "folder": None, "folder_exact": None, "read": None,
                  "pinned": False,
-                 "in_seconds": None, "expired": False, "kinds": set(),
-                 "ignored": []}
+                 "in_seconds": None, "expired": False, "auto": False,
+                 "kinds": set(), "ignored": []}
     text = (q or "").strip()
     quoted = _MQ_FOLDER_Q.search(text)
     if quoted:
@@ -7203,6 +7255,8 @@ def parse_mail_query(q: str) -> dict:
             out["read"] = val == "read"
         elif kind == "is" and val == "expired":
             out["expired"] = True
+        elif kind == "is" and val == "auto":
+            out["auto"] = True
         elif kind == "kind" and mailkinds.valid(val):
             out["kinds"].add(val)
         elif kind == "has" and val == "pinned":
@@ -7246,6 +7300,7 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
     # `is:expired`: the handles pastdate lists (pinned mail and protected
     # senders are never among them); worked out before the lock is taken
     expired = pastdate.expired_handles(acc) if f["expired"] else None
+    auto = pastdate.auto_handles(acc) if f["auto"] else None   # `is:auto`
     with acc.lock:
         in_slot = rhythm.slot_matcher(
             slot, acc.state["groups"].get("sender") or {}, time.time()) \
@@ -7258,6 +7313,8 @@ def list_mails(offset: int = 0, limit: int = 100, sort: str = "date",
                 continue
             if expired is not None \
                     and (m["folder"], m["uid"]) not in expired:
+                continue
+            if auto is not None and (m["folder"], m["uid"]) not in auto:
                 continue
             if f["from_addr"] is not None and m["addr"] != f["from_addr"]:
                 continue

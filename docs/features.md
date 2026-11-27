@@ -466,7 +466,7 @@ usual Trash confirm (protected senders skipped, Undo afterwards); the x
 
 ### Mail past its date
 
-<small class="where">Overview → Next steps (one more line) · All mail → `is:expired`</small>
+<small class="where">Overview → Next steps (one more line) · All mail → `is:expired`, `is:auto`</small>
 
 Some mail is only useful until a date. Under the suggestions, Next steps gets
 one more line, **Mail past its date** (like the subscriptions line: only a
@@ -486,17 +486,46 @@ row per reason:
 - **Offers that have ended** ("Deal ends at midnight", "Sale ends Sunday") -
   **unticked** by default, because a coupon code in it may still be wanted.
 
-It is found from the subject and the date, on your server, with no AI; English
-and German. The receipt, invoice or booking of the same order or appointment is
-never listed - the sheet says how many it keeps ("Kept: N", **Show them** opens
-All mail on them). Protected mails and mail from protected senders are never
-listed either. **Move N to Trash…** is the same per-mail step as All mail's
+Three more rows come last, for **automatic mail** - mail a machine sent in
+answer to yours, useful for a day and clutter for years. All three wait a week
+before they are listed:
+
+- **Out-of-office replies, older than a week** ("Automatic reply: …",
+  "Abwesenheitsnotiz: …") - found from the subject, or from the mail's
+  `Auto-Submitted: auto-replied` header when the subject says nothing else (a
+  ticket confirmation or a parcel update is no out-of-office reply).
+- **Delivery failures, older than a week** ("Undelivered Mail Returned to
+  Sender", "Unzustellbar: …") - a delivery status report, or such a subject. A
+  subject about a parcel is never one.
+- **Read receipts and calendar answers** - **unticked**, like offers. Only
+  with the matching header: a read receipt (a disposition-notification report)
+  or a calendar answer (an invitation reply, a `text/calendar` part with
+  `METHOD:REPLY`). A subject such as "Read: …" or "Accepted: your application"
+  is never enough on its own. The scan reads these headers (`Auto-Submitted`
+  and the report type of the `Content-Type`; for mail it already knows it does
+  so on the next scan, in the same request that refreshes the flags), and the
+  calendar answers are recognised by the [Attachments](#attachments) analysis -
+  run it once and they appear.
+
+It is found from the subject and the date (and, for automatic mail, the
+headers), on your server, with no AI; English and German. The receipt, invoice
+or booking of the same order or appointment is never listed - the sheet says
+how many it keeps ("Kept: N", **Show them** opens All mail on them). Protected
+mails and mail from protected senders are never listed either, and neither is
+automatic mail that is in one of [Keep-safe's](#keep-safe) classes (a job
+application, an invoice, a booking, a contract or policy notice, an account
+notice): "Automatic reply: Your application for …" stays.
+
+**Move N to Trash…** is the same per-mail step as All mail's
 "Trash selected": the usual confirm (with the Keep-safe box on a big move - the
 "Account & security mails" class stays off by default), the background job and
 Undo. **Open in All mail** shows the list with the filter word `is:expired`
 (every reason, ticked or not; it narrows with other per-mail words, see
-[Filter syntax](filters.md)). Nothing is stored: every answer is worked out from
-the scan, so a later scan or a new pin changes it at once.
+[Filter syntax](filters.md)); `is:auto` is the same list narrowed to the
+automatic mail (out-of-office replies, delivery failures, read receipts and
+calendar answers), and the filter builder's "automatic mail" button writes it.
+Nothing is stored: every answer is worked out from the scan, so a later scan or
+a new pin changes it at once.
 
 It sits next to the recipe "Only the newest shipping update": that one keeps
 each sender's newest shipping mail, delivered or not; this one only lists

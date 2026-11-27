@@ -607,9 +607,12 @@ def test_summary_counts_per_reason_and_ticks_everything_but_offers():
     s = pastdate.summary(acc, NOW)
     assert s["mails"] == 4 and s["size"] == 400 and s["kept"] == 1
     assert [r["id"] for r in s["reasons"]] == list(pastdate.REASONS)
-    assert [r["mails"] for r in s["reasons"]] == [1, 1, 1, 1]
+    # the four of this module, then the three automatic-mail reasons
+    # (tests/test_automail.py) - nothing of those in these mails
+    assert [r["mails"] for r in s["reasons"]] == [1, 1, 1, 1, 0, 0, 0]
     assert {r["id"]: r["ticked"] for r in s["reasons"]} == {
-        "codes": True, "parcels": True, "events": True, "offers": False}
+        "codes": True, "parcels": True, "events": True, "offers": False,
+        "ooo": True, "bounces": True, "answers": False}
 
 
 def test_a_summary_without_mail_is_all_zero():
@@ -718,7 +721,8 @@ def test_the_summary_endpoint(stale):
     d = r.json()
     assert d["mails"] == 3 and d["kept"] == 1
     assert {r["id"]: r["mails"] for r in d["reasons"]} == {
-        "codes": 1, "parcels": 1, "events": 0, "offers": 1}
+        "codes": 1, "parcels": 1, "events": 0, "offers": 1,
+        "ooo": 0, "bounces": 0, "answers": 0}
     assert d["size"] == 1000 + 2000 + 4000
     assert "subject" not in r.text and "shop.example" not in r.text
 
