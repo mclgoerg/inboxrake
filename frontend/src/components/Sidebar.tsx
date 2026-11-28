@@ -1,5 +1,5 @@
-import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, FileText,
-  FolderTree,
+import { AlarmClock, AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye,
+  FileText, FolderTree,
   Hourglass, Layers,
   LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
@@ -14,7 +14,7 @@ import { fmtNum } from "../numfmt";
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "yourfolders" | "documents" | "settings";
+  | "yourfolders" | "snoozed" | "documents" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -149,6 +149,8 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
         trashCount)}
       {tool("yourfolders", <FolderTree size={16} aria-hidden />,
         t("yf.menu"))}
+      {tool("snoozed", <AlarmClock size={16} aria-hidden />,
+        t("snooze.title"))}
       {section(t("tools.group_insights"))}
       {tool("stats", <BarChart3 size={16} aria-hidden />, t("Statistics"))}
       {tool("space", <LayoutGrid size={16} aria-hidden />, t("space.title"))}

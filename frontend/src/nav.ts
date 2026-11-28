@@ -7,12 +7,12 @@ import { afterBackSettles } from "./backStack";
 export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "move" | "yourfolders" | "documents";
+  | "move" | "yourfolders" | "snoozed" | "documents";
 
 export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
   "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
   "trackers", "subscriptions", "addresses", "waiting", "accounts", "activity",
-  "move", "yourfolders", "documents"];
+  "move", "yourfolders", "snoozed", "documents"];
 
 /** Pages of the app shell. `settings` is a page of its own (not a tool): from
  *  1024 px a section column beside the form, below it an iOS-style root list
@@ -32,7 +32,7 @@ export const isTabPage = (p: Page): boolean => TAB_PAGES.includes(p);
 export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
   triage: "cleanup", duplicates: "cleanup", attachments: "cleanup",
   rules: "cleanup", junk: "cleanup", trash: "cleanup",
-  yourfolders: "cleanup",
+  yourfolders: "cleanup", snoozed: "cleanup",
   stats: "insights", space: "insights", trackers: "insights",
   subscriptions: "insights", addresses: "insights", waiting: "insights",
   accounts: "insights", documents: "insights", activity: "insights",

@@ -278,3 +278,26 @@ test("German", async () => {
   await screen.findByText(/Hosting Co/);
   expect(screen.getByText(/Ein Treffer öffnet sich in seinem Konto/)).toBeTruthy();
 });
+
+test("Not now… is in the reader's ⋯ menu for this account, and not for a search across accounts (it acts one account at a time)", async () => {
+  const more = async () => {
+    fireEvent.click((await screen.findAllByRole("button", { name: "More" })).at(-1)!);
+  };
+  const { unmount } = mount(across());
+  type("invoice");
+  await waitFor(() => expect(subj(1)).toBeTruthy());
+  fireEvent.click(subj(1));
+  await more();
+  expect(screen.getByRole("menuitem", { name: "Not now…" })).toBeTruthy();
+  unmount();
+  mount(across());
+  type("invoice");
+  await waitFor(() => expect(subj(1)).toBeTruthy());
+  await pickAll();
+  await waitFor(() => expect(accountsSearch).toHaveBeenCalled());
+  await screen.findByText(/Hosting Co/);
+  fireEvent.click(subj(1));
+  await more();
+  expect(screen.getAllByRole("menuitem").map((i) => i.textContent))
+    .not.toContain("Not now…");
+});

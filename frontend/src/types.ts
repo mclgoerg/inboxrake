@@ -716,6 +716,66 @@ export interface RuleCheckup {
 /** Slim live-update payload (SSE): AppState without `groups`. */
 export type StatusMsg = Omit<AppState, "groups">;
 
+/** What waits in the account's Snoozed folder, as the state carries it:
+ *  mails snoozed, the soonest return per sender address, and the senders that
+ *  deliver in batches (backend snoozestore.summary). */
+export interface SnoozeSummary {
+  count: number;
+  until: Record<string, number>;
+  /** How many mails each sender address has snoozed (the pane's line). */
+  mails: Record<string, number>;
+  batches: Record<string, BatchSlot>;
+}
+export type BatchSlot = "weekly" | "daily";
+
+/** One sender's batch on the Snoozed page: what it holds so far and when
+ *  the next delivery is (epoch s). */
+export interface SnoozedBatch {
+  key: string;
+  label: string;
+  slot: BatchSlot;
+  tz: string;
+  held: number;
+  next: number;
+  msgids: string[];
+}
+/** One row of snoozed mail: a single mail (its subject) or one sender's
+ *  mails that come back together. */
+export interface SnoozedRow {
+  /** `unrecorded`: mail that sits in the Snoozed folder with no record of it
+   *  (Back now returns it to the inbox). */
+  kind: "mail" | "sender" | "unrecorded";
+  addr: string;
+  label: string;
+  count: number;
+  until: number;
+  subject: string;
+  /** The kind of mail most of them are (a `KindId`, "" = none). */
+  what: string;
+  msgids: string[];
+}
+export interface SnoozedResp {
+  count: number;
+  /** The server folder they wait in ("Snoozed" unless the server put it
+   *  under a prefix). */
+  folder?: string;
+  batches: SnoozedBatch[];
+  rows: SnoozedRow[];
+  /** The server could not be asked: this is what Inboxrake remembers. */
+  stale: boolean;
+  no_folder?: boolean;          // stale because the Snoozed folder is missing
+  now: number;
+}
+export interface SnoozeResult {
+  ok: boolean;
+  queued: number;
+  until: number;
+  skipped_pinned: number;
+  skipped_protected: number;
+  skipped_no_id: number;
+  skipped_duplicate?: number;   // a Message-ID already snoozed or twice in the pick
+}
+
 export interface AppState {
   account: string;
   status: "idle" | "scanning" | "done" | "error";
@@ -734,6 +794,8 @@ export interface AppState {
    *  listing is older than the folder's count). */
   trash_size?: number | null;
   junk_count?: number | null;
+  /** Snoozed mail and batches (absent on an older server). */
+  snoozed?: SnoozeSummary;
   notice: { key: string; params: Record<string, string | number> } | null;
   undo: UndoEntry[];
   /** AI assistants' own undo list (never mixed into `undo`). */
@@ -764,7 +826,7 @@ export interface FolderInfo {
   delim?: string | null;  // hierarchy delimiter LIST announced
   role: string | null;    // trash | sent | junk | drafts | archive | all
   view?: boolean;         // virtual view (Gmail Starred / Important)
-  role_source?: "flag" | "name" | "override" | null;
+  role_source?: "flag" | "name" | "override" | "recorded" | null;
   ambiguous?: boolean;    // another folder is an equally good candidate
   looks_like?: string | null;  // a role another folder already holds
   excluded: boolean;
@@ -775,7 +837,7 @@ export interface SpecialRole {
   role: string;
   raw: string;
   name: string;
-  source: "flag" | "name" | "override";
+  source: "flag" | "name" | "override" | "recorded";
   ambiguous: boolean;      // tied candidates and no confirmed choice yet
   /** The tied folders to pick from (empty when nothing ties). */
   choices: { raw: string; name: string; count: number | null }[];

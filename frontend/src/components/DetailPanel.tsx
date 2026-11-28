@@ -27,6 +27,9 @@ import { KindChip, KindsBox, type KindActions } from "./KindsBox";
 import { ArrivalStrip } from "./RhythmCard";
 import { arrivalChangeLines } from "./SenderChanges";
 import { WaitingLine } from "./WaitingLine";
+import { SnoozedLine } from "./SnoozedLine";
+import { useNotNow } from "./NotNow";
+import { useSnooze } from "./snoozeContext";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions, ReaderNav } from "./MailReader";
 import { SenderList, type FileEntry, type SenderAction } from "./SenderList";
@@ -178,6 +181,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   }, []);
   // Phone: Sort becomes an icon menu (Unsubscribe stays a visible button).
   const phone = useMediaQuery("(width < 40rem)");
+  const snooze = useSnooze();
 
   // The sender list of a pooled row needs no mails: load them only when the
   // Mails view is open (a pool can hold thousands).
@@ -369,6 +373,19 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     return actOn(mails.filter((m) => sel.has(mailKey(m))), action, dest);
   };
 
+  // Not now on the ticked mails (the server leaves pinned ones alone).
+  const snoozeSelected = async (until: number) => {
+    if (!mails || sel.size === 0) return;
+    const chosen = mails.filter((m) => sel.has(mailKey(m)));
+    const items = chosen.map((m) => [m.folder, m.uid] as [string, number]);
+    if (await snooze.mails(items, until)) {
+      setSel(new Set());
+      onDeleted();
+      if (chosen.length === mails.length && !mails.some((m) => m.pinned))
+        (onEmptied ?? onClose)();
+    }
+  };
+
   // `chosen` is the checked mails, or the single mail open in the reader
   // ("Trash this mail") - both go through the same confirm/pinned flow.
   const actOn = async (chosen: Mail[], action: string, dest = "",
@@ -436,6 +453,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const onAction = (v: string) => {
     if (v === "move") setMoveDest("?");   // reveal the folder picker
     else if (v === "ai_review") aiSelect();
+    else if (v === "snooze") notNowSel.open();
     else if (v) act(v);
   };
 
@@ -536,6 +554,16 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     trash: (m) => actOn([liveOf(m)], "trash", "", true),
     move: (m, dest) => actOn([liveOf(m)], "move", dest, true),
     pin: (m, pinned) => togglePin(liveOf(m), pinned),
+    snooze: async (m, until) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setView(null);
+        setReading(null);
+        setMails((cur) => cur && cur.filter((x) => mailKey(x) !== mailKey(m)));
+        onDeleted();
+      }
+      return ok;
+    },
   };
   const readerNav: ReaderNav | undefined = shown
     ? { list: shown, onOpen: (m) => reading ? setReading(m) : setView(m) }
@@ -581,6 +609,30 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
     && sel.size === 0 && !hideGroupActions;
   // A swapped-in control resets when it disappears: no picker popping back.
   useEffect(() => { if (!canMove) setMoveOpen(false); }, [canMove]);
+  // Not now: the last item of More. The sender's unread mails wait until a
+  // time you pick; a sender (and a Smart row that stands for one) can also
+  // deliver in batches.
+  const snoozeKey = grouping === "sender" ? group.key
+    : grouping === "smart" && group.kind === "sender" ? group.addr ?? "" : "";
+  const batchSlot = snoozeKey ? snooze.summary?.batches[snoozeKey] ?? null : null;
+  const canSnooze = group.count > 0 && sel.size === 0 && !hideGroupActions
+    && tab === "mails";
+  const notNow = useNotNow({
+    scope: "unread", n: group.unread, who: group.label,
+    onSnooze: async (until) => {
+      if (await snooze.groups(grouping, [group.key], until)) {
+        onDeleted();
+        if (group.unread >= group.count && !group.pinned)
+          (onEmptied ?? onClose)();
+      }
+    },
+    batch: snoozeKey ? { slot: batchSlot,
+      onSet: (slot) => snooze.batch(snoozeKey, group.label, slot)
+        .then(() => undefined) } : undefined,
+  });
+  // ... and the same entry for the ticked mails (the Action… menu).
+  const notNowSel = useNotNow({ scope: "selected", n: sel.size,
+    who: group.label, disabled: busy, onSnooze: snoozeSelected }, true);
   const aiRate = (aiEnabled || demo) && !busy && sel.size === 0
     && tab === "mails";
   const canRead = grouping === "thread" && !!mails && mails.length > 0;
@@ -590,7 +642,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   // Only what works in the current view (a pooled row's Senders view loads no
   // mails); no items, no button.
   const hasMore = (aiEnabled && busy) || aiRate || canRead || canPinAll
-    || pinnedCount > 0 || canSieve || canMute;
+    || pinnedCount > 0 || canSieve || canSnooze || canMute;
 
   // Unsubscribe state as a quiet header signal where no action says it: a
   // partial result ("2 of 5") has no button at all, done / failed show up
@@ -739,7 +791,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
           onClick={() => setMoveOpen(!moveOpen)} />
       )}
       {hasMore && (
-      <div className={`${CELL} flex justify-center`}>
+      <div ref={notNow.anchorRef} className={`${CELL} flex justify-center`}>
       <Menu label={t("menu.more")} triggerClass={ACTION_BTN}
         trigger={<ActionFace icon={<MoreHorizontal size={18} />}
           label={t("menu.more")} />}>
@@ -788,6 +840,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
             {t("sieve.button")}
           </MenuItem>
         )}
+        {canSnooze && notNow.item}
         {canMute && (
           <MenuItem onClick={() => (muted ? onUnmute! : onMute!)(group)}>
             <BellOff size={16} className="mr-1 inline align-text-bottom" />
@@ -795,6 +848,7 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
           </MenuItem>
         )}
       </Menu>
+      {notNow.overlay}
       </div>
       )}
     </div>
@@ -961,8 +1015,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         <WaitingLine addr={shortcutTarget(grouping, group)!.value}
           enabled={waiting.enabled} onShow={waiting.onShow} />
       )}
-      {/* a sender's report card: after what they send and the waiting line,
-          before the Mails list (only Sender rows carry a grade) */}
+      {snoozeKey && <SnoozedLine addr={snoozeKey} />}
+      {/* a sender's report card: after what they send, the waiting line and
+          the snoozed line, before the Mails list (only Sender rows carry a
+          grade) */}
       <GradeCard g={group} />
     </>
   );
@@ -1109,7 +1165,8 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <PopupSelect<string> up className="min-w-0 flex-1"
+                    <div ref={notNowSel.anchorRef} className="min-w-0 flex-1">
+                    <PopupSelect<string> up className="w-full"
                       disabled={busy} placeholder={t("Action…")}
                       onChange={onAction}
                       options={[
@@ -1119,7 +1176,10 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
                         ...(aiEnabled || demo ? [{ value: "ai_review",
                           label: `${t("ai.rate")}${demo ? ` - ${demoHint()}` : ""}`,
                           disabled: demo }] : []),
+                        { value: "snooze", label: t("snooze.more_item") },
                       ]} />
+                    {notNowSel.overlay}
+                    </div>
                     {moveDest === "?" && (
                       <FolderPicker count={sel.size} folders={folders}
                         labels={pickEnv?.labels} account={pickEnv?.account ?? ""}

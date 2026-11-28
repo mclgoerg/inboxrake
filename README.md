@@ -222,7 +222,9 @@ watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,
 a page for your own folders (how full each is, look-alike names, empty or
 quiet ones; merge, rename, create, delete an empty one - a merge can be
-undone),
+undone), **Not now** (snooze a sender's unread mail or a single mail until a
+time you pick, or let a noisy sender deliver once a day / a week in one
+batch),
 trackers, a grade from A to F for every sender with the reasons behind it,
 subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), "Waiting

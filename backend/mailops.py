@@ -47,6 +47,7 @@ from . import mimecut
 from . import pastdate
 from . import pinstore
 from . import rhythm
+from . import snoozestore
 from . import aisortstore
 from . import knowledgestore
 from . import senderchanges
@@ -101,6 +102,9 @@ AUTOMATED_RE = smartkinds.AUTOMATED_RE
 log = logging.getLogger("inboxrake.mail")
 
 ACTIONS = ("trash", "archive", "move", "mark_read")
+# What the job queue may also run: snoozing (backend/snooze.py). Rules and
+# the MCP tools keep ACTIONS - they never snooze.
+JOB_ACTIONS = (*ACTIONS, "snooze")
 # Stable error codes of the pin feature: the UI maps them to translated
 # texts (frontend/src/api.ts ERROR_CODES) instead of showing raw English.
 NO_MESSAGE_ID = "no_message_id"      # set_pin: nothing stable to key a pin on
@@ -319,6 +323,12 @@ DOCS_FAILED = "docs_failed"             # anything unexpected (see the log)
 DOCS_NOTHING = "docs_nothing"           # no document of that year and kind
 DOCS_BUSY = "docs_busy"                 # too many downloads of this account at once
 DOCS_TOO_MANY = "docs_too_many"         # max=, mb=: more downloads than can be made
+# Snooze (backend/snooze.py)
+SNOOZE_CANNOT_CREATE = "snooze_cannot_create"  # folder=: no Snoozed folder
+SNOOZE_BAD_TIME = "snooze_bad_time"      # the return time is past / absurd
+SNOOZE_PROTECTED = "snooze_protected"    # a protected sender: no batch
+SNOOZE_FULL = "snooze_full"              # the account holds the most it can
+SNOOZE_NO_FOLDER = "snooze_no_folder"    # the Snoozed folder cannot be found
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -338,6 +348,8 @@ FOLDER_ERROR_CODES = frozenset({
     UNDO_THROUGH_REMOVAL,
     DOCS_NOT_SCANNED, DOCS_GONE, DOCS_CHANGED, DOCS_TOO_BIG, DOCS_FAILED,
     DOCS_NOTHING, DOCS_BUSY, DOCS_TOO_MANY,
+    SNOOZE_CANNOT_CREATE, SNOOZE_BAD_TIME, SNOOZE_PROTECTED, SNOOZE_FULL,
+    SNOOZE_NO_FOLDER,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,
@@ -1230,11 +1242,16 @@ _ROLE_NAMES: dict[str, set[str]] = {
     "drafts": {"drafts", "draft", "entwürfe"},
     "archive": {"archive", "archiv"},
     "all": {"all mail", "alle nachrichten", "tous les messages"},
+    # The folder snoozed mail waits in (backend/snooze.py makes it and
+    # remembers it). Its name is only RESERVED here (a user folder cannot take
+    # it): a folder is never taken for it by its name, because a folder that
+    # somebody else made - or the server's own `\Snoozed` one - is not ours.
+    "snoozed": {"snoozed"},
 }
 
 # Roles that never belong in cleanup scans: trash/junk hold deleted mail,
 # sent/drafts are the user's own, "all" would double-count everything.
-EXCLUDED_ROLES = ("trash", "junk", "sent", "drafts", "all")
+EXCLUDED_ROLES = ("trash", "junk", "sent", "drafts", "all", "snoozed")
 
 
 # Gmail's Starred / Important are saved searches shown as folders: every
@@ -1302,7 +1319,7 @@ def _role_overrides(acc) -> dict[str, str]:
     if not isinstance(ov, dict):
         return {}
     return {str(r): str(n) for r, n in ov.items()
-            if r in _ROLE_FLAGS.values() and isinstance(n, str)}
+            if r in _ROLE_NAMES and isinstance(n, str)}
 
 
 def resolve_roles(conn, acc=None, pairs=None) -> dict:
@@ -1341,6 +1358,8 @@ def resolve_roles(conn, acc=None, pairs=None) -> dict:
             continue
         full, short = _name_keys(name, delims.get(name))
         for role, names in _ROLE_NAMES.items():
+            if role == "snoozed":        # (found by the store's record only)
+                continue
             if full in names:
                 named.setdefault(role, ([], []))[0].append(name)
                 break
@@ -1395,6 +1414,12 @@ def resolve_roles(conn, acc=None, pairs=None) -> dict:
         for n in flag_c + exact_c + prefixed_c:
             if n != holder:
                 looks_like.setdefault(n, role)
+    # Snoozed: the folder Inboxrake made for this account, as the store
+    # remembers it - while it is on the server
+    made = snoozestore.folder_of(acc.name)
+    if made and made.upper() != "INBOX" and made not in views \
+            and any(n == made for n, _ in pairs):
+        roles["snoozed"], source["snoozed"] = made, "recorded"
     return {"roles": roles, "source": source, "ambiguous": ambiguous,
             "looks_like": looks_like, "candidates": candidates,
             "choices": choices, "counts": counts}
@@ -2911,6 +2936,7 @@ def public_state(acc=None) -> dict:
         out = {k: v for k, v in acc.state.items() if k != "groups"}
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
+        out["snoozed"] = snoozestore.summary(acc.name)
         out["groups"] = {
             g: {k: {**{kk: vv for kk, vv in rec.items() if kk != "folders"},
                     "ratings": _rating_counts(rec, verdict_of, acc),
@@ -2955,6 +2981,7 @@ def public_status(acc=None) -> dict:
             {k: v for k, v in acc.state.items() if k != "groups"}))
         out["account"] = acc.name
         out["trash_size"] = _trash_size(acc)
+        out["snoozed"] = snoozestore.summary(acc.name)
     flush_undo(acc)          # a safety net: whatever was left unwritten
     return out
 
@@ -3108,6 +3135,8 @@ def run_scan(acc=None, push: bool = False) -> None:
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
             from . import rules as rulesmod
             rulesmod.after_scan(acc)     # the mutes run after each scan
+            from . import snooze                 # (it imports this module)
+            snooze.after_scan(acc)               # batches, returns; never raises
             outcome = True
         finally:
             try:
@@ -3353,6 +3382,9 @@ def _apply_replacement(moved_uids: dict[str, set[int]],
 
 def _resolve_dest(conn, action: str, dest: str, acc=None) -> str:
     """Raw name of the folder an action moves mail into (via folder role)."""
+    if action == "snooze":
+        from . import snooze      # (snooze.py imports this module)
+        return snooze.folder(conn, acc, create=True)
     if action in ("trash", "archive"):
         name = folder_roles(conn, acc).get(action)
         if not name:
@@ -3622,6 +3654,17 @@ def _record_undo(label: str, meta: dict, action: str, dest: str,
     return entry["id"]
 
 
+def _told_moved(hook, meta: dict, copies: list[dict]) -> None:
+    """Tell a job's `on_moved` hook what moved; a failing hook is logged, it
+    never fails the job."""
+    if hook is None:
+        return
+    try:
+        hook(meta, copies)
+    except Exception:
+        log.exception("bookkeeping of the moved mails failed")
+
+
 def _delete_worker(acc) -> None:
     persisted = False     # the snapshot already reflects every finished job
     by_user = cancelled_any = False      # for the Web Push at the very end
@@ -3672,7 +3715,8 @@ def _delete_worker(acc) -> None:
             # worded with its name)
             acc.state["delete"]["actor"] = actor
             acc.state["delete"]["action"] = action
-        by_user = by_user or not str(actor).startswith(("rule:", "mcp:"))
+        by_user = by_user or not str(actor).startswith(
+            ("rule:", "mcp:", "snooze"))
 
         def progress_cb(moved, total):
             with acc.lock:
@@ -3733,8 +3777,11 @@ def _delete_worker(acc) -> None:
                 step_label[0], meta, action, resolved[0], acc, copies=copies,
                 audit_id=audit_id, token=token, actor=actor,
                 job=job.get("job", ""), label_fields=fields,
-                strips=strips if action == mimecut.ACTION else None
+                strips=strips if action == mimecut.ACTION else None,
+                quiet=bool(job.get("quiet"))
             ) or undo_id[0]
+            told[0] = True
+            _told_moved(job.get("on_moved"), meta, copies)
             n = sum(len(s) for s in moved_uids.values())
             acc.state["delete"]["moved"] += n
             if action == mimecut.ACTION:
@@ -3753,6 +3800,7 @@ def _delete_worker(acc) -> None:
 
         resolved = [dest]
         undo_id = [""]
+        told = [False]                      # the job's on_moved hook has run
         freed = [0, 0]                      # [bytes moved, mails moved]
         error = ""
         cancelled = False
@@ -3791,6 +3839,8 @@ def _delete_worker(acc) -> None:
                 for pending in acc.delete_pending:
                     if pending.get("completion") is not None:
                         pending["completion"].update(done=True, moved=0, error="action_cancelled")
+                    # (a job that never ran moved nothing: its hook says so)
+                    _told_moved(pending.get("on_moved"), {}, [])
                 acc.delete_pending.clear()
                 acc.state["notice"] = {"key": "action_cancelled", "params": {}}
         except Exception as exc:
@@ -3804,6 +3854,10 @@ def _delete_worker(acc) -> None:
             with acc.lock:
                 apply_partial()
                 acc.state["delete"]["error"] = error
+        if not told[0]:
+            # nothing moved (a failure before the first mail, a cancel): the
+            # job's hook still hears of it, so it can undo what it prepared
+            _told_moved(job.get("on_moved"), {}, [])
         if strips:
             # after the Undo step above: a copy whose original did not move
             # (cancelled, a failure) is taken out again, so nothing is
@@ -3841,15 +3895,21 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
                   token: str = "", strip: dict | None = None,
-                  read: bool = False) -> str:
+                  read: bool = False, on_moved=None,
+                  quiet: bool = False) -> str:
     """Enqueue a background mail action (acc.lock held by caller). `token`
     (an AI assistant's token id) files the undo step in the assistant list.
     `strip` is what the one other action (a removal of files) works from (the
     files to take out of each mail, see removefiles.py). `read` (archive
     only, the mute rule): the mails are marked read as they move.
+    `on_moved(meta, copies)` is told what the job moved (`meta`: {folder:
+    {uid: index record}}, `copies`: where each mail landed) - always once, with
+    nothing when nothing moved - snoozing files and settles its records
+    there; `quiet` keeps the UI's generic "moved N" toast for the job's undo
+    step silent.
     Returns the id of the queued job - its undo step carries it as `job` - or
     "" when there was nothing left to queue."""
-    if action not in ACTIONS and action != mimecut.ACTION:
+    if action not in JOB_ACTIONS and action != mimecut.ACTION:
         raise ValueError("bad action")
     if action == "move" and not dest:
         raise ValueError("move needs a target folder")
@@ -3878,6 +3938,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                             "token": token, "completion": completion,
                             "job": job_id,
                             **({"read": True} if read else {}),
+                            "on_moved": on_moved, "quiet": quiet,
                             **({"strip": strip} if strip else {})})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw

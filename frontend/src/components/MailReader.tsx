@@ -21,6 +21,7 @@ import type { Mail, MessageDetail, UnsubVia } from "../types";
 import { removeFiles } from "../removeFiles";
 import { KIND, extOf, kindOfName } from "./attKinds";
 import { FolderPicker } from "./FolderPicker";
+import { useNotNow } from "./NotNow";
 import { Avatar, Button, IconTile, Menu, MenuDivider, MenuHeading, MenuItem,
   Modal, modalCount, Spinner, Tag, useMediaQuery, useOptionalToast } from "./ui";
 
@@ -72,6 +73,10 @@ export interface ReaderActions {
   trash?: (m: Mail) => unknown;
   /** Move this mail to a folder (confirm, undo as in the opener). */
   move?: (m: Mail, dest: string) => Promise<boolean>;
+  /** Not now: wait in the Snoozed folder until `until` (epoch s), then come
+   *  back unread. Resolves false when nothing was snoozed. Absent: no
+   *  "Not now…" in the ⋯ menu. */
+  snooze?: (m: Mail, until: number) => Promise<boolean>;
   /** Set the pin; resolves false when it failed. Without it the reader
    *  calls the pin endpoint itself. */
   pin?: (m: Mail, pinned: boolean) => unknown;
@@ -213,6 +218,10 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
   const muted = !!muteKey && !!host.isMuted?.(muteKey);
   const canMute = !!muteKey && (muted ? !!host.unmuteConversation
     : !!host.muteConversation);
+  // Not now…: right before Mute, for the one open mail.
+  const notNow = useNotNow({ scope: "mail", n: 1,
+    who: mail.subject || t("(no subject)"), disabled: locked,
+    onSnooze: (until) => void actions?.snooze?.(mail, until) }, !top);
   const convLabel = conversationCount && conversationCount > 1
     ? (top ? t("reader.conversation_n", { n: conversationCount })
       : t("thread.n_mails", { n: conversationCount }))
@@ -253,7 +262,9 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
     : <Icon size={18} aria-hidden fill={fill} />;
 
   const moreMenu = (
-    <Menu key="more" label={t("menu.more")} up={!top}
+    <div key="more" ref={notNow.anchorRef}
+      className={top ? "" : "flex min-w-0 flex-auto"}>
+    <Menu label={t("menu.more")} up={!top}
       className={top ? "" : "min-w-0 flex-auto"}
       {...(top ? { variant: "secondary" as const, icon: true as const }
         : { triggerClass: `${BAR_ITEM} w-full` })}
@@ -282,6 +293,7 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
           {t("block.btn")}
         </MenuItem>
       )}
+      {actions?.snooze && notNow.item}
       {canMute && <MenuDivider />}
       {canMute && (
         <MenuItem onClick={() => void (muted
@@ -292,6 +304,8 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
         </MenuItem>
       )}
     </Menu>
+    {notNow.overlay}
+    </div>
   );
   return (
     <div className={top ? "flex flex-wrap items-center gap-2"

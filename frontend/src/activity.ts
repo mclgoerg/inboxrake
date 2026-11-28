@@ -224,6 +224,7 @@ export const whoLine = (e: AuditEntry, rules: Rule[]): string =>
     ? ruleName(e, rules) ? t("audit.rule", { name: ruleName(e, rules) })
       : t("audit.rule_gone")
     : e.actor === "user" ? t("audit.by_you")
+    : e.actor === "snooze" ? t("audit.by_snooze")
     : t("audit.by", { actor: t(e.actor) });
 
 /** `t()` with a tiered fallback: a `prefix.<key>` translation, or the raw key
@@ -264,6 +265,7 @@ export function entryText(e: AuditEntry, rules: Rule[]): EntryText {
       } else title = counted("trash");
       break;
     case "archive": case "mark_read": case "purge":
+    case "snooze": case "snooze_return":
       title = counted(e.action);
       break;
     case "move":

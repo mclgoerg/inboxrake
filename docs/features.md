@@ -58,7 +58,7 @@ Senders, Clean up, Insights). A fresh load without a route in the address opens 
 
 On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
-(Triage, Duplicates, Attachments, Rules, Junk, Trash, Your folders), **Insights**
+(Triage, Duplicates, Attachments, Rules, Junk, Trash, Your folders, Snoozed), **Insights**
 (Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply and,
 with two accounts or more, All accounts, then Your documents) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
@@ -157,9 +157,9 @@ bottom tab bar, filters and confirmations as bottom sheets, a compact list.
 <small class="where">Phones and tablets</small>
 
 Swipe a sender row left for Trash (a full swipe),
-Block and More, right for Protect and Read; swipe a mail row left for Trash,
-right for Pin and Read. Every swipe action asks the same confirmation as its
-button. Below 1024 px (phones and tablets), pull down from the top of Overview, Senders or All mail to scan
+Block and More (Open details, Select, Archive, Not now…), right for Protect and
+Read; swipe a mail row left for Trash, right for Pin and Read. Every swipe
+action asks the same confirmation as its button. Below 1024 px (phones and tablets), pull down from the top of Overview, Senders or All mail to scan
 (the header shows the scan's progress). Sheets close with a swipe down. In the
 installed app (PWA), where no browser chrome answers it, a swipe from the
 left edge goes back from a tool page, a sender or a Settings section.
@@ -276,7 +276,7 @@ A floating capsule at the bottom, there only once
 something is selected: how many groups and mails you picked, Clear
 selection, Unsubscribe, Archive, Move, a More menu (Mark read, AI review,
 Export CSV, "Limit to…" - the retention limiter, shown as a removable token
-while active) and the **Trash N** button. Tick rows with **Select** in the
+while active - and **Not now…** last) and the **Trash N** button. Tick rows with **Select** in the
 Senders toolbar (round checkboxes appear until you press Done; on a wide
 screen they also show when you hover a row, on a phone only in Select mode),
 or press `x` on the focused row. Destructive actions ask first in an in-app confirmation
@@ -817,6 +817,79 @@ supports it, and Inboxrake then offers to protect the sender), **Block** and
 a move to Trash. Senders you have replied to before are tagged "known" and
 gathered under a banner ("N senders you know - you replied to them before,
 probably not junk") with a "Show" button that lists only them.
+
+### Not now (snooze)
+
+<small class="where">Sender detail › More, mail reader ⋯, selection bars › More · Clean up → Snoozed</small>
+
+**Not now…** hides mail until a time you pick. It is the **last item** of three
+menus that were already there: a sender's **More** (it snoozes that sender's
+**unread** mails), the mail reader's **⋯** (that one mail, e.g. an invoice
+"until 1 Dec", so it is on top when you have to pay it) and the **More** of a
+selection bar (the ticked senders' unread mails in Senders, the ticked mails
+in All mail and in a sender's mail list). It opens a small popover beside the
+menu: *Later today* (18:00), *Tomorrow morning* (08:00), *Monday morning*
+(the coming Monday, 08:00), *Next weekend* (the first Saturday, 09:00, that is
+more than two days away - on a Friday not tomorrow but the Saturday after) or
+*Pick a date…*; the times are your own clock. On a phone it is a bottom sheet
+(four tiles, *Pick a date…*, the batch switches), opened from the same menu
+item or from **More** on a swiped sender row.
+
+Snoozed mail waits in a folder named **Snoozed** on your mail server (so your
+phone's mail app does not show it either). Inboxrake creates it the first time
+you snooze, where your server wants your own folders (below `INBOX.` or your
+namespace; on Proton Bridge below `Folders/`, so it is `Folders/Snoozed`), and
+remembers which folder it made: only that folder is the Snoozed folder. A folder
+that merely has the name - one of your own, or one your server owns - is never
+taken for it and keeps showing up in scans and Your folders as before (Inboxrake
+then makes `Inboxrake Snoozed` beside it). The mail's record is written before
+the mail moves, so a restart in the middle of a move strands nothing. At the
+time you picked, each mail goes back to the folder it came
+from (the inbox when that folder is gone), **unread**, on top. Pinned mails are
+never snoozed, and mail of a protected sender is skipped when you snooze a
+whole sender or a selection (one mail you name yourself is fine). Snoozing is a
+move like Move to Trash: it shows in Activity (and the Time machine), and
+**Undo** puts the mails back where they were. Mail that waits in **Snoozed** is
+not counted anywhere while it is away, like mail in Trash, and **Snoozed** is a
+special folder: it is locked in Your folders (no rename, merge or delete, no
+mail merged into it), and Move to another account, the copies across accounts
+and Remove the file never touch it.
+
+For one sender the popover also has **Every new mail from *sender***: *Deliver
+once a day* (18:00) or *once a week* (Saturday 09:00), in the time zone of your
+browser. Every new inbox mail from that sender (mail that arrives after you
+switched it on; pinned mails excepted, protected senders cannot have a batch) is
+held after each scan and the pile arrives together at the next slot, with one
+push "Your *sender* batch is here: N mails" if you enabled
+[notifications](#settings). Turning a batch off returns what it holds. A batch
+only sees new mail when Inboxrake scans, so turn on Auto-scan (Settings →
+Auto-scan) for it to catch mail every few minutes. "New" is measured against
+the **last scan**: when you switch a batch on, mail that Inboxrake has not
+scanned yet (arrived since the last scan) counts as existing, not as new, and is
+not held; a changed folder identity on the server (UIDVALIDITY) restarts the
+count from the next scan. A mail Inboxrake delivers is not held again while it
+stays in the inbox (one you move out and, more than a day later, back in counts
+as new again), and a mail that shares its Message-ID with one that is already
+snoozed stays where it is.
+
+**Clean up → Snoozed** (the last item of Clean up in the sidebar, the last tile
+of the Clean up tab on a phone) lists everything out of sight: the senders and
+single mails that wait, each with when it comes back and **Back now**, and the
+batches ("*sender* · batch - weekly batch, Sat 09:00 · holds 2 mails") with
+**Turn off…**, which asks first and returns what the batch holds. While some of
+a sender's mail is snoozed, its pane shows one line - "3 mails snoozed until
+tomorrow 08:00" - with **Back now**, after What they send and the waiting line.
+The rows get no extra pill. The page checks the folder when it opens: a mail
+you moved away in another app is forgotten, not brought back twice. If the
+**Snoozed** folder cannot be found (hidden or renamed on the server), the page
+says so and keeps what it remembers instead of dropping it
+(and makes no second folder while mail waits in the first). Mail that sits in the
+folder with no record of it (a record lost, or mail put there by another app)
+is listed last, with **Back now** to the inbox - it is never out of sight. A
+return that keeps failing - a full or read-only folder - tries three times, then
+sends the mail to the inbox, and is not retried every minute. One account holds at
+most 5,000 snoozed mails; beyond that Not now refuses before anything moves.
+Nothing here uses AI.
 
 ### Delete permanently (Trash and Junk)
 

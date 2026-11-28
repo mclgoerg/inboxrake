@@ -1168,6 +1168,110 @@ export function MenuGroup({ label, children }: {
   );
 }
 
+/** A floating panel beside an element, for what a menu item opens ("Not now…"
+ *  at the end of a More menu - menus have no submenus). Like `Menu`'s pop-up it
+ *  is portalled to <body>, placed with `placeMenu` (its right edge on the
+ *  anchor's, below it - above with `up` - flipped where there is more room,
+ *  8 px inside the viewport, height capped), closes on Esc (the Menu rule:
+ *  preventDefault + stopPropagation), on a press outside and when the anchor
+ *  scrolls out of view. Focus lands on the first `MenuItem` (arrows, Home,
+ *  End move between them) and goes back to the anchor's button on close. The
+ *  children close it themselves (`onClose`) after what they do. */
+export function Popover({ anchor, label, onClose, up, children }: {
+  anchor: RefObject<HTMLElement | null>;
+  /** Accessible name of the panel. */
+  label: string;
+  onClose: () => void;
+  up?: boolean;
+  children: ReactNode;
+}) {
+  const [place, setPlace] = useState<{ top?: number; bottom?: number;
+    left: number; maxH?: number } | null>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const position = () => {
+    const el = pop.current;
+    const wr = anchor.current?.getBoundingClientRect();
+    if (!el || !wr) return;
+    const w = el.offsetWidth;
+    const h = el.scrollHeight;
+    const p = placeMenu(wr, w, window.innerWidth);
+    const left = (p.left ? wr.left : wr.right - w) + p.shift;
+    const roomUp = wr.top - 16, roomDown = window.innerHeight - wr.bottom - 12;
+    const goUp = up ? !(h > roomUp && roomDown > roomUp)
+      : h > roomDown && roomUp > roomDown;
+    const room = goUp ? roomUp : roomDown;
+    const maxH = h > room ? Math.max(room, 96) : undefined;
+    setPlace(goUp
+      ? { bottom: window.innerHeight - wr.top + 8, left, maxH }
+      : { top: wr.bottom + 4, left, maxH });
+  };
+  const items = () => [...(pop.current?.querySelectorAll<HTMLElement>(
+    '[role^="menuitem"]:not(:disabled)') ?? [])];
+  const close = (back = true) => {
+    onClose();
+    if (back) anchor.current?.querySelector<HTMLElement>("button")?.focus();
+  };
+  useLayoutEffect(() => {
+    position();
+    const onScroll = (e: Event) => {
+      if (pop.current?.contains(e.target as Node)) return;
+      const wr = anchor.current?.getBoundingClientRect();
+      if (!wr || wr.bottom < 0 || wr.top > window.innerHeight) {
+        onClose();
+        return;
+      }
+      position();
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", position);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", position);
+    };
+  }, []);
+  // Keyboard users land on the first item (the panel stays invisible until it
+  // is placed, so nothing jumps).
+  useEffect(() => {
+    if (place) items()[0]?.focus({ preventScroll: true });
+  }, [!!place]);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const n = e.target as Node;
+      if (!pop.current?.contains(n) && !anchor.current?.contains(n)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+  const onPopKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "Tab") { close(); return; }
+    const list = items();
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    const to = e.key === "ArrowDown" ? list[(i + 1) % list.length]
+      : e.key === "ArrowUp" ? list[(i - 1 + list.length) % list.length]
+      : e.key === "Home" ? list[0]
+      : e.key === "End" ? list[list.length - 1] : null;
+    if (to) { e.preventDefault(); to.focus(); }
+  };
+  return createPortal(
+    <div ref={pop} role="menu" aria-label={label} onKeyDown={onPopKey}
+      style={{ position: "fixed", top: place?.top, bottom: place?.bottom,
+        left: place?.left ?? 0, opacity: place ? 1 : 0,
+        pointerEvents: place ? undefined : "none",
+        ...(place?.maxH ? { maxHeight: place.maxH } : {}) }}
+      className={`z-(--z-modal) w-max min-w-72 max-w-[calc(100vw-1rem)]
+        rounded-card border border-line bg-panel p-1 shadow-popover
+        ${place?.maxH ? "overflow-y-auto" : ""}`}>
+      {children}
+    </div>, document.body);
+}
+
 /* Non-semantic identity hues (never emerald/amber/rose/sky/orange - those
  * are reserved: delete-safe/review/keep/replied/attachments). */
 const ACCOUNT_HUES = [
@@ -1930,6 +2034,7 @@ const NOTICE_TONE = {
   neutral: "bg-panel2 text-body",
   danger: "bg-keep-bg text-keep-fg",
   warn: "bg-review-bg text-review-fg",
+  info: "bg-info-bg text-info-fg",
 };
 
 /** `role` "alert" (and an `id` for `aria-describedby`) for an error that
@@ -1937,7 +2042,7 @@ const NOTICE_TONE = {
 export function Notice({ children, icon, onClose, tone = "neutral",
   className = "", role = "status", id }: {
   children: ReactNode; icon?: ReactNode; onClose?: () => void;
-  tone?: "neutral" | "danger" | "warn";
+  tone?: "neutral" | "danger" | "warn" | "info";
   className?: string; role?: "status" | "alert"; id?: string;
 }) {
   return (
@@ -1945,7 +2050,7 @@ export function Notice({ children, icon, onClose, tone = "neutral",
       px-3 py-2 type-meta ${NOTICE_TONE[tone]} ${className}`}>
       {icon != null && <span className={`mt-0.5 shrink-0 ${tone === "danger"
         ? "text-keep-fg" : tone === "warn" ? "text-review-fg"
-        : "text-muted"}`}>{icon}</span>}
+        : tone === "info" ? "text-info-fg" : "text-muted"}`}>{icon}</span>}
       <div className="min-w-0 flex-1 py-0.5">{children}</div>
       {onClose && (
         <Button variant="quiet" size="icon" label={t("Dismiss")}
@@ -2181,7 +2286,11 @@ export function BulkBar({ summary, onClear, token, actions, primary, swap }: {
         </div>
         <div className="flex flex-wrap items-center gap-1.5 md:flex-nowrap
           md:gap-2">
-          <div className={`flex min-w-0 flex-1 items-center gap-1.5
+          {/* (phones: the actions take their own width and grow, so when they
+              and the primary button do not fit one row - a 320 px screen, a
+              long German label - the primary wraps below instead of the
+              buttons sliding under it) */}
+          <div className={`flex min-w-0 items-center gap-1.5 max-md:grow
             md:flex-none md:gap-2
             ${swap === "limit" ? "max-md:basis-full" : ""}`}>{actions}</div>
           <div className="shrink-0 max-md:ml-auto">{primary}</div>

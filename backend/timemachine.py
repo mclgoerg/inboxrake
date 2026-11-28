@@ -44,7 +44,7 @@ SENDERS_LISTED = 12        # senders named on a step's second line: the UI cuts
 UNSUB_GROUP_S = 5 * 60
 
 _MOVES = ("trash", "archive", "move", "move_contents", "restore",
-          mimecut.ACTION)
+          mimecut.ACTION, "snooze")
 _STAYS = ("mark_read", "unsubscribe", "undo", "protect",
           "assistant_protect", "assistant_pin")
 _GONE = ("empty_trash", "purge")

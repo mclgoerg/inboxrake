@@ -101,10 +101,12 @@ const cleanup_ = (over = {}) => {
   return p;
 };
 
-test("Clean up: the tile is the last one, shows the folders and the things to tidy", async () => {
+test("Clean up: the tile follows Trash, only Snoozed comes after it, and it shows the folders and the things to tidy", async () => {
   const p = cleanup_();
   const tile = screen.getByRole("button", { name: /^Your folders/ });
-  expect(tile.parentElement!.parentElement!.lastElementChild)
+  const list = tile.parentElement!.parentElement!;
+  expect(list.lastElementChild!.textContent).toMatch(/^Snoozed/);
+  expect(list.lastElementChild!.previousElementSibling)
     .toBe(tile.parentElement);
   await waitFor(() => expect(tile.textContent).toMatch(/10\sfolders/));
   expect(tile.textContent).toContain("3 things to tidy");

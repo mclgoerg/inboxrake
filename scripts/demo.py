@@ -73,6 +73,7 @@ os.environ.update(
     WAITING_PATH=str(DATA / "waiting.json"),
     SENT_INDEX_PATH=str(DATA / "sent_index.json"),
     CHECKIN_PATH=str(DATA / "checkin.json"),
+    SNOOZE_PATH=str(DATA / "snoozed.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),
@@ -318,8 +319,8 @@ def _forget_the_last_visitor() -> None:
     import shutil
     from backend import (addresses, addressstore, copystore, dupstore,
                          habitstore, labelstore, pinstore, rulecheckstore,
-                         senderchanges, substore, unsubstore, verdictstore,
-                         waitstore)
+                         senderchanges, snoozestore, substore, unsubstore,
+                         verdictstore, waitstore)
     for p in DATA.iterdir():
         if p.name == "session_secret":
             continue
@@ -334,6 +335,7 @@ def _forget_the_last_visitor() -> None:
     senderchanges.reset_cache()
     waitstore._cache.clear()
     waitstore._index_cache.clear()
+    snoozestore._cache.clear()
     addressstore._cache.clear()
     addresses._cache.clear()
     unsubstore._cache.clear()

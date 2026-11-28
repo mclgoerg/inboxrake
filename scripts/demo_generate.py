@@ -22,8 +22,9 @@ from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, copystore, demo,
-                     knownsenders, knowledgestore, mailops, pinstore, rules,
-                     unsubstore, verdictstore, waitstore)
+                     knownsenders, knowledgestore, mailkinds, mailops, pinstore,
+                     rules, snooze, snoozestore, unsubstore, verdictstore,
+                     waitstore)
 from backend import config as cfgmod
 
 if "CONFIG_PATH" not in os.environ:
@@ -1431,6 +1432,36 @@ PROTON.mailbox["INBOX"] += (
             atts=[("invoice-plan.pdf", 303000)], att_n=2))
 random.setstate(_state)
 
+# Not now (IZ131): the Proton account has a `Snoozed` folder - a newsletter
+# that waits until tomorrow, one invoice that waits for a week, a weekly batch
+# that holds six promotions so far and a daily one that holds one (the store
+# that remembers them is written in generate(), once the inbox is scanned).
+# Added from its own random stream, so every other mail keeps its exact data
+# and uid.
+_state = random.getstate()
+random.seed(112)
+SNOOZED_DIGEST = mails(
+    '"TechDigest" <digest@techdigest.example>',
+    ["Issue #{n}: the quiet side of Rust", "Weekly: self-hosting corner"], 3,
+    newest_days=0.3, span_days=1.5, unread=1.0, unsub=True,
+    html=newsletter_html(click=CLICK_HOST))
+SNOOZED_INVOICE = mails(
+    '"CloudBox" <billing@cloudbox.example>', ["Invoice CB-2026-0412"], 1,
+    newest_days=2, unread=1.0, size=(220000, 480000))
+SNOOZED_BATCH = mails(
+    '"Streamly" <info@streamly.example>',
+    ["New this week on Streamly", "Your watchlist just got better"], 6,
+    newest_days=0.2, span_days=5, unread=1.0, unsub=True,
+    html=newsletter_html("track.streamly-demo.example"))
+SNOOZED_DAILY = mails(
+    '"Deals Daily" <offers@dealsdaily.example>',
+    ["Today only: three small offers"], 1, newest_days=0.1, unread=1.0,
+    unsub=True, html=newsletter_html("track.dealsdaily-demo.example"))
+PROTON.mailbox["Snoozed"] = (SNOOZED_DIGEST + SNOOZED_INVOICE + SNOOZED_BATCH
+                             + SNOOZED_DAILY)
+PROTON.uv["Snoozed"] = 1
+random.setstate(_state)
+
 
 def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
     """The Time machine's demo history of the Proton account: real undo steps
@@ -1887,6 +1918,9 @@ def generate() -> dict:
     # report (Tools -> Trackers) comes from; iCloud stays without one (empty state).
     # The proton demo watches its sent mail for replies (off by default).
     waitstore.set_watch(True, "proton")
+    # the Proton demo's Snoozed folder is the one Inboxrake "made": a scan
+    # leaves it out (the store with what waits in it is written below)
+    snoozestore.set_folder("Snoozed", "proton")
     for name in ("proton", "icloud"):
         acc = accounts.get(name)
         mailops.run_scan(acc)
@@ -1933,6 +1967,39 @@ def generate() -> dict:
     # account" brought over are on record.
     pinstore.set_many({m["msgid"] for m in ICLOUD_FWD[:3]}, True, "icloud")
     copystore.record("proton", "icloud", [m["msgid"] for m in ICLOUD_MOVED])
+    # What waits in `Snoozed` (see SNOOZED_* above) and the weekly batch the
+    # sender of the six promotions delivers by: the store remembers where each
+    # mail goes back to and when. A UTC clock keeps the seed the same
+    # wherever it is built (a viewer's own zone only moves a new batch's slot).
+    _top = max((m["uid"] for m in accounts.get("proton").index.values()
+                if m["folder"] == "INBOX"), default=0)
+    _day = int(NOW) // 86400 * 86400
+    _until = {"digest": _day + 86400 + 8 * 3600,            # tomorrow 08:00
+              "invoice": _day + 6 * 86400 + 9 * 3600,       # in six days, 09:00
+              "batch": snooze.next_slot("weekly", "UTC", NOW),
+              "daily": snooze.next_slot("daily", "UTC", NOW)}
+
+    def _record(msgs, until, batch=""):
+        return {m["msgid"]: {
+            "origin": "INBOX", "until": until, "batch": batch,
+            "addr": re.search(r"<([^>]+)>", m["from"]).group(1),
+            "name": re.search(r'"([^"]+)"', m["from"]).group(1),
+            "subject": m["subject"],
+            "kind": mailkinds.kind_of(
+                m["subject"], re.search(r"<([^>]+)>", m["from"]).group(1),
+                True)} for m in msgs}
+    snoozestore.add_mails({
+        **_record(SNOOZED_DIGEST, _until["digest"]),
+        **_record(SNOOZED_INVOICE, _until["invoice"]),
+        **_record(SNOOZED_BATCH, _until["batch"], "info@streamly.example"),
+        **_record(SNOOZED_DAILY, _until["daily"], "offers@dealsdaily.example")},
+        "proton")
+    snoozestore.set_batch("info@streamly.example", {
+        "slot": "weekly", "tz": "UTC", "label": "Streamly",
+        "uv": PROTON.uv["INBOX"], "after": _top}, "proton")
+    snoozestore.set_batch("offers@dealsdaily.example", {
+        "slot": "daily", "tz": "UTC", "label": "Deals Daily",
+        "uv": PROTON.uv["INBOX"], "after": _top}, "proton")
     # Bodies come last: the Proton body index above must not hold them (see
     # fill_bodies).
     for fake in FAKES.values():
