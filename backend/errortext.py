@@ -218,6 +218,10 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The request is too large for the server to accept.',
     'block_key_invalid':
         'This sender or domain cannot be blocked: it is not a plain address or domain name.',
+    'mute_unknown':
+        'This conversation is not in the last scan any more - scan again and try once more.',
+    'mute_already':
+        'This conversation is already muted - unmute it in the Rules list.',
     'no_account':
         'No mail account is set up yet - open Settings and fill in the sign-in details first.',
     'cafile_missing':

@@ -45,6 +45,7 @@ domain or subject), its label, or its sub-label. `shop` finds
 | `from:<address>` | Exactly this sender address (sender grouping only). | `from:news@shop.example` |
 | `domain:<domain>` | Exactly this domain (domain grouping). | `domain:shop.example` |
 | `grade:<letter>` / `grade:<=<letter>` / `grade:>=<letter>` | The sender's grade, A (best), B, C, D or F (worst; there is no E): `grade:d` is exactly D, `grade:<=c` is C or worse, `grade:>=b` is B or better. Sender rows only (other groupings have no grade and never match); see [Sender grade](features.md#sender-grade). | `grade:<=d` |
+| `thread:<key>` | Exactly this one conversation: the key of a Thread group (Thread grouping). It is what [Mute this conversation](features.md#mute-a-conversation) writes into its rule - a hash you do not type by hand. | `thread:4f9c1e0a7b2d3c58` |
 
 `age:` also accepts the number without `>`; `age:>6m` and `age:6m` mean
 the same.
@@ -78,7 +79,7 @@ the same.
 > every newsletter group. Check the result list before you act. Saving a **rule**
 > with such a part is refused with an error that names it, and a rule saved
 > before that check shows a warning: its execute runs are skipped (report runs
-> still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `grade:`, `ai:`, `from:`, `domain:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
+> still run) until you edit the filter. Giving a single-value qualifier (`age:`, `unread:`, `att:`, `eng:`, `grade:`, `ai:`, `from:`, `domain:`, `thread:`, or both `is:replied` and `is:noreply-ever` / `is:unsubscribed` and `is:not-unsubscribed`) twice is refused the same way, because only the last one would count. Words that contain a colon (such as `re:` or `10:30`) are read as
 > qualifiers in a rule and refused unless they are valid ones. The AI filter writer validates strictly
 > and retries when the filter it wrote contains a bad token.
 

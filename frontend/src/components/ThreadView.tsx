@@ -134,6 +134,7 @@ function ThreadViewFor({ mail, initial, onBack, actions, nav, pin,
 
   return (
     <ReaderFrame mail={target ?? mail} navFrom={mail} detail={targetDetail}
+      threadKey={conv?.key || undefined}
       actions={actions} nav={nav} locked={!conv || lockHint !== undefined}
       lockHint={lockHint}
       pin={pin && targetKey === mailKey(mail) ? pin : ownPin}

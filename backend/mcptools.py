@@ -166,6 +166,9 @@ def _mask_names(text: str, names: frozenset[str]) -> str:
 STORED_LABEL_MAX = 200          # auditlog.record cuts labels here, no "…"
 
 
+MUTE_NAME = "Muted conversation"     # what a token without subjects sees
+
+
 def _mask_label(raw: str, names: frozenset[str]) -> str:
     """An audit label ready to return: masked on the FULL normalised text
     (cutting first could leave half a name), then cut. A label stored at the
@@ -684,7 +687,10 @@ def _list_rules(ctx: Ctx, args: AccountIn) -> dict:
             continue
         run = r.get("last_run")
         out.append({
-            "id": clean(r["id"], 40), "name": clean(r.get("name"), 80),
+            "id": clean(r["id"], 40),
+            # a mute is named after the conversation's subject
+            "name": MUTE_NAME if r.get("origin") == rulesmod.ORIGIN_MUTE
+            and not ctx.subjects else clean(r.get("name"), 80),
             "query": _hide_user_tags(clean(r.get("query"),
                                           rulesmod.FILTER_MAX)),
             "action": clean(r.get("action"), 40),
@@ -726,6 +732,10 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
     names = _user_category_names()
     proposed = {f"rule:{r['id']}" for r in rulesmod.load_rules()
                 if isinstance(r.get("proposed_by"), dict)}
+    # a mute's runs and steps carry the conversation's subject as their label
+    mutes = set() if ctx.subjects else {
+        f"rule:{r['id']}" for r in rulesmod.load_rules()
+        if r.get("origin") == rulesmod.ORIGIN_MUTE}
     return _fit({
         "account": acc.name, "total": res["total"],
         "entries": [{
@@ -738,6 +748,7 @@ def _recent_activity(ctx: Ctx, args: RecentActivityIn) -> dict:
             # a report's recipient is the user's own address: not needed
             "label": "" if e["action"] in ("digest_sent",
                                            "proposal_mail_sent")
+            or e["actor"] in mutes
             else _mask_label(e["label"], names),
             "outcome": clean(e["outcome"], 20)} for e in res["entries"]]},
         "entries")

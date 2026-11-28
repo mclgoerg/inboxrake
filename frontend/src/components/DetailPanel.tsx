@@ -53,7 +53,8 @@ const RATING_FILTERS: { key: string; label: string }[] = [
 ];
 
 export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
-  unsubscribedNow, onUnsubscribe, onTrash, onMove, onProtect, onBlock, onUnblock, blocked, folders,
+  unsubscribedNow, onUnsubscribe, onTrash, onMove, onProtect, onBlock, onUnblock, blocked,
+  onMute, onUnmute, muted, folders,
   sieve = true, smartMin = 10, onClose, onEmptied, onDeleted, variant = "modal", hideGroupActions = false,
   senders, onSenderAct, onSenderProtect, renderSender, backLabel,
   aiSort, onFile, onUnfile, categories, filingBox, onLabelsSaved,
@@ -79,6 +80,11 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   onBlock?: (g: Group) => void;          // rows with a sender/domain only
   onUnblock?: (g: Group) => void;
   blocked?: boolean;
+  // Thread grouping: "Mute this conversation…" last in More (its own dialog),
+  // or Unmute while the conversation is muted.
+  onMute?: (g: Group) => void;
+  onUnmute?: (g: Group) => void;
+  muted?: boolean;
   folders: AppState["folders_raw"];
   /** Folder picker context (readable names, account, link to Rules). */
   pickEnv?: PickEnv;
@@ -580,10 +586,11 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
   const canRead = grouping === "thread" && !!mails && mails.length > 0;
   const canPinAll = !!mails && mails.length > 0 && pinnedCount < mails.length;
   const canSieve = sieve && !!sieveTarget;
+  const canMute = grouping === "thread" && (muted ? !!onUnmute : !!onMute);
   // Only what works in the current view (a pooled row's Senders view loads no
   // mails); no items, no button.
   const hasMore = (aiEnabled && busy) || aiRate || canRead || canPinAll
-    || pinnedCount > 0 || canSieve;
+    || pinnedCount > 0 || canSieve || canMute;
 
   // Unsubscribe state as a quiet header signal where no action says it: a
   // partial result ("2 of 5") has no button at all, done / failed show up
@@ -779,6 +786,12 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         {canSieve && (
           <MenuItem onClick={() => setSieveOpen(!sieveOpen)}>
             {t("sieve.button")}
+          </MenuItem>
+        )}
+        {canMute && (
+          <MenuItem onClick={() => (muted ? onUnmute! : onMute!)(group)}>
+            <BellOff size={16} className="mr-1 inline align-text-bottom" />
+            {t(muted ? "mute.menu_off" : "mute.menu")}
           </MenuItem>
         )}
       </Menu>

@@ -114,7 +114,8 @@ def test_reply_only_mail_is_offered_the_reader_and_shows_its_parent(convo):
                  msgid="<r9@x>", date="04-Mar-2024 10:00:00 +0000"))
     mailops.run_scan()
     detail = mailops.fetch_message("INBOX", 40)
-    assert detail["thread"] == {"count": 1}
+    assert detail["thread"] == {"count": 1, "key": detail["thread"]["key"]}
+    assert detail["thread"]["key"] in mailops.STATE["groups"]["thread"]
     assert [(m["folder"], m["uid"]) for m in convo_of("INBOX", 40)["mails"]] \
         == [("Sent", 22), ("INBOX", 40)]
 
@@ -123,8 +124,11 @@ def test_reply_only_mail_is_offered_the_reader_and_shows_its_parent(convo):
 
 def test_message_reports_a_thread_only_where_there_is_something_to_read(
         convo):
-    assert mailops.fetch_message("INBOX", 30)["thread"] == {"count": 2}
-    assert mailops.fetch_message("INBOX", 31)["thread"] == {"count": 2}
+    first = mailops.fetch_message("INBOX", 30)["thread"]
+    assert first["count"] == 2
+    # both mails name the same conversation (its group key: what a mute uses)
+    assert mailops.fetch_message("INBOX", 31)["thread"] == first
+    assert first["key"] in mailops.STATE["groups"]["thread"]
     # an ordinary, unthreaded mail
     assert mailops.fetch_message("INBOX", 3)["thread"] is None
 

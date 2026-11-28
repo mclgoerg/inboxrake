@@ -259,7 +259,8 @@ big subject, chips for attachments and tracking, quoted history folded away
 that says how it unsubscribes. The body is always plain text: HTML is
 converted, no remote content is loaded and no tracking pixel fires. A
 toolbar acts on the open mail: Trash, Pin, Move, Conversation and a More
-menu (Open sender, Copy address, Show headers, Block sender); tapping an
+menu (Open sender, Copy address, Show headers, Block sender, and for a mail
+in a conversation [Mute this conversation…](#mute-a-conversation)); tapping an
 attachment chip opens a menu with **Remove the file, keep the mail…**
 ([Attachments](#keep-the-mail-remove-the-file)); previous / next
 arrows walk the list you came from. **Conversation** shows the whole thread
@@ -1190,7 +1191,8 @@ always start in **report mode** (they only tell you what they would do);
 execute mode can be enabled after at least one report run. Every run is
 capped at 500 mails, skips protected senders, and uses the normal
 Trash/undo pipeline - the scheduler is a background loop inside the
-container, no cron needed.
+container, no cron needed. The one rule that runs **after each scan** instead
+is [a mute](#mute-a-conversation).
 
 ### Rule checkup
 
@@ -1263,6 +1265,47 @@ instantly creates a standing daily auto-trash rule for that sender or
 domain (optionally trashing what's already there too). Reversible any
 time by unblocking, which just deletes the rule; protected senders
 can't be blocked.
+
+### Mute a conversation
+
+<small class="where">Mail reader → More → Mute this conversation… · Sender detail in Thread grouping → More</small>
+
+A group thread ("Team dinner", a flat-share plan, a long reply-all) keeps
+landing as new mail long after you are done with it. **Mute this
+conversation…** (the last item of the reader's More menu, and of the detail
+pane's More menu in Thread grouping) turns it off: the new mail of that one
+conversation is **archived and marked as read after each scan**. The dialog
+says what will happen and offers one extra step, **Also archive the N mails
+already in your inbox**, which is one step with Undo.
+
+A mute is a rule, the way [Block](#block-a-sender-or-domain) is: it starts
+armed, is listed with your other rules (Last report, Edit, the
+[Rule checkup](#rule-checkup), Activity and Undo work as for any rule) and
+reads "When Thread groups match `thread:<key>` then archive and mark read,
+after each scan". **Unmute** on its card - or **Unmute this conversation** in
+the menus - deletes the rule; what it archived stays in Archive. Edit lets you
+rename it and choose between *after each scan* and *manual*; the conversation
+itself stays.
+
+What a run touches is narrow on purpose:
+
+- **Only this conversation.** Mails are joined by their reply headers (the same
+  as the conversation view); subjects never merge them. A new conversation
+  from the same people, even with the same subject, is not touched.
+- **Only new mail.** What was in the conversation when you muted it stays where
+  it is (unless you ticked the extra step). Each new mail is handled once: if
+  you put one back in your inbox - with Undo or by hand - it stays there.
+- **Only from the people who were in it.** A mail from someone who was not in
+  the conversation when you muted it is let through.
+- **Only in the inbox**, and never **pinned** mail or mail from **protected
+  senders**.
+- **Nothing is trashed.** Without an Archive folder the mails are only marked
+  as read and stay in the inbox.
+
+The rule runs by itself only *after a scan* (manual, automatic or one a rule
+asked for); a run with nothing to do leaves nothing in Activity. **Run now**
+works as on any rule. The filter word `thread:<key>` ([filters](filters.md))
+is the conversation's key; you will not type one by hand.
 
 ### Purge rules (Trash and Junk)
 

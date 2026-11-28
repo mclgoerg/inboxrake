@@ -1,4 +1,5 @@
-import { Archive, Bot, CalendarClock, Check, ClipboardList, FileText, FolderInput,
+import { Archive, BellOff, Bot, CalendarClock, Check, ClipboardList, FileText,
+  FolderInput,
   Info, MailOpen, MoreHorizontal, Pencil, Pin, Play, Plus, RefreshCw, Shield,
   ShieldCheck, Trash2, TriangleAlert, WandSparkles, X } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -83,6 +84,8 @@ function RunSummary({ rule, preview = true }: {
     </Fragment>);
     if (!purge && r.mode === "execute" && r.mails !== r.acted)
       facts.push(<Fragment key="matched">{t("rule.run_matched", { n: r.mails })}</Fragment>);
+    if (r.read_only)
+      facts.push(<Fragment key="ro">{t("rule.run_read_only")}</Fragment>);
     if (purge && !rule.query.trim())
       facts.push(<Fragment key="all">{t("rule.purge_all_short")}</Fragment>);
     if ((r.unverified ?? 0) > 0)
@@ -163,7 +166,7 @@ const ACTION_VERB: Record<string, true> = {
 const ACTION_ICON: Record<string, ReactNode> = {
   trash: <Trash2 size={18} />, purge: <Trash2 size={18} />,
   archive: <Archive size={18} />, move: <FolderInput size={18} />,
-  mark_read: <MailOpen size={18} />,
+  mark_read: <MailOpen size={18} />, archive_read: <BellOff size={18} />,
 };
 
 /** The last run of a rule in full: when, report vs execute, the totals, what
@@ -412,8 +415,11 @@ function ProposalCard({ rule, busy, error, badges, onApprove, onAgain, onEdit,
 /** One rule as a card: icon, name + last run, the report / active switch,
  *  the rule read as a sentence, and its actions. */
 function RuleCard({ rule, busy, error, fresh, badges, onRun, onEdit, onReport,
-  onMode, onDelete }: {
+  onMode, onDelete, onUnmute }: {
   rule: Rule; busy: boolean; error?: string;
+  /** A mute's card has an Unmute button (it deletes the rule, after a
+   *  confirm). */
+  onUnmute?: () => void;
   /** The Rule checkup's badges for this rule. */
   badges?: ReactNode;
   /** Just added from a recipe: line 2 says so and the report shows inline. */
@@ -501,8 +507,13 @@ function RuleCard({ rule, busy, error, fresh, badges, onRun, onEdit, onReport,
           <Pencil size={14} aria-hidden className="mr-1 inline align-text-bottom" />
           {t("Edit")}
         </Button>
+        {onUnmute && (
+          <Button variant="secondary" size="sm" className="ml-auto"
+            onClick={onUnmute}>{t("mute.unmute")}</Button>
+        )}
         <Menu variant="quiet" icon label={t("rule.more", { name: rule.name })}
-          className="ml-auto" trigger={<MoreHorizontal size={18} aria-hidden />}>
+          className={onUnmute ? "" : "ml-auto"}
+          trigger={<MoreHorizontal size={18} aria-hidden />}>
           <MenuItem danger onClick={onDelete}>{t("Delete")}</MenuItem>
         </Menu>
       </div>
@@ -584,6 +595,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   // Live match count against the current scan, using the SAME filter code
   // the group list uses (the backend port mirrors it).
   const purge = isPurge(form.scope);
+  // A mute keeps its conversation: the editor shows the rest as it is and lets
+  // the name and the schedule change (the server refuses anything else).
+  const muteEdit = rules.find((r) => r.id === editId)?.origin === "mute";
   const matchCount = useMemo(() => {
     if (purge) return null;           // the folder is read live on a run
     const groups = Object.values(state.groups?.[form.grouping] ?? {});
@@ -777,6 +791,22 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   /** Approve a proposal: the destructive-action confirm (what moves, what is
    *  skipped, how it runs; "Run it once now"), then the ordinary report ->
    *  Active switch (the server's gate is unchanged) and, if asked, a run. */
+  /** Unmute: deletes the mute's rule after a confirm (what it archived stays
+   *  in Archive). */
+  const unmute = async (rule: Rule) => {
+    if (!await confirmDialog({
+      title: t("mute.unmute_title_rule"),
+      body: t("mute.unmute_body"), confirmLabel: t("mute.unmute") })) return;
+    try {
+      await api.deleteRule(rule.id);
+      if (editId === rule.id) closeEditor();
+      toast?.show(t("toast.unmuted_rule"), { variant: "success" });
+      onChanged();
+    } catch (e: any) {
+      setCardErr({ id: rule.id, text: t("err.generic", { msg: e.message ?? e }) });
+    }
+  };
+
   const approve = async (rule: Rule) => {
     setCardErr(null);
     const r = rule.last_run;
@@ -912,19 +942,24 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     placeholder={t("rule.name")}
     aria-label={t("rule.f_name")} autoFocus={onPage}
     value={form.name} onChange={set("name")} />;
-  const groupingCtl = purge
+  const groupingCtl = muteEdit ? <Part>{t(GROUPING_KEY.thread)}</Part>
+    : purge
     ? <Part>{t("Sender")}</Part>
     : <PopupSelect value={form.grouping} onChange={pick("grouping")}
         name={t("rule.f_grouping")} options={(
           ["sender", "domain", "subject", "thread"] as Grouping[])
           .map((g) => ({ value: g, label: t(GROUPING_KEY[g]) }))} />;
-  const scopeCtl = <PopupSelect value={form.scope} onChange={setScope}
+  const scopeCtl = muteEdit ? <Part>{t("rule.scope_mail")}</Part>
+    : <PopupSelect value={form.scope} onChange={setScope}
     name={t("rule.f_scope")} options={[
       { value: "mail", label: t("rule.scope_mail") },
       { value: "junk", label: t("rule.scope_junk") },
       { value: "trash", label: t("rule.scope_trash") }]} />;
   // The builder stays outside the label: its popover holds controls of its own.
-  const filterCtl = <>
+  const filterCtl = muteEdit ? (
+    <code className="inline-block max-w-full break-words rounded-control
+      bg-chip px-2 py-1 type-meta text-chiptext">{form.query}</code>
+  ) : <>
     <div className="relative flex items-center gap-2">
       <Input className="min-w-0 flex-1"
         placeholder="tag:shipping age:>1y is:noreply-ever …"
@@ -940,7 +975,12 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
       </div>
     )}
   </>;
-  const actionCtl = purge
+  const actionCtl = muteEdit
+    ? <PopupSelect value="archive_read" onChange={() => {}} disabled
+        name={t("rule.f_action")}
+        options={[{ value: "archive_read",
+          label: t("rule.act_archive_read") }]} />
+    : purge
     ? <PopupSelect value="purge" onChange={() => {}} disabled
         name={t("rule.f_action")}
         options={[{ value: "purge", label: t("rule.act_purge") }]} />
@@ -954,7 +994,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     name={t("rule.f_dest")} placeholder={t("Move to folder…")}
     options={(state.folders_raw ?? []).map((f, i) =>
       ({ value: f, label: state.folders[i] ?? f }))} />;
-  const applyCtl = purge
+  const applyCtl = muteEdit
+    ? <span className="type-body text-muted">{t("rule.ed_mute")}</span>
+    : purge
     ? <Sentence template={t("rule.ed_older")}
         className="flex flex-wrap items-center gap-2 type-body text-muted"
         parts={{ n: <Input className="w-24" type="number" min={1}
@@ -980,7 +1022,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
         )}
       </>;
   const scheduleCtl = <PopupSelect value={form.schedule} onChange={pick("schedule")}
-    name={t("rule.f_schedule")} options={[
+    name={t("rule.f_schedule")} options={muteEdit ? [
+      { value: "manual", label: t("sched.manual") },
+      { value: "scan", label: t("sched.scan") }] : [
       { value: "manual", label: t("sched.manual") },
       { value: "daily", label: t("sched.daily") },
       { value: "weekly", label: t("sched.weekly") }]} />;
@@ -1055,7 +1099,11 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
           </div>
         )}
 
-        {!purge && <div className="rounded-card bg-panel2 p-3" aria-live="polite">
+        {muteEdit && (
+          <div className="type-meta text-muted">{t("rule.ed_mute_note")}</div>
+        )}
+        {!purge && !muteEdit && <div className="rounded-card bg-panel2 p-3"
+          aria-live="polite">
           <div className="type-body font-medium">{t("rule.preview")}</div>
           {form.retention === "only_kind" && (
             <p data-testid="kind-preview-hint"
@@ -1100,7 +1148,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
             </div>
           </div>
         )}
-        {rules.find((r) => r.id === editId)?.mode === "execute" && (
+        {!muteEdit && rules.find((r) => r.id === editId)?.mode === "execute" && (
           <div className="type-meta text-muted">
             {t(purge ? "rule.purge_edit_reset" : "rule.edit_reset")}
           </div>
@@ -1156,7 +1204,8 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
               fresh={fresh.has(rule.id)} badges={badgesOf(rule.id)}
               onRun={() => run(rule)} onEdit={() => edit(rule)}
               onReport={() => setReportId(rule.id)}
-              onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)} />
+              onMode={(m) => toggleMode(rule, m)} onDelete={() => del(rule)}
+              onUnmute={rule.origin === "mute" ? () => unmute(rule) : undefined} />
           ))}
           {!rules.length && (
             <RecipeStarters state={state} busy={starterBusy}

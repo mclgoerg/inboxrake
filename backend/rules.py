@@ -22,6 +22,16 @@ counted UIDVALIDITY + folder). Their action is named "purge" - never one of
 `mailops.ACTIONS` - so an older release, which ignores `scope`, rejects them
 ("bad action") before anything is queued instead of running them as an
 ordinary trash rule on the main index.
+
+MUTE RULES (origin "mute", made by "Mute this conversation") archive and mark
+read the NEW mail of one conversation after each scan. Their action
+("archive_read") is no action an older release knows, and their filter word
+`thread:` is none it understands either: an older release refuses to run or
+edit one ("bad action", a filter it does not understand) instead of
+archiving with the `thread:` ignored. What a run touches is decided in
+`mute.py` (the conversation's reply headers, the senders that were in it,
+mail that arrived after the mute) - never trash, never pinned mail, never
+protected senders.
 """
 
 from __future__ import annotations
@@ -44,6 +54,7 @@ from . import grades
 from . import keepsafe
 from . import mailkinds
 from . import mailops
+from . import mute
 from . import pinstore
 from . import senderchanges
 from . import tenants
@@ -76,6 +87,13 @@ AUTO_EMPTY = "auto_empty"
 # definition, or switching it back to report, makes it an ordinary manual
 # rule (`proposed_by` stays as history).
 ORIGIN_MCP = "mcp"
+# "Mute this conversation": the rule a mute makes (see mute.py). Set on create
+# only (through `/api/mute` or a backup import), never through a body; it
+# alone may carry the action and the schedule below.
+ORIGIN_MUTE = mute.ORIGIN
+ARCHIVE_READ = mute.ACTION        # archive + mark read; not in mailops.ACTIONS
+AFTER_SCAN = mute.SCHEDULE        # runs by itself after each scan
+MUTE_SCHEDULES = ("manual", AFTER_SCAN)
 PROPOSAL_LIMIT = 10             # open proposals per tenant
 PROPOSAL_LIMIT_CODE = "proposal_limit"
 _EDIT_FIELDS = ("name", "scope", "grouping", "query", "action", "dest",
@@ -95,7 +113,7 @@ _RUN_LOCK = threading.Lock()      # one rule run at a time
 # ------------------------------------------------- filter DSL (port of lib.ts)
 
 _QUAL_RE = re.compile(
-    r"^(tag|ai|age|unread|is|has|eng|att|from|domain|in|grade):(.*)$")
+    r"^(tag|ai|age|unread|is|has|eng|att|from|domain|thread|in|grade):(.*)$")
 _GRADE_RE = re.compile(r"^(<=|>=)?([a-df])$")   # A B C D F - there is no E
 _AGE_RE = re.compile(r"^>?(\d+)(m|y)$")
 _UNREAD_RE = re.compile(r"^>?(\d+)$")
@@ -112,7 +130,7 @@ def parse_filter(q: str) -> dict:
            "from_addr": None, "domain": None, "new_only": False,
            "pinned_only": False, "eng": None,
            "still_mailing": False, "tracker_only": False,
-           "louder": False, "back": False, "grade": None,
+           "louder": False, "back": False, "grade": None, "thread": None,
            "in_seconds": None}
     for tok in (q or "").strip().lower().split():
         m = _QUAL_RE.match(tok)
@@ -170,6 +188,8 @@ def parse_filter(q: str) -> dict:
             out["from_addr"] = val
         elif kind == "domain" and val:
             out["domain"] = val
+        elif kind == "thread" and val:
+            out["thread"] = val
         elif kind == "in":
             w = _IN_RE.match(val)
             if w:
@@ -268,6 +288,12 @@ FILTER_GRAMMAR: tuple[dict, ...] = (
                 "`grade:d` = exactly D, `grade:<=c` = C or worse, "
                 "`grade:>=b` = B or better. Sender groups only",
      "example": "grade:<=d"},
+    {"qualifier": "thread", "values": None, "check": "text",
+     "syntax": "thread:<key>",
+     "meaning": "exactly this one conversation: the key of a Thread group "
+                "(an opaque hash, only meaningful with the Thread grouping; "
+                "a mute rule is built on it - not something to guess)",
+     "example": "thread:4f9c1e0a7b2d3c58"},
 )
 _GRAMMAR = {g["qualifier"]: g for g in FILTER_GRAMMAR}
 
@@ -303,7 +329,7 @@ def _token_ok(kind: str, val: str, tags: "set[str] | frozenset[str] | None"
 _IS_SLOT = {"replied": "replied", "noreply-ever": "replied",
             "unsubscribed": "unsubscribed", "not-unsubscribed": "unsubscribed"}
 _SINGLE = frozenset({"ai", "age", "unread", "att", "eng", "from", "domain",
-                     "in", "grade"})
+                     "thread", "in", "grade"})
 
 
 def _slot(kind: str, val: str) -> str | None:
@@ -380,6 +406,8 @@ def match_group(g: dict, f: dict, now: float | None = None) -> bool:
     if f["from_addr"] is not None and g["key"] != f["from_addr"]:
         return False
     if f["domain"] is not None and g["key"] != f["domain"]:
+        return False
+    if f["thread"] is not None and g["key"] != f["thread"]:
         return False
     for t in f["text"]:
         if t not in g["key"] and t not in label and t not in sub:
@@ -532,7 +560,8 @@ _PURGE_UNSUPPORTED = (
     ("still_mailing", "is:still-mailing"),
     ("louder", "is:louder"), ("back", "is:back"),
     ("pinned_only", "has:pinned"), ("eng", "eng:"), ("att_min", "att:"),
-    ("domain", "domain:"), ("in_seconds", "in:"), ("grade", "grade:"))
+    ("domain", "domain:"), ("thread", "thread:"),
+    ("in_seconds", "in:"), ("grade", "grade:"))
 
 
 def purge_unsupported(query: str) -> list[str]:
@@ -569,6 +598,16 @@ def _normalise(r: dict) -> bool:
             not isinstance(r.get("proposed_by"), dict)
             or r.get("scope", "mail") != "mail"):
         r["origin"] = "manual"           # nor can it fake an assistant
+    if r["origin"] == ORIGIN_MUTE:
+        info = mute.clean_info(r.get("mute"))
+        if (r.get("scope", "mail") != "mail" or r.get("grouping") != "thread"
+                or r.get("action") != ARCHIVE_READ or info is None
+                or r.get("query") != mute.query_of(info)):
+            # a hand-edited file cannot make a mute out of anything else;
+            # what is left has an action no run accepts (see `run_rule`)
+            r["origin"] = "manual"
+        else:
+            r["mute"] = info
     r.setdefault("scope", "mail")        # tolerate pre-purge rules.json
     r.setdefault("report_at", None)
     r.setdefault("reset_reason", "")
@@ -666,6 +705,12 @@ def _save(rules: list[dict]) -> None:
         if r.get("scope", "mail") != "mail" \
                 and r.get("action") != PURGE_ACTION:
             raise ValueError("a Junk / Trash rule can only purge")
+        # ... and a mute must carry the action (and the `thread:` word) an
+        # older release rejects, whatever happened to the rule in memory
+        if r.get("origin") == ORIGIN_MUTE and (
+                r.get("action") != ARCHIVE_READ
+                or not parse_filter(r.get("query", ""))["thread"]):
+            raise ValueError("a mute rule can only archive and mark read")
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -681,7 +726,7 @@ def _publish(rules: list[dict]) -> None:
     """Mirror each account's rules into its state so SSE clients see them."""
     for name in accounts.names():
         acc = accounts.get(name)
-        mine = [r for r in rules if r.get("account", name) == name]
+        mine = [public(r) for r in rules if r.get("account", name) == name]
         with acc.lock:
             acc.state["rules"] = mine
 
@@ -726,20 +771,23 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
         if bad and not lenient_filter:
             raise ValueError(_filter_error(bad))
     if "action" in body:
-        if body["action"] not in (*mailops.ACTIONS, PURGE_ACTION):
+        if body["action"] not in (*mailops.ACTIONS, PURGE_ACTION,
+                                  ARCHIVE_READ):
             raise ValueError("bad action")
         rule["action"] = body["action"]
     if "dest" in body:
         rule["dest"] = str(body["dest"])
+    muted = rule.get("origin") == ORIGIN_MUTE
     if "schedule" in body:
-        if body["schedule"] not in SCHEDULES:
+        if body["schedule"] not in (MUTE_SCHEDULES if muted else SCHEDULES):
             raise ValueError("bad schedule")
         rule["schedule"] = body["schedule"]
     if "origin" in body:
-        if body["origin"] not in ("manual", "block", AUTO_EMPTY):
+        if body["origin"] not in ("manual", "block", AUTO_EMPTY, ORIGIN_MUTE):
             raise ValueError("bad origin")
         if body["origin"] != rule.get("origin") \
-                and AUTO_EMPTY in (body["origin"], rule.get("origin")):
+                and (AUTO_EMPTY in (body["origin"], rule.get("origin"))
+                     or ORIGIN_MUTE in (body["origin"], rule.get("origin"))):
             raise ValueError("bad origin")   # set on create, never changed
         rule["origin"] = body["origin"]
     if "account" in body and body["account"]:
@@ -799,8 +847,23 @@ def _validate(body: dict, rule: dict, lenient_filter: bool = False) -> dict:
         rule["dest"] = ""
     elif rule.get("origin") == AUTO_EMPTY:
         raise ValueError("bad origin")       # not a Trash purge rule any more
+    elif muted:
+        # A mute keeps its conversation: only its name, schedule (manual or
+        # after each scan) and mode can change; the filter, grouping and
+        # action are the ones `mute.py` made it with.
+        info = mute.clean_info(rule.get("mute"))
+        if info is None or rule["grouping"] != "thread" \
+                or rule["action"] != ARCHIVE_READ \
+                or rule["query"] != mute.query_of(info) \
+                or rule.get("dest") \
+                or any(rule.get(f) is not None for f in (
+                    "keep_latest", "older_than_days", "only_kind")):
+            raise ValueError("bad mute rule")
+        rule["mute"] = info
     elif rule["action"] not in mailops.ACTIONS:
-        raise ValueError("bad action")       # e.g. a purge rule moved to mail
+        # e.g. a purge rule moved to mail - or a mute's action on a rule that
+        # is no mute (only a mute may archive and mark read)
+        raise ValueError("bad action")
     elif rule["action"] == "move" and not rule["dest"]:
         raise ValueError("move needs a target folder")
     if definition_sig(rule) != before or box_sig(rule) != before_box:
@@ -871,7 +934,9 @@ def moving_into(account: str, match, action: str = "move") -> list[dict]:
              "dest": r.get("dest", "")}
             for r in rules
             if _on_account(r, account) and r.get("scope", "mail") == "mail"
-            and r.get("action") == action
+            # (a mute archives, too)
+            and (r.get("action") == action
+                 or (action == "archive" and r.get("action") == ARCHIVE_READ))
             and (action != "move" or r.get("dest"))
             and match(r.get("dest", ""))]
 
@@ -940,6 +1005,17 @@ def create_rule(body: dict, lenient_filter: bool = False, *,
     auto_empty = body.get("origin") == AUTO_EMPTY
     if auto_empty:
         body.pop("origin")
+    if body.get("origin") == ORIGIN_MUTE:
+        # a mute (made by /api/mute, or one coming back from a backup):
+        # `mute` is its record. Like every rule it starts in report mode.
+        info = mute.clean_info(body.pop("mute", None))
+        if info is None or proposed_by is not None \
+                or body.get("scope", "mail") != "mail":
+            raise ValueError("bad mute rule")
+        body.pop("origin")
+        rule["origin"], rule["mute"] = ORIGIN_MUTE, info
+    else:
+        body.pop("mute", None)       # no field of any other rule
     if body.get("scope") in PURGE_SCOPES:
         # the one action of a purge rule, whatever the client sent as the
         # (mail-rule) default; a missing age starts at the D8 default
@@ -1066,8 +1142,11 @@ def _wait_scan(acc, timeout: float = 600) -> bool:
     return False
 
 
-def run_rule(rule_id: str, rescan: bool = True) -> dict:
-    """Run one rule (blocking). Returns and records the run result."""
+def run_rule(rule_id: str, rescan: bool = True, quiet: bool = False) -> dict:
+    """Run one rule (blocking). Returns and records the run result. `quiet`
+    (the runs after each scan, mute rules only): a run that has nothing to do
+    records nothing - no last run, no log entry - so a rule that runs after
+    every scan does not fill the Activity log with empty runs."""
     rule = next((r for r in load_rules() if r["id"] == rule_id), None)
     if not rule:
         raise KeyError(rule_id)
@@ -1102,6 +1181,15 @@ def run_rule(rule_id: str, rescan: bool = True) -> dict:
                 raise RuntimeError(f"cannot scan now: {exc}")
             if not _wait_scan(acc):
                 raise RuntimeError("scan did not finish")
+
+        if rule.get("origin") == ORIGIN_MUTE:
+            if not _run_mute(rule, acc, result, quiet):
+                return result          # a quiet run with nothing to do
+            return _finish_run(rule_id, result)
+        if rule["action"] not in mailops.ACTIONS:
+            # (a mute's action on a rule that is no mute: refused, never run
+            # as something else)
+            raise RuntimeError("bad action")
 
         f = parse_filter(rule["query"])
         snapshot = mailops.public_state(acc)["groups"][rule["grouping"]]
@@ -1356,7 +1444,160 @@ def _run_purge(rule: dict, acc, result: dict) -> None:
         log.exception("purge rule %s failed", rule["id"])
 
 
+def _await_job(completion: dict, queued: dict, result: dict) -> None:
+    """Wait for the mail action a run queued (`completion` is filled by the
+    delete worker), put what it did into `result`; a failure is raised."""
+    if demo.enabled():
+        result["queued"] = queued["queued"]
+        result["pending"] = True
+        return
+    deadline = time.monotonic() + 600
+    while not completion.get("done") and time.monotonic() < deadline:
+        time.sleep(0.05)
+    result["acted"] = completion.get("moved", 0)
+    if not completion.get("done"):
+        raise RuntimeError("mail action did not finish; check its progress "
+                           "before retrying")
+    if completion.get("error"):
+        cause = completion["error"]
+        raise RuntimeError(mailops.coded(
+            mailops.MOVED_THEN_FAILED, n=result["acted"], cause=cause)
+            if result["acted"] else cause)
+
+
+def _remember_handled(rule_id: str, msgids: list[str]) -> None:
+    """The mails a mute run handled (by Message-ID; a mail without one cannot
+    be remembered), kept on the rule, the newest `mute.DONE_MAX`."""
+    ids = [i for i in msgids if i]
+    if not ids:
+        return
+    with _LOCK:
+        rules = load_rules()
+        rule = next((r for r in rules if r["id"] == rule_id), None)
+        info = mute.clean_info(rule.get("mute")) if rule else None
+        if rule is None or info is None:
+            return
+        info["done"] = list(dict.fromkeys(info["done"] + ids))[-mute.DONE_MAX:]
+        rule["mute"] = info
+        _save(rules)
+
+
+def public(rule: dict) -> dict:
+    """The rule as the API and the UI get it: a mute's record is cut down to
+    its key and date (the senders and the handled mails stay on the server)."""
+    info = rule.get("mute")
+    if not isinstance(info, dict):
+        return rule
+    return {**rule, "mute": {k: info[k] for k in ("key", "since")
+                             if k in info}}
+
+
+def _run_mute(rule: dict, acc, result: dict, quiet: bool) -> bool:
+    """One run of a mute rule (fills `result`; a failure is raised and
+    recorded by `run_rule`). `mute.plan` decides what it touches: new mail of
+    the conversation, from the senders that were in it, in the Inbox, minus
+    protected senders and pinned mail. The mails are archived and marked read
+    in one step (one Undo, one log entry); without an Archive folder they are
+    only marked read and stay where they are, so only unread mail counts
+    then. Nothing is ever trashed. False when `quiet` and there is nothing to
+    do (see `run_rule`)."""
+    info = mute.clean_info(rule.get("mute"))
+    if info is None or rule["query"] != mute.query_of(info):
+        raise RuntimeError("bad mute rule")
+    plist = cfgmod.normalize_protected(cfgmod.load_config().get("protected"))
+    pinned = pinstore.load_account(acc.name)
+    with acc.lock:
+        archive = acc.folder_roles.get("archive")
+    plan = mute.plan(acc, info["key"], senders=frozenset(info["senders"]),
+                     after=info["since"], unread_only=not archive,
+                     pinned=pinned, protected=plist,
+                     done=frozenset(info["done"]))
+    items = plan["items"]
+    if quiet and not items:
+        return False
+    picked = items[:RULE_CAP]
+    result.update(
+        groups=1 if plan["found"] else 0, mails=len(items),
+        capped=len(items) - len(picked),
+        # (mails here, not groups: a conversation is one group)
+        skipped_protected=plan["protected"], skipped_pinned=plan["pinned"],
+        preview=[{"key": info["key"], "label": plan["label"],
+                  "count": len(items)}] if items else [])
+    if not archive:
+        result["read_only"] = True
+    if rule["mode"] == "execute" and picked:
+        completion: dict = {}
+        queued = mailops.delete_messages(
+            picked, "archive" if archive else "mark_read", acc=acc,
+            actor=f"rule:{rule['id']}", completion=completion,
+            read=bool(archive), label=plan["label"])
+        _await_job(completion, queued, result)
+        if not result.get("pending") and result["acted"] == len(picked):
+            # handled: never again - mail the user puts back (Undo, a move
+            # by hand) is theirs now
+            _remember_handled(rule["id"], plan["ids"][:len(picked)])
+    log.info("mute rule %s (%r, %s) ran: %d mails matched, %d acted, %d "
+             "capped, %d protected / %d pinned skipped", rule["id"],
+             rule["name"], rule["mode"], result["mails"], result["acted"],
+             result["capped"], result["skipped_protected"],
+             result["skipped_pinned"])
+    with acc.lock:
+        acc.state["notice"] = {
+            "key": "rule_queued" if result.get("pending")
+                   else "rule_executed" if rule["mode"] == "execute"
+                   else "rule_report",
+            "params": {"name": rule["name"], "groups": result["groups"],
+                       "mails": len(picked), "acted": result["acted"],
+                       "queued": result.get("queued", 0)}}
+    return True
+
+
 # ------------------------------------------------------------------ scheduler
+
+AFTER_SCAN_WAIT = 600     # seconds a run after a scan waits for another rule run
+AFTER_SCAN_POLL = 1.0     # ... and how often it asks again
+
+
+def after_scan(acc) -> None:
+    """A scan of `acc` ended: run this account's active "after each scan"
+    rules (the mutes), each quietly - a run with nothing to do leaves no trace.
+    In a thread of its own (never holds up the scan, and a rule run that is in
+    progress - maybe the very one that asked for this scan - finishes first).
+    Never raises; does nothing in the demo (it never scans)."""
+    try:
+        if demo.enabled():
+            return
+        default = accounts.default_name()
+        ids = [r["id"] for r in load_rules()
+               if r.get("schedule") == AFTER_SCAN
+               and r.get("origin") == ORIGIN_MUTE and r.get("mode") == "execute"
+               and (r.get("account") or default) == acc.name]
+        if ids:
+            threading.Thread(target=tenants.call_in,
+                             args=(acc.tenant, _after_scan_runs, ids),
+                             daemon=True).start()
+    except Exception:
+        log.exception("could not start the runs after the scan")
+
+
+def _after_scan_runs(ids: list[str]) -> None:
+    for rule_id in ids:
+        deadline = time.monotonic() + AFTER_SCAN_WAIT
+        while True:
+            try:
+                run_rule(rule_id, rescan=False, quiet=True)
+            except KeyError:
+                pass                         # unmuted in the meantime
+            except RuntimeError as exc:
+                if str(exc) == mailops.BUSY_RULE \
+                        and time.monotonic() < deadline:
+                    time.sleep(AFTER_SCAN_POLL)
+                    continue
+                # (a failed run is recorded in the rule's last run)
+            except Exception:
+                log.exception("rule %s failed after a scan", rule_id)
+            break
+
 
 def due(rule: dict, now: float | None = None) -> bool:
     period = _DUE_AFTER.get(rule.get("schedule", "manual"))

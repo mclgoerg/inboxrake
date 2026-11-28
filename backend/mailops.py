@@ -173,6 +173,9 @@ RULE_FILTER_TOO_LONG = "rule_filter_too_long"            # max=
 REQUEST_TOO_LARGE = "request_too_large"
 # Block: the sender / domain key is not one plain address / hostname
 BLOCK_KEY_INVALID = "block_key_invalid"
+# Mute this conversation: not (or no longer) in the scan / already muted
+MUTE_UNKNOWN = "mute_unknown"
+MUTE_ALREADY = "mute_already"
 # a List-Unsubscribe mailto: that would not be one plain mail to one address
 MAILTO_UNSAFE = "mailto_unsafe"
 # connecting (first run): no account set up yet / the CA file is missing
@@ -377,6 +380,7 @@ FOLDER_ERROR_CODES = frozenset({
     RULE_FILTER_TOO_LONG,
     REQUEST_TOO_LARGE,
     BLOCK_KEY_INVALID,
+    MUTE_UNKNOWN, MUTE_ALREADY,
     NO_ACCOUNT,
     CAFILE_MISSING,
     AUTH_FAILED,
@@ -3089,6 +3093,8 @@ def run_scan(acc=None, push: bool = False) -> None:
             save_snapshot(acc)
             waiting.after_scan(acc)          # answers clear their reminders
             bodyindex.sync_after_scan(acc)       # no-op unless mode "local"
+            from . import rules as rulesmod
+            rulesmod.after_scan(acc)     # the mutes run after each scan
             outcome = True
         finally:
             try:
@@ -3348,10 +3354,13 @@ def _move_uids(by_folder: dict[str, set[int]], action: str, dest: str,
                acc, progress_cb=None,
                moved_uids: dict[str, set[int]] | None = None,
                copies: list[dict] | None = None,
+               read: bool = False,
                ) -> tuple[int, dict, str]:
     """Move UIDs into the action's target folder. `moved_uids` (if given) is
     mutated in place so a mid-run failure still tells the caller what WAS
-    moved. Returns (moved, moved_uids, resolved_dest)."""
+    moved. `read` (a mute rule): each chunk is flagged \\Seen just before it
+    moves, after the folder's UIDVALIDITY was checked, so the mails land in
+    the target already read. Returns (moved, moved_uids, resolved_dest)."""
     total = sum(len(s) for s in by_folder.values())
     moved = 0
     if moved_uids is None:
@@ -3384,6 +3393,11 @@ def _move_uids(by_folder: dict[str, set[int]], action: str, dest: str,
                 if cancel_requested("delete", acc):
                     raise Cancelled()
                 chunk = uids[start:start + MOVE_CHUNK]
+                if read:
+                    status, _ = conn.uid("STORE", ",".join(map(str, chunk)),
+                                         "+FLAGS", r"(\Seen)")
+                    if status == "OK":
+                        _apply_seen(folder, chunk, acc)
                 if copies is None:
                     did_move = _uid_move(conn, ",".join(map(str, chunk)), trash, folder)
                     if did_move:
@@ -3736,7 +3750,8 @@ def _delete_worker(acc) -> None:
                     apply_partial()
             else:
                 moved, _, resolved[0] = _move_uids(
-                    by_folder, action, dest, acc, progress_cb, moved_uids, copies)
+                    by_folder, action, dest, acc, progress_cb, moved_uids, copies,
+                    read=bool(job.get("read")) and action == "archive")
                 with acc.lock:
                     apply_partial()
             log.info("action %r done: %d mails in %.1fs", action,
@@ -3792,17 +3807,21 @@ def _delete_worker(acc) -> None:
 def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                   action: str = "trash", dest: str = "",
                   actor: str = "user", completion: dict | None = None,
-                  token: str = "", strip: dict | None = None) -> str:
+                  token: str = "", strip: dict | None = None,
+                  read: bool = False) -> str:
     """Enqueue a background mail action (acc.lock held by caller). `token`
     (an AI assistant's token id) files the undo step in the assistant list.
     `strip` is what the one other action (a removal of files) works from (the
-    files to take out of each mail, see removefiles.py).
+    files to take out of each mail, see removefiles.py). `read` (archive
+    only, the mute rule): the mails are marked read as they move.
     Returns the id of the queued job - its undo step carries it as `job` - or
     "" when there was nothing left to queue."""
     if action not in ACTIONS and action != mimecut.ACTION:
         raise ValueError("bad action")
     if action == "move" and not dest:
         raise ValueError("move needs a target folder")
+    if read and action != "archive":
+        raise ValueError("bad action")
     if acc.state["status"] == "scanning":
         raise RuntimeError("busy: scan running")
     if acc.state["restore"]["status"] == "running" or acc.folder_lock.locked():
@@ -3825,6 +3844,7 @@ def _start_delete(by_folder: dict[str, set[int]], label: str, acc,
                             "action": action, "dest": dest, "actor": actor,
                             "token": token, "completion": completion,
                             "job": job_id,
+                            **({"read": True} if read else {}),
                             **({"strip": strip} if strip else {})})
     if acc.state["delete"]["status"] != "running":
         # `seq` identifies the job: the UI compares it to the value it saw
@@ -4120,14 +4140,17 @@ def set_mail_pins(items: list, pinned: bool, acc=None) -> dict:
 def delete_messages(items: list, action: str = "trash",
                     dest: str = "", acc=None, force: bool = False,
                     actor: str = "user", completion: dict | None = None,
-                    token: str = "") -> dict:
+                    token: str = "", read: bool = False,
+                    label: str = "") -> dict:
     """Act on individual messages ([folder, uid] pairs). A pinned mail is
     only ever moved on explicit request: without `force` a selection that
     contains one is refused as a whole (the UI asks per mail first and
     then re-sends with force). mark_read is non-destructive and exempt.
     `actor` is recorded in the audit log; `token` (an AI assistant's token
     id) files the undo step in the assistant list, and `completion` is
-    filled in when the job ends (see `_start_delete`)."""
+    filled in when the job ends (see `_start_delete`). `read` (archive
+    only) marks the mails read as they move; `label` names the step in the
+    Undo list and the log (default: "N selected mails")."""
     acc = acc or accounts.get()
     guard = (pinstore.load_account(acc.name)
              if action != "mark_read" and not force else set())
@@ -4150,8 +4173,9 @@ def delete_messages(items: list, action: str = "trash",
         if not by_folder:
             raise RuntimeError("no known messages selected")
         n = sum(len(s) for s in by_folder.values())
-        job_id = _start_delete(by_folder, f"{n} selected mails", acc, action,
-                               dest, actor, completion, token)
+        job_id = _start_delete(by_folder, label or f"{n} selected mails", acc,
+                               action, dest, actor, completion, token,
+                               read=read)
     # `job`: the queued job's id - its undo step carries the same id
     return {"ok": True, "queued": sum(len(s) for s in by_folder.values()),
             "job": job_id}
@@ -7647,9 +7671,10 @@ def _thread_rec(acc, folder: str, uid: int) -> dict | None:
 
 
 def _thread_hint(acc, folder: str, uid: int) -> dict | None:
-    """{"count": N} when the mail is part of a multi-mail thread, or is a
-    reply whose parent is not scanned (the user's own mail in Sent), else
-    None - so the reader is only offered where it shows something."""
+    """{"count": N, "key": <thread key>} when the mail is part of a
+    multi-mail thread, or is a reply whose parent is not scanned (the user's
+    own mail in Sent), else None - so the reader is only offered where it
+    shows something."""
     with acc.lock:
         m = acc.index.get(ikey(folder, uid))
         if m is None:
@@ -7658,7 +7683,8 @@ def _thread_hint(acc, folder: str, uid: int) -> dict | None:
         if rec is None:
             return None
         if rec["count"] > 1 or m.get("irt"):
-            return {"count": rec["count"]}
+            # the key names the conversation for "Mute this conversation"
+            return {"count": rec["count"], "key": rec["key"]}
     return None
 
 
