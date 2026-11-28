@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /* Where the All accounts page is opened from: one more row after the account
- * cards (switcher popover and phone sheet), the last item under Insights in
- * the sidebar, and the last card of the phone's Insights tab - each only with
- * two accounts or more, and none of them changes what was there. */
+ * cards (switcher popover and phone sheet), an item under Insights in the
+ * sidebar (after Waiting for a reply, before Your documents) and a card on the
+ * phone's Insights tab (after Waiting for a reply, before Your documents) -
+ * each only with two accounts or more, and none of them changes what was
+ * there. */
 
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
@@ -139,7 +141,7 @@ const side = (allAccounts?: boolean) => {
   return onOpen;
 };
 
-test("sidebar: All accounts is the last item under Insights, after Waiting for a reply", () => {
+test("sidebar: All accounts follows Waiting for a reply, before Your documents", () => {
   const onOpen = side(true);
   const names = screen.getAllByRole("button").map((b) => b.textContent ?? "");
   const at = (re: RegExp) => names.findIndex((n) => re.test(n));
@@ -187,7 +189,7 @@ const insights = (accounts?: string[]) => {
   return onOpen;
 };
 
-test("Insights: the card is the last one, after Waiting for a reply", async () => {
+test("Insights: the card follows Waiting for a reply, Your documents comes after it", async () => {
   const onOpen = insights(["a", "b", "c", "d"]);
   const card = await screen.findByRole("button", { name: /^All accounts/ });
   await waitFor(() => expect(card.textContent).toContain("4 mailboxes · 7.3 GB"));
@@ -195,7 +197,10 @@ test("Insights: the card is the last one, after Waiting for a reply", async () =
   const waiting = screen.getByRole("button", { name: /^Waiting for a reply/ });
   expect(waiting.compareDocumentPosition(card)
     & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(card.parentElement!.lastElementChild).toBe(card);
+  // only Your documents (the page after it) comes later
+  expect(card.nextElementSibling).toBe(
+    screen.getByRole("button", { name: /^Your documents/ }));
+  expect(card.parentElement!.lastElementChild).toBe(card.nextElementSibling);
   for (const name of [/^Statistics/, /^Subscriptions/, /^Your addresses/])
     expect(screen.getByRole("button", { name })).toBeTruthy();
   fireEvent.click(card);

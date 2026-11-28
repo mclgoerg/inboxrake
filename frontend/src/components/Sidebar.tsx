@@ -1,4 +1,5 @@
-import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, FolderTree,
+import { AtSign, BarChart3, Boxes, ClipboardList, Copy, Eye, FileText,
+  FolderTree,
   Hourglass, Layers,
   LayoutDashboard, LayoutGrid, Mails,
   Paperclip, Repeat, Search, ScrollText, Settings as SettingsIcon,
@@ -13,7 +14,7 @@ import { fmtNum } from "../numfmt";
 export type SidebarTool = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "yourfolders" | "settings";
+  | "yourfolders" | "documents" | "settings";
 
 export interface SidebarProps {
   page: Page;
@@ -161,6 +162,7 @@ export function Sidebar({ page, onPage, onOpen, account, senderCount,
       {tool("waiting", <Hourglass size={16} aria-hidden />, t("waiting.menu"))}
       {allAccounts && tool("accounts", <Boxes size={16} aria-hidden />,
         t("allp.menu"))}
+      {tool("documents", <FileText size={16} aria-hidden />, t("docs.menu"))}
       <div className="mt-auto flex items-center gap-1 border-t border-line
         pt-3">
         <button type="button" aria-current={page === "activity" ? "page"

@@ -1393,6 +1393,34 @@ PROTON.uv["Labels"] = 1
 PROTON.noselect["Labels"] = "\\Noselect"
 random.setstate(_state)
 
+# Your documents (IZ134): the papers of a few invented senders - an insurer's
+# policy files, tickets, tax-office notices, a utility's yearly bill - added to
+# the invoices, receipts and contracts the demo already has, so every kind of
+# the page shows real files over three years. Added last and from its own
+# random stream, so every other mail keeps its exact data and uid.
+_state = random.getstate()
+random.seed(134)
+PROTON.mailbox["INBOX"] += (
+    mails('"Insure Example" <service@insure.example>',
+          ["Your policy documents", "Ihre Versicherungspolice {n}"], 3,
+          newest_days=45, span_days=800, unread=0.1, size=(2200000, 2600000),
+          atts=[("policy.pdf", 1250000), ("terms.pdf", 380000)], att_n=3)
+    + mails('"Ticketline" <orders@ticketline.example>',
+            ["Your tickets for 14 Dec", "Your e-ticket is ready",
+             "Your tickets for the concert"], 5, newest_days=14,
+            span_days=500, unread=0.1, size=(250000, 400000),
+            atts=[("tickets.pdf", 220000)], att_n=5)
+    + mails('"Finanzamt Musterstadt" <post@finanzamt-musterstadt.example>',
+            ["Bescheid für 2025", "Bescheid für 2024", "Bescheid für 2023",
+             "Ihre Steuererklärung ist eingegangen"], 4, newest_days=27,
+            span_days=900, unread=0.0, size=(450000, 650000),
+            atts=[("bescheid.pdf", 410000)], att_n=4)
+    + mails('"Stadtwerke Example" <post@stadtwerke.example>',
+            ["Ihre Jahresabrechnung {n}"], 3, newest_days=60, span_days=1000,
+            unread=0.2, size=(450000, 650000),
+            atts=[("jahresabrechnung.pdf", 412000)], att_n=3))
+random.setstate(_state)
+
 
 def _time_machine(now: float, box: FakeIMAP, sweep_id: str) -> tuple:
     """The Time machine's demo history of the Proton account: real undo steps
@@ -1870,6 +1898,10 @@ def generate() -> dict:
     for m in sorted((m for m in accounts.get("proton").index.values()
                      if m["addr"] == "anna.weber@mailfox.example"),
                     key=lambda m: m["uid"])[:3]:
+        pinstore.set_pinned(m["msgid"], True, "proton")
+    # Your documents: the newest tax notice is kept safe, as the board shows
+    for m in [m for m in accounts.get("proton").index.values()
+              if m["subject"] == "Bescheid für 2025"][:1]:
         pinstore.set_pinned(m["msgid"], True, "proton")
     # "Same mails in several accounts": three of the forwarded copies are pinned
     # in iCloud (they stay when its copies go), the dozen that "Move to another

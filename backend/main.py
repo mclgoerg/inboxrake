@@ -46,6 +46,7 @@ from . import csvsafe
 from . import digest as digestmod
 from . import dupstore
 from . import demo as demomod
+from . import documents
 from . import errortext
 from . import habits as habitsmod
 from . import habitstore
@@ -2002,6 +2003,54 @@ def post_remove_zip(body: RemoveFilesBody, account: str | None = Query(None)):
         chunks(), media_type="application/zip",
         headers={"Content-Length": str(size), "Content-Disposition":
                  'attachment; filename="inboxrake-files.zip"'})
+
+
+@app.get("/api/documents/summary")
+def get_documents_summary(account: str | None = Query(None)):
+    """Your documents: the years with mails that carry a file and read like a
+    document (invoices & bills, contracts & policies, bookings & tickets, tax
+    & official), with the counts per kind. Read from the scan and the
+    attachment analysis - nothing is asked of the mail server."""
+    return documents.summary(_acc(account))
+
+
+@app.get("/api/documents")
+def get_documents(year: int = Query(..., ge=1970, le=2200),
+                  account: str | None = Query(None)):
+    """The documents of one year, newest first."""
+    return documents.listing(_acc(account), year)
+
+
+class DocumentFileBody(BaseModel):
+    """One file of one listed document mail (name + size as the list shows)."""
+    folder: str = Field(max_length=1000)
+    uid: int = Field(ge=0, le=2**32)
+    name: str = Field(min_length=1, max_length=300)
+    size: int = Field(ge=0, le=2**40)
+
+
+def _documents_refused(exc: "documents.Refused") -> HTTPException:
+    return HTTPException(exc.status, exc.code)
+
+
+@app.post("/api/documents/file")
+def post_documents_file(body: DocumentFileBody,
+                        account: str | None = Query(None)):
+    """Download one file of one of the listed documents: read from the mail
+    server now (BODY.PEEK - nothing is marked read, nothing is changed) and
+    handed to the browser. POST so file names stay out of URLs and logs."""
+    acc = _acc(account)
+    try:
+        data, name = documents.read_file(acc, body.folder, body.uid,
+                                         body.name, body.size)
+    except documents.Refused as exc:
+        raise _documents_refused(exc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+    return Response(content=data, media_type="application/octet-stream",
+                    headers={"Content-Disposition":
+                             documents.content_disposition(name),
+                             "Cache-Control": "no-store"})
 
 
 @app.get("/api/duplicates")

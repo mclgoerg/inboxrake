@@ -89,7 +89,7 @@ const insights = (waiting: unknown) => {
   return onOpen;
 };
 
-test("Insights: the card is the last one, after Recent activity", async () => {
+test("Insights: the card follows Recent activity, Your documents comes after it", async () => {
   insights(resp().summary);
   await waitFor(() => expect(stats).toHaveBeenCalled());
   const card = screen.getByRole("button", { name: /^Waiting for a reply/ });
@@ -97,7 +97,10 @@ test("Insights: the card is the last one, after Recent activity", async () => {
   // the card follows the Recent activity section in the page
   expect(recent.compareDocumentPosition(card)
     & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(card.parentElement!.lastElementChild).toBe(card);
+  // only Your documents (the page after it) comes later
+  expect(card.nextElementSibling).toBe(
+    screen.getByRole("button", { name: /^Your documents/ }));
+  expect(card.parentElement!.lastElementChild).toBe(card.nextElementSibling);
   // every card of today is still there
   for (const name of [/^Statistics/, /^Subscriptions/, /^Your addresses/])
     expect(screen.getByRole("button", { name })).toBeTruthy();

@@ -224,7 +224,9 @@ trackers, a grade from A to F for every sender with the reasons behind it,
 subscriptions (what you still pay for, from receipt subjects, with
 reminders and an optional amount read from the latest receipt), "Waiting
 for a reply" (the mails you sent that nobody answered, with a reminder),
-"Your addresses" (which of your aliases leaked, retire one), space
+"Your addresses" (which of your aliases leaked, retire one), "Your documents"
+(the invoices, contracts, tickets and tax mail that carry a file, by year, with
+each file one tap away), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
 an earlier point), multiple strictly separate

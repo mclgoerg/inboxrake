@@ -877,6 +877,41 @@ export interface RemoveCheck {
   zip: { bytes: number; cap: number };
 }
 
+/** Your documents (`/api/documents`): mails that carry a file and read like a
+ *  document, by year. Read from the scan and the attachment analysis. */
+export type DocKind = "invoices" | "contracts" | "bookings" | "tax";
+export interface DocFile { name: string; size: number }
+export interface DocTotals { mails: number; files: number; bytes: number }
+export interface DocYear extends DocTotals {
+  year: number;
+  kinds: Record<DocKind, DocTotals>;
+}
+export interface DocsSummary {
+  scanned: boolean;
+  /** the attachment analysis has run (without it no mail is known to carry a
+   *  file: the page offers to analyze) */
+  analyzed: boolean;
+  analyzing: boolean;
+  /** oldest year first */
+  years: DocYear[];
+}
+export interface DocRow {
+  folder: string; uid: number; ts: number; date: string; subject: string;
+  addr: string; name: string; size: number; seen: boolean;
+  kind: DocKind;
+  files: DocFile[];
+  pinned: boolean;
+  /** has a Message-ID (a mail without one cannot be pinned) */
+  pinnable: boolean;
+}
+export interface DocsPage {
+  year: number;
+  total: number;
+  /** more documents than rows (the newest are listed) */
+  capped: boolean;
+  rows: DocRow[];
+}
+
 export interface ConversationResp {
   key: string;
   label: string;

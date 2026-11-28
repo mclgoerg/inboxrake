@@ -35,6 +35,7 @@ import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
 import { YourFoldersPanel } from "./components/YourFoldersPanel";
 import { AllAccountsPanel } from "./components/AllAccountsPanel";
+import { DocumentsPanel } from "./components/DocumentsPanel";
 import { COPIES_VIEW } from "./components/AllMailsView";
 import { canOpenAllAccounts } from "./allAccounts";
 import { useAcrossRuns } from "./useAcrossRuns";
@@ -310,6 +311,8 @@ export default function App() {
   // The All accounts page (a page, never a mode: nothing about the selected
   // account depends on it).
   const [allAccountsOpen, setAllAccountsOpen] = useState(false);
+  // Your documents (Insights, the last page)
+  const [docsOpen, setDocsOpen] = useState(false);
   // The Waiting for a reply page opened from a sender pane: select that mail.
   const [waitingFocus, setWaitingFocus] = useState<string | null>(null);
   // The Subscriptions page opened from the Overview's Review: only the unused.
@@ -346,6 +349,7 @@ export default function App() {
     : trackersOpen ? "trackers" : subsOpen ? "subscriptions"
     : addressesOpen ? "addresses" : waitingOpen ? "waiting"
     : allAccountsOpen ? "accounts" : yourFoldersOpen ? "yourfolders"
+    : docsOpen ? "documents"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
   // A focus belongs to the visit it was asked for.
@@ -1348,7 +1352,7 @@ export default function App() {
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
     setSubsOpen(false); setAddressesOpen(false); setWaitingOpen(false);
     setAllAccountsOpen(false); setAuditOpen(false);
-    setYourFoldersOpen(false);
+    setYourFoldersOpen(false); setDocsOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1422,7 +1426,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || yourFoldersOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || yourFoldersOpen || docsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2680,6 +2684,7 @@ export default function App() {
     addresses: () => setAddressesOpen(true),
     waiting: () => setWaitingOpen(true),
     accounts: () => setAllAccountsOpen(true),
+    documents: () => setDocsOpen(true),
     activity: () => setAuditOpen(true),
     settings: () => {
       if (navPage !== "settings") settingsFrom.current = navPage;
@@ -3288,6 +3293,13 @@ export default function App() {
           setPendingOpen({ account: name, addr });
           switchAccount(name);
         }} />
+    )}
+    {toolShown("documents") && (
+      <DocumentsPanel key={account} account={account}
+        scannedTs={state?.scanned_ts ?? null} atts={state?.atts}
+        // the same analysis the Attachments page starts
+        onAnalyze={async () => { await api.startAttachments(); await refresh(); }}
+        onClose={() => closeTool(() => setDocsOpen(false))} />
     )}
     {toolShown("attachments") && state && (
       <AttachmentsPanel key={account}

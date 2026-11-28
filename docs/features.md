@@ -59,7 +59,7 @@ On screens 1024 px and wider a sidebar holds the
 account switcher, "Search all mails", Overview, Senders, All mail, **Clean up**
 (Triage, Duplicates, Attachments, Rules, Junk, Trash, Your folders), **Insights**
 (Statistics, Space map, Your year in mail, Trackers, Subscriptions, Your addresses, Waiting for a reply and,
-with two accounts or more, All accounts) and, at the bottom,
+with two accounts or more, All accounts, then Your documents) and, at the bottom,
 Activity and Settings. Junk and Trash show their mail counts. On wide screens
 each tool opens as a page in the content column next to the sidebar (and has
 its own address, e.g. `#/triage`, so reload and the browser's Back / forward
@@ -1167,6 +1167,44 @@ no vendor lists - hosts are read from your own mail); nothing is loaded,
 sent or given to the AI, and only two flags plus plain tracker domains are
 kept per mail. Mails indexed before this existed show up under "Check older
 mails" (a rebuild of the index, with the usual confirm).
+
+### Your documents
+
+<small class="where">Insights → Your documents (the last item) · a card at the end of the phone's Insights tab</small>
+
+The papers that matter are spread over hundreds of senders. This page lists,
+**year by year**, the mails that carry a file **and** read like a document -
+four kinds, each a tile you can press to narrow the list:
+
+- **Invoices & bills**, **Contracts & policies** and **Bookings & tickets**:
+  the classes [Keep-safe](#keep-safe) already knows, read from the subject the
+  same way (plus the contract and insurance-policy words of its own for the
+  contract kind).
+- **Tax & official**: a new pattern set of generic words in English and German
+  (assessment and tax notices, tax certificates, notices from authorities and
+  fines, forms such as a W-2, permits). A subject that asks you to rate
+  something, and newsletters or promotions, are never tax mail. A subject that
+  names an invoice or receipt is an invoice; the contract words win over the weak
+  bill words; the first kind that fits is the one shown.
+
+A row shows the day, the sender, the file names and sizes and the kind, and
+has three things: **open the mail** (the usual reader, with Previous / Next
+through the list), **download its file** (a mail with several files offers a
+menu) and **keep it safe** - the same "Protect this mail" pin as everywhere
+else, so no bulk action or rule will move it. The file is read from your mail
+server when you tap download (the one mail, `BODY.PEEK` - nothing is marked
+read), checked to be the mail the scan saw and handed to your browser; nothing
+is sent anywhere else and nothing is changed or deleted. The list itself is
+built from the scan and the **attachment analysis** - until that has run the
+page offers **Analyze** first (the same analysis as on the Attachments page).
+Tiny pictures (logos, signatures) and signature, calendar and contact files do
+not count as documents; a mail kept in two folders is one document.
+
+Good to know: it reads only what the last scan and analysis hold (scan again
+after new mail arrives), and the year is the date the mail arrived. A download
+is refused, with the reason, when the mail on the server is not the one the scan
+saw (the folder was renumbered or the mail replaced), is bigger than 64 MB or
+is gone. Nothing is stored for the page.
 
 </div>
 

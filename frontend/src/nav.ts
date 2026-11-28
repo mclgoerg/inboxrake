@@ -7,12 +7,12 @@ import { afterBackSettles } from "./backStack";
 export type ToolPage = "search" | "triage" | "duplicates" | "attachments"
   | "rules" | "junk" | "trash" | "stats" | "space" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "move" | "yourfolders";
+  | "move" | "yourfolders" | "documents";
 
 export const TOOL_PAGES: readonly ToolPage[] = ["search", "triage",
   "duplicates", "attachments", "rules", "junk", "trash", "stats", "space",
   "trackers", "subscriptions", "addresses", "waiting", "accounts", "activity",
-  "move", "yourfolders"];
+  "move", "yourfolders", "documents"];
 
 /** Pages of the app shell. `settings` is a page of its own (not a tool): from
  *  1024 px a section column beside the form, below it an iOS-style root list
@@ -35,7 +35,7 @@ export const TOOL_TAB: Partial<Record<ToolPage, Page>> = {
   yourfolders: "cleanup",
   stats: "insights", space: "insights", trackers: "insights",
   subscriptions: "insights", addresses: "insights", waiting: "insights",
-  accounts: "insights", activity: "insights",
+  accounts: "insights", documents: "insights", activity: "insights",
 };
 /** The start page for everyone: a fresh load without a route lands here. */
 export const DEFAULT_PAGE: Page = "overview";

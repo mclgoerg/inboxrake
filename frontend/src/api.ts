@@ -15,6 +15,7 @@ import type {
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
   FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp, RemoveCheck,
   HabitsResp,
+  DocFile, DocsPage, DocsSummary,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -78,6 +79,18 @@ export function saveBlob(name: string, blob: Blob): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
+/** The file name a download's `Content-Disposition` carries: the UTF-8
+ *  `filename*` when there is one (the plain `filename` is ASCII only), else
+ *  the plain one; null when the response names none. */
+export function dispositionName(res: Response): string | null {
+  const cd = res.headers.get("Content-Disposition") || "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1];
+  if (star) {
+    try { return decodeURIComponent(star); } catch { /* fall through */ }
+  }
+  return /filename="([^"]+)"/i.exec(cd)?.[1] ?? null;
 }
 
 /* Stable error codes the backend answers with (the HTTP `detail`; see
@@ -248,6 +261,13 @@ const ERROR_CODES: Record<string, string> = {
   rm_changed: "ferr.rm_changed",
   rm_zip_too_big: "ferr.rm_zip_too_big",
   rm_failed: "ferr.rm_failed",
+  // Your documents (backend/documents.py)
+  docs_not_scanned: "ferr.docs_not_scanned",
+  docs_gone: "ferr.docs_gone",
+  docs_changed: "ferr.docs_changed",
+  docs_too_big: "ferr.docs_too_big",
+  docs_failed: "ferr.docs_failed",
+  docs_busy: "ferr.docs_busy",
   undo_through_removal: "ferr.undo_through_removal",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
@@ -399,6 +419,18 @@ async function req<T>(path: string, body?: unknown,
     throw err;
   }
   return res.json() as Promise<T>;
+}
+
+/** Throw the error of a refused download: the backend's coded `detail`,
+ *  worded in the user's language (`err.code` is the code). */
+async function failedDownload(res: Response): Promise<never> {
+  let detail = await res.text();
+  try { detail = JSON.parse(detail).detail ?? detail; } catch { /* plain */ }
+  const parsed = parseErrorDetail(detail);
+  const err: Error & { code?: string } =
+    new Error(detail ? errorText(detail) : `HTTP ${res.status}`);
+  if (parsed) err.code = parsed.code;
+  throw err;
 }
 
 export const api = {
@@ -712,16 +744,21 @@ export const api = {
     const res = await fetch(withAccount("/api/attachments/remove/zip"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, files }) });
-    if (!res.ok) {
-      let detail = await res.text();
-      try { detail = JSON.parse(detail).detail ?? detail; } catch { /* plain */ }
-      const parsed = parseErrorDetail(detail);
-      const err: Error & { code?: string } =
-        new Error(detail ? errorText(detail) : `HTTP ${res.status}`);
-      if (parsed) err.code = parsed.code;
-      throw err;
-    }
+    if (!res.ok) await failedDownload(res);
     saveBlob("inboxrake-files.zip", await res.blob());
+  },
+  // Your documents (backend/documents.py): read from the scan, nothing is
+  // changed; a download reads the one mail from the mail server
+  documentsSummary: () => req<DocsSummary>("/api/documents/summary"),
+  documents: (year: number) => req<DocsPage>(`/api/documents?year=${year}`),
+  /** One file of a listed document mail, handed to the browser. */
+  downloadDocument: async (folder: string, uid: number,
+                           file: DocFile): Promise<void> => {
+    const res = await fetch(withAccount("/api/documents/file"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder, uid, name: file.name, size: file.size }) });
+    if (!res.ok) await failedDownload(res);
+    saveBlob(dispositionName(res) ?? file.name, await res.blob());
   },
   duplicates: () => req<DupSet[]>("/api/duplicates"),
   duplicatesSummary: () => req<DupSummary>("/api/duplicates/summary"),
