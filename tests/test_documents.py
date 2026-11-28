@@ -423,6 +423,21 @@ def test_a_server_failure_is_a_code_never_its_text(monkeypatch):
     assert r.json()["detail"].startswith("host_not_found")
 
 
+def test_a_file_that_cannot_be_decoded_is_a_failure_not_a_crash(monkeypatch):
+    from docs_util import CRLF, b64, blob
+    spec = ("Invoice 7", [("broken.pdf", 3000)], INVOICE[2], INVOICE[3])
+    m = doc(1, spec)
+    good = b64(blob(10, 3000)).rstrip(CRLF)
+    assert good in m["raw"]
+    m["raw"] = m["raw"].replace(good, b"QUJDA")        # 5 characters: damaged
+    m["size"] = len(m["raw"])
+    server(monkeypatch, [m], {"Archive": []})
+    analyse(client)
+    (row,) = rows(client)
+    r = client.post("/api/documents/file", json=file_body(row))
+    assert (r.status_code, r.json()["detail"]) == (502, "docs_failed")
+
+
 def test_a_hostile_file_name_is_made_safe(monkeypatch):
     # "../Übersicht für März.pdf" as a mail carries it (RFC 2047)
     coded_name = "=?utf-8?B?Li4vw5xiZXJzaWNodCBmw7xyIE3DpHJ6LnBkZg==?="

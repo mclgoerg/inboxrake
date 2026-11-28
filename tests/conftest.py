@@ -464,8 +464,11 @@ class FakeIMAP:
                text, ""]
         data = "\r\n".join(out).encode("utf-8")
         for name, size in m["atts"]:
-            line = base64.b64encode(hashlib.sha256(name.encode()).digest()
-                                    [:57]).replace(b"\n", b"") + b"\r\n"
+            # 57 bytes = exactly 76 base64 characters per line, no padding:
+            # the file decodes (Your documents downloads it, the demo's too)
+            line = base64.b64encode(
+                (hashlib.sha256(name.encode()).digest() * 2)[:57]
+            ).replace(b"\n", b"") + b"\r\n"
             body = line * (size // len(line))
             body += b" " * (size - len(body))       # exactly `size` octets
             data += (b"--mbatt\r\nContent-Type: application/octet-stream; "

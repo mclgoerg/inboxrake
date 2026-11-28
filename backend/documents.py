@@ -348,4 +348,6 @@ def read_file(acc, folder: str, uid: int, name: str, size: int
     try:
         return mimecut.payload(raw, found[0].part), name
     except Exception:
-        raise Refused(CHANGED, 409)
+        # a part whose content cannot be decoded (damaged base64)
+        log.warning("a file of a mail could not be decoded")
+        raise Refused(FAILED, 502)
