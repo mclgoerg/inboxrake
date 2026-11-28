@@ -13,6 +13,8 @@ const documents = vi.fn();
 const downloadDocument = vi.fn();
 const pin = vi.fn();
 const cancel = vi.fn();
+const documentsPlan = vi.fn();
+const downloadDocumentsZip = vi.fn();
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   api: {
@@ -21,6 +23,8 @@ vi.mock("./api", async (importOriginal) => ({
     downloadDocument: (...a: unknown[]) => downloadDocument(...a),
     pin: (...a: unknown[]) => pin(...a),
     cancel: (...a: unknown[]) => cancel(...a),
+    documentsPlan: (...a: unknown[]) => documentsPlan(...a),
+    downloadDocumentsZip: (...a: unknown[]) => downloadDocumentsZip(...a),
   },
 }));
 // the reader is its own tested component: here only what the page hands it
@@ -43,6 +47,7 @@ vi.mock("./components/MailList", () => ({
 import { DocumentsPanel } from "./components/DocumentsPanel";
 import { DialogProvider, ToastProvider } from "./components/ui";
 import { KINDS_2026, ROWS, page, row, summary } from "./documentsFixtures";
+import type { DocsPlan, DocsZipResult } from "./types";
 import { setLang } from "./i18n";
 
 /** matchMedia for one viewport width; `coarse` = a touch screen. */
@@ -64,6 +69,13 @@ const same = (want: string) => (content: string) => plain(content) === want;
 const PROTECT = /^Protect this mail/;
 const UNPROTECT = "Remove this mail's protection";
 
+const planOf = (over: Partial<DocsPlan> = {}): DocsPlan => ({ year: 2026,
+  kinds: ["invoices", "contracts", "tax"], mails: 38, files: 51,
+  bytes: 51 * 1024 * 1024, pinnable: 38, parts: 1, cap: 256 * 1024 * 1024,
+  plan: "plan-1", ...over });
+const held = (over: Partial<DocsZipResult> = {}): DocsZipResult =>
+  ({ mails: 38, files: 51, skipped: 0, pinned: 0, ...over });
+
 const onClose = vi.fn();
 const onAnalyze = vi.fn();
 const show = (props: Record<string, unknown> = {}) => render(
@@ -82,13 +94,15 @@ beforeEach(() => {
   downloadDocument.mockResolvedValue(undefined);
   pin.mockResolvedValue({ ok: true, pinned: true });
   cancel.mockResolvedValue({ ok: true });
+  documentsPlan.mockResolvedValue(planOf());
+  downloadDocumentsZip.mockResolvedValue(held());
   onAnalyze.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   for (const f of [documentsSummary, documents, downloadDocument, pin, cancel,
-    onClose, onAnalyze]) f.mockReset();
+    documentsPlan, downloadDocumentsZip, onClose, onAnalyze]) f.mockReset();
   setLang("en");
 });
 
@@ -464,4 +478,273 @@ test("German: the states before a list", async () => {
   documentsSummary.mockResolvedValue(summary({ scanned: false, years: [] }));
   show();
   expect(await screen.findByText("Scanne zuerst dein Postfach")).toBeTruthy();
+});
+
+/* ------------------------------ Download 2026... -------------------------- */
+
+/** The dialog of "Download 2026..." (the page itself is a dialog too). */
+const zipDialog = () => screen.getByText(
+  /^(Download your \d{4} documents|Deine Dokumente \d{4} herunterladen)$/)
+  .closest("[role=dialog]") as HTMLElement;
+const openZip = async (year = "2026") => {
+  fireEvent.click(screen.getByRole("button",
+    { name: new RegExp(`^Download ${year}…$`) }));
+  await screen.findByText(`Download your ${year} documents`);
+};
+const goZip = () => fireEvent.click(within(zipDialog()).getByRole("button",
+  { name: "Download" }));
+
+test("Download 2026... is the header's button and follows the year", async () => {
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  expect(screen.getByRole("button", { name: "Download 2026…" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "2025" }));
+  expect(await screen.findByRole("button", { name: "Download 2025…" }))
+    .toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Download 2026…" })).toBeNull();
+});
+
+test("there is nothing to download before there is a list", async () => {
+  documentsSummary.mockResolvedValue(summary({ years: [] }));
+  show();
+  await screen.findByText("No documents found yet");
+  expect(screen.queryByRole("button", { name: /^Download \d{4}…$/ })).toBeNull();
+});
+
+test("the year as one .zip: the plan, then the download, then what it holds", async () => {
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  await waitFor(() => expect(downloadDocumentsZip).toHaveBeenCalledOnce());
+  expect(documentsPlan).toHaveBeenCalledWith(2026,
+    ["invoices", "contracts", "tax"]);
+  expect(downloadDocumentsZip).toHaveBeenCalledWith({ year: 2026,
+    kinds: ["invoices", "contracts", "tax"], part: 1, parts: 1,
+    plan: "plan-1", index: true, pin: false, lang: "en" });
+  expect(await screen.findByText(same(
+    "Saved your 2026 documents: 51 files from 38 mails."))).toBeTruthy();
+  // the dialog is gone, the page is as it was
+  await waitFor(() => expect(screen.queryByText("Download your 2026 documents"))
+    .toBeNull());
+  expect(rows()).toHaveLength(6);
+  expect(documents).toHaveBeenCalledTimes(1);          // nothing was pinned
+});
+
+test("what is ticked in the dialog is what is asked for", async () => {
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  const dlg = within(zipDialog());
+  fireEvent.click(dlg.getByRole("checkbox", { name: "Bookings & tickets" }));
+  fireEvent.click(dlg.getByRole("checkbox", { name: "Invoices & bills" }));
+  fireEvent.click(dlg.getByRole("checkbox", { name: /^Add a list/ }));
+  goZip();
+  await waitFor(() => expect(downloadDocumentsZip).toHaveBeenCalledOnce());
+  expect(documentsPlan).toHaveBeenCalledWith(2026,
+    ["contracts", "bookings", "tax"]);
+  expect(downloadDocumentsZip.mock.calls[0][0]).toMatchObject({ index: false,
+    pin: false });
+});
+
+test("a year over the cap comes in several downloads, one after the other", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 3, mails: 38, files: 51 }));
+  downloadDocumentsZip.mockResolvedValueOnce(held({ mails: 20, files: 25 }))
+    .mockResolvedValueOnce(held({ mails: 10, files: 15 }))
+    .mockResolvedValueOnce(held({ mails: 8, files: 11 }));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  expect(await screen.findByText(same(
+    "Saved your 2026 documents: 51 files from 38 mails. It came in 3 downloads.")))
+    .toBeTruthy();
+  expect(downloadDocumentsZip.mock.calls.map((c) => [c[0].part, c[0].parts,
+    c[0].plan])).toEqual([[1, 3, "plan-1"], [2, 3, "plan-1"], [3, 3, "plan-1"]]);
+  // the dialog asked once for its footer, the download once more: one plan
+  // for all three parts
+  expect(documentsPlan).toHaveBeenCalledTimes(2);
+});
+
+test("keeping the mails safe in the same step: asked, said, and the list read again", async () => {
+  downloadDocumentsZip.mockResolvedValue(held({ pinned: 38, skipped: 2 }));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  fireEvent.click(within(zipDialog()).getByRole("checkbox",
+    { name: /^Also keep these mails safe/ }));
+  goZip();
+  expect(await screen.findByText(same(
+    "Saved your 2026 documents: 51 files from 38 mails. "
+    + "2 mails could not be read just now and are not in it. "
+    + "38 mails are now kept safe."))).toBeTruthy();
+  expect(downloadDocumentsZip.mock.calls[0][0].pin).toBe(true);
+  // the rows show what was pinned now
+  await waitFor(() => expect(documents).toHaveBeenCalledTimes(2));
+  expect(documents).toHaveBeenLastCalledWith(2026);
+});
+
+test("a plan that is refused stays in the dialog, with the reason, and Try again asks again", async () => {
+  // the dialog's footer asks first (fine), the download's plan is refused
+  documentsPlan.mockResolvedValueOnce(planOf()).mockRejectedValueOnce(new Error(
+    "There are no documents of that year and kind in the last scan."));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  expect((await within(zipDialog()).findByRole("alert")).textContent)
+    .toContain("There are no documents of that year");
+  expect(downloadDocumentsZip).not.toHaveBeenCalled();
+  fireEvent.click(within(zipDialog()).getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(downloadDocumentsZip).toHaveBeenCalledOnce());
+  expect(documentsPlan).toHaveBeenCalledTimes(3);
+});
+
+test("a part that fails stops the rest and says so", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 3 }));
+  downloadDocumentsZip.mockResolvedValueOnce(held())
+    .mockRejectedValueOnce(new Error("The list changed while you were looking."));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  expect((await within(zipDialog()).findByRole("alert")).textContent)
+    .toContain("The list changed");
+  expect(downloadDocumentsZip).toHaveBeenCalledTimes(2);   // not a third
+  expect(screen.queryByText(/^Saved your 2026 documents/)).toBeNull();
+});
+
+test("Cancel asks for nothing", async () => {
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  fireEvent.click(within(zipDialog()).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByText("Download your 2026 documents"))
+    .toBeNull());
+  expect(documentsPlan).toHaveBeenCalledTimes(1);    // the footer's, nothing else
+  expect(downloadDocumentsZip).not.toHaveBeenCalled();
+});
+
+test("the dialog knows where the server splits a year", async () => {
+  documentsSummary.mockResolvedValue(summary({ cap: 20 * 1024 * 1024 }));
+  documentsPlan.mockResolvedValue(planOf({ parts: 4 }));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  // the estimate from the sizes first, then the server's count
+  expect(await screen.findByText((c) => /4 downloads of up to 20(\.0)? MB/
+    .test(plain(c)))).toBeTruthy();
+});
+
+test("phone: the button is in the page, next to the year", async () => {
+  viewport(390, true);
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  const years = screen.getByRole("radiogroup", { name: "Year" });
+  const button = screen.getByRole("button", { name: "Download 2026…" });
+  expect(years.parentElement).toBe(button.parentElement);
+  expect(button.closest("[data-scroll-id]")).toBeTruthy();
+  await openZip();
+  goZip();
+  await waitFor(() => expect(downloadDocumentsZip).toHaveBeenCalledOnce());
+});
+
+test("phone: a single year has no switch, but the button is still there", async () => {
+  viewport(390, true);
+  const all = summary();
+  documentsSummary.mockResolvedValue({ ...all, years: [all.years[2]] });
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  expect(screen.queryByRole("radiogroup", { name: "Year" })).toBeNull();
+  const button = screen.getByRole("button", { name: "Download 2026…" });
+  expect(button.closest("[data-scroll-id]")).toBeTruthy();
+  await openZip();
+});
+
+test("German: the button, the dialog and what was saved", async () => {
+  setLang("de");
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  fireEvent.click(screen.getByRole("button", { name: "2026 herunterladen…" }));
+  await screen.findByText("Deine Dokumente 2026 herunterladen");
+  fireEvent.click(within(zipDialog()).getByRole("button",
+    { name: "Herunterladen" }));
+  expect(await screen.findByText(same(
+    "Deine Dokumente 2026 sind gespeichert: 51 Dateien aus 38 Mails.")))
+    .toBeTruthy();
+  expect(downloadDocumentsZip.mock.calls[0][0].lang).toBe("de");
+});
+
+/* ------------------ stopping, failing and going on (several parts) --------- */
+
+test("a failed part is asked for again, not the parts before it", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 3 }));
+  downloadDocumentsZip.mockResolvedValueOnce(held())
+    .mockRejectedValueOnce(new Error("The server did not answer."))
+    .mockResolvedValue(held());
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  await within(zipDialog()).findByRole("alert");
+  fireEvent.click(within(zipDialog()).getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText((c) => /^Saved your 2026 documents/
+    .test(plain(c)))).toBeTruthy();
+  expect(downloadDocumentsZip.mock.calls.map((c) => c[0].part))
+    .toEqual([1, 2, 2, 3]);
+  // three parts saved, counted once each
+  expect(screen.getByText(same(
+    "Saved your 2026 documents: 153 files from 114 mails. It came in 3 downloads.")))
+    .toBeTruthy();
+});
+
+test("Cancel after a part that pinned mails says so and reads the list again", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 2 }));
+  downloadDocumentsZip.mockResolvedValueOnce(held({ pinned: 20 }))
+    .mockRejectedValueOnce(new Error("The server did not answer."));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  fireEvent.click(within(zipDialog()).getByRole("checkbox",
+    { name: /^Also keep these mails safe/ }));
+  goZip();
+  await within(zipDialog()).findByRole("alert");
+  fireEvent.click(within(zipDialog()).getByRole("button", { name: "Cancel" }));
+  expect(await screen.findByText(same(
+    "Stopped after 1 of 2 downloads of your 2026 documents: 51 files from 38 "
+    + "mails. 20 mails are now kept safe."))).toBeTruthy();
+  await waitFor(() => expect(documents).toHaveBeenCalledTimes(2));
+});
+
+test("Cancel when nothing was saved is silent", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 2 }));
+  downloadDocumentsZip.mockRejectedValueOnce(new Error("The server did not answer."));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  await within(zipDialog()).findByRole("alert");
+  fireEvent.click(within(zipDialog()).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByText("Download your 2026 documents"))
+    .toBeNull());
+  expect(screen.queryByText(/^Stopped after/)).toBeNull();
+  expect(documents).toHaveBeenCalledTimes(1);
+});
+
+test("Stop after this download: the next part is never asked for", async () => {
+  documentsPlan.mockResolvedValue(planOf({ parts: 3 }));
+  let release: (r: DocsZipResult) => void = () => {};
+  downloadDocumentsZip.mockImplementation(() => new Promise<DocsZipResult>(
+    (r) => { release = r; }));
+  show();
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  await openZip();
+  goZip();
+  fireEvent.click(await within(zipDialog()).findByRole("button",
+    { name: "Stop after this download" }));
+  release(held({ mails: 20, files: 25 }));
+  expect(await screen.findByText(same(
+    "Stopped after 1 of 3 downloads of your 2026 documents: 25 files from 20 mails.")))
+    .toBeTruthy();
+  expect(downloadDocumentsZip).toHaveBeenCalledTimes(1);
 });

@@ -1418,7 +1418,17 @@ PROTON.mailbox["INBOX"] += (
     + mails('"Stadtwerke Example" <post@stadtwerke.example>',
             ["Ihre Jahresabrechnung {n}"], 3, newest_days=60, span_days=1000,
             unread=0.2, size=(450000, 650000),
-            atts=[("jahresabrechnung.pdf", 412000)], att_n=3))
+            atts=[("jahresabrechnung.pdf", 412000)], att_n=3)
+    # subjects that name an amount, so the zip's index.csv shows the column
+    + mails('"Stadtwerke Example" <post@stadtwerke.example>',
+            ["Ihre Jahresabrechnung 2025 - Nachzahlung 148,20 €"], 1,
+            newest_days=20, span_days=1, unread=0.0, size=(450000, 650000),
+            atts=[("jahresabrechnung-2025.pdf", 412000)], att_n=1)
+    + mails('"CloudBox" <billing@cloudbox.example>',
+            ["Your invoice for November - 24,90 EUR",
+             "Your invoice for the annual plan - 199.00 EUR"], 2, newest_days=11,
+            span_days=2, unread=0.1, size=(300000, 400000),
+            atts=[("invoice-plan.pdf", 303000)], att_n=2))
 random.setstate(_state)
 
 

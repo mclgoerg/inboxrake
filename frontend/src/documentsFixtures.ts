@@ -24,7 +24,8 @@ export const KINDS_2026: Record<DocKind, DocTotals> = {
   bookings: totals(26, 52, 9 * MB), tax: totals(15, 35, 12 * MB) };
 
 export function summary(over: Partial<DocsSummary> = {}): DocsSummary {
-  return { scanned: true, analyzed: true, analyzing: false, years: [
+  return { scanned: true, analyzed: true, analyzing: false,
+    cap: 256 * MB, years: [
     yearOf(2024, { invoices: totals(90, 100, 10 * MB),
       contracts: totals(10, 11, 8 * MB), bookings: totals(20, 22, 6 * MB),
       tax: totals(9, 9, 5 * MB) }),

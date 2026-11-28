@@ -115,7 +115,7 @@ test("Insights: the card is the very last one, after All accounts", async () => 
   await waitFor(() => expect((card.textContent ?? "").replace(/\u00a0/g, " "))
     .toContain("312 documents in 2026"));
   expect((card.textContent ?? "").replace(/\u00a0/g, " "))
-    .toContain("184 invoices");
+    .toContain("184 invoices · download the year as .zip");
   const all = screen.getByRole("button", { name: /^All accounts/ });
   expect(all.compareDocumentPosition(card)
     & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -189,5 +189,5 @@ test("Insights: German", async () => {
   await waitFor(() => expect((card.textContent ?? "").replace(/\u00a0/g, " "))
     .toContain("312 Dokumente in 2026"));
   expect((card.textContent ?? "").replace(/\u00a0/g, " "))
-    .toContain("184 Rechnungen");
+    .toContain("184 Rechnungen · das Jahr als .zip herunterladen");
 });

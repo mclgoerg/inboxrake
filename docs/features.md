@@ -1251,6 +1251,39 @@ page offers **Analyze** first (the same analysis as on the Attachments page).
 Tiny pictures (logos, signatures) and signature, calendar and contact files do
 not count as documents; a mail kept in two folders is one document.
 
+**Download 2026…** (the button in the page header, on a phone beside the year)
+makes **one `.zip` of the year** on your server for tax time: a dialog lists
+the four kinds with what each holds (files, mails, size) - invoices, contracts
+and tax mail are ticked, bookings are not - and offers two more choices.
+
+- **The files** go into folders **by kind and month** (`Invoices and bills/2026-11/...`,
+  in your language), named as the mail named them (made safe: no paths, no
+  reserved characters; a second file of the same name is numbered).
+- **Add a list** (ticked): an **`index.csv`** in the root - date, sender,
+  subject, file (its place in the `.zip`) and amount. The amount is read from the
+  **subject only** (`24,90 €` or `EUR 24.90` next to a currency; never an invoice
+  number, never the mail's text or a file) and left empty when the subject names
+  no amount or several different ones. Every cell is made safe for a spreadsheet
+  (a text starting with `=`, `+`, `-`, `@`, a tab or a line break - or such a
+  character right after a `;`, which German and other European Excel settings
+  split on - cannot become a formula; the app's other CSV exports got the same
+  guard) and the file is UTF-8 with a byte order mark so Excel reads umlauts.
+- **Also keep these mails safe** (unticked): the mails that went into the `.zip`
+  are protected in the same step - the ordinary "Protect this mail" pin, so the
+  rows show them as protected.
+- Each mail is read from your mail server once, read only (nothing is marked
+  read, changed or deleted); a mail that cannot be read just now (it moved, was
+  replaced, is over 64 MB, or has a damaged file) is left out whole and counted in
+  the toast. Above the cap of 256 MB the year comes in **several downloads** (the
+  dialog says how many, as the server counts them; your browser may ask to allow
+  more than one) that belong to one plan: if a scan changes the list between two
+  of them the next is refused rather than leaving a mail out or taking it twice -
+  start again. A part that fails is tried again at that part (the ones before are
+  not saved twice), **Stop after this download** ends the run after the part that is
+  running, and closing the dialog after some parts were saved says what was saved
+  (and protected). One `.zip` of an account is made at a time, held until the
+  download is over, and nothing is left on the server's disk afterwards.
+
 Good to know: it reads only what the last scan and analysis hold (scan again
 after new mail arrives), and the year is the date the mail arrived. A download
 is refused, with the reason, when the mail on the server is not the one the scan

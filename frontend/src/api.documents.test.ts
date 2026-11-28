@@ -5,8 +5,8 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import { api, dispositionName, setAccount } from "./api";
-import { dayShort, filesLine, latestYear, mailOf, yearLine, yearOf }
-  from "./documents";
+import { dayShort, downloadYear, filesLine, latestYear, mailOf, newRun,
+  partial, savedText, yearLine, yearOf } from "./documents";
 import { ROWS, row, summary } from "./documentsFixtures";
 import { setLang } from "./i18n";
 
@@ -128,4 +128,205 @@ test("the helpers: years, files, the row as a mail", () => {
   expect(dayShort(ROWS[0].ts)).toBe("24 Nov");
   setLang("de");
   expect(dayShort(ROWS[0].ts)).toBe("24. Nov.");
+});
+
+/* ---------------------------- the year's .zip ------------------------------ */
+
+const PLAN = { year: 2026, kinds: ["invoices", "tax"], mails: 4, files: 4,
+  bytes: 1000, pinnable: 4, parts: 1, cap: 1000000, plan: "digest-1" };
+const ZIP_BODY = { year: 2026, kinds: ["invoices", "tax"] as never, part: 1,
+  parts: 1, plan: "digest-1", index: true, pin: false, lang: "en" };
+
+test("the plan is asked by POST, for the account asked for", async () => {
+  setAccount("work mail");
+  reply(200, PLAN);
+  const got = await api.documentsPlan(2026, ["invoices", "tax"]);
+  const [url, init] = (fetch as any).mock.calls[0];
+  expect(url).toBe("/api/documents/zip/plan?account=work%20mail");
+  expect(init.method).toBe("POST");
+  expect(JSON.parse(init.body)).toEqual({ year: 2026, kinds: ["invoices", "tax"] });
+  expect(got.plan).toBe("digest-1");
+});
+
+test("a .zip is saved under the name the server gave it, and says what it held", async () => {
+  setAccount("work mail");
+  reply(200, {}, { "Content-Disposition":
+    "attachment; filename=\"inboxrake-documents-2026-part-2-of-3.zip\"",
+  "X-Docs-Mails": "12", "X-Docs-Files": "15", "X-Docs-Skipped": "2",
+  "X-Docs-Pinned": "10" });
+  const saved = saves();
+  const got = await api.downloadDocumentsZip({ ...ZIP_BODY, part: 2, parts: 3,
+    pin: true });
+  const [url, init] = (fetch as any).mock.calls[0];
+  expect(url).toBe("/api/documents/zip?account=work%20mail");
+  expect(JSON.parse(init.body)).toMatchObject({ year: 2026, part: 2, parts: 3,
+    plan: "digest-1", index: true, pin: true, lang: "en" });
+  expect(saved).toEqual(["inboxrake-documents-2026-part-2-of-3.zip"]);
+  expect(got).toEqual({ mails: 12, files: 15, skipped: 2, pinned: 10 });
+  // no headers: a name from the year, zeros
+  reply(200, {});
+  expect(await api.downloadDocumentsZip(ZIP_BODY)).toEqual(
+    { mails: 0, files: 0, skipped: 0, pinned: 0 });
+  expect(saved.at(-1)).toBe("inboxrake-documents-2026.zip");
+});
+
+test("a refused plan or download throws the backend's code in the user's language", async () => {
+  const cases: [string, string, RegExp, RegExp][] = [
+    ["docs_nothing", "docs_nothing", /no documents of that year and kind/,
+      /keine Dokumente dieses Jahres/],
+    ["docs_busy", "docs_busy", /still running/, /läuft noch/],
+    ["docs_changed", "docs_changed", /not the one the scan saw/,
+      /nicht die, die der Scan gesehen hat/],
+    ["docs_too_many:max=40,mb=256", "docs_too_many",
+      /more than 40 downloads of 256 MB each/, /mehr als 40 Downloads mit je 256 MB/],
+  ];
+  for (const [detail, code, en, de] of cases) {
+    setLang("en");
+    reply(409, { detail });
+    const e: any = await api.downloadDocumentsZip(ZIP_BODY).catch((x) => x);
+    expect(e.code).toBe(code);
+    expect(e.message).toMatch(en);
+    setLang("de");
+    reply(409, { detail });
+    const d: any = await api.documentsPlan(2026, ["tax"]).catch((x) => x);
+    expect(d.code).toBe(code);
+    expect(d.message).toMatch(de);
+  }
+});
+
+test("a year is downloaded part by part under one plan, and the parts add up", async () => {
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
+    calls.push(url.split("?")[0] + " " + (init.body ?? ""));
+    if (url.startsWith("/api/documents/zip/plan"))
+      return { ok: true, status: 200, json: async () => ({ ...PLAN, parts: 2 }) };
+    const part = JSON.parse(init.body).part;
+    return { ok: true, status: 200, blob: async () => new Blob(["z"]),
+      headers: new Headers({ "X-Docs-Mails": String(part * 10),
+        "X-Docs-Files": String(part * 12), "X-Docs-Skipped": String(part - 1),
+        "X-Docs-Pinned": "3" }) };
+  }));
+  saves();
+  const progress: [number, number][] = [];
+  const got = await downloadYear(2026,
+    { kinds: ["invoices", "tax"], index: false, pin: true },
+    (n, of) => progress.push([n, of]));
+  expect(got).toEqual({ parts: 2, done: 2, mails: 30, files: 36, skipped: 1,
+    pinned: 6, stopped: false });
+  expect(progress).toEqual([[1, 2], [2, 2]]);
+  expect(calls.map((c) => c.split(" ")[0])).toEqual(["/api/documents/zip/plan",
+    "/api/documents/zip", "/api/documents/zip"]);
+  const bodies = calls.slice(1).map((c) => JSON.parse(c.slice(c.indexOf(" ") + 1)));
+  expect(bodies).toEqual([
+    { year: 2026, kinds: ["invoices", "tax"], part: 1, parts: 2,
+      plan: "digest-1", index: false, pin: true, lang: "en" },
+    { year: 2026, kinds: ["invoices", "tax"], part: 2, parts: 2,
+      plan: "digest-1", index: false, pin: true, lang: "en" }]);
+});
+
+/** A server with `parts` downloads of which `failAt` fails once with `code`. */
+const server = (parts: number, failAt = 0, code = "docs_failed") => {
+  const asked: string[] = [];
+  let failed = false;
+  let plans = 0;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
+    if (url.startsWith("/api/documents/zip/plan")) {
+      asked.push("plan");
+      return { ok: true, status: 200,
+        json: async () => ({ ...PLAN, parts, plan: `p${++plans}` }) };
+    }
+    const b = JSON.parse(init.body);
+    asked.push(`${b.part}/${b.parts}@${b.plan}`);
+    if (b.part === failAt && !failed) {
+      failed = true;
+      return { ok: false, status: 409, text: async () => JSON.stringify(
+        { detail: code }) };
+    }
+    return { ok: true, status: 200, blob: async () => new Blob(["z"]),
+      headers: new Headers({ "X-Docs-Mails": "10", "X-Docs-Files": "12",
+        "X-Docs-Pinned": "10" }) };
+  }));
+  saves();
+  return asked;
+};
+const ANSWER = { kinds: ["invoices"] as never, index: true, pin: true };
+
+test("the first part that fails ends the run and nothing after it is asked for", async () => {
+  const asked = server(3, 2);
+  const e: any = await downloadYear(2026, ANSWER, () => {}).catch((x) => x);
+  expect(e.code).toBe("docs_failed");
+  expect(asked).toEqual(["plan", "1/3@p1", "2/3@p1"]);
+});
+
+test("asking again goes on at the part that failed - the earlier ones are not saved twice", async () => {
+  const asked = server(4, 3);
+  const run = newRun();
+  await downloadYear(2026, ANSWER, () => {}, run).catch(() => {});
+  expect(run.next).toBe(3);
+  expect(run.total).toMatchObject({ parts: 4, done: 2, mails: 20, pinned: 20 });
+  expect(partial(run)).toMatchObject({ done: 2, stopped: true, pinned: 20 });
+  const got = await downloadYear(2026, ANSWER, () => {}, run);
+  // one plan, parts 1 and 2 once, part 3 twice (the failed one), then 4
+  expect(asked).toEqual(["plan", "1/4@p1", "2/4@p1", "3/4@p1", "3/4@p1",
+    "4/4@p1"]);
+  expect(got).toMatchObject({ parts: 4, done: 4, mails: 40, files: 48,
+    pinned: 40, stopped: false });
+});
+
+test("a plan the server has dropped starts the run over with a new plan", async () => {
+  const asked = server(2, 2, "docs_changed");
+  const run = newRun();
+  const e: any = await downloadYear(2026, ANSWER, () => {}, run).catch((x) => x);
+  expect(e.code).toBe("docs_changed");
+  // what the first part pinned is still known (the list is read again)
+  expect(run.pinnedAny).toBe(true);
+  const got = await downloadYear(2026, ANSWER, () => {}, run);
+  expect(asked).toEqual(["plan", "1/2@p1", "2/2@p1", "plan", "1/2@p2",
+    "2/2@p2"]);
+  expect(got).toMatchObject({ parts: 2, done: 2, mails: 20 });
+});
+
+test("stopping ends the run after the part that is running", async () => {
+  const asked = server(3);
+  const run = newRun();
+  const got = await downloadYear(2026, ANSWER, (n) => {
+    if (n === 2) run.stop = true;               // pressed during part 2
+  }, run);
+  expect(asked).toEqual(["plan", "1/3@p1", "2/3@p1"]);
+  expect(got).toMatchObject({ parts: 3, done: 2, mails: 20, stopped: true });
+});
+
+test("a stop asked before the first part is saved still saves that part", async () => {
+  const first = server(3);
+  const early = newRun();
+  early.stop = true;
+  await downloadYear(2026, ANSWER, () => {}, early);
+  expect(first).toEqual(["plan", "1/3@p1"]);
+});
+
+test("nothing saved and nothing pinned is nothing to say", () => {
+  expect(partial(newRun())).toBeNull();
+});
+
+test("what was saved is said in one sentence, in the user's language", () => {
+  const plain = (x: string) => x.replace(/\u00a0/g, " ");
+  const r = { parts: 1, done: 1, mails: 38, files: 51, skipped: 0, pinned: 0 };
+  expect(plain(savedText(2026, r)))
+    .toBe("Saved your 2026 documents: 51 files from 38 mails.");
+  expect(plain(savedText(2026, { ...r, parts: 3, done: 3, skipped: 1,
+    pinned: 1 })))
+    .toBe("Saved your 2026 documents: 51 files from 38 mails. It came in 3 "
+      + "downloads. 1 mail could not be read just now and is not in it. "
+      + "1 mail is now kept safe.");
+  // stopped / ended by a failure after some parts
+  expect(plain(savedText(2026, { ...r, parts: 3, done: 1, pinned: 38 })))
+    .toBe("Stopped after 1 of 3 downloads of your 2026 documents: 51 files from "
+      + "38 mails. 38 mails are now kept safe.");
+  setLang("de");
+  expect(plain(savedText(2026, { ...r, skipped: 2, pinned: 38 })))
+    .toBe("Deine Dokumente 2026 sind gespeichert: 51 Dateien aus 38 Mails. "
+      + "2 Mails konnten gerade nicht gelesen werden und fehlen. "
+      + "38 Mails werden jetzt sicher behalten.");
+  expect(plain(savedText(2026, { ...r, parts: 3, done: 2 })))
+    .toBe("Nach 2 von 3 Downloads angehalten (2026): 51 Dateien aus 38 Mails.");
 });

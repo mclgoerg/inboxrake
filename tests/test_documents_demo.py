@@ -42,14 +42,33 @@ out["download"] = {"status": r.status_code, "size": len(r.content),
                    "head": r.headers.get("content-disposition"),
                    "type": r.headers.get("content-type"),
                    "name": f["name"], "subject": row["subject"]}
+# the newest year of the proton demo as one .zip
+import io, zipfile
+year = int(max(out["proton"]["rows"], key=int))
+kinds = ["invoices", "contracts", "bookings", "tax"]
+plan = c.post("/api/documents/zip/plan", params={"account": "proton"},
+              json={"year": year, "kinds": kinds}).json()
+z = c.post("/api/documents/zip", params={"account": "proton"}, json={
+    "year": year, "kinds": kinds, "part": 1, "parts": plan["parts"],
+    "plan": plan["plan"], "pin": False})
+out["zip"] = {"status": z.status_code, "plan": plan}
+if z.status_code == 200:
+    zf = zipfile.ZipFile(io.BytesIO(z.content))
+    out["zip"].update(names=zf.namelist(),
+                      csv=zf.read("index.csv").decode("utf-8-sig"),
+                      mails=z.headers["x-docs-mails"],
+                      files=z.headers["x-docs-files"],
+                      skipped=z.headers["x-docs-skipped"])
+else:
+    out["zip"]["detail"] = z.text[:300]
 print(json.dumps(out))
 """
 
 
 def test_the_demo_shows_every_kind_over_several_years():
     proc = subprocess.run([sys.executable, "-c", DRIVER, str(DEMO)], env=ENV,
-                          capture_output=True, text=True, timeout=300,
-                          check=True)
+                          capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, proc.stderr[-2000:]
     out = json.loads(proc.stdout.strip().splitlines()[-1])
     proton = out["proton"]
     assert proton["summary"]["analyzed"] is True
@@ -76,3 +95,25 @@ def test_the_demo_shows_every_kind_over_several_years():
     assert dl["status"] == 200 and dl["size"] > 1000, dl
     assert dl["type"] == "application/octet-stream"
     assert dl["head"].startswith("attachment; filename=")
+
+    # the year as one .zip: folders by kind and month, a list with a row per file
+    z = out["zip"]
+    assert z["status"] == 200, z
+    assert z["skipped"] == "0", z["plan"]
+    files = [n for n in z["names"] if n != "index.csv"]
+    assert len(files) == int(z["files"]) > 3
+    assert {n.split("/")[0] for n in files} >= {
+        "Invoices and bills", "Tax and official"}
+    assert all(len(n.split("/")) == 3 and n.split("/")[1][:2] == "20"
+               for n in files)
+    lines = z["csv"].strip().splitlines()
+    assert lines[0] == "date,sender,subject,file,amount"
+    assert len(lines) == 1 + len(files)
+    # the subjects that name an amount show it, the others leave the column empty
+    import csv
+    import io
+    table = list(csv.reader(io.StringIO(z["csv"])))[1:]
+    amounts = {r[2]: r[4] for r in table if r[4]}
+    assert "24.90 EUR" in amounts.values() and "199.00 EUR" in amounts.values()
+    assert any(r[4] == "" for r in table)
+    assert all(r[4].endswith(" EUR") for r in table if r[4])

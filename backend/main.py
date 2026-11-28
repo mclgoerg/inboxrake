@@ -21,6 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                RedirectResponse, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 from pydantic import BaseModel, Field, StrictInt
@@ -2054,6 +2055,75 @@ def post_documents_file(body: DocumentFileBody,
                     headers={"Content-Disposition":
                              documents.content_disposition(name),
                              "Cache-Control": "no-store"})
+
+
+class DocumentPlanBody(BaseModel):
+    """A year and the kinds of document to put in its .zip."""
+    year: int = Field(ge=1970, le=2200)
+    kinds: list[str] = Field(min_length=1, max_length=8)
+
+
+@app.post("/api/documents/zip/plan")
+def post_documents_zip_plan(body: DocumentPlanBody,
+                            account: str | None = Query(None)):
+    """What the year's .zip would hold and in how many downloads (nothing is
+    read from the mail server); each download names the `plan` it belongs to."""
+    acc = _acc(account)
+    try:
+        return documents.plan(acc, body.year, body.kinds)
+    except documents.Refused as exc:
+        raise _documents_refused(exc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class DocumentZipBody(DocumentPlanBody):
+    part: int = Field(1, ge=1, le=documents.MAX_PARTS)
+    parts: int = Field(1, ge=1, le=documents.MAX_PARTS)
+    plan: str = Field(max_length=64)
+    index: bool = True              # add index.csv
+    pin: bool = False               # keep the mails that went in safe
+    lang: str = Field("en", max_length=8)   # the folder names' language
+
+
+@app.post("/api/documents/zip")
+def post_documents_zip(body: DocumentZipBody,
+                       account: str | None = Query(None)):
+    """One download of the year's documents as a .zip (folders by kind and
+    month, an optional index.csv), made from the mails on the mail server
+    (read only); with `pin` the mails that went in are protected afterwards.
+    What it holds and what it left out is in the `X-Docs-*` headers."""
+    acc = _acc(account)
+    try:
+        built = documents.build_zip(
+            acc, body.year, body.kinds, body.part, body.parts, body.plan,
+            body.index, body.pin, body.lang)
+    except documents.Refused as exc:
+        raise _documents_refused(exc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+    def chunks():
+        try:
+            while True:
+                block = built.fh.read(1 << 20)
+                if not block:
+                    break
+                yield block
+        finally:
+            built.close()           # the temp file and the account's place
+    name = f"inboxrake-documents-{body.year}" \
+        + (f"-part-{body.part}-of-{body.parts}" if body.parts > 1 else "")
+    return StreamingResponse(
+        chunks(), media_type="application/zip",
+        background=BackgroundTask(built.close),
+        headers={"Content-Length": str(built.size),
+                 "Content-Disposition": f'attachment; filename="{name}.zip"',
+                 "Cache-Control": "no-store",
+                 "X-Docs-Mails": str(built.mails),
+                 "X-Docs-Files": str(built.files),
+                 "X-Docs-Skipped": str(built.skipped),
+                 "X-Docs-Pinned": str(built.pinned)})
 
 
 @app.get("/api/duplicates")

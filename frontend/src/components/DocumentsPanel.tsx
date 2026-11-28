@@ -1,28 +1,18 @@
-import { Download, FileText, Landmark, Paperclip, Pin } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode }
-  from "react";
+import { Download, FileText, Paperclip, Pin } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fmtSize, mailKey } from "../api";
 import { t } from "../i18n";
-import { DOC_KINDS, dayShort, filesLine, latestYear, mailOf, yearLine,
-  yearOf } from "../documents";
+import { DOC_KINDS, dayShort, downloadYear, filesLine, latestYear, mailOf,
+  savedText, yearLine, yearOf, type YearResult } from "../documents";
 import { fmtNum } from "../numfmt";
 import type { AppState, DocFile, DocKind, DocRow, DocsPage, DocsSummary, Mail }
   from "../types";
-import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
+import { DOC_LOOK } from "./docKinds";
+import { DownloadYear } from "./DownloadYear";
 import { MessageView } from "./MailList";
 import { Avatar, Button, EmptyState, IconTile, Loading, Menu, MenuItem, Modal,
-  PanelHeader, PopupSelect, Segmented, Spinner, useIsPage, useMediaQuery,
-  useToast, type TagTone } from "./ui";
-
-/** Icon and tile colour of each kind: the three Keep-safe classes look as they
- *  do in Settings, tax & official has its own. */
-export const DOC_LOOK: Record<DocKind, { icon: ReactNode;
-    tone: TagTone }> = {
-  invoices: KEEP_SAFE_LOOK.invoices,
-  contracts: KEEP_SAFE_LOOK.contracts,
-  bookings: KEEP_SAFE_LOOK.bookings,
-  tax: { icon: <Landmark size={16} />, tone: "new" },
-};
+  PanelHeader, PopupSelect, Segmented, Spinner, customDialog, useIsPage,
+  useMediaQuery, useToast } from "./ui";
 
 /** Up to this many years the year switch is a segmented control, beyond it a
  *  menu (a long row of years would not fit). */
@@ -164,6 +154,28 @@ export function DocumentsPanel({ account, scannedTs, atts, onAnalyze,
     ));
 
   const sub = y ? yearLine(y) : t("docs.sub_none");
+
+  // "Download 2026...": the dialog makes the .zip of the year; the list is read
+  // again after it when mails were kept safe in the same step
+  const openDownload = async () => {
+    if (!y) return;
+    const result = await customDialog<YearResult>((done) => (
+      <DownloadYear year={y} cap={sum?.cap ?? 0}
+        loadPlan={(kinds) => api.documentsPlan(y.year, kinds)}
+        run={(answer, progress, state) =>
+          downloadYear(y.year, answer, progress, state)}
+        onResult={done} />));
+    if (!result || !alive.current) return;
+    toast.show(savedText(y.year, result), { variant:
+      result.skipped || result.stopped ? "info" : "success" });
+    if (result.pinned) void loadPage(y.year);
+  };
+  const downloadBtn = y && (
+    <Button variant="primary" onClick={() => void openDownload()}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <Download size={16} aria-hidden />{t("docs.zip_btn", { year: y.year })}
+    </Button>
+  );
 
   // ------------------------------------------------------------- the body
   const tiles = y && (
@@ -318,7 +330,11 @@ export function DocumentsPanel({ account, scannedTs, atts, onAnalyze,
     }
     return (
       <div className="min-w-0 space-y-4 p-4 sm:p-5">
-        {phone && yearPick}
+        {phone && (yearPick || downloadBtn) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {yearPick}{downloadBtn}
+          </div>
+        )}
         {tiles}
         {list}
         {shown?.capped && (
@@ -338,7 +354,8 @@ export function DocumentsPanel({ account, scannedTs, atts, onAnalyze,
         title={<span className="inline-flex items-center gap-2">
           <FileText size={18} /> {t("docs.menu")}
         </span>}
-        sub={sub} actions={!phone && yearPick ? yearPick : undefined}
+        sub={sub} actions={!phone && (yearPick || downloadBtn)
+          ? <>{yearPick}{downloadBtn}</> : undefined}
         onClose={onClose} />
       {view ? (
         <MessageView mail={view} onBack={() => setView(null)}

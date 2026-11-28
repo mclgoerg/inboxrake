@@ -892,6 +892,8 @@ export interface DocsSummary {
    *  file: the page offers to analyze) */
   analyzed: boolean;
   analyzing: boolean;
+  /** the size above which a year's .zip comes in several downloads */
+  cap: number;
   /** oldest year first */
   years: DocYear[];
 }
@@ -903,6 +905,29 @@ export interface DocRow {
   pinned: boolean;
   /** has a Message-ID (a mail without one cannot be pinned) */
   pinnable: boolean;
+}
+/** What a year's .zip would hold (`/api/documents/zip/plan`): `parts`
+ *  downloads when it is over the cap, `plan` the digest each one must name. */
+export interface DocsPlan {
+  year: number;
+  kinds: DocKind[];
+  mails: number; files: number; bytes: number;
+  /** mails with a Message-ID (the ones "keep these safe" can pin) */
+  pinnable: number;
+  parts: number;
+  cap: number;
+  plan: string;
+}
+export interface DocsZipRequest {
+  year: number; kinds: DocKind[]; part: number; parts: number; plan: string;
+  index: boolean; pin: boolean; lang: string;
+}
+/** What one download held (the `X-Docs-*` headers). */
+export interface DocsZipResult {
+  mails: number; files: number;
+  /** mails that could not be read just now and are not in it */
+  skipped: number;
+  pinned: number;
 }
 export interface DocsPage {
   year: number;
