@@ -1749,6 +1749,44 @@ test("the desktop sort menu has Sort by / Order groups with short keys", () => {
     .toEqual(["Descending", "Ascending"]);
 });
 
+test("the sort menu words the order of a key (worst first) beside Descending "
+  + "only when asked", () => {
+  const props = { value: "grade", dir: "desc" as const, onValue: () => {},
+    onDir: () => {}, options: [{ k: "count", label: "Sort: mails" },
+      { k: "grade", label: "Sort: grade" }] };
+  const { rerender } = render(<SortControl {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Sort:/ }));
+  const order = () => within(screen.getByRole("group", { name: "Order" }))
+    .getAllByRole("menuitemradio").map((o) => o.textContent);
+  expect(order()).toEqual(["Descending", "Ascending"]);
+  fireEvent.keyDown(document, { key: "Escape" });
+  rerender(<SortControl {...props} orderHints={{ desc: "worst first" }} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Sort:/ }));
+  expect(order()).toEqual(["Descendingworst first", "Ascending"]);
+  // the keys are as before
+  expect(within(screen.getByRole("group", { name: "Sort by" }))
+    .getAllByRole("menuitemradio").map((o) => o.textContent))
+    .toEqual(["Mails", "Grade"]);
+});
+
+test("the phone sort menu carries the same hint", () => {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: true, media: q,
+    addEventListener: () => {}, removeEventListener: () => {} }));
+  try {
+    render(<SortControl value="grade" dir="desc" onValue={() => {}}
+      onDir={() => {}} orderHints={{ desc: "worst first" }}
+      options={[{ k: "count", label: "Sort: mails" },
+        { k: "grade", label: "Sort: grade" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: /grade, descending/ }));
+    const menu = within(screen.getByRole("menu"));
+    expect(menu.getByText("worst first")).toBeTruthy();
+    expect(menu.getAllByRole("menuitemradio").map((i) => i.textContent))
+      .toEqual(["Mails", "Grade", "Descendingworst first", "Ascending"]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test("Segmented `phoneFill` is full width below 640 px only", () => {
   const opts = [{ value: "a", label: "A" }, { value: "b", label: "B" }];
   render(<Segmented label="View" value="a" onChange={() => {}} options={opts}

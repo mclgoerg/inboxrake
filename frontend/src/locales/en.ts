@@ -583,6 +583,7 @@ export const EN: Record<string, string> = {
   "sort.order": "Order",
   "sort.ascending": "Ascending",
   "sort.descending": "Descending",
+  "sort.worst_first": "worst first",
   "view.group_by": "Group by",
   "filter.inactive_6m": "6+ months",
   "filter.inactive_1y": "1+ year",
@@ -622,6 +623,9 @@ export const EN: Record<string, string> = {
   "qb.is_still_mailing": "still mailing after unsubscribe",
   "qb.is_louder": "got louder",
   "qb.is_back": "came back after 6+ months",
+  "qb.grade_d": "graded D or worse",
+  "qb.grade_c": "graded C or worse",
+  "qb.grade_b": "graded B or better",
   "ai.shared_note":
     "No own key - AI runs on the server's shared key "
     + "(your monthly cap: {cap}).",
@@ -880,6 +884,7 @@ export const EN: Record<string, string> = {
   "confirm.unpin_group_one":
     "Remove the protection from the 1 protected mail of this group?",
   "Sort: engagement": "Sort: engagement",
+  "Sort: grade": "Sort: grade",
   "Eng.": "Engagement",
   "eng.col_tip":
     "Engagement: how much you actually read and answer this sender",
@@ -899,6 +904,101 @@ export const EN: Record<string, string> = {
   "qb.eng_low": "rarely engaged with",
   "qb.eng_medium": "sometimes engaged with",
   "qb.eng_high": "often engaged with",
+  "grade.badge": "Grade {letter}",
+  "grade.card": "Sender grade",
+  "grade.title": "Grade {letter} · {pattern}",
+  "grade.pattern.loud": "loud and ignored",
+  "grade.pattern.quiet": "quiet and useful",
+  "grade.pattern.tracks": "tracks you, but you read it",
+  "grade.pattern.mixed": "mixed picture",
+  "grade.line.loud": "It mails you often, and you almost never open it.",
+  "grade.line.quiet": "It mails you rarely, and you read what it sends.",
+  "grade.line.quiet_tracks":
+    "It tracks your opens, but it is rare and you read it.",
+  "grade.line.tracks": "It tracks your opens, but you do read its mail.",
+  "grade.line.mixed":
+    "Some good signs and some bad ones - the checks below show which.",
+  "grade.floor": "You write to this sender, so the grade never drops below C.",
+  "grade.how": "How grades work",
+  "grade.v_ok": "Good sign",
+  "grade.v_bad": "Bad sign",
+  "grade.v_neutral": "No effect",
+  "grade.check.open": "You open their mail",
+  "grade.check.often": "How often",
+  "grade.check.tracking": "Tracking",
+  "grade.check.unsub": "Unsubscribe",
+  "grade.check.stops": "Stops when asked",
+  "grade.check.size": "Mail size",
+  "grade.val.few": "too few mails",
+  "grade.val.not_checked": "not checked",
+  "grade.val.none": "none",
+  "grade.val.per_day": "{n} a day",
+  "grade.val.per_week": "{n} a week",
+  "grade.val.per_month": "{n} a month",
+  "grade.val.track_pixel": "pixel, {pct}",
+  "grade.val.track_links": "links, {pct}",
+  "grade.val.track_both": "pixel + links, {pct}",
+  "grade.val.unsub_post": "one click",
+  "grade.val.unsub_link": "link only",
+  "grade.val.unsub_none": "none",
+  "grade.val.stops_stopped": "stopped",
+  "grade.val.stops_still": "still mailing",
+  "grade.val.stops_never": "not tested",
+  "grade.val.stops_open": "not finished",
+  "grade.note.few": "Fewer than {n} mails - too early to tell.",
+  "grade.note.open": "{read} of {total} mails read",
+  "grade.note.open_months": "{read} of {total} in {n} months",
+  "grade.note.open_months_one": "{read} of {total} in 1 month",
+  "grade.note.often_more": "More often than {k} of 10 senders",
+  "grade.note.often_less": "Less often than most senders",
+  "grade.note.often_active": "Over the period it has been mailing",
+  "grade.note.tracking_unchecked": "Needs the local mail index",
+  "grade.note.tracking_none": "No tracker found in {n} checked mails",
+  "grade.note.tracking_none_one": "No tracker found in the 1 checked mail",
+  "grade.note.tracking_pixel": "A tracking pixel in {pct} of mails",
+  "grade.note.tracking_links": "Click tracking in {pct} of mails",
+  "grade.note.unsub_post": "List-Unsubscribe-Post header",
+  "grade.note.unsub_link": "A link in the mail, no one-click header",
+  "grade.note.unsub_none": "No unsubscribe option in its mails",
+  "grade.note.stops_stopped": "You unsubscribed and it stopped",
+  "grade.note.stops_still": "{n} mails arrived after you unsubscribed",
+  "grade.note.stops_still_one": "1 mail arrived after you unsubscribed",
+  "grade.note.stops_never": "You never unsubscribed",
+  "grade.note.stops_open": "Your unsubscribe is not finished yet",
+  "grade.note.size": "Average per mail",
+  "grade.note.size_att": "Average per mail, {size} in attachments",
+  "grade.help.intro":
+    "Six checks, each from data the app already has: how much of the "
+    + "sender's mail you read, mails per week, tracker flags from the local "
+    + "mail index, the unsubscribe headers, the unsubscribe watchdog and "
+    + "mail size.",
+  "grade.help.open_ok": "You read {n}% or more of its mails",
+  "grade.help.open_bad": "You read less than {n}%",
+  "grade.help.often_ok": "{n} mails a week or fewer",
+  "grade.help.often_bad": "More than {n} mails a week",
+  "grade.help.tracking_ok": "No tracker found",
+  "grade.help.tracking_bad":
+    "Trackers in {n}% of its mails or more (needs the local mail index)",
+  "grade.help.unsub_ok": "A one-click header (List-Unsubscribe-Post)",
+  "grade.help.unsub_bad":
+    "No unsubscribe option, though it sends {n} or more mails at over {w} a week",
+  "grade.help.stops_ok": "You unsubscribed and it stopped",
+  "grade.help.stops_bad":
+    "Still mailing after you unsubscribed (counts double)",
+  "grade.help.size_ok": "Average up to {n} KB per mail",
+  "grade.help.size_bad": "Average over {n} MB per mail",
+  "grade.help.points":
+    "A good sign is +1, a bad one -1, everything else 0. A: 3 or more · "
+    + "B: 2 · C: 0 to 1 · D: -1 to -2 · F: -3 or less.",
+  "grade.help.few":
+    "A sender with fewer than {n} mails is not rated on how often you open "
+    + "it or how often it mails.",
+  "grade.help.fair":
+    "A sender you write to never gets below C. People you write to and "
+    + "protected senders are graded, but never suggested for cleanup.",
+  "grade.help.fixed":
+    "The weights are fixed in the app and shown here - no AI, nothing "
+    + "leaves the server.",
   "bar.all_pinned": "all protected - nothing to move",
   "toast.all_pinned":
     "All selected mails are protected - nothing was changed.",
@@ -2530,6 +2630,13 @@ export const EN: Record<string, string> = {
   "stats.month_tip": "{month} · {mails} · {size}",
   "stats.tagged": "category tags",
   "stats.engagement": "Engagement",
+  "grade.stats.title": "Your senders' grades",
+  "grade.stats.weak":
+    "The {n} senders graded D or F send {pct} of your mail.",
+  "grade.stats.weak_one":
+    "The 1 sender graded D or F sends {pct} of your mail.",
+  "grade.stats.none": "No sender is graded D or F.",
+  "grade.stats.show": "Show them",
   "stats.per_year": "Mails per year",
   "stats.per_month": "Mails per month",
   "stats.total_size": "total size",
@@ -3818,7 +3925,7 @@ export const EN: Record<string, string> = {
   "rule.purge_filter_help":
     "Matches the senders in this folder: free text, from:, age: (the "
     + "sender's newest mail) and unread:. An empty filter means ALL senders. "
-    + "Not available here: tag:, ai:, eng:, att:, is:, has: and domain: filters. "
+    + "Not available here: tag:, ai:, eng:, grade:, att:, is:, has: and domain: filters. "
     + "A mail is only deleted once it has been in this folder for more than "
     + "N days (counted from when Inboxrake first saw it there, and it must "
     + "also have been received more than N days ago). Run it in report mode "

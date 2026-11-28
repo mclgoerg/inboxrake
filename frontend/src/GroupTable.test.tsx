@@ -5,6 +5,7 @@ import { GroupTable, localizedSub } from "./components/GroupTable";
 import { EngagementMeter, PinBadge, TrackerBadge } from "./components/ui";
 import { setLang } from "./i18n";
 import { popupPick } from "./toolTestUtils";
+import { gradedGroup } from "./gradeTestUtil";
 import type { Group } from "./types";
 
 const mk = (i: number): Group => ({
@@ -823,3 +824,81 @@ describe("tracker badge", () => {
   });
 });
 
+describe("GroupTable grade letter", () => {
+  beforeEach(() => setLang("en"));
+  afterEach(cleanup);
+  const graded = ["A", "B", "D", "F"].map((l, i) =>
+    gradedGroup(`g${i}@x.example`, `Graded ${l}`, l as "A"));
+  const tableLetters = (c: HTMLElement) =>
+    [...c.querySelectorAll("table tbody tr [role=img][aria-label^='Grade ']")]
+      .map((b) => b.getAttribute("aria-label"));
+
+  it("is not in any row while the list is sorted by something else", () => {
+    for (const sortK of ["count", "size", "label", "last", "unreadPct",
+      "engagement"] as const) {
+      const { container, unmount } = renderTable({ groups: graded,
+        grouping: "sender", sortK });
+      expect(container.querySelector("[aria-label^='Grade ']")).toBeNull();
+      unmount();
+    }
+    // and no column of its own, whatever the sort
+    const { container } = renderTable({ groups: graded, grouping: "sender",
+      sortK: "grade" });
+    expect([...container.querySelectorAll("thead th")]
+      .some((x) => x.textContent === "Grade")).toBe(false);
+  });
+
+  it("shows after the row's pill while sorted by grade (table and cards)", () => {
+    const rows = [gradedGroup("g@x.example", "Graded F", "F",
+      { still_mailing: { n: 3, senders: 1, since_ts: 1, last_ts: 1, addrs: [] } })];
+    const { container } = renderTable({ groups: rows, grouping: "sender",
+      sortK: "grade" });
+    expect(tableLetters(container)).toEqual(["Grade F"]);
+    const cell = container.querySelector(
+      "table tbody tr [aria-label='Grade F']")!.closest("td")!;
+    expect(cell.textContent).toContain("Still mailing");
+    const kids = [...cell.querySelectorAll("span, [role=img]")];
+    expect(kids.findIndex((k) => /Still mailing/.test(k.textContent ?? "")))
+      .toBeLessThan(kids.findIndex(
+        (k) => k.getAttribute("aria-label") === "Grade F"));
+    // the phone cards carry it too, in the line of the stats and the pill
+    expect(container.querySelectorAll(
+      ".md\\:hidden [role=img][aria-label='Grade F']")).toHaveLength(1);
+  });
+
+  it("is in the name line beside the open pane (compact)", () => {
+    const { container } = renderTable({ groups: graded, grouping: "sender",
+      sortK: "grade", compact: true });
+    expect(tableLetters(container))
+      .toEqual(["Grade A", "Grade B", "Grade D", "Grade F"]);
+    const row = container.querySelector("table tbody tr")!;
+    expect(row.querySelector("td [role=img]")!.closest("div")!
+      .querySelector("button")!.textContent).toBe("Graded A");
+  });
+
+  it("is only for the Sender grouping and for rows that have a grade", () => {
+    for (const grouping of ["subject", "thread", "domain", "smart"] as const) {
+      const { container, unmount } = renderTable({ groups: graded, grouping,
+        sortK: "grade" });
+      expect(container.querySelector("[aria-label^='Grade ']")).toBeNull();
+      unmount();
+    }
+    const { container } = renderTable({ groups: groups.slice(0, 3),
+      grouping: "sender", sortK: "grade" });
+    expect(container.querySelector("[aria-label^='Grade ']")).toBeNull();
+  });
+
+  it("the select-all banner keeps its colspan", () => {
+    const { container } = renderTable({ groups: graded, grouping: "sender",
+      sortK: "grade", banner: <div>All 4 matches</div> });
+    expect(container.querySelector("tbody tr td[colspan]")!
+      .getAttribute("colspan")).toBe("6");
+  });
+
+  it("the German letter is named Note", () => {
+    setLang("de");
+    const { container } = renderTable({ groups: graded, grouping: "sender",
+      sortK: "grade" });
+    expect(container.querySelector("[aria-label='Note A']")).not.toBeNull();
+  });
+});

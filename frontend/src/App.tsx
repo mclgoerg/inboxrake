@@ -88,6 +88,7 @@ import { usePaneHeight, useSplitPane } from "./splitPane";
 import { applyStatus, fmtAgo, fmtSize, fmtUsd, hasCredentials, matchGroup,
   parseFilter,
   parseProgress, progressFolder, retainedMailKeys, shortcutTarget, smartMembers } from "./lib";
+import { gradeRank } from "./grades";
 import { filedKindName, isPooled, keptMessage, smartLabel, smartView,
   unsubscribableKeys }
   from "./smart";
@@ -118,10 +119,13 @@ const SORT_OPTIONS: { k: SortKey; label: string }[] = [
   { k: "unreadPct", label: "Sort: unread %" },
   { k: "engagement", label: "Sort: engagement" },
   { k: "label", label: "Sort: name" },
+  // Sender grouping only, always the last key; Descending = worst first
+  { k: "grade", label: "Sort: grade" },
 ];
 
 const sortValue = (g: Group, k: SortKey): number | string => {
   if (k === "unreadPct") return g.count ? g.unread / g.count : 0;
+  if (k === "grade") return gradeRank(g);
   return g[k];
 };
 
@@ -976,17 +980,21 @@ export default function App() {
     [state, mode]);
 
   const subset = mode === "sender" ? senderSubset : null;
+  // Only Sender rows have a grade: another grouping sorts by mails instead
+  // (the choice is kept for when the Sender grouping is back).
+  const sortBy: SortKey = sortK === "grade" && mode !== "sender"
+    ? "count" : sortK;
   const groups = useMemo(() => {
     const f = parseFilter(filter);
     const now = nowMs();
     const filtered = allGroups.filter((g) => (!subset || subset.has(g.key))
       && matchGroup(g, f, now, members));
     return filtered.sort((a, b) => {
-      const va = sortValue(a, sortK), vb = sortValue(b, sortK);
+      const va = sortValue(a, sortBy), vb = sortValue(b, sortBy);
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return cmp * sortDir || b.count - a.count;
     });
-  }, [allGroups, members, filter, sortK, sortDir, subset]);
+  }, [allGroups, members, filter, sortBy, sortDir, subset]);
   useEffect(() => {
     // none of the finding's senders is left (acted on, or gone): the list is
     // the whole list again. (A search that hides them all does not count: the
@@ -2792,7 +2800,10 @@ export default function App() {
         run: () => setAiFilterOpen(true) } : undefined} />
   );
   const sortControl = (
-    <SortControl options={SORT_OPTIONS} value={sortK} plain
+    <SortControl value={sortBy} plain
+      options={SORT_OPTIONS.filter((o) => o.k !== "grade" || mode === "sender")}
+      orderHints={sortBy === "grade" ? { desc: t("sort.worst_first") }
+        : undefined}
       dir={sortDir < 0 ? "desc" : "asc"}
       onValue={(k) => {
         setSortK(k);
@@ -2978,6 +2989,11 @@ export default function App() {
           openSender(g);
         }}
         onOpenSlot={(slot) => { setStatsOpen(false); openAllMailNewest("", slot); }}
+        senders={state?.groups.sender}
+        onShowGrades={(query) => {
+          setStatsOpen(false);
+          openSendersFiltered(query);
+        }}
         onUnsubscribe={(key) => {
           if (state?.groups.sender?.[key]) unsubscribeOne("sender", key);
         }}
@@ -3768,10 +3784,10 @@ export default function App() {
           }}
           onOpen={openGroup}
           blockedKeys={blockedRules}
-          sortK={sortK}
+          sortK={sortBy}
           sortDir={sortDir}
           onSort={(k) => {
-            if (k === sortK) setSortDir(-sortDir);
+            if (k === sortBy) setSortDir(-sortDir);
             else { setSortK(k); setSortDir(k === "label" ? 1 : -1); }
           }}
           groupLabel={t(GROUPING_LABEL[mode])}

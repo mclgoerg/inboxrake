@@ -627,3 +627,45 @@ it("progressFolder names the folder of a per-folder progress only", () => {
   expect(progressFolder("5/20")).toBeNull();
   expect(progressFolder("connecting…")).toBeNull();
 });
+
+/* `grade:` - the same cases run in tests/test_grades.py (GRADE_CASES). */
+describe("grade: filter", () => {
+  const CASES: [string, string, boolean][] = [
+    ["grade:d", "D", true], ["grade:d", "C", false], ["grade:d", "F", false],
+    ["grade:<=c", "C", true], ["grade:<=c", "D", true],
+    ["grade:<=c", "F", true], ["grade:<=c", "B", false],
+    ["grade:<=c", "A", false],
+    ["grade:>=b", "B", true], ["grade:>=b", "A", true],
+    ["grade:>=b", "C", false], ["grade:>=b", "F", false],
+    ["GRADE:>=B", "B", true],
+    ["grade:a", "A", true], ["grade:f", "F", true], ["grade:<=a", "A", true],
+    ["grade:<=a", "B", true], ["grade:>=f", "F", true],
+    ["grade:>=f", "A", true],
+  ];
+  const graded = (letter: string) => g({
+    grade: { letter, points: 0, pattern: "mixed", checks: [] } as never });
+
+  it.each(CASES)("%s on a %s sender -> %s", (q, letter, want) => {
+    expect(matchGroup(graded(letter), parseFilter(q))).toBe(want);
+  });
+  it("never matches a row without a grade", () => {
+    expect(matchGroup(g(), parseFilter("grade:<=f"))).toBe(false);
+  });
+  it("parses the three forms and treats a bad value as a free word", () => {
+    expect(parseFilter("grade:d").grade).toEqual({ op: "=", letter: "D" });
+    expect(parseFilter("grade:<=c").grade).toEqual({ op: "<=", letter: "C" });
+    expect(parseFilter("grade:>=b").grade).toEqual({ op: ">=", letter: "B" });
+    expect(parseFilter("").grade).toBeNull();
+    for (const bad of ["grade:g", "grade:", "grade:=c", "grade:<c",
+      "grade:cc", "grade:<=", "grade:>=z", "grade:e", "grade:<=e", "grade:>=e"]) {
+      const f = parseFilter(bad);
+      expect(f.grade).toBeNull();
+      expect(f.text).toEqual([bad]);
+    }
+  });
+  it("combines with other qualifiers", () => {
+    const f = parseFilter("grade:<=d is:unsub");
+    expect(matchGroup(graded("F"), f)).toBe(true);
+    expect(matchGroup({ ...graded("F"), unsub: false }, f)).toBe(false);
+  });
+});

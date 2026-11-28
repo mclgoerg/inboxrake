@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { StatsPanel } from "./components/StatsPanel";
+import { gradedGroup } from "./gradeTestUtil";
 import { setLang } from "./i18n";
 
 let actions: Record<string, object> = {};
@@ -368,4 +369,47 @@ test("an empty mailbox shows no arrival card", async () => {
   render(<StatsPanel onClose={() => {}} />);
   await screen.findByText("moved to Trash");
   expect(rhythm).not.toHaveBeenCalled();
+});
+
+test("the grades card shows only with graded senders, comes last, and Show "
+  + "them asks for grade:<=d", async () => {
+  wideScreen();
+  actions = {};
+  extra = { scans: [{ ts: 1, mails: 5, senders: 2, size: 10 },
+    { ts: 2, mails: 6, senders: 2, size: 12 }] };
+  const onShowGrades = vi.fn();
+  const rows = { "a@x": gradedGroup("a@x", "A", "A", { count: 60 }),
+    "d@x": gradedGroup("d@x", "D", "D", { count: 30 }),
+    "f@x": gradedGroup("f@x", "F", "F", { count: 10 }) };
+  const { unmount } = render(<StatsPanel onClose={() => {}} senders={rows}
+    onShowGrades={onShowGrades} />);
+  expect(await screen.findByText("Your senders' grades")).toBeTruthy();
+  expect(screen.getByText("3 senders")).toBeTruthy();
+  expect(screen.getByText(
+    /^The 2 senders graded D or F send 40% of your mail\./)).toBeTruthy();
+  // the last card of the page, after every card that was there
+  const heads = [...document.querySelectorAll("h3")].map((h) => h.textContent);
+  expect(heads[heads.length - 1]).toBe("Your senders' grades");
+  expect(heads).toContain("Recent scans");
+  expect(heads.indexOf("Recent scans")).toBeLessThan(heads.length - 1);
+  fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+  expect(onShowGrades).toHaveBeenCalledWith("grade:<=d");
+  unmount();
+
+  // an older backend / no scan yet: nothing is graded, so no card
+  render(<StatsPanel onClose={() => {}} senders={{ "a@x": {
+    ...rows["a@x"], grade: undefined } }} />);
+  await screen.findByText("moved to Trash");
+  expect(screen.queryByText("Your senders' grades")).toBeNull();
+});
+
+test("the grades card in German", async () => {
+  setLang("de");
+  actions = {};
+  const rows = { "a@x": gradedGroup("a@x", "A", "A", { count: 60 }),
+    "f@x": gradedGroup("f@x", "F", "F", { count: 40 }) };
+  render(<StatsPanel onClose={() => {}} senders={rows}
+    onShowGrades={() => {}} />);
+  expect(await screen.findByText("Die Noten deiner Absender")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Diese anzeigen" })).toBeTruthy();
 });

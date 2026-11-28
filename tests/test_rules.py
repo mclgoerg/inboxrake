@@ -348,6 +348,7 @@ BAD_FILTERS = {
     "age": "age:>1yr", "unread": "unread:>150", "att": "att:>10x",
     "is": "is:unsubbed", "has": "has:pin", "eng": "eng:none",
     "ai": "ai:maybe", "unknown": "colour:red", "mangled": "-tag:x",
+    "grade": "grade:e",
 }
 
 
@@ -510,7 +511,8 @@ def test_has_tracker_filter_parser_and_matching():
 REPEATED = {
     "ai": "ai:safe ai:keep", "age": "age:>5y age:>1m",
     "unread": "unread:>80 unread:>10", "att": "att:>10m att:>1k",
-    "eng": "eng:low eng:high", "from": "from:a@shop.example from:b@x.example",
+    "eng": "eng:low eng:high", "grade": "grade:<=c grade:>=a",
+    "from": "from:a@shop.example from:b@x.example",
     "domain": "domain:shop.example domain:x.example",
     "replied": "is:replied is:noreply-ever",
     "unsubscribed": "is:unsubscribed is:not-unsubscribed",

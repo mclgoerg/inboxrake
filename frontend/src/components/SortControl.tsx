@@ -10,7 +10,7 @@ import { Menu, MenuGroup, MenuItem, PopupSelect, useMediaQuery }
  *  the sort keys (active one marked) and Ascending / Descending, so the
  *  filter box keeps the row. Shared by the group list and All mails. */
 export function SortControl<K extends string>({ options, value, dir,
-  onValue, onDir, plain = false }: {
+  onValue, onDir, plain = false, orderHints }: {
   options: { k: K; label: string }[];
   value: K;
   dir: "asc" | "desc";
@@ -18,12 +18,24 @@ export function SortControl<K extends string>({ options, value, dir,
   onDir: (d: "asc" | "desc") => void;
   /** Phone trigger as a plain accent icon (the Senders toolbar). */
   plain?: boolean;
+  /** A few words next to Descending / Ascending while the current key needs
+   *  them ("worst first" for the grade sort). */
+  orderHints?: { desc?: string; asc?: string };
 }) {
   const phone = useMediaQuery("(width < 48rem)");
   // The labels read "Sort: mails"; under the "Sort by" caption the key alone is enough.
   const short = (l: string) => {
     const x = t(l).replace(/^[^:]*:\s*/, "");
     return x.charAt(0).toUpperCase() + x.slice(1);
+  };
+  // The order label, with the hint of the current key after it.
+  const order = (d: "asc" | "desc") => {
+    const label = t(d === "asc" ? "sort.ascending" : "sort.descending");
+    const hint = orderHints?.[d];
+    return hint ? (
+      <span className="flex min-w-0 items-baseline gap-2">{label}
+        <span className="type-meta text-muted">{hint}</span></span>
+    ) : label;
   };
   if (phone) {
     return (
@@ -44,10 +56,10 @@ export function SortControl<K extends string>({ options, value, dir,
         </MenuGroup>
         <MenuGroup label={t("sort.order")}>
           <MenuItem active={dir === "desc"} onClick={() => onDir("desc")}>
-            {t("sort.descending")}
+            {order("desc")}
           </MenuItem>
           <MenuItem active={dir === "asc"} onClick={() => onDir("asc")}>
-            {t("sort.ascending")}
+            {order("asc")}
           </MenuItem>
         </MenuGroup>
       </Menu>
@@ -63,9 +75,9 @@ export function SortControl<K extends string>({ options, value, dir,
         ...options.map((o) => ({ value: `k:${o.k}`, label: short(o.label),
           checked: o.k === value })),
         { heading: t("sort.order") },
-        { value: "d:desc", label: t("sort.descending"),
+        { value: "d:desc", label: order("desc"),
           icon: <ArrowDown size={14} aria-hidden />, checked: dir === "desc" },
-        { value: "d:asc", label: t("sort.ascending"),
+        { value: "d:asc", label: order("asc"),
           icon: <ArrowUp size={14} aria-hidden />, checked: dir === "asc" },
       ]}
       onChange={(v) => {

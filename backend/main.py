@@ -2992,7 +2992,7 @@ def get_mails(offset: int = Query(0, ge=0),
     {total, offset, mails, ignored}. `finding` (a Rule checkup finding's
     id) narrows it to the mails that finding is about. `q` takes plain words plus the
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
-    has:pinned/is:expired/is:auto; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
+    has:pinned/is:expired/is:auto; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, grade:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
     arrival = None
     if slot:                    # "<from>-<to>": the arrival-rhythm slot

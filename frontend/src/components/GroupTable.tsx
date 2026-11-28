@@ -8,12 +8,13 @@ import { fmtSize } from "../api";
 import type { Group, Grouping, SmartKind } from "../types";
 import { t } from "../i18n";
 import { fmtNum, fmtPct } from "../numfmt";
+import { GradeBadge } from "./GradeUi";
 import { Avatar, Button, cap, Checkbox, IconTile, Modal, ShortDate,
   SettingsGroup, SettingsRow, StillMailingBadge, SwipeRow, Tag, PopupSelect,
   isModalOpen, Meta, type SwipeAction, type TagTone } from "./ui";
 
 export type SortKey = "count" | "size" | "label" | "last" | "unreadPct"
-  | "engagement";
+  | "engagement" | "grade";
 
 const PAGE_SIZES = [25, 50, 100, 200];
 const ALL = 1_000_000;
@@ -130,6 +131,13 @@ interface PageProps extends Props {
 
 const unreadPct = (g: Group) =>
   g.count ? Math.round((100 * g.unread) / g.count) : 0;
+
+/* The grade letter after a row's pill: only while a Sender list is sorted by
+   grade (the letter is what that order is about); in every other sort the
+   rows are exactly as before. */
+const rowGrade = (g: Group, grouping: Grouping | undefined, sortK: SortKey) =>
+  sortK === "grade" && grouping === "sender" && g.grade
+    ? <GradeBadge letter={g.grade.letter} /> : null;
 
 /* One status pill per row: the first thing that applies, in this priority
    (the detail header shows all the rest). The unsubscribe page to confirm is
@@ -285,6 +293,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
         {slice.map((g, i) => {
           const on = g.key === openKey || selected.has(g.key);
           const pill = rowPill(g, !!blockedKeys?.has(g.key));
+          const letter = rowGrade(g, grouping, sortK);
           return (
           <tr key={g.key} data-gidx={baseIdx + i}
             aria-current={g.key === openKey || undefined}
@@ -318,6 +327,7 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
                   {g.label}
                 </button>
                 {compact && <span className="shrink-0">{pill}</span>}
+                {compact && letter}
               </div>
               {rowNote?.(g) && (
                 <div className="truncate type-meta text-muted"
@@ -326,7 +336,13 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
               <MetaLine g={g} />
             </td>
             {!compact && (
-              <td className={`px-2 py-2.5 text-right ${td}`}>{pill}</td>
+              <td className={`px-2 py-2.5 text-right ${td}`}>
+                {letter ? (
+                  <span className="inline-flex items-center justify-end gap-2">
+                    {pill}{letter}
+                  </span>
+                ) : pill}
+              </td>
             )}
             <td className={`whitespace-nowrap px-2 py-2.5 text-right
               tabular-nums ${td}`}>
@@ -351,7 +367,8 @@ function DesktopTable({ slice, baseIdx, selected, focusedKey, openKey, compact, 
 /* Mobile: a card list - no table semantics, no horizontal squeeze. The
    round checks only exist in select mode (a tap on a card opens it). */
 function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
-  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe
+  onOpen, blockedKeys, selectMode, cards, grouping, rowNote, banner, swipe,
+  sortK
 }: PageProps) {
   const showChecks = !!cards || !!selectMode || selected.size > 0;
   const [moreFor, setMoreFor] = useState<Group | null>(null);
@@ -444,6 +461,7 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                     type-meta text-muted">
                     <span><Stats g={g} /></span>
                     {pill}
+                    {rowGrade(g, grouping, sortK)}
                   </div>
                 </div>
                 <div className="shrink-0 whitespace-nowrap text-right

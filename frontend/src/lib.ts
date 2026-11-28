@@ -2,7 +2,8 @@
 
 import { nowDate, nowMs } from "./clock";
 import { fmtNum, NBSP, uiLang } from "./numfmt";
-import type { AuthMethod, Grouping, Group, ImapAccount } from "./types";
+import type { AuthMethod, GradeLetter, Grouping, Group, ImapAccount }
+  from "./types";
 
 /** How an account signs in. Older backends send no `auth`: they used
  *  OAuth exactly when a refresh token was stored. */
@@ -187,6 +188,8 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   att:>10m att:>500k  attachment size above N (needs attachment analysis)
  *   from:<addr>         exact sender address (sender grouping only)
  *   domain:<domain>     exact domain (domain grouping only)
+ *   grade:d             sender grade, exactly D (Sender rows only)
+ *   grade:<=c           ... C or worse;  grade:>=b  B or better
  *   in:7d|12h|90min     a window back from now, next to is:new (first seen in
  *                       it - REPLACES the configured new-sender window, so it
  *                       can widen it), is:still-mailing (a late mail arrived
@@ -220,6 +223,8 @@ export interface ParsedFilter {
   back: boolean;
   trackerOnly: boolean;
   eng: EngagementTier | null;
+  /** `grade:`: `=` exactly, `<=` that letter or worse, `>=` or better. */
+  grade: { op: "=" | "<=" | ">="; letter: GradeLetter } | null;
   /** `in:` window in seconds (see the grammar above). */
   inSeconds: number | null;
 }
@@ -234,10 +239,10 @@ export function parseFilter(q: string): ParsedFilter {
     replied: null, attMin: null, unsubscribed: null, fromAddr: null,
     domain: null, newOnly: false, pinnedOnly: false, stillMailing: false,
     louder: false, back: false,
-    trackerOnly: false, eng: null, inSeconds: null };
+    trackerOnly: false, eng: null, grade: null, inSeconds: null };
   for (const tok of q.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
     const m = tok.match(
-      /^(tag|ai|age|unread|is|has|eng|att|from|domain|in):(.*)$/);
+      /^(tag|ai|age|unread|is|has|eng|att|from|domain|in|grade):(.*)$/);
     if (!m) {
       out.text.push(tok);
       continue;
@@ -268,6 +273,10 @@ export function parseFilter(q: string): ParsedFilter {
     else if (kind === "has" && val === "tracker") out.trackerOnly = true;
     else if (kind === "eng" && (val === "low" || val === "medium"
         || val === "high")) out.eng = val;
+    else if (kind === "grade" && GRADE_VALUE.test(val)) {
+      out.grade = { op: val.startsWith("<=") ? "<=" : val.startsWith(">=")
+        ? ">=" : "=", letter: val.slice(-1).toUpperCase() as GradeLetter };
+    }
     else if (kind === "att") {
       const a = val.match(/^>?(\d+)(k|m|g)?$/);
       if (a) out.attMin = Number(a[1]) * (SIZE_UNIT[a[2]] ?? 1);
@@ -328,6 +337,22 @@ const someAddr = (g: Group, members: SmartMembers | undefined,
   return false;
 };
 
+const GRADE_VALUE = /^(<=|>=)?[a-df]$/;   // A B C D F - there is no E
+
+/** The grade letters, best first (parity: backend/grades.py LETTERS). */
+export const GRADE_LETTERS: readonly GradeLetter[] = ["A", "B", "C", "D", "F"];
+
+/** `grade:d` / `grade:<=c` (C or worse) / `grade:>=b` (B or better). A row
+ *  without a grade (only Sender rows have one) never matches. */
+function gradeMatches(g: Group, want: NonNullable<ParsedFilter["grade"]>):
+    boolean {
+  if (!g.grade) return false;
+  const have = GRADE_LETTERS.indexOf(g.grade.letter);
+  const at = GRADE_LETTERS.indexOf(want.letter);
+  return want.op === "=" ? have === at : want.op === "<=" ? have >= at
+    : have <= at;
+}
+
 /** Louder = MORE than this many times the usual week and at least this many
  *  mails (backend senderchanges.py - keep the two in step). */
 export const LOUDER_FACTOR = 2;
@@ -383,6 +408,7 @@ export function matchGroup(g: Group, f: ParsedFilter, now = nowMs(),
   if (f.eng !== null && engagementTier(g.engagement ?? 0) !== f.eng) {
     return false;
   }
+  if (f.grade !== null && !gradeMatches(g, f.grade)) return false;
   if (f.replied !== null && g.replied !== f.replied) return false;
   if (f.unsubscribed !== null) {
     const done = g.unsubscribed?.status === "done";

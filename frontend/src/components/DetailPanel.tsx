@@ -21,6 +21,7 @@ import type { AppState, Group, Grouping, GroupUnsub, Mail, Rule }
   from "../types";
 import { EditLabels } from "./EditLabels";
 import { FolderPicker, type PickEnv } from "./FolderPicker";
+import { GradeCard } from "./GradeUi";
 import { RowAvatar, localizedSub } from "./GroupTable";
 import { KindChip, KindsBox, type KindActions } from "./KindsBox";
 import { ArrivalStrip } from "./RhythmCard";
@@ -947,6 +948,9 @@ export function DetailPanel({ grouping, group, aiEnabled, protectedNow,
         <WaitingLine addr={shortcutTarget(grouping, group)!.value}
           enabled={waiting.enabled} onShow={waiting.onShow} />
       )}
+      {/* a sender's report card: after what they send and the waiting line,
+          before the Mails list (only Sender rows carry a grade) */}
+      <GradeCard g={group} />
     </>
   );
 
