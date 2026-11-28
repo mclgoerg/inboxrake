@@ -101,28 +101,51 @@ def test_a_header_reader_never_raises():
 
 # ---------------------------------------------------------- the subjects
 
+# The mail programs' own wording, alone and unprefixed: enough on its own
 OOO_SUBJECTS = [
     "Automatic reply: Lunch on Friday", "Auto-Reply: Q3 plan",
-    "Autoreply: hello", "Out of Office: Re: hello",
-    "Out of Office AutoReply: hello", "Out-of-office",
-    "Abwesenheitsnotiz: Treffen", "Automatische Antwort: Treffen",
-    "AW: Automatische Antwort: Treffen", "Re: Automatic reply: x",
-    "Vacation auto-reply: x", "Abwesenheitsnachricht",
-    "Out of the office - back Monday"]
+    "Autoreply: hello", "Automatic response: x",
+    "Out of Office AutoReply: hello", "Abwesenheitsnotiz: Treffen",
+    "Automatische Antwort: Treffen", "Abwesenheitsnachricht: Treffen"]
+# What a person writes too, or writes about such mail: no out-of-office reply
+# without the Auto-Submitted header
 NOT_OOO_SUBJECTS = [
-    "Out of office on Friday", "Automatic reply to your inbox rules",
-    "Your automatic reply settings", "Weekly digest", "Auto insurance renewal",
-    "Autoreply settings", "Re: Dinner", "Vacation plans",
-    "Out of office hours at the clinic", "Abwesenheit im August geplant"]
+    "Re: Automatic reply: x", "AW: Automatische Antwort: Treffen",
+    "Fwd: Automatic reply: x", "WG: Abwesenheitsnotiz: Treffen",
+    "Out of office: 23-27 Dec", "Out of office - please contact Anna",
+    "Out of the office - back Monday", "Out-of-office",
+    "Out of Office: Re: hello", "Vacation auto-reply: x",
+    "Abwesenheitsnachricht", "Out of office on Friday",
+    "Automatic reply to your inbox rules", "Your automatic reply settings",
+    "Weekly digest", "Auto insurance renewal", "Autoreply settings",
+    "Re: Dinner", "Vacation plans", "Out of office hours at the clinic",
+    "Abwesenheit im August geplant"]
+# A server's exact wording, alone: enough on its own
 BOUNCE_SUBJECTS = [
     "Undelivered Mail Returned to Sender",
-    "Mail delivery failed: returning message to sender",
-    "Mail Delivery Failure", "Delivery Status Notification (Failure)",
+    "Delivery Status Notification (Failure)",
     "Delivery Status Notification (Delay)", "Undeliverable: Lunch on Friday",
-    "Undeliverable message", "Returned mail: see transcript for details",
-    "Failure notice", "Unzustellbar: Treffen", "Nicht zustellbar: Treffen",
-    "Zustellung fehlgeschlagen", "E-Mail-Zustellung fehlgeschlagen",
-    "Re: Undelivered Mail Returned to Sender", "Mail-Zustellung nicht möglich"]
+    "Unzustellbar: Treffen"]
+# Looser phrases: a bounce only with machine evidence
+LOOSE_BOUNCE_SUBJECTS = [
+    "Mail delivery failed: returning message to sender",
+    "Mail Delivery Failure", "Undeliverable message",
+    "Returned mail: see transcript for details", "Failure notice",
+    "Nicht zustellbar: Treffen", "Zustellung fehlgeschlagen",
+    "E-Mail-Zustellung fehlgeschlagen", "Mail-Zustellung nicht möglich"]
+# People writing about delivery problems, replies and forwards of reports:
+# never a bounce without machine evidence
+HUMAN_BOUNCE_SUBJECTS = [
+    "Re: Undelivered Mail Returned to Sender",
+    "Fwd: Undelivered Mail Returned to Sender",
+    "AW: Undeliverable: Angebot", "WG: Unzustellbar: Angebot",
+    "Re: Delivery Status Notification (Failure)",
+    "Mail delivery failed again - can you check the server?",
+    "Mail delivery failure on our side, sorry",
+    "Undeliverable - wrong address for Tom?",
+    "Returned mail: wrong address for the invoice",
+    "Nicht zustellbar - bitte neue Adresse",
+    "Zustellung nicht möglich: 00340434"]
 NOT_BOUNCE_SUBJECTS = [
     # a parcel is not a mail
     "Delivery failed: order #12345", "Your parcel could not be delivered",
@@ -130,6 +153,7 @@ NOT_BOUNCE_SUBJECTS = [
     "Zustellung fehlgeschlagen: Paket 123", "Undelivered: your parcel",
     "Mail delivery tips for newsletters", "Returned mail policy",
     "Failure notice board", "Zustellung am Montag", "Weekly digest"]
+DAEMON = "mailer-daemon@mx.team.example"
 
 
 @pytest.mark.parametrize("subject", OOO_SUBJECTS)
@@ -147,10 +171,75 @@ def test_bounce_subjects(subject):
     assert pastdate.auto_reason(mail(subject), subject) == pastdate.BOUNCES
 
 
+@pytest.mark.parametrize("subject", LOOSE_BOUNCE_SUBJECTS)
+def test_a_looser_bounce_phrase_needs_machine_evidence(subject):
+    assert pastdate.auto_reason(mail(subject), subject) is None
+    for evidence in (dict(auto="auto-replied"), dict(auto="auto-generated"),
+                     dict(addr=DAEMON), dict(addr="Mailer-Daemon@mx.team.example"),
+                     dict(rpt="delivery-status")):
+        assert pastdate.auto_reason(mail(subject, **evidence), subject) \
+            == pastdate.BOUNCES, evidence
+    # a daemon never writes behind a Re: / Fwd:, a machine header may
+    prefixed = "Re: " + subject
+    assert pastdate.auto_reason(mail(prefixed, addr=DAEMON), prefixed) is None
+    assert pastdate.auto_reason(mail(prefixed, auto="auto-generated"),
+                                prefixed) == pastdate.BOUNCES
+
+
+@pytest.mark.parametrize("subject", HUMAN_BOUNCE_SUBJECTS)
+def test_people_writing_about_delivery_problems_are_no_bounce(subject):
+    assert pastdate.auto_reason(mail(subject), subject) is None
+    # not even from a sender that looks like a server: behind a prefix it is
+    # somebody replying
+    if subject.split(":")[0].lower() in ("re", "fwd", "aw", "wg"):
+        assert pastdate.auto_reason(mail(subject, addr=DAEMON), subject) is None
+
+
+@pytest.mark.parametrize("subject", [
+    "Mail delivery failed again - can you check the server?",
+    "Mail delivery failure on our side, sorry"])
+def test_a_phrase_without_its_separator_is_no_bounce_even_from_a_server(
+        subject):
+    """"Mail delivery failed" is a server's phrase only when it ends there or
+    goes on after a colon / dash - a sentence that merely starts with it is
+    somebody's."""
+    for evidence in (dict(addr=DAEMON), dict(auto="auto-replied"), {}):
+        assert pastdate.auto_reason(mail(subject, **evidence), subject) \
+            != pastdate.BOUNCES, evidence
+
+
 @pytest.mark.parametrize("subject", NOT_BOUNCE_SUBJECTS)
 def test_other_subjects_are_no_bounce(subject):
     assert pastdate.auto_reason(mail(subject), subject) \
         != pastdate.BOUNCES
+    assert pastdate.auto_reason(mail(subject, addr=DAEMON), subject) \
+        != pastdate.BOUNCES
+
+
+def test_a_reply_or_forward_counts_only_with_the_headers_of_a_machine():
+    """"Re: Undelivered Mail Returned to Sender" is a person; the same subject
+    with a report type or an Auto-Submitted keyword is the machine."""
+    for prefix in ("Re: ", "AW: ", "Fwd: ", "WG: ", "Re: Re: ", "SV: "):
+        bounce = prefix + "Undelivered Mail Returned to Sender"
+        ooo = prefix + "Automatic reply: Lunch"
+        assert pastdate.auto_reason(mail(bounce), bounce) is None
+        assert pastdate.auto_reason(mail(ooo), ooo) is None
+        assert pastdate.auto_reason(mail(bounce, addr=DAEMON), bounce) is None
+        assert pastdate.auto_reason(mail(bounce, rpt="delivery-status"),
+                                    bounce) == pastdate.BOUNCES
+        assert pastdate.auto_reason(mail(bounce, auto="auto-generated"),
+                                    bounce) == pastdate.BOUNCES
+        assert pastdate.auto_reason(mail(ooo, auto="auto-replied"), ooo) \
+            == pastdate.OOO
+        # a different keyword is no out-of-office reply
+        assert pastdate.auto_reason(mail(ooo, auto="auto-generated"),
+                                    ooo) is None
+
+
+def test_the_people_of_these_subjects_are_never_listed_through_find():
+    subjects = (NOT_OOO_SUBJECTS + HUMAN_BOUNCE_SUBJECTS
+                + [s for s in LOOSE_BOUNCE_SUBJECTS])
+    assert listed([mail(s) for s in subjects]) == {}
 
 
 # ------------------------------------------------------------ the reasons
@@ -230,6 +319,44 @@ def test_a_read_receipt_is_not_an_out_of_office_reply():
     m = mail("Automatic reply: Read: plan", auto="auto-replied",
              rpt="disposition-notification")
     assert listed([m]) == {"Automatic reply: Read: plan": "answers"}
+
+
+ANSWER_SUBJECTS = [
+    "Read: Project plan", "Not read: Project plan", "Gelesen: Projektplan",
+    "Nicht gelesen: Projektplan", "Accepted: Team dinner",
+    "Declined: Team dinner", "Tentative: Team dinner",
+    "Tentatively accepted: Team dinner", "Zugesagt: Teamessen",
+    "Abgelehnt: Teamessen", "Angenommen: Teamessen",
+    "Mit Vorbehalt: Teamessen", "Mit Vorbehalt zugesagt: Teamessen",
+    "Return Receipt (displayed) - Project plan", "Read receipt: plan",
+    "Lesebestätigung: Plan", "Empfangsbestätigung: Plan"]
+
+
+@pytest.mark.parametrize("subject", ANSWER_SUBJECTS)
+def test_a_read_receipt_or_calendar_subject_is_no_out_of_office_reply(subject):
+    """`Auto-Submitted: auto-replied` on such a subject, without the report or
+    the calendar part, must not list it as an out-of-office reply (ticked) and
+    so get round "read receipts and calendar answers start unticked"."""
+    m = mail(subject, auto="auto-replied")
+    assert pastdate.auto_reason(m, subject) is None
+    assert listed([m]) == {}
+    # with the evidence it is what it is
+    assert listed([mail(subject, rpt="disposition-notification")]) \
+        == {subject: "answers"}
+    assert listed([mail(subject, cal="reply")]) == {subject: "answers"}
+
+
+def test_the_word_receipt_of_a_read_receipt_is_no_invoice():
+    """A receipt's own subject ("Return Receipt (displayed) - ...") says
+    "receipt": Keep-safe reads what the mail is about, not that word."""
+    plain = mail("Return Receipt (displayed) - Project plan",
+                 rpt="disposition-notification")
+    assert listed([plain]) == {plain["subject"]: "answers"}
+    bill = mail("Return Receipt (displayed) - Invoice 1234",
+                rpt="disposition-notification")
+    assert listed([bill]) == {}                 # what it is about: an invoice
+    again = mail("Read: Invoice 1234", rpt="disposition-notification")
+    assert listed([again]) == {}
 
 
 def test_the_order_of_the_reasons_and_their_default_ticks():
@@ -335,7 +462,7 @@ def test_a_mail_the_four_old_reasons_list_stays_theirs():
     offer = mail("Automatic reply: Deal ends at midnight", days_ago=10,
                  auto="auto-replied")
     assert pastdate.classify(offer["subject"]) == pastdate.OFFER
-    assert pastdate.OOO_SUBJECT_RE.match(offer["subject"])
+    assert pastdate.OOO_CLIENT_RE.match(offer["subject"])
     assert listed([offer]) == {offer["subject"]: "offers"}
     # a sign-in code is in Keep-safe's account class: the old reason lists
     # it, the automatic-mail pass leaves it alone, so it stays "codes"

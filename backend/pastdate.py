@@ -412,59 +412,106 @@ def header_evidence(msg) -> dict:
     return out
 
 
-_REPLY_PREFIX = r"^\s*(?:(?:re|aw|antw|fw|fwd|wg)\s*:\s*)*"
+# A reply or a forward is a person's mail: a subject that starts with one of
+# these never counts on its own, whatever follows it - only with the headers of
+# a machine (`Auto-Submitted`, a report type).
+_PREFIX_RE = re.compile(r"^\s*(?:(?:re|aw|antw|fw|fwd|wg|sv|vs)\s*:\s*)+", _I)
 _SEP = r"\s*(?:[:\-–—]|$)"
 
-# "Automatic reply: ...", "Out of Office: ...", "Abwesenheitsnotiz: ...": the
-# words of the common mail programs, at the START of the subject followed by a
-# separator (or the end) - "Out of office on Friday" is somebody's mail.
-OOO_SUBJECT_RE = re.compile(
-    _REPLY_PREFIX
-    + r"(?:automatic\s+(?:reply|response)|auto[- ]?(?:reply|response)|"
-      r"autoreply|autoresponder|"
-      r"out[- ]of[- ](?:the[- ])?office(?:\s+auto[- ]?(?:reply|response|"
-      r"message))?|vacation\s+(?:auto[- ]?)?(?:reply|response|message)|"
-      r"automatische\s+antwort|automatische\s+abwesenheit\w*|"
-      r"abwesenheits(?:notiz|nachricht|meldung))" + _SEP, _I)
 
-# "Undelivered Mail Returned to Sender", "Mail delivery failed", "Delivery
-# Status Notification (Failure)", "Undeliverable: ...", "Unzustellbar: ..."
-BOUNCE_SUBJECT_RE = re.compile(
-    _REPLY_PREFIX
-    + r"(?:undelivered\s+mail\s+returned\s+to\s+sender|"
-      r"mail\s+delivery\s+(?:failed|failure|system\s+failure)|"
-      r"delivery\s+status\s+notification\s*\(|"
-      r"undeliverable(?:\s+(?:mail|message|e-?mail))?" + _SEP + r"|"
-      r"returned\s+mail\s*:|failure\s+notice" + _SEP + r"|"
-      r"unzustellbar(?:e\s+(?:mail|nachricht|e-?mail))?" + _SEP + r"|"
-      r"nicht\s+zustellbar" + _SEP + r"|"
-      r"(?:e-?mail-?|mail-?)?zustellung\s+(?:fehlgeschlagen|nicht\s+m[oö]glich))",
+def _unprefix(subject: str) -> tuple[str, bool]:
+    """(the subject without its Re: / AW: / Fwd: / WG: prefixes, whether it had
+    one)."""
+    m = _PREFIX_RE.match(subject)
+    return (subject[m.end():], True) if m else (subject, False)
+
+
+# Out-of-office replies by their subject, alone: the mail programs' own words
+# at the very START of the subject, with their colon ("Automatic reply: ...",
+# "Abwesenheitsnotiz: ..."). Looser phrases ("Out of office: 23-27 Dec", "Out of
+# the office - back Monday") are what a person writes too: those are only ever
+# read through the Auto-Submitted header (see `auto_reason`).
+OOO_CLIENT_RE = re.compile(
+    r"^\s*(?:automatic\s+(?:reply|response)|auto[- ]?(?:reply|response)|"
+    r"autoreply|out[- ]of[- ]office\s+auto[- ]?(?:reply|response)|"
+    r"automatische\s+antwort|abwesenheits(?:notiz|nachricht|meldung))\s*:", _I)
+
+# Delivery failures by their subject, alone: the servers' exact phrases
+# ("Undelivered Mail Returned to Sender", "Delivery Status Notification
+# (Failure)", "Undeliverable: ...", "Unzustellbar: ...") ...
+BOUNCE_CLIENT_RE = re.compile(
+    r"^\s*(?:undelivered\s+mail\s+returned\s+to\s+sender\s*$|"
+    r"delivery\s+status\s+notification\s*\((?:failure|delay|success)\)\s*$|"
+    r"undeliverable\s*:|unzustellbar\s*:)", _I)
+# ... and the looser ones a person can write too ("Mail delivery failed again -
+# can you check the server?", "Returned mail: wrong address for the invoice",
+# "Nicht zustellbar - bitte neue Adresse"): only from a mailer-daemon sender,
+# or with the Auto-Submitted header of a machine.
+BOUNCE_LOOSE_RE = re.compile(
+    r"^\s*(?:mail\s+delivery\s+(?:failed|failure|system\s+failure)" + _SEP + r"|"
+    r"undeliverable(?:\s+(?:mail|message|e-?mail))?" + _SEP + r"|"
+    r"returned\s+mail\s*:|failure\s+notice" + _SEP + r"|"
+    r"unzustellbar(?:e\s+(?:mail|nachricht|e-?mail))?" + _SEP + r"|"
+    r"nicht\s+zustellbar" + _SEP + r"|"
+    r"(?:e-?mail-?|mail-?)?zustellung\s+(?:fehlgeschlagen|nicht\s+m[oö]glich))",
     _I)
+# The server a delivery report comes from
+_DAEMON_RE = re.compile(r"^(?:mailer-daemon|mail-daemon|mailerdaemon)$")
 # A parcel is not a mail: a subject about one is never a bounce, whatever it
 # starts with ("Undeliverable: your parcel").
 NOT_A_BOUNCE_RE = re.compile(
     r"parcel|package|paket|shipment|sendung|order|bestellung|lieferung|"
     r"shipping|versand|tracking", _I)
+# The leading words of a read receipt or a calendar answer ("Read: ...",
+# "Return Receipt (displayed) - ...", "Accepted: ..."). They are listed only on
+# their header evidence (a report type, a calendar REPLY), and never as
+# out-of-office replies, whatever Auto-Submitted says. Matching consumes them,
+# so the Keep-safe check reads what the mail is about, not the word "receipt"
+# of the receipt.
+ANSWER_SUBJECT_RE = re.compile(
+    r"^\s*(?:(?:not\s+read|read|gelesen|nicht\s+gelesen|accepted|declined|"
+    r"tentative(?:ly\s+accepted)?|zugesagt|abgelehnt|angenommen|"
+    r"mit\s+vorbehalt(?:\s+zugesagt)?)\s*:|"
+    r"(?:(?:return|read)\s+receipt|lesebest[aä]tigung|empfangsbest[aä]tigung)"
+    r"\b(?:\s*\([^)]*\))?\s*[:\-–—]?)\s*", _I)
 
 
 def auto_reason(m: dict, subject: str) -> str | None:
-    """Which automatic-mail reason an index entry belongs to, or None. A
-    delivery failure is a delivery status report or a bounce subject; a read
-    receipt or a calendar answer is ONLY ever read from its header evidence
-    (`rpt` / `cal`, kept by the scan and the Attachments analysis) - a
-    subject like "Read: ..." or "Accepted: ..." says nothing; an out-of-office
-    reply is one by its subject, or by `Auto-Submitted: auto-replied` on a
-    subject that names no purpose and no other kind of this feature (a ticket
-    acknowledgement or a parcel update is no out-of-office reply)."""
+    """Which automatic-mail reason an index entry belongs to, or None.
+
+    Machine evidence is what the headers say (`rpt`: a report type, `auto`: the
+    Auto-Submitted keyword; `cal`: a calendar REPLY, from the Attachments
+    analysis) or a mailer-daemon sender. A subject alone only
+    counts when it is the program's own wording - and never behind a Re: / Fwd:
+    prefix: that is a person writing about such mail.
+
+      delivery failure  a delivery status report; or an exact server subject;
+                        or a looser phrase with machine evidence (no parcel
+                        words in the subject, ever)
+      answers           a read receipt / calendar answer: ONLY the header
+                        evidence - "Read: ..." or "Accepted: ..." says nothing
+      out-of-office     a client's own subject; or `Auto-Submitted:
+                        auto-replied` on a subject that names no purpose, no
+                        other kind of this feature and no read receipt /
+                        calendar answer (a ticket acknowledgement is no
+                        out-of-office reply)"""
     rpt = m.get("rpt") or ""
-    if rpt == DSN or (BOUNCE_SUBJECT_RE.match(subject)
-                      and not NOT_A_BOUNCE_RE.search(subject)):
+    auto = m.get("auto") or ""
+    core, prefixed = _unprefix(subject)
+    if rpt == DSN:
         return BOUNCES
+    if not NOT_A_BOUNCE_RE.search(subject):
+        daemon = not prefixed and bool(
+            _DAEMON_RE.match((m.get("addr") or "").lower().partition("@")[0]))
+        if BOUNCE_CLIENT_RE.match(core) and (not prefixed or auto):
+            return BOUNCES
+        if BOUNCE_LOOSE_RE.match(core) and (auto or daemon):
+            return BOUNCES
     if rpt == MDN or m.get("cal") == "reply":
         return ANSWERS
-    if OOO_SUBJECT_RE.match(subject):
+    if OOO_CLIENT_RE.match(core) and (not prefixed or auto == AUTO_REPLIED):
         return OOO
-    if m.get("auto") == AUTO_REPLIED and subject \
+    if auto == AUTO_REPLIED and core and not ANSWER_SUBJECT_RE.match(core) \
             and not smartkinds.message_purposes(subject) \
             and classify(subject) is None:
         return OOO
@@ -476,7 +523,10 @@ def _keep_safe(m: dict) -> bool:
     contracts, job applications, account notices), switched on or not."""
     from . import keepsafe          # keepsafe imports mailops, which imports us
     hint = smartkinds.sender_hint(m.get("addr", ""), bool(m.get("unsub")))
-    return bool(keepsafe.classes_of(m.get("subject") or "", hint))
+    # a Re: / Fwd: and the receipt's own words ("Return Receipt (displayed) -")
+    # say nothing about what the mail is about
+    about = ANSWER_SUBJECT_RE.sub("", _unprefix(m.get("subject") or "")[0], 1)
+    return bool(keepsafe.classes_of(about, hint))
 
 
 # -------------------------------------------------------------- the finder

@@ -490,13 +490,19 @@ Three more rows come last, for **automatic mail** - mail a machine sent in
 answer to yours, useful for a day and clutter for years. All three wait a week
 before they are listed:
 
-- **Out-of-office replies, older than a week** ("Automatic reply: …",
-  "Abwesenheitsnotiz: …") - found from the subject, or from the mail's
-  `Auto-Submitted: auto-replied` header when the subject says nothing else (a
-  ticket confirmation or a parcel update is no out-of-office reply).
-- **Delivery failures, older than a week** ("Undelivered Mail Returned to
-  Sender", "Unzustellbar: …") - a delivery status report, or such a subject. A
-  subject about a parcel is never one.
+- **Out-of-office replies, older than a week** - a mail program's own subject
+  at the start of the mail ("Automatic reply: …", "Abwesenheitsnotiz: …"), or
+  the mail's `Auto-Submitted: auto-replied` header when the subject says
+  nothing else (a ticket confirmation, a parcel update, a read receipt or a
+  calendar answer is no out-of-office reply). "Out of office: 23-27 Dec" alone is
+  somebody's mail, and so is a reply or forward ("Re: Automatic reply: …"): they
+  only count with that header.
+- **Delivery failures, older than a week** - a delivery status report, or a
+  mail server's exact subject ("Undelivered Mail Returned to Sender",
+  "Undeliverable: …", "Unzustellbar: …"). A looser phrase ("Mail delivery
+  failed", "Returned mail: …") counts only from a mailer-daemon sender or
+  with a machine's `Auto-Submitted` header; a reply or forward is
+  somebody's mail; a subject about a parcel is never one.
 - **Read receipts and calendar answers** - **unticked**, like offers. Only
   with the matching header: a read receipt (a disposition-notification report)
   or a calendar answer (an invitation reply, a `text/calendar` part with
