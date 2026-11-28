@@ -38,6 +38,7 @@ from . import bodyindex
 from . import config as cfgmod
 from . import dupstore
 from . import demo
+from . import grades
 from . import knownsenders
 from . import labelstore
 from . import mailkinds
@@ -2822,8 +2823,12 @@ def _group_unsub(rec: dict, entries: dict[str, dict], acc) -> dict | None:
         return None
     n = sum(1 for e in mine.values() if e["status"] == "done")
     of = len(senders)
+    # `ts`: when the newest recorded unsubscribe was done (0 = none) - the
+    # sender grade waits the watchdog's grace after it before "stopped"
     out = {"n": n, "of": of, "status": "done" if n == of else "pending",
-           "link": "", "addr": ""}
+           "link": "", "addr": "",
+           "ts": max((int(e.get("ts") or 0) for e in mine.values()
+                      if e["status"] == "done"), default=0)}
     for status in ("failed", "link"):        # worst outstanding case wins
         hit = next((a for a, e in mine.items() if e["status"] == status), None)
         if hit:
@@ -2843,6 +2848,26 @@ def _trash_size(acc) -> int | None:
     if not index or count is None or len(index) != count:
         return None
     return sum(int(m.get("size") or 0) for m in index.values())
+
+
+def _attach_grades(senders: dict | None, acc, now: float | None = None
+                   ) -> None:
+    """Adds `grade` (backend/grades.py) to each public Sender record, derived
+    from the record's own figures plus whether its newest mail offers a
+    one-click unsubscribe - the app's own decision (`unsub.method_of`: an
+    https link AND the List-Unsubscribe-Post header, not the header alone)
+    (lock held). Nothing is stored: the grade is worked out again on every
+    state build."""
+    if not senders:
+        return
+    from . import unsub as unsubmod         # unsub imports this module
+    one_click = {
+        k for k, rec in acc.state["groups"]["sender"].items()
+        if k in senders and rec["unsub"]
+        and any(unsubmod.method_of(unsubmod.parse_unsub(h, oc)) == "one_click"
+                for h, oc in group_unsub_senders(rec, acc).values())}
+    for k, grade in grades.grade_all(senders, one_click, now).items():
+        senders[k]["grade"] = grade
 
 
 def public_state(acc=None) -> dict:
@@ -2899,6 +2924,7 @@ def public_state(acc=None) -> dict:
                        if rec.get("kind") == "company" else {})}
                 for k, rec in recs.items()}
             for g, recs in acc.state["groups"].items()}
+        _attach_grades(out["groups"].get("sender"), acc, now)
         return out
 
 
@@ -7186,7 +7212,7 @@ def search_body(query: str, limit: int = 500, acc=None,
 
 MAIL_SORTS = ("date", "size", "sender")
 _MQ_RE = re.compile(r"^(age|size|att|from|domain|folder|is|has|"
-                    r"tag|ai|unread|eng|in|kind):(.*)$")
+                    r"tag|ai|unread|eng|in|kind|grade):(.*)$")
 # `folder:"Receipts 2019"`: the whole name (a plain `folder:` token cannot hold
 # a space), matched exactly - what "Open in All mail" of Your folders uses
 _MQ_FOLDER_Q = re.compile(r'(?:^|\s)folder:"([^"]+)"', re.I)
@@ -7216,7 +7242,7 @@ def parse_mail_query(q: str) -> dict:
     its subject - see mailkinds.py; a per-mail word only, no group or rule
     word; two different kinds match nothing), `has:pinned`, `in:7d|12h|90min`
     (arrived within that window - the same term the group filter takes).
-    Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`,
+    Group-level qualifiers (`tag:`, `ai:`, `unread:<pct>`, `eng:`, `grade:`,
     `is:unsub|protected|replied|new|...`, `has:` other than pinned) have no
     per-mail meaning here: they are NOT applied and are reported back in
     `ignored` instead of silently matching nothing. (This is a separate,
@@ -7263,7 +7289,7 @@ def parse_mail_query(q: str) -> dict:
             out["pinned"] = True
         elif kind == "in" and (a := _MQ_IN_RE.match(val)):
             out["in_seconds"] = int(a.group(1)) * _MQ_IN_UNIT[a.group(2)]
-        elif kind in ("tag", "ai", "unread", "eng", "is", "has"):
+        elif kind in ("tag", "ai", "unread", "eng", "grade", "is", "has"):
             out["ignored"].append(tok)
         else:                       # malformed age:/size:/att: value
             out["text"].append(tok)

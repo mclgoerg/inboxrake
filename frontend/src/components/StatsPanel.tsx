@@ -6,8 +6,10 @@ import { categoryHues, categoryName } from "../categories";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtDate } from "../lib";
-import type { SenderChangesResp, StatsResp } from "../types";
+import { gradeStats } from "../grades";
+import type { Group, SenderChangesResp, StatsResp } from "../types";
 import type { ArrivalSlot } from "../rhythm";
+import { GradesCard } from "./GradeUi";
 import { RhythmCard } from "./RhythmCard";
 import { ChangesRows } from "./SenderChanges";
 import {
@@ -203,7 +205,8 @@ function Columns({ rows }: {
  *  and domains, engagement, AI coverage, cleanup progress and scan history.
  *  `onOpenSender` (top senders are buttons when given) opens a sender. */
 export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
-  onUnsubscribe, onOpenRecipe, onBlock, onShowMails, blockedKeys }: {
+  onUnsubscribe, onOpenRecipe, onBlock, onShowMails, blockedKeys,
+  senders: senderRows, onShowGrades }: {
   onClose: () => void; onWrapped?: () => void;
   onOpenSender?: (key: string) => void;
   /** Opens All mail filtered to a slot of "When mail arrives". */
@@ -218,6 +221,10 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
   onBlock?: (key: string) => void;
   onShowMails?: (key: string) => void;
   blockedKeys?: ReadonlySet<string>;
+  /** The Sender rows (with their grades) for "Your senders' grades". */
+  senders?: Record<string, Group>;
+  /** Opens the Senders list with this filter (grade:<=d). */
+  onShowGrades?: (query: string) => void;
 }) {
   const [stats, setStats] = useState<StatsResp | null>(null);
   const [error, setError] = useState("");
@@ -250,6 +257,7 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
     && (changes.louder.some((r) => !namedSet.has(r.key))
       || changes.back.some((r) => !namedSet.has(r.key)));
 
+  const grades = senderRows ? gradeStats(Object.values(senderRows)) : null;
   const thisMonth = stats?.actions?.[month()];
   const months = Object.keys(stats?.actions ?? {}).sort().reverse();
   const ratedTotal = stats
@@ -715,6 +723,16 @@ export function StatsPanel({ onClose, onWrapped, onOpenSender, onOpenSlot,
                             { lang, time: true }),
                           fmtNum(s.mails), fmtNum(s.senders),
                           fmtSize(s.size)] }))} />
+                  </ChartCard>
+                )}
+
+                {/* the last card: how the senders spread over A-F */}
+                {grades && (
+                  <ChartCard title={t("grade.stats.title")}
+                    hint={t("n.senders", { n: grades.graded })}>
+                    <GradesCard stats={grades}
+                      onShow={onShowGrades
+                        && (() => onShowGrades("grade:<=d"))} />
                   </ChartCard>
                 )}
               </div>

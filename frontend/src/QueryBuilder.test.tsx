@@ -7,8 +7,9 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { QueryBuilder } from "./components/QueryBuilder";
 import { parseFilter } from "./lib";
+import { setLang } from "./i18n";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); setLang("en"); });
 
 function setup(initial = "") {
   let value = initial;
@@ -279,4 +280,41 @@ test("every kind the builder offers is one the server knows", async () => {
   const { KIND_IDS } = await import("./kinds");
   expect([...KIND_IDS]).toEqual(["ads", "orders", "shipping", "invoices",
     "appointments", "jobs", "support", "accounts"]);
+});
+
+test.each([
+  ["graded D or worse", "grade:<=d", { op: "<=", letter: "D" }],
+  ["graded C or worse", "grade:<=c", { op: "<=", letter: "C" }],
+  ["graded B or better", "grade:>=b", { op: ">=", letter: "B" }],
+])("grade chip '%s' emits the %s DSL token", (label, token, parsed) => {
+  const s = setup();
+  fireEvent.click(screen.getByText(label));
+  expect(s.get()).toBe(token);
+  expect(parseFilter(s.get()).grade).toEqual(parsed);
+});
+
+test("the grade flags come last: every flag that was there keeps its place",
+  () => {
+    setup();
+    const order = ["with unsubscribe link", "new senders",
+      "still mailing after unsubscribe", "with protected mails",
+      "that track opens or clicks", "rarely engaged with",
+      "sometimes engaged with", "often engaged with", "got louder",
+      "came back after 6+ months", "graded D or worse", "graded C or worse",
+      "graded B or better"];
+    const labels = [...document.querySelectorAll("button")]
+      .map((b) => b.textContent);
+    const idx = order.map((name) => labels.indexOf(name));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+  });
+
+test("the grade chips read in German", () => {
+  const s = setup();
+  setLang("de");
+  s.rerender();
+  for (const label of ["Note D oder schlechter", "Note C oder schlechter",
+    "Note B oder besser"]) {
+    expect(screen.getByText(label)).toBeTruthy();
+  }
 });

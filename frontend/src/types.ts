@@ -96,6 +96,9 @@ export interface GroupUnsub {
   status: "done" | "pending" | "link" | "failed";
   link: string;
   addr: string;
+  /** When the newest recorded unsubscribe was done (0 = none; absent from an
+   *  older backend). The sender grade waits the watchdog's grace after it. */
+  ts?: number;
 }
 
 export interface StillMailing {
@@ -122,6 +125,44 @@ export interface GroupBack {
   n: number;
   /** older mail of the sender is still here and none of it was opened */
   never_opened: boolean;
+}
+
+/** The letters of a sender grade, best first. */
+export type GradeLetter = "A" | "B" | "C" | "D" | "F";
+export type CheckVerdict = "ok" | "bad" | "neutral";
+export type GradePattern = "loud" | "quiet" | "tracks" | "mixed";
+
+/** One of the six checks behind a grade (backend/grades.py). `v` is the
+ *  verdict; the other fields are the figures the UI words, present only
+ *  where the data was there. */
+export interface GradeCheck {
+  id: "open" | "often" | "tracking" | "unsub" | "stops" | "size";
+  v: CheckVerdict;
+  kind?: string;       // tracking: pixel | links | both | none | unchecked;
+                       // unsub: post | link | none; stops: stopped | still |
+                       // open | never | waiting (inside the 48 h grace)
+  read?: number;       // open: mails read ...
+  total?: number;      // ... of this many
+  pct?: number;        // open: read share; tracking: mails with any flag
+  months?: number;     // open: the sender's active period
+  per_week?: number;   // often
+  rank?: number;       // often: % of senders that mail less often
+  checked?: number;    // tracking: mails the body index checked
+  pixel_pct?: number;
+  click_pct?: number;
+  n?: number;          // stops (still): mails after the unsubscribe
+  avg?: number;        // size: average bytes per mail
+  att?: number;        // size: attachment bytes of the sender
+}
+
+/** A Sender row's grade, derived by the backend on every state build. */
+export interface GroupGrade {
+  letter: GradeLetter;
+  points: number;
+  pattern: GradePattern;
+  checks: GradeCheck[];
+  /** The "you wrote to them" floor lifted the letter to C. */
+  floor?: boolean;
 }
 
 export interface Group {
@@ -158,6 +199,7 @@ export interface Group {
   back?: GroupBack;
   pinned: number;   // mails of this group protected from bulk actions
   engagement: number;   // 0-100, see lib.ts engagementTier()
+  grade?: GroupGrade;   // Sender rows only
   trackers?: GroupTrackers;   // only when the body index checked its mails
   // Smart grouping only. The backend ships fields, the UI words them
   // (lib.ts smartView): `sub` is empty and `label` is an English fallback
@@ -180,6 +222,9 @@ export interface GroupTrackers {
   checked: number;
   pixel: number;
   click: number;
+  /** Checked mails with a pixel OR a click-tracking link (absent in a
+   *  summary from before it existed). */
+  any?: number;
   hosts: string[];
 }
 

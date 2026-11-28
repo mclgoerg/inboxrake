@@ -305,8 +305,8 @@ reads "All N matches selected" with a Clear that un-selects exactly those.
 
 The sliders button next to the filter box (Senders
 toolbar) opens a click-together builder (category, AI verdict, age, unread
-%, attachments, flags such as "not yet unsubscribed" or "rarely engaged
-with"); on phones it opens as a bottom sheet. It writes the same filter
+%, attachments, flags such as "not yet unsubscribed", "rarely engaged
+with" or "graded C or worse"); on phones it opens as a bottom sheet. It writes the same filter
 syntax you can type, and the result can be saved as a preset.
 
 ### Saved filters
@@ -325,7 +325,8 @@ delete it. Account-scoped like everything else.
 The sort control next to the filter box (an icon on phones)
 opens a menu with "Sort by" (the columns of the list) and "Order"
 (Ascending / Descending); the column headers still toggle with one click.
-The mail lists use the same menu pattern for Date / Size.
+In the Sender grouping the keys end with [Grade](#sender-grade) (Descending =
+worst first). The mail lists use the same menu pattern for Date / Size.
 
 ### New senders
 
@@ -396,6 +397,44 @@ as a small three-step meter on each row (tap or hover for the breakdown), sorts
 via "Sort: engagement", and filters with `eng:low` / `eng:medium` /
 `eng:high` (tiers <=33 / 34-66 / >=67) - usable in rules and saved
 presets, e.g. `eng:low age:>1y`. The score is never sent to the AI.
+
+### Sender grade
+
+<small class="where">Senders → a sender → report card · Senders → Sort → Grade · Insights → Statistics</small>
+
+Every sender gets a grade from A to F and one plain sentence ("loud and
+ignored", "quiet and useful", "tracks you, but you read it"), so a sender you
+have never thought about shows what it is. The grade lives where you ask for
+it and nowhere else: the sender pane gets a **report card** box - after "What
+they send" and the waiting line, before the Mails list - with the grade, the
+sentence and the six checks behind it, each with its value and a ✓ / ✗ / –:
+
+- how much of the sender's mail you open,
+- how often it mails (mails a week over the time it has been mailing),
+- tracking (a pixel or click-tracking links; from the local body index, "not
+  checked" without it),
+- whether it offers a one-click unsubscribe (an https link plus the `List-Unsubscribe-Post`
+  header - the way Inboxrake unsubscribes in one step; a mailto or plain http link is not),
+- whether it stops when asked (the unsubscribe watchdog: "stopped" only after 48 hours
+  without mail since you unsubscribed, "too early" before that),
+- the average mail size.
+
+Each good sign is +1, each bad one -1, a sender that **keeps mailing after you
+unsubscribed counts -2**; 3 points or more is an A, 2 a B, 0-1 a C, -1 to -2 a
+D and -3 or less an F. People you have written to never grade below C. The
+weights are fixed in the app and printed under **How grades work** in the box;
+there are no switches, no AI and nothing leaves the server - the grade is worked
+out again whenever the list loads, nothing is stored, and a grade never acts on
+its own (protected senders and pinned mails stay out of every cleanup as before).
+
+In the Senders list (Sender grouping) the sort menu ends with **Grade**;
+Descending is worst first. Only while you sort by grade does each row show its
+letter, after its status pill; in every other sort the rows are exactly as
+before. Filter with `grade:d`, `grade:<=c` (C or worse) or `grade:>=b` (B or
+better) - also in rules and saved filters, and in the filter builder - and see
+how your senders spread over A-F, and how much of your mail the D and F senders
+send, in the last card of Statistics ("Show them" opens the list filtered to
+them).
 
 ### Filing senders in Smart
 
@@ -879,6 +918,10 @@ write to write to you - and four shares (before 8:00, office hours, after
 18:00, weekend). A sender's detail shows the same for that sender: the usual
 hours, the weekdays and how many mails a day. Counts only; nothing leaves the
 server.
+
+The last card, **Your senders' grades**, shows how your senders spread over A to F
+([Sender grade](#sender-grade)), how much of your mail the senders graded D or F
+send, and **Show them** (the Senders list filtered with `grade:<=d`).
 
 ### Space map
 
