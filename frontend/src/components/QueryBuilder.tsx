@@ -181,6 +181,7 @@ export function QueryBuilder({ value, onChange, className = "",
         {flag("is:read", t("qb.mail_read"))}
         {flag("has:pinned", t("qb.mail_pinned"))}
         {flag("is:expired", t("qb.mail_expired"))}
+        {flag("is:auto", t("qb.mail_auto"))}
       </div>
       </>}
       {!senderOnly && !mailOnly && <>

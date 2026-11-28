@@ -269,7 +269,7 @@ With the Read level the assistant gets eight tools. They only read:
 
 Every result carries the time of the last scan, because the assistant reads the scan snapshot, not the live mailbox. The assistant's filters can use the same syntax as the app, including `has:tracker` (from the local body index) and `att:` (from the attachment analysis): they tell the assistant that a sender's mail carries a tracker or a large attachment, never what the mail says or what the attachment is called.
 
-**Subject lines** are left out unless the token has **Include subject lines** on. With it, groups carry up to three sample subjects, mail rows carry their subject, and free-text search also covers subjects. Without it, a free-text query in `list_mails` is refused (so are `is:expired` and `kind:`, which are decided from the subject line) and `search_mails` looks at senders only.
+**Subject lines** are left out unless the token has **Include subject lines** on. With it, groups carry up to three sample subjects, mail rows carry their subject, and free-text search also covers subjects. Without it, a free-text query in `list_mails` is refused (so are `is:expired`, `is:auto` and `kind:`, which are decided from the subject line) and `search_mails` looks at senders only.
 
 **Never**, at any setting:
 

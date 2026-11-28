@@ -2100,8 +2100,10 @@ def get_overview(since: int | None = Query(None, ge=0),
 def get_expired(account: str | None = Query(None)):
     """Mail past its date in ONE account: how many mails and bytes per reason
     (stale codes, parcel updates of parcels that have arrived, reminders of
-    things that are over, offers that have ended), what is kept. Counts only;
-    worked out from subjects and dates on this server, nothing is stored."""
+    things that are over, offers that have ended, and automatic mail:
+    out-of-office replies, delivery failures, read receipts and calendar
+    answers), what is kept. Counts only; worked out from subjects, dates and
+    the scan's header notes on this server, nothing is stored."""
     return pastdate.summary(_acc(account))
 
 
@@ -2990,7 +2992,7 @@ def get_mails(offset: int = Query(0, ge=0),
     {total, offset, mails, ignored}. `finding` (a Rule checkup finding's
     id) narrows it to the mails that finding is about. `q` takes plain words plus the
     per-mail qualifiers age:/size:/att:/from:/domain:/folder:/is:unread|read/
-    has:pinned/is:expired; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
+    has:pinned/is:expired/is:auto; group-level qualifiers (tag:, ai:, unread:<pct>, eng:, ...)
     do not apply per mail and are echoed back in `ignored`. No IMAP traffic."""
     arrival = None
     if slot:                    # "<from>-<to>": the arrival-rhythm slot

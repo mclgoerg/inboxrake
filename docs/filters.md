@@ -85,16 +85,17 @@ the same.
 
 The flat **All mail** list reads a smaller language, per mail: free words,
 `age:`, `size:`, `att:`, `from:`, `domain:`, `folder:`, `is:unread|read`,
-`has:pinned` and `in:`. Two words are only known there:
+`has:pinned` and `in:`. These words are only known there:
 
 | Qualifier | Meaning | Example |
 |---|---|---|
-| `is:expired` | The mail is past its date: a sign-in code older than a day, a shipping update whose parcel has arrived, a reminder for something that is over, an offer that has ended - every reason of [Mail past its date](features.md#mail-past-its-date), ticked or not. Receipts, invoices and bookings, protected mails and mail from protected senders are never in it. It narrows with the other words. | `is:expired from:shop@example.org` |
+| `is:expired` | The mail is past its date: a sign-in code older than a day, a shipping update whose parcel has arrived, a reminder for something that is over, an offer that has ended - every reason of [Mail past its date](features.md#mail-past-its-date), ticked or not (the automatic mail too). Receipts, invoices and bookings, protected mails and mail from protected senders are never in it. It narrows with the other words. | `is:expired from:shop@example.org` |
+| `is:auto` | The automatic mail among those: out-of-office replies and delivery failures older than a week, and read receipts and calendar answers (which need their header: a disposition-notification report, a calendar `REPLY`) - the last three reasons of [Mail past its date](features.md#mail-past-its-date). Mail in one of Keep-safe's classes (a job application, an invoice, ...), protected mails and mail from protected senders are never in it. It narrows with the other words. | `is:auto age:>1y` |
 | `kind:` | What kind of mail it is, read from the subject: `ads` (newsletter-style mail with no purpose), `orders` (order confirmations), `shipping` (shipping updates), `invoices`, `appointments`, `jobs`, `support`, `accounts`. Mails of no kind match none of them; two different kinds together match nothing. It narrows with the other words. See [What they send](features.md#what-they-send). | `kind:ads from:shop@example.org` |
 
-Neither is a group word or a rule word: in the Senders filter box they read as
-free words and find nothing, and a rule refuses them (rules match groups, not
-single mails). A rule can still be limited to one kind: that is the third
+None of them is a group word or a rule word: in the Senders filter box they
+read as free words and find nothing, and a rule refuses them (rules match
+groups, not single mails). A rule can still be limited to one kind: that is the third
 retention choice of the rule editor ("only one kind of mail"), next to "keep
 newest N" and "only mails older than N days".
 

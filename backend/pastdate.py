@@ -8,10 +8,22 @@ its job - read from the subject and the date, locally, no AI.
             (no date: a reminder older than 30 days)
   offers    an offer whose end date in the subject has passed
 
+and three more at the end, for mail a machine sent in answer to yours:
+
+  ooo       an out-of-office reply (the subject says so, or `Auto-Submitted:
+            auto-replied` on a subject that says nothing else), a week old
+  bounces   a delivery failure: a delivery status report (header) or a
+            subject like "Undelivered Mail Returned to Sender", a week old
+  answers   a read receipt (a disposition-notification report) or a calendar
+            answer (a text/calendar part with METHOD:REPLY), a week old -
+            ONLY with that header evidence, a subject alone never lists them
+
 The receipt, invoice or booking of the same order or appointment is never
 listed ("kept"); pinned mail and protected senders are never listed either -
 they are filtered out here, because the trash step they end up in refuses a
-selection that contains one.
+selection that contains one. Mail in one of Keep-safe's classes (a job
+application, an invoice, a booking, a contract, an account notice) is never
+listed as automatic mail either, whatever its headers say.
 
 The subject patterns are the ones `smartkinds.PURPOSE_RULES` already uses
 (shipping, invoice, order, appointment, booking) plus a few narrower ones of
@@ -34,6 +46,7 @@ import time
 
 from . import config as cfgmod
 from . import pinstore
+from . import smartkinds
 from .smartkinds import PROMO_RE, PURPOSE_RULES, company_id
 
 DAY = 86400
@@ -41,10 +54,17 @@ DAY = 86400
 # ------------------------------------------------------------- lifetimes
 
 CODES, PARCELS, EVENTS, OFFERS = "codes", "parcels", "events", "offers"
-REASONS = (CODES, PARCELS, EVENTS, OFFERS)
+# Automatic mail (a machine's answer to yours), added after the four above:
+# out-of-office replies, delivery failures, read receipts + calendar answers
+OOO, BOUNCES, ANSWERS = "ooo", "bounces", "answers"
+AUTO_REASONS = (OOO, BOUNCES, ANSWERS)
+REASONS = (CODES, PARCELS, EVENTS, OFFERS) + AUTO_REASONS
 # What the sheet ticks at first. Offers that have ended may still be wanted
-# (a coupon code in the mail), so they start unticked (maintainer 2026-11-25).
-TICKED = {CODES: True, PARCELS: True, EVENTS: True, OFFERS: False}
+# (a coupon code in the mail), so they start unticked (maintainer 2026-11-25);
+# so do read receipts and calendar answers (maintainer 2026-11-27: "like
+# offers") - a decline of next week's meeting is still news.
+TICKED = {CODES: True, PARCELS: True, EVENTS: True, OFFERS: False,
+          OOO: True, BOUNCES: True, ANSWERS: False}
 
 # The `finding` value of GET /api/mails that lists the kept receipts
 KEPT_VIEW = "past-kept"
@@ -52,6 +72,7 @@ KEPT_VIEW = "past-kept"
 CODE_LIFETIME = 1 * DAY                 # a code / link older than this
 DELIVERED_AFTER = 3 * DAY               # the "delivered" mail is this old
 UNDATED_REMINDER_AFTER = 30 * DAY       # a reminder without a date
+AUTO_AFTER = 7 * DAY                    # automatic mail older than this
 # A date is "over" once its whole day is over in every time zone: the mail
 # only carries a date, not a zone (the widest UTC offset is +14 h).
 ZONE_GRACE = 14 * 3600
@@ -358,6 +379,156 @@ def classify(subject: str) -> str | None:
     return None
 
 
+# ----------------------------------------------------------- automatic mail
+
+# The header fields the scan reads on top of the others (mailops
+# ._fetch_full_chunk / ._backfill_chunk): Auto-Submitted (RFC 3834) and the
+# Content-Type (its report type, RFC 3462 / 8098).
+HEADER_FIELDS = "AUTO-SUBMITTED CONTENT-TYPE"
+DSN, MDN = "delivery-status", "disposition-notification"
+AUTO_REPLIED = "auto-replied"
+
+_AUTO_TOKEN_RE = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def header_evidence(msg) -> dict:
+    """What the headers of one message say about automatic mail, for the scan
+    index: {"auto": the Auto-Submitted keyword ("" when the header is absent
+    or says "no"), "rpt": the report type} - `rpt` only when the message is a
+    multipart/report of a type this feature reads (a delivery status report
+    or a read receipt). `auto` is always present: a record without it is one
+    the scan has not read these headers of yet. Pure; never raises."""
+    out = {"auto": ""}
+    try:
+        word = _AUTO_TOKEN_RE.match(str(msg.get("Auto-Submitted") or ""))
+        if word and word.group(1).lower() != "no":
+            out["auto"] = word.group(1).lower()[:32]
+        if msg.get_content_type() == "multipart/report":
+            kind = msg.get_param("report-type")
+            if isinstance(kind, str) and kind.strip().lower() in (DSN, MDN):
+                out["rpt"] = kind.strip().lower()
+    except Exception:
+        pass
+    return out
+
+
+# A reply or a forward is a person's mail: a subject that starts with one of
+# these never counts on its own, whatever follows it - only with the headers of
+# a machine (`Auto-Submitted`, a report type).
+_PREFIX_RE = re.compile(r"^\s*(?:(?:re|aw|antw|fw|fwd|wg|sv|vs)\s*:\s*)+", _I)
+_SEP = r"\s*(?:[:\-–—]|$)"
+
+
+def _unprefix(subject: str) -> tuple[str, bool]:
+    """(the subject without its Re: / AW: / Fwd: / WG: prefixes, whether it had
+    one)."""
+    m = _PREFIX_RE.match(subject)
+    return (subject[m.end():], True) if m else (subject, False)
+
+
+# Out-of-office replies by their subject, alone: the mail programs' own words
+# at the very START of the subject, with their colon ("Automatic reply: ...",
+# "Abwesenheitsnotiz: ..."). Looser phrases ("Out of office: 23-27 Dec", "Out of
+# the office - back Monday") are what a person writes too: those are only ever
+# read through the Auto-Submitted header (see `auto_reason`).
+OOO_CLIENT_RE = re.compile(
+    r"^\s*(?:automatic\s+(?:reply|response)|auto[- ]?(?:reply|response)|"
+    r"autoreply|out[- ]of[- ]office\s+auto[- ]?(?:reply|response)|"
+    r"automatische\s+antwort|abwesenheits(?:notiz|nachricht|meldung))\s*:", _I)
+
+# Delivery failures by their subject, alone: the servers' exact phrases
+# ("Undelivered Mail Returned to Sender", "Delivery Status Notification
+# (Failure)", "Undeliverable: ...", "Unzustellbar: ...") ...
+BOUNCE_CLIENT_RE = re.compile(
+    r"^\s*(?:undelivered\s+mail\s+returned\s+to\s+sender\s*$|"
+    r"delivery\s+status\s+notification\s*\((?:failure|delay|success)\)\s*$|"
+    r"undeliverable\s*:|unzustellbar\s*:)", _I)
+# ... and the looser ones a person can write too ("Mail delivery failed again -
+# can you check the server?", "Returned mail: wrong address for the invoice",
+# "Nicht zustellbar - bitte neue Adresse"): only from a mailer-daemon sender,
+# or with the Auto-Submitted header of a machine.
+BOUNCE_LOOSE_RE = re.compile(
+    r"^\s*(?:mail\s+delivery\s+(?:failed|failure|system\s+failure)" + _SEP + r"|"
+    r"undeliverable(?:\s+(?:mail|message|e-?mail))?" + _SEP + r"|"
+    r"returned\s+mail\s*:|failure\s+notice" + _SEP + r"|"
+    r"unzustellbar(?:e\s+(?:mail|nachricht|e-?mail))?" + _SEP + r"|"
+    r"nicht\s+zustellbar" + _SEP + r"|"
+    r"(?:e-?mail-?|mail-?)?zustellung\s+(?:fehlgeschlagen|nicht\s+m[oö]glich))",
+    _I)
+# The server a delivery report comes from
+_DAEMON_RE = re.compile(r"^(?:mailer-daemon|mail-daemon|mailerdaemon)$")
+# A parcel is not a mail: a subject about one is never a bounce, whatever it
+# starts with ("Undeliverable: your parcel").
+NOT_A_BOUNCE_RE = re.compile(
+    r"parcel|package|paket|shipment|sendung|order|bestellung|lieferung|"
+    r"shipping|versand|tracking", _I)
+# The leading words of a read receipt or a calendar answer ("Read: ...",
+# "Return Receipt (displayed) - ...", "Accepted: ..."). They are listed only on
+# their header evidence (a report type, a calendar REPLY), and never as
+# out-of-office replies, whatever Auto-Submitted says. Matching consumes them,
+# so the Keep-safe check reads what the mail is about, not the word "receipt"
+# of the receipt.
+ANSWER_SUBJECT_RE = re.compile(
+    r"^\s*(?:(?:not\s+read|read|gelesen|nicht\s+gelesen|accepted|declined|"
+    r"tentative(?:ly\s+accepted)?|zugesagt|abgelehnt|angenommen|"
+    r"mit\s+vorbehalt(?:\s+zugesagt)?)\s*:|"
+    r"(?:(?:return|read)\s+receipt|lesebest[aä]tigung|empfangsbest[aä]tigung)"
+    r"\b(?:\s*\([^)]*\))?\s*[:\-–—]?)\s*", _I)
+
+
+def auto_reason(m: dict, subject: str) -> str | None:
+    """Which automatic-mail reason an index entry belongs to, or None.
+
+    Machine evidence is what the headers say (`rpt`: a report type, `auto`: the
+    Auto-Submitted keyword; `cal`: a calendar REPLY, from the Attachments
+    analysis) or a mailer-daemon sender. A subject alone only
+    counts when it is the program's own wording - and never behind a Re: / Fwd:
+    prefix: that is a person writing about such mail.
+
+      delivery failure  a delivery status report; or an exact server subject;
+                        or a looser phrase with machine evidence (no parcel
+                        words in the subject, ever)
+      answers           a read receipt / calendar answer: ONLY the header
+                        evidence - "Read: ..." or "Accepted: ..." says nothing
+      out-of-office     a client's own subject; or `Auto-Submitted:
+                        auto-replied` on a subject that names no purpose, no
+                        other kind of this feature and no read receipt /
+                        calendar answer (a ticket acknowledgement is no
+                        out-of-office reply)"""
+    rpt = m.get("rpt") or ""
+    auto = m.get("auto") or ""
+    core, prefixed = _unprefix(subject)
+    if rpt == DSN:
+        return BOUNCES
+    if not NOT_A_BOUNCE_RE.search(subject):
+        daemon = not prefixed and bool(
+            _DAEMON_RE.match((m.get("addr") or "").lower().partition("@")[0]))
+        if BOUNCE_CLIENT_RE.match(core) and (not prefixed or auto):
+            return BOUNCES
+        if BOUNCE_LOOSE_RE.match(core) and (auto or daemon):
+            return BOUNCES
+    if rpt == MDN or m.get("cal") == "reply":
+        return ANSWERS
+    if OOO_CLIENT_RE.match(core) and (not prefixed or auto == AUTO_REPLIED):
+        return OOO
+    if auto == AUTO_REPLIED and core and not ANSWER_SUBJECT_RE.match(core) \
+            and not smartkinds.message_purposes(subject) \
+            and classify(subject) is None:
+        return OOO
+    return None
+
+
+def _keep_safe(m: dict) -> bool:
+    """The mail is in one of Keep-safe's classes (invoices, bookings,
+    contracts, job applications, account notices), switched on or not."""
+    from . import keepsafe          # keepsafe imports mailops, which imports us
+    hint = smartkinds.sender_hint(m.get("addr", ""), bool(m.get("unsub")))
+    # a Re: / Fwd: and the receipt's own words ("Return Receipt (displayed) -")
+    # say nothing about what the mail is about
+    about = ANSWER_SUBJECT_RE.sub("", _unprefix(m.get("subject") or "")[0], 1)
+    return bool(keepsafe.classes_of(about, hint))
+
+
 # -------------------------------------------------------------- the finder
 
 @functools.lru_cache(maxsize=65536)
@@ -497,6 +668,24 @@ def find(mails, pins: set[str], protected: list[str],
             else:
                 undated.setdefault(who, []).append(ts)
 
+    # Automatic mail, after the four reasons above: a mail they list stays
+    # theirs, and the receipts they keep are never listed here.
+    for m in mails:
+        ts = m.get("ts") or 0
+        if not ts or now - ts < AUTO_AFTER \
+                or (m["folder"], m["uid"]) in flagged:
+            continue
+        subject = m.get("subject") or ""
+        reason = auto_reason(m, subject)
+        if not reason:
+            continue
+        if m.get("msgid") in pins or cfgmod.is_protected(m.get("addr", ""),
+                                                         protected):
+            continue
+        if _keep_safe(m):
+            continue
+        flagged[(m["folder"], m["uid"])] = (reason, int(m.get("size") or 0))
+
     # The receipts / invoices / bookings that belong to what is listed: only
     # the mail of the senders involved is looked at
     for times in undated.values():
@@ -520,7 +709,8 @@ def find(mails, pins: set[str], protected: list[str],
             else:
                 day = read_date(subject, ts) if event_dates else None
                 linked = day is not None and (who, day) in event_dates
-            if linked and classify(subject) == RECEIPT:
+            if linked and classify(subject) == RECEIPT \
+                    and (m["folder"], m["uid"]) not in flagged:
                 kept.add((m["folder"], m["uid"]))
     return {"flagged": flagged, "kept": kept}
 
@@ -578,6 +768,15 @@ def expired_handles(acc, now: float | None = None) -> frozenset:
     """(folder, uid) of every listed mail, whatever its reason: what the mail
     filter word `is:expired` keeps."""
     return frozenset(_cached(acc, now)["flagged"])
+
+
+def auto_handles(acc, now: float | None = None) -> frozenset:
+    """(folder, uid) of the listed automatic mail (out-of-office replies,
+    delivery failures, read receipts and calendar answers): what the mail
+    filter word `is:auto` keeps. A subset of `expired_handles`."""
+    res = _cached(acc, now)
+    return frozenset(h for h, (reason, _size) in res["flagged"].items()
+                     if reason in AUTO_REASONS)
 
 
 def kept_handles(acc, now: float | None = None) -> frozenset:

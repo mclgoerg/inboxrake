@@ -1,8 +1,11 @@
 /* Mail past its date: the sheet behind the Overview's Next steps line.
  *
  * One row per reason (sign-in codes, parcel updates of parcels that have
- * arrived, reminders of things that are over, offers that have ended) with a
- * tick - "Offers that have ended" starts unticked, the server says so. The
+ * arrived, reminders of things that are over, offers that have ended, and -
+ * at the end - the automatic mail: out-of-office replies, delivery failures,
+ * read receipts and calendar answers) with a tick - "Offers that have ended"
+ * and the read receipts / calendar answers start unticked, the server says
+ * so. The
  * receipts / invoices / bookings of the same orders and appointments are
  * never listed ("Kept"); pinned mail and protected senders are not either
  * (backend/pastdate.py).
@@ -12,8 +15,8 @@
  * All mail's "Trash selected" (with the Keep-safe box on a big move), the
  * same background job, Undo and Activity entry. */
 
-import { CalendarX, KeyRound, ShieldCheck, TimerOff, Truck }
-  from "lucide-react";
+import { CalendarX, KeyRound, MailCheck, MailX, ShieldCheck, TimerOff, Truck,
+  Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { accountGuard } from "../accountGuard";
 import { api } from "../api";
@@ -33,6 +36,10 @@ const LOOK: Record<ExpiredReasonId,
     key: "past.events" },
   offers: { icon: <TimerOff size={16} />, tone: "neutral",
     key: "past.offers" },
+  ooo: { icon: <Undo2 size={16} />, tone: "new", key: "past.ooo" },
+  bounces: { icon: <MailX size={16} />, tone: "keep", key: "past.bounces" },
+  answers: { icon: <MailCheck size={16} />, tone: "safe",
+    key: "past.answers" },
 };
 
 export function ExpiredSheet({ data, onClose, onOpenAllMail, onShowKept,
@@ -48,7 +55,8 @@ export function ExpiredSheet({ data, onClose, onOpenAllMail, onShowKept,
 }) {
   const toast = useToast();
   const phone = useMediaQuery("(max-width: 767px)");
-  const reasons = data.reasons.filter((r) => r.mails > 0);
+  // a reason this build has no row for (a newer server) is left out
+  const reasons = data.reasons.filter((r) => r.mails > 0 && LOOK[r.id]);
   // everything the server suggests is ticked; the user's own choices win
   const [off, setOff] = useState<Set<string>>(
     () => new Set(reasons.filter((r) => !r.ticked).map((r) => r.id)));
@@ -102,7 +110,13 @@ export function ExpiredSheet({ data, onClose, onOpenAllMail, onShowKept,
         sub={t("qw.card_meta", { mails: data.mails,
           size: fmtSize(data.size) })} />
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
-        <p className="type-meta text-muted">{t("past.lead")}</p>
+        {/* wide: the one line with the automatic-mail phrase in it; phones:
+            today's line, and the phrase on a line of its own */}
+        <p className="type-meta text-muted">
+          {t(phone ? "past.lead" : "past.lead_auto")}</p>
+        {phone && (
+          <p className="type-meta text-muted">{t("past.lead_headers")}</p>
+        )}
         <SettingsGroup className="mb-0">
           <ul className="divide-y divide-line">
             {reasons.map((r) => {

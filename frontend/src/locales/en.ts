@@ -611,6 +611,7 @@ export const EN: Record<string, string> = {
   "qb.mail_read": "read",
   "qb.mail_pinned": "protected",
   "qb.mail_expired": "past its date",
+  "qb.mail_auto": "automatic mail",
   "qb.is_unsub": "with unsubscribe link",
   "qb.is_unsubscribed": "fully unsubscribed",
   "qb.is_not_unsubscribed": "not yet unsubscribed",
@@ -1695,9 +1696,18 @@ export const EN: Record<string, string> = {
   "past.about_parcels": "delivered parcels",
   "past.about_events": "appointments that are over",
   "past.about_offers": "ended offers",
+  "past.about_ooo": "out-of-office replies",
+  "past.about_bounces": "delivery failures",
+  "past.about_answers": "read receipts",
   "past.title": "Mail past its date",
   "past.lead": "Found from the subject and the date, on your server · "
     + "protected mails and protected senders are never listed.",
+  // the same line with the automatic-mail phrase in it (wide screens), and
+  // that phrase on a line of its own (phones, where the line above stays)
+  "past.lead_auto": "Found from the subject and the date, on your server · "
+    + "automatic mail also from its headers · protected mails and protected "
+    + "senders are never listed.",
+  "past.lead_headers": "Automatic mail also from its headers.",
   "past.codes": "Sign-in codes and links, older than a day",
   "past.codes_ex": "“Your sign-in code”, “Confirm your email address”",
   "past.parcels": "Updates for parcels that have arrived",
@@ -1708,6 +1718,14 @@ export const EN: Record<string, string> = {
     + "“Your table on Friday”",
   "past.offers": "Offers that have ended",
   "past.offers_ex": "“Deal ends at midnight”, “Only today: flash prices”",
+  "past.ooo": "Out-of-office replies, older than a week",
+  "past.ooo_ex": "“Automatic reply: …”, “Abwesenheitsnotiz: …”",
+  "past.bounces": "Delivery failures, older than a week",
+  "past.bounces_ex": "“Undelivered Mail Returned to Sender”, "
+    + "“Unzustellbar: …”",
+  "past.answers": "Read receipts and calendar answers",
+  "past.answers_ex": "only with the matching header, older than a week - "
+    + "“Read: …”, “Accepted: Team dinner”",
   "past.kept_lead": "Kept:",
   "past.kept": "the {n} order confirmations, invoices and bookings that "
     + "belong to these parcels and appointments stay where they are.",

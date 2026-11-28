@@ -631,6 +631,10 @@ def _list_mails(ctx: Ctx, args: ListMailsIn) -> dict:
             raise ToolError(
                 "is:expired reads subject lines, which this token may not "
                 "see.")
+        if not ctx.subjects and parsed["auto"]:
+            # is:auto too (out-of-office and bounce subjects)
+            raise ToolError(
+                "is:auto reads subject lines, which this token may not see.")
         if not ctx.subjects and parsed["kinds"]:
             # kind: is decided from the subject line, like is:expired
             raise ToolError(
