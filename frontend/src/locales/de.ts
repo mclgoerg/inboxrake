@@ -1307,6 +1307,75 @@ export const DE: Record<string, string> = {
   "rules.empty_sub": "Regeln räumen nach Plan für dich auf. Fang mit einer davon an:",
   "rules.waiting": "{n}\u00a0Vorschläge warten auf dich",
   "rules.waiting_one": "1\u00a0Vorschlag wartet auf dich",
+  "habit.title": "Das machst du immer wieder",
+  "habit.title_n": "Das machst du immer wieder \u00b7 {n}\u00a0Regeln vorgeschlagen",
+  "habit.title_n_one": "Das machst du immer wieder \u00b7 1\u00a0Regel vorgeschlagen",
+  "habit.sub":
+    "aus dem, was du in den letzten 60\u00a0Tagen von Hand gemacht hast \u00b7 ohne KI",
+  "habit.why": "Warum diese?",
+  "habit.why_sub": "Gleiche Aktion, gleicher Absender, mindestens 3\u00a0Mal an 3\u00a0Tagen",
+  "habit.why_sender": "Warum \u201e{sender}\u201c?",
+  "habit.why_age":
+    "Das Alter ist die j\u00fcngste Mail, die du jeweils verschoben hast, abgerundet.",
+  "habit.why_rest":
+    "Gelesen aus deinem Aktivit\u00e4tsprotokoll. R\u00fcckg\u00e4ngig gemachte Schritte, "
+    + "Schritte von Regeln oder Assistenten, gesch\u00fctzte Absender und "
+    + "Absender, die schon eine Regel abdeckt, z\u00e4hlen nicht.",
+  "habit.all_unread": "alle ungelesen",
+  "habit.youngest": "j\u00fcngste {n}\u00a0Tage alt",
+  "habit.youngest_one": "j\u00fcngste 1\u00a0Tag alt",
+  "habit.step_trash": "{n}\u00a0Mails in den Papierkorb verschoben",
+  "habit.step_trash_one": "1\u00a0Mail in den Papierkorb verschoben",
+  "habit.step_archive": "{n}\u00a0Mails archiviert",
+  "habit.step_archive_one": "1\u00a0Mail archiviert",
+  "habit.step_move": "{n}\u00a0Mails nach {folder} verschoben",
+  "habit.step_move_one": "1\u00a0Mail nach {folder} verschoben",
+  "habit.step_mark_read": "{n}\u00a0Mails als gelesen markiert",
+  "habit.step_mark_read_one": "1\u00a0Mail als gelesen markiert",
+  "habit.did_trash":
+    "Du hast {sender} {n}\u00a0Mal in den Papierkorb gelegt, seit {date}",
+  "habit.did_archive": "Du hast {sender} {n}\u00a0Mal archiviert, seit {date}",
+  "habit.did_move":
+    "Du hast {sender} {n}\u00a0Mal nach {folder} verschoben, seit {date}",
+  "habit.did_mark_read":
+    "Du hast {sender} {n}\u00a0Mal als gelesen markiert, seit {date}",
+  "habit.every": "alle {min}-{max} Tage",
+  "habit.every_same": "alle {n} Tage",
+  "habit.every_same_one": "jeden Tag",
+  "habit.every_week": "jede Woche",
+  "habit.catch_full":
+    "W\u00fcrde jetzt {n}\u00a0Mails erfassen \u00b7 startet im Berichtsmodus",
+  "habit.catch_full_one":
+    "W\u00fcrde jetzt 1\u00a0Mail erfassen \u00b7 startet im Berichtsmodus",
+  "habit.catch_none": "Startet im Berichtsmodus",
+  "habit.plain_trash":
+    "Eine Regel: Mails dieses Absenders in den Papierkorb legen{older}, {schedule}.",
+  "habit.plain_archive":
+    "Eine Regel: Mails dieses Absenders archivieren{older}, {schedule}.",
+  "habit.plain_move":
+    "Eine Regel: Mails dieses Absenders nach {folder} verschieben, {schedule}.",
+  "habit.plain_mark_read":
+    "Eine Regel: Mails dieses Absenders als gelesen markieren, {schedule}.",
+  "habit.plain_older": ", wenn sie \u00e4lter als {n}\u00a0Tage sind",
+  "habit.plain_older_one": ", wenn sie \u00e4lter als 1\u00a0Tag sind",
+  "habit.plain_catch": "W\u00fcrde jetzt {n} erfassen \u00b7 startet im Berichtsmodus.",
+  "habit.plain_first": "Startet im Berichtsmodus.",
+  "habit.not_this": "Nicht diesen",
+  "habit.make": "Als Regel anlegen",
+  "habit.made":
+    "Regel \u201e{name}\u201c angelegt. Neue Regeln starten im Berichtsmodus - "
+    + "nichts wird verschoben, bis du auf Aktiv stellst.",
+  "habit.hidden":
+    "{sender} wird nicht mehr vorgeschlagen. Du kannst es unter "
+    + "Einstellungen \u203a Allgemein zur\u00fcckholen.",
+  "habit.rule_trash": "{sender} in den Papierkorb",
+  "habit.rule_archive": "{sender} archivieren",
+  "habit.rule_move": "{sender} nach {folder} verschieben",
+  "habit.rule_mark_read": "{sender} als gelesen markieren",
+  "habit.next_title": "Das machst du immer wieder",
+  "habit.next_sub": "{n}\u00a0Regeln vorgeschlagen, aus dem, was du von Hand gemacht hast",
+  "habit.next_sub_one": "1\u00a0Regel vorgeschlagen, aus dem, was du von Hand gemacht hast",
+  "habit.automate": "Automatisieren\u2026",
   "checkup.title": "Regel-Check \u00b7 {n}\u00a0Hinweise",
   "checkup.title_one": "Regel-Check \u00b7 1\u00a0Hinweis",
   "checkup.sub_scan": "gepr\u00fcft nach dem Scan vor {ago} \u00b7 nichts wird von selbst ge\u00e4ndert",
@@ -3145,6 +3214,14 @@ export const DE: Record<string, string> = {
   "settings.for_account": "Für das Konto \u201e{name}\u201c",
   "settings.senders": "Absender",
   "settings.new_badge": "\u201eNeu\u201c-Markierung bleibt",
+  "habit.set.row": "Regeln aus dem vorschlagen, was ich tue",
+  "habit.set.sub": "Aus: keine Vorschl\u00e4ge, kein Automatisieren\u2026-Knopf",
+  "habit.set.hidden": "Ausgeblendete Vorschl\u00e4ge",
+  "habit.set.hidden_n": "{n} mit \u201eNicht diesen\u201c ausgeblendet",
+  "habit.set.hidden_n_one": "1 mit \u201eNicht diesen\u201c ausgeblendet",
+  "habit.set.none": "Nichts mit \u201eNicht diesen\u201c ausgeblendet",
+  "habit.set.show": "Anzeigen",
+  "habit.set.shown": "Ausgeblendete Vorschl\u00e4ge werden wieder angezeigt.",
   "decimal.invalid": "Gib in den Preis- und Budgetfeldern eine Zahl ein (zum Beispiel 0,5).",
   "numfmt.label": "Zahlenformat",
   "numfmt.help": "Wie Zahlen geschrieben werden. Automatisch folgt der Sprache.",

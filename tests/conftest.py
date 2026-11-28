@@ -29,6 +29,7 @@ from backend import digest as digestmod       # noqa: E402
 from backend import knowledgestore            # noqa: E402
 from backend import knownsenders              # noqa: E402
 from backend import dupstore                  # noqa: E402
+from backend import habitstore                # noqa: E402
 from backend import labelstore                # noqa: E402
 from backend import mailops                   # noqa: E402
 from backend import copystore                  # noqa: E402
@@ -93,6 +94,7 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(dupstore, "DUPS_PATH",
                         tmp_path / "duplicates_kept.json")
     monkeypatch.setattr(substore, "SUBS_PATH", tmp_path / "subscriptions.json")
+    monkeypatch.setattr(habitstore, "HIDDEN_PATH", tmp_path / "habit_hidden.json")
     monkeypatch.setattr(rulecheckstore, "RULE_CHECKUP_PATH",
                         tmp_path / "rule_checkup.json")
     rulecheckstore._cache.clear()
@@ -127,6 +129,7 @@ def isolate(tmp_path, monkeypatch):
     labelstore._cache.clear()
     dupstore._cache.clear()
     substore._cache.clear()
+    habitstore._cache.clear()
     waitstore._cache.clear()
     waitstore._index_cache.clear()
     mailops._SENT_CACHE.clear()

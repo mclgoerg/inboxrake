@@ -348,6 +348,30 @@ test("Toast auto-dismisses after 8s, errors stay, close button and action work",
   } finally { vi.useRealTimers(); }
 });
 
+test("Toast update adds a button later without restarting the 8 s timer; a "
+  + "toast that is gone stays gone", () => {
+  vi.useFakeTimers();
+  try {
+    const later = vi.fn();
+    let api: ReturnType<typeof useToast> | null = null;
+    function Grab() { api = useToast(); return null; }
+    render(<ToastProvider><Grab /></ToastProvider>);
+    let id = 0;
+    act(() => { id = api!.show("Saved", { action: { label: "Undo", onClick: () => {} } }); });
+    expect(screen.queryByText("Later")).toBeNull();
+    act(() => { vi.advanceTimersByTime(7000); });
+    act(() => api!.update(id, { action2: { label: "Later", onClick: later } }));
+    expect(screen.getByText("Later")).toBeTruthy();
+    expect(screen.getByText("Undo")).toBeTruthy();       // what was there stays
+    act(() => { vi.advanceTimersByTime(1100); });         // 8.1 s since show
+    expect(screen.queryByText("Saved")).toBeNull();       // the timer was not restarted
+    // an update for a toast that is gone does not bring it back
+    act(() => api!.update(id, { action2: { label: "Later", onClick: later } }));
+    expect(screen.queryByText("Saved")).toBeNull();
+    expect(later).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+
 test("toast stack sits on the toast layer above the bulk bar", () => {
   render(<ToastProvider><ToastHarness /></ToastProvider>);
   fireEvent.click(screen.getByText("fire"));

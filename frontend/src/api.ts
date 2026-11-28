@@ -14,6 +14,7 @@ import type {
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
   FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp, RemoveCheck,
+  HabitsResp,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -657,6 +658,13 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
   runRule: (id: string) => req<RuleRun>(`/api/rules/${id}/run`, {}),
+  /** "You keep doing this": the habits mined from the account's Activity. */
+  habits: (account?: string) =>
+    req<HabitsResp>(forAccount("/api/habits", account)),
+  habitDismiss: (key: string, account?: string) =>
+    req<{ ok: boolean }>(forAccount("/api/habits/dismiss", account), { key }),
+  habitsShow: (account?: string) =>
+    req<{ shown: number }>(forAccount("/api/habits/show", account), {}),
   /** The Rule checkup (read-only) and Ignore / Show again for one finding. */
   ruleCheckup: () => req<RuleCheckup>("/api/rules/checkup"),
   ignoreFinding: (id: string, ignored = true) =>

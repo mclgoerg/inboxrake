@@ -20,6 +20,7 @@ import { FolderSettings } from "./FolderSettings";
 import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
 import { IndexNote, IndexPanel } from "./IndexPanel";
 import { KnowledgeSettings } from "./KnowledgeSettings";
+import { HabitsSettings } from "./HabitsSettings";
 import { SubscriptionsSettings } from "./SubscriptionsSettings";
 import { WaitingNotifySettings, WaitingSettings } from "./WaitingSettings";
 import { BUILTIN_CATEGORIES, CategoryList,
@@ -117,6 +118,7 @@ const initialForm = (c: Config, name: string) => ({
   ksJobs: c.keep_safe?.jobs ?? true,
   ksAccounts: c.keep_safe?.accounts ?? false,
   ksRules: c.keep_safe?.rules ?? true,
+  habitsSuggest: c.habits?.suggest ?? true,
   assistantOauth: c.assistants?.oauth?.enabled ?? false,
 });
 type Form = ReturnType<typeof initialForm>;
@@ -142,7 +144,7 @@ const CHANGE_GROUPS: { label: string; fields: (keyof Form)[] }[] = [
   { label: "settings.sec.autoscan", fields: ["autoScanEnabled",
     "autoScanUnit", "autoScanValue", "autoScanAlign"] },
   { label: "settings.sec.general", fields: ["bodySearch", "smartMin",
-    "newSenderWindowDays"] },
+    "newSenderWindowDays", "habitsSuggest"] },
   { label: "settings.sec.ai", fields: ["provider", "endpoint", "model",
     "apiKey", "priceIn", "priceOut", "budget", "sortInstructions"] },
   { label: "settings.sec.signin", fields: ["authMode", "authPassword",
@@ -209,7 +211,7 @@ type SecDef = {
 export function SettingsPage({ cfg, account, section, routeAccount = null,
   onSection, onClose, onAddAccount, onSaved, onAccountsChanged, aiAnswers = 0,
   onKnowledgeChanged = () => {}, scanState = null, controlRef,
-  onShowAssistantSteps, onMoveAccount, onWaitingChanged }: {
+  onShowAssistantSteps, onMoveAccount, onWaitingChanged, onHabitsChanged }: {
   cfg: Config;
   account: string;                       // the ACTIVE account
   /** The open section (`#/settings/<section>`); null = the phone root list
@@ -244,6 +246,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
   /** Waiting for a reply: its switch or a notification setting changed (the
    *  Overview row and the phone card follow). */
   onWaitingChanged?: () => void;
+  /** "Hidden suggestions" were shown again: the app fetches them again. */
+  onHabitsChanged?: () => void;
 }) {
   const wide = useSidebar();
   const toast = useToast();
@@ -442,6 +446,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         // the "Notify me about proposals" switch (a server that has it)
         ...(cfg.assistants?.notify
           ? { assistants_notify: { email: f.assistantNotifyEmail } } : {}),
+        // "Suggest rules from what I do" (a server that has it)
+        ...(cfg.habits ? { habits: { suggest: f.habitsSuggest } } : {}),
         // Keep-safe switches (a server that has them)
         ...(cfg.keep_safe ? { keep_safe: { invoices: f.ksInvoices,
           bookings: f.ksBookings, contracts: f.ksContracts, jobs: f.ksJobs,
@@ -487,6 +493,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
           ?? f.assistantNotifyEmail,
         assistantOauth: next.assistants?.oauth?.enabled ?? f.assistantOauth,
         newSenderWindowDays: String(next.new_sender_window_days),
+        habitsSuggest: next.habits?.suggest ?? f.habitsSuggest,
         ...(next.keep_safe ? { ksInvoices: next.keep_safe.invoices,
           ksBookings: next.keep_safe.bookings,
           ksContracts: next.keep_safe.contracts, ksJobs: next.keep_safe.jobs,
@@ -800,7 +807,8 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         t("account.rename"), t("account.add"), t("waiting.settings_watch")]),
     general: sec("general", <SettingsIcon size={16} />, "neutral", undefined,
       [t("Appearance"), t("Language"), t("settings.new_badge"),
-        t("smart.min_label"), t("body_search.label"), t("sub.settings_row")]),
+        t("smart.min_label"), t("body_search.label"), t("sub.settings_row"),
+        t("habit.set.row"), t("habit.set.hidden")]),
     notifications: sec("notifications", <Bell size={16} />, "keep", undefined,
       [t("notify.title"), t("waiting.notify_tell"), t("waiting.after"),
         t("waiting.subject")]),
@@ -1345,6 +1353,11 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
       </SettingsGroup>
     )}
     <SubscriptionsSettings account={editAcct} />
+    {cfg.habits && (
+      <HabitsSettings account={editAcct} on={f.habitsSuggest}
+        onChange={(on) => put("habitsSuggest", on)}
+        onShown={onHabitsChanged} />
+    )}
   </>);
 
   // Why the switch cannot be turned on here (nothing when it can).
