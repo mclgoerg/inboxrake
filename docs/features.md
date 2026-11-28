@@ -413,8 +413,10 @@ sentence and the six checks behind it, each with its value and a ✓ / ✗ / –
 - how often it mails (mails a week over the time it has been mailing),
 - tracking (a pixel or click-tracking links; from the local body index, "not
   checked" without it),
-- whether it offers a one-click unsubscribe (a `List-Unsubscribe-Post` header),
-- whether it stops when asked (the unsubscribe watchdog),
+- whether it offers a one-click unsubscribe (an https link plus the `List-Unsubscribe-Post`
+  header - the way Inboxrake unsubscribes in one step; a mailto or plain http link is not),
+- whether it stops when asked (the unsubscribe watchdog: "stopped" only after 48 hours
+  without mail since you unsubscribed, "too early" before that),
 - the average mail size.
 
 Each good sign is +1, each bad one -1, a sender that **keeps mailing after you

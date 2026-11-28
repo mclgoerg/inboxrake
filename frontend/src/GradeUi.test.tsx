@@ -218,6 +218,10 @@ test("checkText words every case of every check", () => {
     .toBe("stopped");
   expect(checkText({ id: "stops", v: "neutral", kind: "open" }).value)
     .toBe("not finished");
+  // inside the watchdog's 48 hours nothing is known yet
+  expect(checkText({ id: "stops", v: "neutral", kind: "waiting" })).toMatchObject(
+    { value: "too early", note:
+      "You unsubscribed less than 2 days ago - senders get 48 hours to stop" });
   // size
   expect(checkText({ id: "size", v: "ok", avg: 2048, att: 0 })).toMatchObject(
     { value: "2 KB", note: "Average per mail" });
@@ -250,6 +254,13 @@ test("How grades work: the six checks with their numbers, then the rules",
       .toBeTruthy();
     expect(screen.getByText(/A sender you write to never gets below C/))
       .toBeTruthy();
+    // a protected sender is graded, but stays out of every cleanup
+    expect(screen.getByText(
+      /protected senders stay protected from every cleanup as before/))
+      .toBeTruthy();
+    expect(screen.queryByText(/never suggested for cleanup/)).toBeNull();
+    expect(screen.getByText("You unsubscribed and it stayed quiet for 48 hours"))
+      .toBeTruthy();
     expect(screen.getByText(/no AI, nothing leaves the server/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onClose).toHaveBeenCalled();
@@ -271,6 +282,8 @@ test("How grades work in German", () => {
   expect(screen.getByText(/Du liest 30\s%\soder mehr seiner Mails/))
     .toBeTruthy();
   expect(screen.getByText(/Ein Absender, dem du schreibst, bekommt nie weniger als C/))
+    .toBeTruthy();
+  expect(screen.getByText(/bleiben wie bisher vor jedem Aufräumen geschützt/))
     .toBeTruthy();
 });
 

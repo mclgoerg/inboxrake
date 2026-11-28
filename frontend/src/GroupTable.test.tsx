@@ -864,6 +864,15 @@ describe("GroupTable grade letter", () => {
     // the phone cards carry it too, in the line of the stats and the pill
     expect(container.querySelectorAll(
       ".md\\:hidden [role=img][aria-label='Grade F']")).toHaveLength(1);
+    // pill and letter are ONE flex item there, so they wrap together and the
+    // letter never lands alone on a third line
+    const letter = container.querySelector(
+      ".md\\:hidden [role=img][aria-label='Grade F']")!;
+    const group = letter.parentElement!;
+    expect(group.className).toContain("inline-flex");
+    expect(group.className).toContain("shrink-0");
+    expect(group.textContent).toContain("Still mailing");
+    expect(group.lastElementChild).toBe(letter);
   });
 
   it("is in the name line beside the open pane (compact)", () => {

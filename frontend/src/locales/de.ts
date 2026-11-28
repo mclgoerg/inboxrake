@@ -334,6 +334,7 @@ export const DE: Record<string, string> = {
   "grade.val.stops_still": "mailt weiter",
   "grade.val.stops_never": "nicht getestet",
   "grade.val.stops_open": "nicht abgeschlossen",
+  "grade.val.stops_waiting": "zu früh",
   "grade.note.few": "Weniger als {n} Mails - zu früh für eine Aussage.",
   "grade.note.open": "{read} von {total} Mails gelesen",
   "grade.note.open_months": "{read} von {total} in {n} Monaten",
@@ -354,6 +355,9 @@ export const DE: Record<string, string> = {
   "grade.note.stops_still_one": "1 Mail kam nach deiner Abmeldung",
   "grade.note.stops_never": "Du hast dich nie abgemeldet",
   "grade.note.stops_open": "Deine Abmeldung ist noch nicht abgeschlossen",
+  "grade.note.stops_waiting":
+    "Du hast dich vor weniger als 2 Tagen abgemeldet - Absender haben 48 "
+    + "Stunden Zeit aufzuhören",
   "grade.note.size": "Durchschnitt pro Mail",
   "grade.note.size_att": "Durchschnitt pro Mail, {size} in Anhängen",
   "grade.help.intro":
@@ -373,7 +377,8 @@ export const DE: Record<string, string> = {
   "grade.help.unsub_bad":
     "Keine Abmeldemöglichkeit, obwohl er {n} oder mehr Mails schickt, mehr "
     + "als {w} pro Woche",
-  "grade.help.stops_ok": "Du hast dich abgemeldet und es kam nichts mehr",
+  "grade.help.stops_ok":
+    "Du hast dich abgemeldet und 48 Stunden lang kam nichts mehr",
   "grade.help.stops_bad":
     "Mailt nach deiner Abmeldung weiter (zählt doppelt)",
   "grade.help.size_ok": "Durchschnitt bis {n}\u00a0KB pro Mail",
@@ -386,8 +391,9 @@ export const DE: Record<string, string> = {
     + "oft du ihn öffnest oder wie oft er mailt.",
   "grade.help.fair":
     "Ein Absender, dem du schreibst, bekommt nie weniger als C. Menschen, "
-    + "denen du schreibst, und geschützte Absender werden bewertet, aber nie "
-    + "zum Aufräumen vorgeschlagen.",
+    + "denen du schreibst, und geschützte Absender werden auch bewertet - "
+    + "eine Note handelt nie von selbst, und geschützte Absender bleiben wie "
+    + "bisher vor jedem Aufräumen geschützt.",
   "grade.help.fixed":
     "Die Gewichte sind fest in der App und stehen hier - keine KI, nichts "
     + "verlässt den Server.",

@@ -945,6 +945,7 @@ export const EN: Record<string, string> = {
   "grade.val.stops_still": "still mailing",
   "grade.val.stops_never": "not tested",
   "grade.val.stops_open": "not finished",
+  "grade.val.stops_waiting": "too early",
   "grade.note.few": "Fewer than {n} mails - too early to tell.",
   "grade.note.open": "{read} of {total} mails read",
   "grade.note.open_months": "{read} of {total} in {n} months",
@@ -965,6 +966,8 @@ export const EN: Record<string, string> = {
   "grade.note.stops_still_one": "1 mail arrived after you unsubscribed",
   "grade.note.stops_never": "You never unsubscribed",
   "grade.note.stops_open": "Your unsubscribe is not finished yet",
+  "grade.note.stops_waiting":
+    "You unsubscribed less than 2 days ago - senders get 48 hours to stop",
   "grade.note.size": "Average per mail",
   "grade.note.size_att": "Average per mail, {size} in attachments",
   "grade.help.intro":
@@ -982,7 +985,7 @@ export const EN: Record<string, string> = {
   "grade.help.unsub_ok": "A one-click header (List-Unsubscribe-Post)",
   "grade.help.unsub_bad":
     "No unsubscribe option, though it sends {n} or more mails at over {w} a week",
-  "grade.help.stops_ok": "You unsubscribed and it stopped",
+  "grade.help.stops_ok": "You unsubscribed and it stayed quiet for 48 hours",
   "grade.help.stops_bad":
     "Still mailing after you unsubscribed (counts double)",
   "grade.help.size_ok": "Average up to {n} KB per mail",
@@ -995,7 +998,8 @@ export const EN: Record<string, string> = {
     + "it or how often it mails.",
   "grade.help.fair":
     "A sender you write to never gets below C. People you write to and "
-    + "protected senders are graded, but never suggested for cleanup.",
+    + "protected senders are graded too - a grade never acts on its own, "
+    + "and protected senders stay protected from every cleanup as before.",
   "grade.help.fixed":
     "The weights are fixed in the app and shown here - no AI, nothing "
     + "leaves the server.",

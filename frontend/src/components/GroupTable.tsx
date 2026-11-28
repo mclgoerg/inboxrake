@@ -416,6 +416,7 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
       {banner}
       {slice.map((g, i) => {
         const pill = rowPill(g, !!blockedKeys?.has(g.key));
+        const letter = rowGrade(g, grouping, sortK);
         return (
         <SwipeRow key={g.key} {...swipeActions(g)} enabled={!showChecks}>
         <div data-gidx={baseIdx + i}
@@ -460,8 +461,12 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1
                     type-meta text-muted">
                     <span><Stats g={g} /></span>
-                    {pill}
-                    {rowGrade(g, grouping, sortK)}
+                    {/* pill and letter wrap as one: never the letter alone
+                        on a line of its own */}
+                    {letter ? (
+                      <span className="inline-flex shrink-0 items-center
+                        gap-2">{pill}{letter}</span>
+                    ) : pill}
                   </div>
                 </div>
                 <div className="shrink-0 whitespace-nowrap text-right

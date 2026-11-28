@@ -96,6 +96,9 @@ export interface GroupUnsub {
   status: "done" | "pending" | "link" | "failed";
   link: string;
   addr: string;
+  /** When the newest recorded unsubscribe was done (0 = none; absent from an
+   *  older backend). The sender grade waits the watchdog's grace after it. */
+  ts?: number;
 }
 
 export interface StillMailing {
@@ -137,7 +140,7 @@ export interface GradeCheck {
   v: CheckVerdict;
   kind?: string;       // tracking: pixel | links | both | none | unchecked;
                        // unsub: post | link | none; stops: stopped | still |
-                       // open | never
+                       // open | never | waiting (inside the 48 h grace)
   read?: number;       // open: mails read ...
   total?: number;      // ... of this many
   pct?: number;        // open: read share; tracking: mails with any flag

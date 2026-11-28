@@ -16,8 +16,8 @@ same table is shown to the user on "How grades work"
 | you open it  | read share >= 30%       | read share < 10%            |
 | how often    | <= 2 mails a week       | > 7 mails a week            |
 | tracking     | no tracker found        | trackers in >= 50% of mails |
-| unsubscribe  | one-click header        | none, on a bulk sender      |
-| stops asked  | unsubscribed, stopped   | still mailing (-2)          |
+| unsubscribe  | one-click (https + hdr) | none, on a bulk sender      |
+| stops asked  | unsubscribed, 48 h quiet| still mailing (-2)          |
 | mail size    | average <= 200 KB       | average > 1 MB              |
 
 Points -> letter: >= 3 A, 2 B, 0..1 C, -1..-2 D, <= -3 F. Somebody you wrote
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import bisect
 import datetime
+import time
 from collections.abc import Collection, Mapping
 
 # --------------------------------------------------------------- thresholds
@@ -58,6 +59,11 @@ SIZE_BAD_ABOVE = 1024 * 1024    # >  this is bad
 
 # "More than N of 10 senders" needs enough senders to compare with.
 RANK_MIN_SENDERS = 10
+
+# Stops when asked: a sender gets this long after a recorded unsubscribe
+# before it counts as "stopped" (the watchdog's own grace - mailops
+# STILL_MAILING_GRACE; a test keeps the two equal).
+STOP_GRACE_SECONDS = 2 * 86400
 
 POINTS = {"ok": 1, "bad": -1, "neutral": 0}
 STILL_MAILING_POINTS = -2       # a broken unsubscribe promise weighs double
@@ -161,13 +167,17 @@ def _check_unsub(rec: dict, one_click: bool) -> dict:
     return {"id": "unsub", "v": "neutral", "kind": "link"}
 
 
-def _check_stops(rec: dict) -> dict:
+def _check_stops(rec: dict, now: float) -> dict:
     still = rec.get("still_mailing")
     if still:
         return {"id": "stops", "v": "bad", "kind": "still",
                 "n": still.get("n", 0)}
     u = rec.get("unsubscribed")
     if u and u.get("status") == "done":
+        # "stopped" is only earned once the grace after the unsubscribe has
+        # passed with no mail: before that the watchdog has seen nothing
+        if now - int(u.get("ts") or 0) < STOP_GRACE_SECONDS:
+            return {"id": "stops", "v": "neutral", "kind": "waiting"}
         return {"id": "stops", "v": "ok", "kind": "stopped"}
     return {"id": "stops", "v": "neutral",
             "kind": "open" if u else "never"}
@@ -198,13 +208,16 @@ def pattern_of(checks: list[dict]) -> str:
     return "mixed"
 
 
-def grade_sender(rec: dict, one_click: bool = False) -> dict:
+def grade_sender(rec: dict, one_click: bool = False,
+                 now: float | None = None) -> dict:
     """The grade of one Sender record (public_state shape): `letter`,
     `points`, `pattern`, `checks` (one entry per CHECK_IDS, each with `v` =
     ok / bad / neutral plus the figures the UI words) and `floor` = True when
-    the "you wrote to them" floor lifted the letter."""
+    the "you wrote to them" floor lifted the letter. `now` (default: the
+    clock) is the time the unsubscribe grace is measured against."""
+    now = time.time() if now is None else now
     checks = [_check_open(rec), _check_often(rec), _check_tracking(rec),
-              _check_unsub(rec, one_click), _check_stops(rec),
+              _check_unsub(rec, one_click), _check_stops(rec, now),
               _check_size(rec)]
     points = sum(STILL_MAILING_POINTS
                  if c["id"] == "stops" and c["v"] == "bad" else POINTS[c["v"]]
@@ -219,12 +232,15 @@ def grade_sender(rec: dict, one_click: bool = False) -> dict:
 
 
 def grade_all(recs: Mapping[str, dict],
-              one_click: Collection[str] = ()) -> dict[str, dict]:
+              one_click: Collection[str] = (),
+              now: float | None = None) -> dict[str, dict]:
     """{key: grade} for every Sender record. `one_click` = keys whose newest
     mail carries a List-Unsubscribe-Post header. Adds `rank` to each "how
     often" check: the share of the other senders (in percent) that mail less
     often - None when there are too few senders to compare with."""
-    out = {k: grade_sender(rec, k in one_click) for k, rec in recs.items()}
+    now = time.time() if now is None else now
+    out = {k: grade_sender(rec, k in one_click, now)
+           for k, rec in recs.items()}
     rates = sorted(r for rec in recs.values()
                    if (r := per_week(rec)) is not None)
     if len(rates) >= RANK_MIN_SENDERS:

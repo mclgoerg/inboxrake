@@ -4,6 +4,7 @@ sentence patterns, the `grade:` filter (the same cases run in
 frontend/src/lib.test.ts), and the grade on public_state's Sender rows."""
 
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,9 @@ import pytest
 from backend import grades
 from backend import mailops
 from backend import rules as rulesmod
+from backend import unsubstore
+
+from conftest import make_msg
 
 KB = 1024
 # 28 days = exactly four weeks, so "mails a week" is count / 4
@@ -171,6 +175,35 @@ def test_stops_when_asked():
         assert (c["v"], c["kind"]) == ("neutral", "open")
     c = check(rec(unsubscribed=done, still_mailing={"n": 4}), "stops")
     assert (c["v"], c["kind"], c["n"]) == ("bad", "still", 4)
+
+
+def test_stopped_is_only_earned_after_the_watchdogs_grace():
+    """"Stops when asked" must not turn green the moment an unsubscribe is
+    recorded: the watchdog gives a sender 48 h, so until then nothing is
+    known (neutral, "waiting"); after it, no late mail means "stopped"."""
+    assert grades.STOP_GRACE_SECONDS == mailops.STILL_MAILING_GRACE
+    t0, g = 1_750_000_000, grades.STOP_GRACE_SECONDS
+
+    def stops(now, ts=t0, **over):
+        r = rec(unsubscribed={"status": "done", "n": 1, "of": 1, "ts": ts},
+                **over)
+        return grades.grade_sender(r, now=now)["checks"][4]
+
+    assert stops(t0 + 3600) == {"id": "stops", "v": "neutral",
+                                "kind": "waiting"}
+    assert stops(t0 + g - 1)["v"] == "neutral"
+    assert stops(t0 + g) == {"id": "stops", "v": "ok", "kind": "stopped"}
+    assert stops(t0 + 30 * 86400)["kind"] == "stopped"
+    # a legacy record without a time is old enough
+    assert stops(t0, ts=0)["kind"] == "stopped"
+    # late mail beats the wait: still mailing is still -2
+    late = stops(t0 + 3600, still_mailing={"n": 2})
+    assert (late["v"], late["kind"]) == ("bad", "still")
+    # the points follow: waiting adds nothing, stopped adds +1
+    base = rec(unsubscribed={"status": "done", "ts": t0})
+    waiting = grades.grade_sender(base, now=t0 + 60)["points"]
+    stopped = grades.grade_sender(base, now=t0 + g)["points"]
+    assert stopped == waiting + 1
 
 
 def test_still_mailing_weighs_double():
@@ -401,6 +434,48 @@ def test_grades_follow_the_scan_nothing_is_stored(bridge, tmp_path):
             "noreply@dhl.example"]
     assert "grade" not in stored
     assert not list(tmp_path.glob("*grade*"))
+
+
+def _grade_checks(addr):
+    row = mailops.public_state()["groups"]["sender"][addr]
+    return {c["id"]: c for c in row["grade"]["checks"]}
+
+
+def test_one_click_needs_an_https_link_not_just_the_post_header(bridge):
+    """The app's own rule (unsub.method_of): the header alone is no one-click
+    unsubscribe - a mailto-only or plain http sender would be unsubscribed by
+    mail / a page you confirm, not by one POST."""
+    inbox = bridge.mailbox["INBOX"]
+    for uid, name, header in (
+            (30, "mailonly", "<mailto:stop@mailonly.example?subject=stop>"),
+            (31, "plainhttp", "<http://plainhttp.example/u/1>"),
+            (32, "secure", "<https://secure.example/u/1>"),
+            (33, "both", "<mailto:stop@both.example>, "
+                         "<https://both.example/u/1>")):
+        inbox.append(make_msg(
+            uid, frm=f'"{name}" <news@{name}.example>', unsub=header,
+            unsub_post=True, msgid=f"<g{uid}@{name}.example>"))
+    scan(bridge)
+    for name, kind, v in (("mailonly", "link", "neutral"),
+                          ("plainhttp", "link", "neutral"),
+                          ("secure", "post", "ok"),
+                          ("both", "post", "ok")):
+        c = _grade_checks(f"news@{name}.example")["unsub"]
+        assert (c["kind"], c["v"]) == (kind, v), name
+
+
+def test_the_state_carries_the_unsubscribe_time_for_the_grace(bridge):
+    scan(bridge)
+    assert "unsubscribed" in mailops.public_state()["groups"]["sender"][
+        "news@shop.example"]
+    now = int(time.time())
+    for age, want in ((3600, "waiting"), (3 * 86400, "stopped")):
+        unsubstore.save({"news@shop.example": {
+            "status": "done", "method": "", "detail": "", "error": "",
+            "ts": now - age}})
+        row = mailops.public_state()["groups"]["sender"]["news@shop.example"]
+        assert abs(row["unsubscribed"]["ts"] - (now - age)) <= 1
+        assert row["grade"]["checks"][4]["kind"] == want
 
 
 def test_public_state_sees_one_click_unsubscribe(bridge):

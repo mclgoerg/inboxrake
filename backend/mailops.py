@@ -2823,8 +2823,12 @@ def _group_unsub(rec: dict, entries: dict[str, dict], acc) -> dict | None:
         return None
     n = sum(1 for e in mine.values() if e["status"] == "done")
     of = len(senders)
+    # `ts`: when the newest recorded unsubscribe was done (0 = none) - the
+    # sender grade waits the watchdog's grace after it before "stopped"
     out = {"n": n, "of": of, "status": "done" if n == of else "pending",
-           "link": "", "addr": ""}
+           "link": "", "addr": "",
+           "ts": max((int(e.get("ts") or 0) for e in mine.values()
+                      if e["status"] == "done"), default=0)}
     for status in ("failed", "link"):        # worst outstanding case wins
         hit = next((a for a, e in mine.items() if e["status"] == status), None)
         if hit:
@@ -2846,17 +2850,23 @@ def _trash_size(acc) -> int | None:
     return sum(int(m.get("size") or 0) for m in index.values())
 
 
-def _attach_grades(senders: dict | None, acc) -> None:
+def _attach_grades(senders: dict | None, acc, now: float | None = None
+                   ) -> None:
     """Adds `grade` (backend/grades.py) to each public Sender record, derived
-    from the record's own figures plus whether its newest mail offers
-    one-click unsubscribe (lock held). Nothing is stored: the grade is worked
-    out again on every state build."""
+    from the record's own figures plus whether its newest mail offers a
+    one-click unsubscribe - the app's own decision (`unsub.method_of`: an
+    https link AND the List-Unsubscribe-Post header, not the header alone)
+    (lock held). Nothing is stored: the grade is worked out again on every
+    state build."""
     if not senders:
         return
-    one_click = {k for k, rec in acc.state["groups"]["sender"].items()
-                 if k in senders and rec["unsub"]
-                 and any(oc for _, oc in group_unsub_senders(rec, acc).values())}
-    for k, grade in grades.grade_all(senders, one_click).items():
+    from . import unsub as unsubmod         # unsub imports this module
+    one_click = {
+        k for k, rec in acc.state["groups"]["sender"].items()
+        if k in senders and rec["unsub"]
+        and any(unsubmod.method_of(unsubmod.parse_unsub(h, oc)) == "one_click"
+                for h, oc in group_unsub_senders(rec, acc).values())}
+    for k, grade in grades.grade_all(senders, one_click, now).items():
         senders[k]["grade"] = grade
 
 
@@ -2914,7 +2924,7 @@ def public_state(acc=None) -> dict:
                        if rec.get("kind") == "company" else {})}
                 for k, rec in recs.items()}
             for g, recs in acc.state["groups"].items()}
-        _attach_grades(out["groups"].get("sender"), acc)
+        _attach_grades(out["groups"].get("sender"), acc, now)
         return out
 
 
