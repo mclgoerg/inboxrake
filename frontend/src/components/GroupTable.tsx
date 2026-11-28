@@ -1,4 +1,4 @@
-import { Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
+import { AlarmClock, Archive, ArrowDown, Ban, Briefcase, Building2, CalendarCheck,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, KeyRound, LifeBuoy,
   ListChecks, MailOpen, MessagesSquare, MoreHorizontal, Newspaper, Package,
   PanelRight, Reply, Shapes, Shield, ShieldOff, Tag as TagIcon, Trash2, Users,
@@ -35,6 +35,8 @@ export interface GroupSwipe {
   protect: (g: Group) => void;
   block: (g: Group) => void;
   unblock: (g: Group) => void;
+  /** Opens Not now for this row (the sheet): last in the swipe's More. */
+  snooze?: (g: Group) => void;
 }
 
 interface Props {
@@ -507,6 +509,11 @@ function MobileCards({ slice, baseIdx, selected, focusedKey, onToggle,
               <SettingsRow label={t("Archive")}
                 icon={<IconTile><Archive size={16} /></IconTile>}
                 onClick={sheetItem(swipe.archive)} />
+              {swipe.snooze && (
+                <SettingsRow label={t("snooze.more_item")}
+                  icon={<IconTile><AlarmClock size={16} /></IconTile>}
+                  onClick={sheetItem(swipe.snooze)} />
+              )}
             </SettingsGroup>
           </div>
         </Modal>

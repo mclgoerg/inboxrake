@@ -18,6 +18,7 @@ import type {
   HabitsResp,
   DocFile, DocKind, DocsPage, DocsPlan, DocsSummary, DocsZipRequest,
   DocsZipResult,
+  BatchSlot, SnoozedResp, SnoozeResult,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -273,6 +274,11 @@ const ERROR_CODES: Record<string, string> = {
   docs_busy: "ferr.docs_busy",
   docs_too_many: "ferr.docs_too_many",
   undo_through_removal: "ferr.undo_through_removal",
+  snooze_cannot_create: "ferr.snooze_cannot_create",
+  snooze_bad_time: "ferr.snooze_bad_time",
+  snooze_protected: "ferr.snooze_protected",
+  snooze_full: "ferr.snooze_full",
+  snooze_no_folder: "ferr.snooze_no_folder",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
   // Web Push (backend/webpush.py)
@@ -416,6 +422,12 @@ async function req<T>(path: string, body?: unknown,
     } catch {
       /* plain text */
     }
+    // (a refused request body: FastAPI lists what is wrong as objects)
+    if (Array.isArray(detail)) {
+      detail = (detail as unknown[]).map((x) => x && typeof x === "object"
+        && "msg" in x ? String((x as { msg: unknown }).msg) : String(x))
+        .join("; ");
+    }
     const parsed = parseErrorDetail(detail);
     const err: Error & { code?: string } =
       new Error(detail ? errorText(detail) : `HTTP ${res.status}`);
@@ -514,6 +526,20 @@ export const api = {
       /** the queued job; its Undo step carries the same id */
       job?: string }>(forAccount("/api/delete_messages", account),
       { items, action, dest, force }),
+  // Not now: the unread mails of groups (`keys`) or exact mails (`items`) wait
+  // in the Snoozed folder until `until` (epoch s), then come back unread.
+  snooze: (when: { grouping?: Grouping; keys?: string[];
+      items?: [string, number][] }, until: number, unreadOnly = true) =>
+    req<SnoozeResult>("/api/snooze", { grouping: "sender", ...when, until,
+      unread_only: unreadOnly }),
+  snoozeBatch: (key: string, slot: BatchSlot | "off", tz: string,
+      label = "") =>
+    req<{ ok: boolean; slot: string; returned?: number; next?: number }>(
+      "/api/snooze/batch", { key, slot, tz, label }),
+  snoozed: () => req<SnoozedResp>("/api/snoozed"),
+  snoozedBack: (msgids: string[], batch = "", addr = "") =>
+    req<{ returned: number; gone: number }>("/api/snoozed/back",
+      { msgids, batch, addr }),
   pin: (folder: string, uid: number, pinned: boolean) =>
     req<{ ok: boolean; pinned: boolean }>("/api/pin",
       { folder, uid, pinned }),

@@ -1,4 +1,4 @@
-import { Archive, FileText, Layers, ShieldAlert, Send, Trash2, X }
+import { AlarmClock, Archive, FileText, Layers, ShieldAlert, Send, Trash2, X }
   from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
@@ -13,14 +13,16 @@ import { Button, Checkbox, confirmDialog, PopupSelect, SectionLabel,
  * candidates get a pop-up to confirm one; look-alikes offer a one-time,
  * undoable move of their mail into the real role folder). */
 
-const ROLE_ORDER = ["trash", "junk", "sent", "drafts", "archive", "all"];
+// (Snoozed is listed too: the folder Inboxrake made, not one to choose)
+const ROLE_ORDER = ["trash", "junk", "sent", "drafts", "archive", "all",
+  "snoozed"];
 // roles whose folder (and look-alikes) never take part in the scan
-const UNSCANNED = new Set(["trash", "junk", "sent", "drafts", "all"]);
+const UNSCANNED = new Set(["trash", "junk", "sent", "drafts", "all", "snoozed"]);
 
 const roleName = (role: string) => t(`role.${role}`);
 const ROLE_ICON: Record<string, typeof Archive> = {
   trash: Trash2, junk: ShieldAlert, sent: Send, drafts: FileText,
-  archive: Archive, all: Layers };
+  archive: Archive, all: Layers, snoozed: AlarmClock };
 const RoleIcon = ({ role }: { role: string }) => {
   const Icon = ROLE_ICON[role] ?? Archive;
   return <span aria-hidden className="text-accent"><Icon size={16} /></span>;

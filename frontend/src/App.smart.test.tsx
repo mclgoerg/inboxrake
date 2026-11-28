@@ -388,10 +388,10 @@ test("bucket rows have no protect, block or Sieve", async () => {
     expect(screen.queryByRole("button", { name: "Block sender" }), label)
       .toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /^Mails \(/ }));
-    // (More is hidden while it has no items; when shown, no Sieve in it)
+    // (More is hidden while it has no items; when shown, no Sieve in it -
+    // the pane's own More now also holds Not now…, so look at every one)
     await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
-    const more = screen.queryByRole("button", { name: "More" });
-    if (more) {
+    for (const more of screen.queryAllByRole("button", { name: "More" })) {
       fireEvent.click(more);
       expect(screen.queryByRole("menuitem", { name: /Sieve/ }), label)
         .toBeNull();

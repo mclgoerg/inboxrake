@@ -76,6 +76,8 @@ from . import rulecheckstore
 from . import senderchanges
 from . import rules as rulesmod
 from . import secretbox
+from . import snooze as snoozemod
+from . import snoozestore
 from . import stats as statsmod
 from . import substore
 from . import subscriptions
@@ -1638,6 +1640,100 @@ def post_pin_mails(body: PinMailsBody, account: str | None = Query(None)):
                                      body.pinned, acc)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class SnoozeBody(BaseModel):
+    grouping: str = "sender"
+    keys: list[str] | None = Field(None, max_length=50000)   # groups ...
+    items: list[tuple[str, int]] | None = Field(None, max_length=5000)  # ... or mails
+    until: int                      # epoch seconds, from the browser's clock
+    unread_only: bool = True        # groups: only their unread mails
+
+
+@app.post("/api/snooze")
+def post_snooze(body: SnoozeBody, account: str | None = Query(None)):
+    """Not now: move the unread mails of groups (`keys`) or exact mails
+    (`items`) into the account's Snoozed folder until `until`; they come back
+    unread. A background move job with an Undo step; pinned mails and (in a
+    group or a selection) protected senders' mails are skipped and counted."""
+    _check_grouping(body.grouping)
+    if bool(body.keys) == bool(body.items):
+        raise HTTPException(400, "give keys or items")
+    acc = _acc(account)
+    try:
+        if body.keys:
+            return snoozemod.snooze_groups(
+                acc, body.grouping, body.keys, body.until,
+                unread_only=body.unread_only)
+        return snoozemod.snooze_items(
+            acc, [list(i) for i in body.items], body.until)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class SnoozeBatchBody(BaseModel):
+    key: str = Field(max_length=254)          # the sender's address
+    slot: Literal["weekly", "daily", "off"]
+    tz: str = Field("", max_length=64)        # the user's IANA time zone
+    label: str = Field("", max_length=100)
+
+
+@app.post("/api/snooze/batch")
+def post_snooze_batch(body: SnoozeBatchBody,
+                      account: str | None = Query(None)):
+    """Deliver the NEW mail of one sender once a day / a week ("off" returns
+    what is held and stops)."""
+    acc = _acc(account)
+    try:
+        return snoozemod.set_batch(acc, body.key, body.slot, body.tz,
+                                   body.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.get("/api/snoozed")
+def get_snoozed(account: str | None = Query(None)):
+    """The Snoozed page: batches and snoozed mails (see snooze.listing)."""
+    acc = _acc(account)
+    try:
+        return snoozemod.listing(acc)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+class SnoozeBackBody(BaseModel):
+    msgids: list[str] = Field(default_factory=list, max_length=5000)
+    batch: str = Field("", max_length=254)    # a batch: everything it holds
+    addr: str = Field("", max_length=254)     # a sender: all of its snoozed mail
+
+
+@app.post("/api/snoozed/back")
+def post_snoozed_back(body: SnoozeBackBody,
+                      account: str | None = Query(None)):
+    """Back now: return snoozed mails (named, or a batch's) to where they
+    were, unread."""
+    acc = _acc(account)
+    ids = set(body.msgids)
+    if body.batch or body.addr:
+        ids |= {m for m, r in snoozestore.load_account(acc.name)["mails"]
+                .items() if (body.batch and r["batch"] == body.batch)
+                or (body.addr and r["addr"] == body.addr)}
+    if not ids:
+        raise HTTPException(400, "nothing named")
+    try:
+        return snoozemod.release(acc, ids)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
     except Exception as exc:
         raise _internal_error(exc, acc)
 
@@ -3658,6 +3754,7 @@ def post_config(body: dict, request: Request, response: Response):
         rulecheckstore.drop_account(str(body["delete_account"]))
         senderchanges.drop_account(str(body["delete_account"]))
         waitstore.drop_account(str(body["delete_account"]))
+        snoozestore.drop_account(str(body["delete_account"]))
         addressstore.drop_account(str(body["delete_account"]))
         labelstore.drop_account(str(body["delete_account"]))
         dupstore.drop_account(str(body["delete_account"]))
@@ -3696,6 +3793,7 @@ def post_config(body: dict, request: Request, response: Response):
             rulecheckstore.rename_account(old, new)
             senderchanges.rename_account(old, new)
             waitstore.rename_account(old, new)
+            snoozestore.rename_account(old, new)
             addressstore.rename_account(old, new)
             labelstore.rename_account(old, new)
             dupstore.rename_account(old, new)

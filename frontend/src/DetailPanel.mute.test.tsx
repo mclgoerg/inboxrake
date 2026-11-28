@@ -69,8 +69,10 @@ it("ends the More menu of a conversation with Mute", async () => {
   const group = mkGroup();
   renderPanel({ group, onMute, onUnmute: vi.fn() });
   await openMore();
+  // (Not now… goes right before Mute, after everything that was there)
   expect(items()).toEqual(["Read conversation",
-    "Protect all mails in this group", "Mute this conversation…"]);
+    "Protect all mails in this group", "Not now…",
+    "Mute this conversation…"]);
   fireEvent.click(screen.getByRole("menuitem",
     { name: /Mute this conversation/ }));
   expect(onMute).toHaveBeenCalledWith(expect.objectContaining(

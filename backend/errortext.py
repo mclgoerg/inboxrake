@@ -109,6 +109,16 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'That restore brought back mails whose files Inboxrake had taken out, so it cannot be undone as one step. Nothing was moved: the originals are back in their folders - take the files out again if you want them gone.',
     'copy_unfinished':
         'Finish or cancel the account copy first.',
+    'snooze_cannot_create':
+        'Could not create the “{folder}” folder on your mail server, so nothing was snoozed.',
+    'snooze_bad_time':
+        'Pick a time in the future (within the next two years).',
+    'snooze_protected':
+        'A protected sender’s mail is never held back - unprotect the sender first.',
+    'snooze_full':
+        'This account already holds as many snoozed mails as Not now can keep - bring some back first. Nothing was snoozed.',
+    'snooze_no_folder':
+        'The “Snoozed” folder cannot be found on your mail server, so the snoozed mails cannot come back yet. Nothing was lost - the folder may be hidden or renamed.',
     'busy_action':
         'Another action is still running - try again when it has finished.',
     'busy_purge':

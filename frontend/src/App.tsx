@@ -36,6 +36,9 @@ import { TrackersPanel } from "./components/TrackersPanel";
 import { SubscriptionsPanel } from "./components/SubscriptionsPanel";
 import { WaitingPanel } from "./components/WaitingPanel";
 import { YourFoldersPanel } from "./components/YourFoldersPanel";
+import { NotNowSheet, useNotNow } from "./components/NotNow";
+import { SnoozedPanel } from "./components/SnoozedPanel";
+import { SnoozeProvider, useSnoozeActions } from "./components/snoozeContext";
 import { AllAccountsPanel } from "./components/AllAccountsPanel";
 import { DocumentsPanel } from "./components/DocumentsPanel";
 import { COPIES_VIEW } from "./components/AllMailsView";
@@ -315,6 +318,10 @@ export default function App() {
   const [waitingOpen, setWaitingOpen] = useState(false);
   // Your folders (Clean up, after Trash)
   const [yourFoldersOpen, setYourFoldersOpen] = useState(false);
+  // Snoozed (Clean up, after Your folders) and the group a phone swipe's More
+  // asked to snooze (its Not now sheet is open).
+  const [snoozedOpen, setSnoozedOpen] = useState(false);
+  const [snoozeFor, setSnoozeFor] = useState<Group | null>(null);
   // The All accounts page (a page, never a mode: nothing about the selected
   // account depends on it).
   const [allAccountsOpen, setAllAccountsOpen] = useState(false);
@@ -357,6 +364,7 @@ export default function App() {
     : addressesOpen ? "addresses" : waitingOpen ? "waiting"
     : allAccountsOpen ? "accounts" : yourFoldersOpen ? "yourfolders"
     : docsOpen ? "documents"
+    : snoozedOpen ? "snoozed"
     : auditOpen ? "activity" : null;
   const shownTool = routeTool ?? flagTool;
   // A focus belongs to the visit it was asked for.
@@ -465,6 +473,10 @@ export default function App() {
       if (generation === accountGeneration.current) fetching.current = false;
     }
   }, [toast]);
+  // Not now: what waits in Snoozed + the actions (the provider below hands the
+  // same host to every Not now control).
+  const snoozeHost = { summary: state?.snoozed, refresh: () => void refresh() };
+  const snooze = useSnoozeActions(snoozeHost);
 
   // Drop a stale saved account (e.g. deleted meanwhile) once cfg is known.
   useEffect(() => {
@@ -934,6 +946,9 @@ export default function App() {
         } else if (!fresh.length && !freshA.length && botName !== null
             && del.action === "mark_read") {
           text = t("toast.assistant_mark_read", { name: botName, n });
+        } else if (fresh.length && fresh.every((u) => u.action === "snooze")
+            && !freshA.length) {
+          text = t("toast.snoozed", { n });
         } else if (fresh.length && fresh.every((u) => u.action === "trash")
             && !freshA.length) {
           text = t("toast.moved_trash", { n });
@@ -1394,8 +1409,8 @@ export default function App() {
     const was = toolWas.current;
     toolWas.current = page;
     if (was === page) return;
-    if (["search", "triage", "duplicates", "attachments", "junk", "trash"]
-      .includes(was)) refresh();
+    if (["search", "triage", "duplicates", "attachments", "junk", "trash",
+      "snoozed"].includes(was)) refresh();
     if (was === "rules") setRulesSeed("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
@@ -1408,7 +1423,7 @@ export default function App() {
     setStatsOpen(false); setSpaceOpen(false); setTrackersOpen(false);
     setSubsOpen(false); setAddressesOpen(false); setWaitingOpen(false);
     setAllAccountsOpen(false); setAuditOpen(false);
-    setYourFoldersOpen(false); setDocsOpen(false);
+    setYourFoldersOpen(false); setDocsOpen(false); setSnoozedOpen(false);
     if (!routeTool) goPage(flagTool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
@@ -1482,7 +1497,7 @@ export default function App() {
   useEffect(() => { prevGroups.current = groups; });
   const anyModal = (!!detail && !splitPane) || accountSheet || searchOpen || rulesOpen
     || !!wizard
-    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || yourFoldersOpen || docsOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
+    || aiFilterOpen || attsOpen || dupsOpen || trackersOpen || subsOpen || addressesOpen || waitingOpen || allAccountsOpen || yourFoldersOpen || docsOpen || snoozedOpen || statsOpen || spaceOpen || wrappedOpen || auditOpen
     || triageOpen || !!foldersOpen;
 
   // Space map "Done": exactly these sender keys become the selection of the
@@ -2315,6 +2330,31 @@ export default function App() {
     }
   };
 
+  // Not now: the address a row delivers in batches by (a Sender row, or a
+  // Smart row that stands for one sender); "" for every other row.
+  const snoozeSenderKey = (g: Group): string =>
+    mode === "sender" ? g.key
+      : mode === "smart" && g.kind === "sender" ? g.addr ?? "" : "";
+  const snoozeBatchOf = (g: Group) => snoozeSenderKey(g) ? {
+    slot: state?.snoozed?.batches[snoozeSenderKey(g)] ?? null,
+    onSet: (slot: "weekly" | "daily" | "off") =>
+      snooze.batch(snoozeSenderKey(g), g.label, slot).then(() => undefined),
+  } : undefined;
+  // The selected groups' unread mails wait until `until`.
+  const selUnread = groups.filter((g) => selected.has(g.key))
+    .reduce((n, g) => n + g.unread, 0);
+  const selOne = selected.size === 1
+    ? groups.find((g) => selected.has(g.key)) : undefined;
+  const notNowBar = useNotNow({
+    scope: "unread", n: selUnread,
+    who: selOne ? selOne.label : t("bar.groups", { n: selected.size }),
+    onSnooze: async (until) => {
+      if (await snooze.groups(mode, [...selected], until)) setSelected(new Set());
+    },
+    // (a batch belongs to ONE sender)
+    batch: selOne ? snoozeBatchOf(selOne) : undefined,
+  }, true);
+
   // Row swipe on phones: every entry is the handler the same action already
   // has - `act` (the confirm, protected / pinned guards, and the Undo toast
   // when the job ends), `toggleProtect`, `blockGroup` / `unblockGroup` (their
@@ -2338,6 +2378,7 @@ export default function App() {
     },
     block: (g) => { void blockGroup(g); },
     unblock: (g) => { void unblockGroup(g); },
+    snooze: (g) => setSnoozeFor(g),
   };
 
   // AI review of `keys` (undefined = the whole grouping). Plain review
@@ -2759,6 +2800,7 @@ export default function App() {
     junk: () => setFoldersOpen("junk"),
     trash: () => setFoldersOpen("trash"),
     yourfolders: () => setYourFoldersOpen(true),
+    snoozed: () => setSnoozedOpen(true),
     stats: () => setStatsOpen(true),
     space: () => setSpaceOpen(true),
     wrapped: () => setWrappedOpen(true),
@@ -3374,6 +3416,12 @@ export default function App() {
           openSettingsSection("account", account, true);
         }} />
     )}
+    {toolShown("snoozed") && (
+      <SnoozedPanel key={account} account={account}
+        rev={state?.snoozed?.count ?? 0}
+        onClose={() => closeTool(() => { setSnoozedOpen(false); refresh(); })}
+        onChanged={refresh} />
+    )}
     {toolShown("accounts") && cfg && (
       /* A page, not a mode: no `key={account}` - switching the account does
          not reload it, and nothing it does selects an account. */
@@ -3498,6 +3546,7 @@ export default function App() {
 
   return (
     <ReaderHostProvider value={readerHost}>
+    <SnoozeProvider value={snoozeHost}>
     <div className={wide ? "pl-61" : undefined}>
     {wide && (
       <Sidebar page={page} onPage={goPage} onOpen={openTool}
@@ -3767,6 +3816,7 @@ export default function App() {
                 data-bar-move="" onClick={() => onAction("move")}>
                 {t("bar.move")}
               </BarButton>
+              <span ref={notNowBar.anchorRef} className="inline-flex">
               <Menu variant="secondary" up triggerSize="sm"
                 triggerClass="rounded-full"
                 trigger={<>{t("menu.more")}
@@ -3788,7 +3838,10 @@ export default function App() {
                   onClick={() => setLimitOpen(true)}>
                   {t("bar.limit_open")}
                 </MenuItem>
+                {notNowBar.item}
               </Menu>
+              </span>
+              {notNowBar.overlay}
             </>
           )}
           primary={
@@ -4160,6 +4213,15 @@ export default function App() {
       )}
     </div>
     </div>
+    {snoozeFor && (
+      <NotNowSheet scope="unread" n={snoozeFor.unread} who={snoozeFor.label}
+        onSnooze={async (until) => {
+          await snooze.groups(mode, [snoozeFor.key], until);
+        }}
+        batch={snoozeBatchOf(snoozeFor)}
+        onClose={() => setSnoozeFor(null)} />
+    )}
+    </SnoozeProvider>
     </ReaderHostProvider>
   );
 }

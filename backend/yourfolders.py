@@ -54,6 +54,7 @@ from . import config as cfgmod
 from . import mailops
 from . import pinstore
 from . import rules as rulesmod
+from . import snoozestore
 
 log = logging.getLogger("inboxrake.yourfolders")
 
@@ -205,6 +206,8 @@ def _busy(acc, own_held: bool = False) -> str | None:
                 return mailops.BUSY_ACTION
         if t.purge_lock.locked():
             return mailops.BUSY_PURGE
+        if t.release_lock.locked():      # snoozed mail is coming back
+            return mailops.BUSY_ACTION
         if t.folder_lock.locked() and not own_held:
             return mailops.BUSY_ACTION
     try:
@@ -548,6 +551,13 @@ def _new_name(conn, ctx: _Ctx, acc, parent: str, typed: str,
     return raw, leaf
 
 
+def new_folder_prefix(conn, acc) -> str:
+    """Where a folder Inboxrake makes for the account goes (the Snoozed
+    folder): below the user's namespace, `INBOX.` or Proton Bridge's
+    `Folders/` - whichever this server insists on."""
+    return _new_prefix(_Ctx(conn, acc), conn)
+
+
 def _new_prefix(ctx: _Ctx, conn) -> str:
     """Where this user's own folders live: the personal namespace the server
     announces, `INBOX.` where every folder sits below it, and Proton Bridge's
@@ -836,7 +846,10 @@ def rename(acc, folder: str, name: str, rules=None) -> dict:
                                     for t in _twins(acc)]),
                 ("state", lambda: [_rename_state(t, fn)
                                    for t in _twins(acc)]),
-                ("rules", lambda: rulesmod.repoint_dest(_names(acc), fn))):
+                ("rules", lambda: rulesmod.repoint_dest(_names(acc), fn)),
+                # snoozed mail comes back to the renamed folder
+                ("snoozed", lambda: [snoozestore.remap_origins(fn, n)
+                                     for n in _names(acc)])):
             try:
                 run()
             except Exception:
@@ -1010,6 +1023,7 @@ def _merge_locked(conn, acc, folder, target, uv, max_uid, delete_after,
                           cause=str(failure)) from failure
         raise failure
     changed = _repoint(acc, folder, target)
+    _repoint_snoozed(acc, folder, target)
     deleted, kept = False, ""
     if delete_after:
         deleted, kept = _delete_emptied(conn, ctx, acc, folder)
@@ -1060,6 +1074,17 @@ def _repoint(acc, folder: str, target: str) -> list[dict]:
     except Exception:
         log.exception("merge: could not repoint the rules")
         return []
+
+
+def _repoint_snoozed(acc, folder: str, target: str) -> None:
+    """Snoozed mail that was to go back to the merged folder goes to the
+    target (where its neighbours now are)."""
+    try:
+        for n in _names(acc):
+            snoozestore.remap_origins(
+                lambda d: target if d == folder else d, n)
+    except Exception:
+        log.exception("merge: could not repoint the snoozed mails")
 
 
 def _delete_emptied(conn, ctx: _Ctx, acc, folder: str) -> tuple[bool, str]:

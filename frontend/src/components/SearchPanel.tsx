@@ -11,6 +11,7 @@ import type { Follow } from "../useAcrossRuns";
 import { MailRows, MessageView } from "./MailList";
 import { SearchTrashConfirm } from "./SearchTrashConfirm";
 import type { ReaderActions } from "./MailReader";
+import { useSnooze } from "./snoozeContext";
 import { Avatar, Button, EmptyState, Modal, PanelHeader, SectionLabel,
   Segmented, Select, Spinner, useOptionalToast } from "./ui";
 
@@ -318,10 +319,22 @@ export function SearchPanel({ bodySearch = false, bodyMode = "server",
   const trashSelected = () => trashMails(
     mails.filter((m) => picked.includes(mailKey(m))));
   // The reader's Trash: the same confirm and call for the one open mail.
+  const snooze = useSnooze();
   const readerActions: ReaderActions = {
     trash: async (m) => {
       if (await trashMails([m], m.subject)) setView(null);
     },
+    // (a search across accounts acts one account at a time: no Not now there)
+    ...(everywhere ? {} : { snooze: async (m: Mail, until: number) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setRes((cur) => cur && { ...cur, mails: cur.mails.filter(
+          (x) => mailKey(x) !== mailKey(m)) });
+        setView(null);
+        onDeleted();
+      }
+      return ok;
+    } }),
   };
 
   const allSelected = mails.length > 0

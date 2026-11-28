@@ -1,4 +1,5 @@
-import { Archive, FolderInput, MailOpen, X } from "lucide-react";
+import { Archive, ChevronDown, FolderInput, MailOpen, MoreHorizontal, X }
+  from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, mailKey } from "../api";
@@ -9,13 +10,15 @@ import { FilterField } from "./FilterMenu";
 import { FolderPicker } from "./FolderPicker";
 import { MailRows, MessageView } from "./MailList";
 import type { ReaderActions } from "./MailReader";
+import { useNotNow } from "./NotNow";
+import { useSnooze } from "./snoozeContext";
 import { QueryBuilder } from "./QueryBuilder";
 import { SlotChip } from "./RhythmCard";
 import { CheckupChip } from "./RuleCheckup";
 import type { ArrivalSlot } from "../rhythm";
 import { SortControl } from "./SortControl";
-import { BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Modal,
-  useMediaQuery, useToast }
+import { BAR_BTN, BarButton, BulkBar, Button, EmptyState, FILTER_ROW, Input, LINK, Loading, Menu,
+  Modal, useMediaQuery, useToast }
   from "./ui";
 
 type MailSort = "date" | "size" | "sender";
@@ -78,6 +81,7 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [view, setView] = useState<Mail | null>(null);
   const toast = useToast();
+  const snooze = useSnooze();
   const phone = useMediaQuery("(width < 48rem)");
   const filterRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -245,7 +249,30 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
       return ok;
     },
     pin: (m, pinned) => togglePin(liveOf(m), pinned),
+    snooze: async (m, until) => {
+      const ok = await snooze.mails([[m.folder, m.uid]], until);
+      if (ok) {
+        setView(null);
+        setMails((cur) => cur.filter((x) => mailKey(x) !== mailKey(m)));
+        setTotal((n) => Math.max(0, n - 1));
+        onChanged();
+      }
+      return ok;
+    },
   };
+  // Not now on the ticked mails (the server leaves pinned ones alone).
+  const snoozeSelected = async (until: number) => {
+    const chosen = mails.filter((m) => sel.has(mailKey(m)));
+    if (!chosen.length) return;
+    if (await snooze.mails(itemsOf(chosen), until)) {
+      setMails((cur) => cur.filter((m) => !sel.has(mailKey(m)) || !!m.pinned));
+      setTotal((n) => Math.max(0, n - chosen.filter((m) => !m.pinned).length));
+      setSel(new Set());
+      onChanged();
+    }
+  };
+  const notNow = useNotNow({ scope: "selected", n: sel.size,
+    who: t("nav.all_mail"), disabled: busy, onSnooze: snoozeSelected }, true);
 
   const onAction = (v: string) => {
     if (v === "move") setMoveDest("?");   // reveal the folder picker
@@ -387,6 +414,24 @@ export function AllMailsView({ state, onChanged, toolbarSlot, initialQuery = "",
                 disabled={busy} onClick={() => onAction("mark_read")}>
                 {t("Mark read")}
               </BarButton>
+              <span ref={notNow.anchorRef} className="inline-flex">
+                {/* icon-only on a phone, like the buttons beside it: the bar
+                    does not wrap, so a labelled More would slide under
+                    "Trash selected" */}
+                <Menu variant="secondary" up triggerSize="sm"
+                  label={t("menu.more")} triggerClass={BAR_BTN}
+                  disabled={busy}
+                  trigger={<>
+                    <MoreHorizontal size={16} aria-hidden />
+                    <span className="sr-only md:not-sr-only md:ml-1.5">
+                      {t("menu.more")}</span>
+                    <ChevronDown size={14} aria-hidden
+                      className="max-md:hidden md:ml-1" />
+                  </>}>
+                  {notNow.item}
+                </Menu>
+              </span>
+              {notNow.overlay}
             </>
           )}
           primary={

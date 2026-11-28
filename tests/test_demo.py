@@ -412,3 +412,31 @@ def test_auth_probe_flags_the_demo_only_when_on(monkeypatch):
     assert "demo" not in c.get("/api/auth").json()
     monkeypatch.setenv(demo.ENV_VAR, "1")
     assert c.get("/api/auth").json()["demo"] is True
+
+
+def test_not_now_runs_inline_in_the_demo(bridge, shim):
+    """Snoozing creates the folder, moves and remembers the mails inside its
+    request; Back now returns them (unread) inside theirs - no thread is
+    waited on, the demo's fake server just needs CREATE and the move back."""
+    import time as _time
+    assert call("POST", "/api/scan", body={})["status"] == 200
+    until = int(_time.time()) + 3600
+    res = call("POST", "/api/snooze", body={
+        "keys": ["noreply@dhl.example"], "until": until})
+    assert res["status"] == 200, res["body"]
+    assert jbody(res)["queued"] == 1            # one unread DHL mail
+    assert mailops.STATE["delete"]["status"] != "running"
+    assert [m["subject"] for m in bridge.mailbox["Snoozed"]] \
+        == ["Ihre Sendung 123 kommt heute"]
+    page = jbody(call("GET", "/api/snoozed"))
+    assert page["count"] == 1 and page["rows"][0]["until"] == until
+    for m in bridge.mailbox["Snoozed"]:
+        m["seen"] = True                        # read in another app meanwhile
+    back = call("POST", "/api/snoozed/back",
+                body={"msgids": page["rows"][0]["msgids"]})
+    assert back["status"] == 200 and jbody(back)["returned"] == 1
+    assert bridge.mailbox["Snoozed"] == []
+    mails = {m["subject"]: m for m in bridge.mailbox["INBOX"]}
+    assert not mails["Ihre Sendung 123 kommt heute"]["seen"]
+    state = jbody(call("GET", "/api/state"))
+    assert state["status"] == "done" and state["snoozed"]["count"] == 0

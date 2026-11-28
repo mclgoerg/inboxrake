@@ -120,6 +120,9 @@ class AccountState:
         # rename / merge / delete): a move job refuses to start meanwhile and
         # the operation refuses to start while a job runs.
         self.folder_lock = threading.Lock()
+        # Held (non-blocking) for the whole of one return of snoozed mail
+        # (backend/snooze.py): two returns never overlap.
+        self.release_lock = threading.Lock()
         # UIDs of the delete job currently being processed (guarded by
         # `lock`) - new jobs dedup against these too, not just the queue.
         self.inflight: dict[str, set[int]] = {}

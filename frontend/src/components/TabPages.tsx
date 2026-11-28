@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
+import { AlarmClock, AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
   FileText,
   FolderTree,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
@@ -18,7 +18,7 @@ import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
 import type { AppState, AuditEntry, DocsSummary, DupSummary, Group, StatsResp,
-  SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp,
+  SnoozeSummary, SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp,
   YourFoldersResp }
   from "../types";
 import { TimelineRow } from "./AuditLogPanel";
@@ -44,7 +44,14 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "yourfolders" | "documents";
+  | "yourfolders" | "snoozed" | "documents";
+
+/** The Snoozed tile's second line: "2 batches", else what the page is. */
+const snoozedSub = (s?: SnoozeSummary): string => {
+  const batches = s ? Object.keys(s.batches).length : 0;
+  return batches > 0 ? t("snooze.n_batches", { n: batches })
+    : t("snooze.tile_sub");
+};
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -310,6 +317,15 @@ export function CleanupPage({ account, groups, state, deckSize, triageDisabled,
                 ? t("yf.tile_sub", { n: yfData.hints.length })
                 : t("yf.tile_sub_none")}
             onClick={() => onOpen("yourfolders")} />
+        </li>
+        {/* the very last tile: mail that waits until you want it back */}
+        <li className="contents">
+          <Tile icon={<AlarmClock size={18} aria-hidden />}
+            tone="bg-info-bg text-info-fg" label={t("snooze.title")}
+            value={state?.snoozed
+              ? t("n.mails", { n: state.snoozed.count }) : null}
+            sub={snoozedSub(state?.snoozed)}
+            onClick={() => onOpen("snoozed")} />
         </li>
       </ul>
     </div>
