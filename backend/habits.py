@@ -160,12 +160,22 @@ def mine(entries: list[dict], now: float | None = None) -> list[dict]:
                   key=lambda c: (-c["last"], c["key"]))
 
 
+# what a filter may use to cover a sender that has no mail left: its address
+KEY_WORDS = ("text", "from_addr", "domain")
+
+
+def key_only(f: dict) -> bool:
+    """True when a parsed filter asks nothing but the sender's address (`from:`,
+    `domain:`, plain words). Everything else (tags, age, unread, engagement,
+    replied, unsubscribed, ...) is about mails, and with none left it cannot be
+    judged - such a rule is not taken to cover the sender."""
+    base = rulesmod.parse_filter("")
+    return all(f[k] == base[k] for k in f if k not in KEY_WORDS)
+
+
 def _stand_in(key: str) -> dict:
-    """What a rule's filter sees of a sender that has no mail left in the scan
-    (everything was trashed, which is exactly what makes it a habit): its key
-    and nothing else. A rule that names the sender (`from:`, `domain:`, a plain
-    word of its address) still matches it; a filter that needs anything the
-    mails would say (tags, age, unread) does not."""
+    """What a key-only filter sees of a sender that has no mail left in the
+    scan (everything was trashed, which is exactly what makes it a habit)."""
     return {"key": key, "label": "", "sub": key, "tags": [], "count": 0,
             "unread": 0, "size": 0, "ai": None, "protected": False,
             "unsub": False, "replied": False, "pinned": 0}
@@ -189,7 +199,11 @@ def _covered(acc, keys: list[str]) -> set[str]:
         for key in keys:
             gkey = key if r["grouping"] == "sender" else key.rsplit(
                 "@", 1)[-1]
-            g = pool.get(gkey) or _stand_in(gkey)
+            g = pool.get(gkey)
+            if g is None:
+                if not key_only(f):
+                    continue
+                g = _stand_in(gkey)
             if rulesmod.match_group(g, f):
                 out.add(key)
     return out

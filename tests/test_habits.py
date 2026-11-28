@@ -477,12 +477,25 @@ def test_a_filter_that_needs_mails_does_not_cover_a_sender_without_any(bridge):
     scan(bridge)
     put(real_steps(key="gone@x.example"))
     acc = accountsmod.get("default")
+    # (the rule names the sender AND asks something of its mails: with none
+    # left it cannot be judged, so the suggestion stays - for every word
+    # match_group would otherwise read off defaults)
     for query in ("tag:newsletter", "age:>1y", "unread:>50", "is:unsub",
-                  "from:other@x.example"):
+                  "from:other@x.example", "from:gone@x.example tag:news",
+                  "from:gone@x.example age:>1y", "from:gone@x.example is:unsub",
+                  "from:gone@x.example eng:low",
+                  "from:gone@x.example is:noreply-ever",
+                  "from:gone@x.example is:not-unsubscribed",
+                  "from:gone@x.example unread:>0",
+                  "from:gone@x.example is:new", "from:gone@x.example has:pinned"):
         rule = rulesmod.create_rule({"name": "Q", "query": query,
                                      "action": "trash"})
         assert len(habits.suggestions(acc)["suggestions"]) == 1, query
         rulesmod.delete_rule(rule["id"])
+    # plain words of the address do cover it (they only read the key)
+    rule = rulesmod.create_rule({"name": "W", "query": "gone x.example",
+                                 "action": "trash"})
+    assert habits.suggestions(acc)["suggestions"] == []
 
 
 def test_trash_everything_three_times_then_make_it_a_rule(bridge):
