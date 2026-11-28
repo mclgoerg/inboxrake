@@ -8,7 +8,7 @@ import type {
   ExpiredResp, Mail, MessageDetail, SubReminder, SubscriptionsResp,
   WaitingDetail, WaitingReminder, WaitingResp, WaitingSender,
   WaitingSettingsResp,
-  LookalikeCount, MailsResp, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SenderChangesResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
+  LookalikeCount, MailsResp, MutePreview, OverviewResp, Rule, RuleCheckup, RuleRun, SearchResp, SenderChangesResp, SortEstimate, StatsResp, TrashResp, WrappedResp,
   FolderMoveResp, FolderRole, PurgePreview, PurgeResult, PurgeSelect,
   UndoEntry, UndoIdent, UnsubBulkResult, UnsubPreview, UnsubResult,
   UnsubRunItem, KeepSafeCheck, KeepSafeClass, KeepSafeScope,
@@ -164,6 +164,8 @@ const ERROR_CODES: Record<string, string> = {
   rule_filter_too_long: "ferr.rule_filter_too_long",
   request_too_large: "ferr.request_too_large",
   block_key_invalid: "ferr.block_key_invalid",
+  mute_unknown: "ferr.mute_unknown",
+  mute_already: "ferr.mute_already",
   // List-Unsubscribe mailto: refused (backend/smtpout.py)
   mailto_unsafe: "ferr.mailto_unsafe",
   no_account: "ferr.no_account",
@@ -672,6 +674,18 @@ export const api = {
     req<{ rule: Rule; trashed?: { queued: number; skipped: number };
           trash_error?: string }>(forAccount("/api/block", account),
       { grouping, key, label, trash_existing: trashExisting }),
+  /** What the Mute dialog says about a conversation (read-only). */
+  mutePreview: (key: string, account?: string) =>
+    req<MutePreview>(forAccount(
+      `/api/mute/preview?key=${encodeURIComponent(key)}`, account)),
+  /** "Mute this conversation": a rule that archives and marks read its new
+   *  mail after each scan; `archiveExisting` also archives what is in the
+   *  Inbox now (one step with Undo). `name` is the rule's name. */
+  mute: (key: string, name: string, archiveExisting = false,
+         account?: string) =>
+    req<{ rule: Rule; queued?: number; archive_error?: string }>(
+      forAccount("/api/mute", account),
+      { key, name, archive_existing: archiveExisting }),
   startAttachments: () => req<{ ok: boolean }>("/api/attachments", {}),
   attachments: () => req<AttMail[]>("/api/attachments"),
   attachmentsSummary: () => req<AttSummary>("/api/attachments/summary"),

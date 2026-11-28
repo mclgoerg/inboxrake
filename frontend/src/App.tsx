@@ -23,6 +23,7 @@ import { AuditLogPanel } from "./components/AuditLogPanel";
 import { whenText } from "./timemachine";
 import { DetailPanel } from "./components/DetailPanel";
 import { ReaderHostProvider, type ReaderHost } from "./components/MailReader";
+import { askMute } from "./components/MuteDialog";
 import { useNewConnections } from "./newConnections";
 import { ConnectPage } from "./components/ConnectPage";
 import { Login } from "./components/Login";
@@ -2124,6 +2125,73 @@ export default function App() {
     }
   };
 
+  // A mute is a visible rule (origin "mute"; its `mute.key` is the thread
+  // key): which conversations are muted, and the rule to delete to unmute one.
+  const muteRuleIds = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const r of state?.rules ?? []) {
+      if (r.origin !== "mute" || !r.mute) continue;
+      // (a reply can change a thread's key: the mute knows every key it had)
+      for (const k of r.mute.keys ?? [r.mute.key]) out.set(k, r.id);
+    }
+    return out;
+  }, [state?.rules]);
+
+  // "Mute this conversation…": the dialog says what the rule does (and offers
+  // to archive what is there, one step with Undo); the rule is made by the
+  // server like Block's. Resolves true when it was made.
+  const muteConversation = async (key: string): Promise<boolean> => {
+    try {
+      const preview = await api.mutePreview(key);
+      if (preview.muted) {                         // muted meanwhile
+        notify(t("ferr.mute_already"));
+        refresh();
+        return false;
+      }
+      const answer = await askMute(preview);
+      if (!answer) return false;
+      const r = await api.mute(key,
+        t("mute.rule_name", { label: preview.label }), answer.archiveExisting);
+      if (r.archive_error) {
+        notify(t("mute.archive_failed", { msg: r.archive_error }), "error");
+      } else {
+        // (no Archive folder: the mail is only marked as read)
+        const read = preview.archive ? "" : "_read";
+        notify(r.queued
+          ? t(`toast.muted${read}_n`, { label: preview.label, n: r.queued })
+          : t(`toast.muted${read}`, { label: preview.label }), "success");
+      }
+      refresh();
+      return true;
+    } catch (e: any) {
+      fail(e);
+      return false;
+    }
+  };
+
+  // Unmute = delete the mute's rule (the way Unblock does); what the rule
+  // already archived stays in Archive.
+  const unmuteConversation = async (key: string): Promise<boolean> => {
+    const ruleId = muteRuleIds.get(key);
+    if (!ruleId) return false;
+    const label = state?.groups.thread?.[key]?.label
+      ?? state?.rules?.find((r) => r.id === ruleId)?.name ?? "";
+    if (!await confirmDialog({
+      title: t("mute.unmute_title", { name: label }),
+      body: t("mute.unmute_body"), confirmLabel: t("mute.unmute") })) {
+      return false;
+    }
+    try {
+      await api.deleteRule(ruleId);
+      notify(t("toast.unmuted", { label }), "success");
+      refresh();
+      return true;
+    } catch (e: any) {
+      fail(e);
+      return false;
+    }
+  };
+
   // Row swipe on phones: every entry is the handler the same action already
   // has - `act` (the confirm, protected / pinned guards, and the Undo toast
   // when the job ends), `toggleProtect`, `blockGroup` / `unblockGroup` (their
@@ -2466,6 +2534,11 @@ export default function App() {
       onBlock={shortcutTarget(mode, detail) ? blockGroup : undefined}
       onUnblock={shortcutTarget(mode, detail) ? unblockGroup : undefined}
       blocked={blockedRules.has(detail.key)}
+      onMute={mode === "thread" ? (g) => { void muteConversation(g.key); }
+        : undefined}
+      onUnmute={mode === "thread" ? (g) => { void unmuteConversation(g.key); }
+        : undefined}
+      muted={muteRuleIds.has(detail.key)}
       smartMin={acct?.smart_min ?? 10}
       folders={state?.folders_raw ?? []} pickEnv={pickEnv}
       sieve={(acct?.preset ?? "proton") === "proton"}
@@ -3233,6 +3306,9 @@ export default function App() {
     },
     isBlocked: (addr) => blockedAddrs.has(addr),
     blockSender: blockAddress,
+    muteConversation,
+    isMuted: (key) => muteRuleIds.has(key),
+    unmuteConversation,
     canUnsubscribe: (addr) => {
       const g = senderGroup(addr);
       return !!g && g.unsub && !isPooled(g);

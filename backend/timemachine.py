@@ -398,7 +398,7 @@ def _rules_that_would_catch(acc, listed: list[dict],
     me = acc.name
     active = [r for r in rulesmod.load_rules()
               if r.get("mode") == "execute" and r.get("scope", "mail") == "mail"
-              and r.get("schedule") in ("daily", "weekly")
+              and r.get("schedule") in ("daily", "weekly", rulesmod.AFTER_SCAN)
               and (r.get("account") or accounts.default_name()) == me]
     if not active or not come:
         return []

@@ -190,6 +190,9 @@ export function sieveSnippet(kind: "sender" | "domain", value: string,
  *   domain:<domain>     exact domain (domain grouping only)
  *   grade:d             sender grade, exactly D (Sender rows only)
  *   grade:<=c           ... C or worse;  grade:>=b  B or better
+ *   thread:<key>        exactly this conversation (Thread grouping only; the
+ *                       key of its group - what "Mute this conversation"
+ *                       writes into its rule)
  *   in:7d|12h|90min     a window back from now, next to is:new (first seen in
  *                       it - REPLACES the configured new-sender window, so it
  *                       can widen it), is:still-mailing (a late mail arrived
@@ -216,6 +219,8 @@ export interface ParsedFilter {
   unsubscribed: boolean | null;
   fromAddr: string | null;
   domain: string | null;
+  /** `thread:` - the key of one conversation (a Thread group). */
+  thread: string | null;
   newOnly: boolean;
   pinnedOnly: boolean;
   stillMailing: boolean;
@@ -237,12 +242,13 @@ export function parseFilter(q: string): ParsedFilter {
   const out: ParsedFilter = { text: [], tags: [], ai: null,
     ageMonths: null, unreadMin: null, unsub: false, protectedOnly: false,
     replied: null, attMin: null, unsubscribed: null, fromAddr: null,
-    domain: null, newOnly: false, pinnedOnly: false, stillMailing: false,
+    domain: null, thread: null, newOnly: false, pinnedOnly: false,
+    stillMailing: false,
     louder: false, back: false,
     trackerOnly: false, eng: null, grade: null, inSeconds: null };
   for (const tok of q.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
     const m = tok.match(
-      /^(tag|ai|age|unread|is|has|eng|att|from|domain|in|grade):(.*)$/);
+      /^(tag|ai|age|unread|is|has|eng|att|from|domain|thread|in|grade):(.*)$/);
     if (!m) {
       out.text.push(tok);
       continue;
@@ -282,6 +288,7 @@ export function parseFilter(q: string): ParsedFilter {
       if (a) out.attMin = Number(a[1]) * (SIZE_UNIT[a[2]] ?? 1);
     } else if (kind === "from" && val) out.fromAddr = val;
     else if (kind === "domain" && val) out.domain = val;
+    else if (kind === "thread" && val) out.thread = val;
     else if (kind === "in") {
       const w = val.match(/^(\d+)(min|h|d)$/);
       if (w) out.inSeconds = Number(w[1]) * IN_UNIT[w[2]];
@@ -377,6 +384,7 @@ export function matchGroup(g: Group, f: ParsedFilter, now = nowMs(),
       && !someAddr(g, members, (a) => a === f.fromAddr)) return false;
   if (f.domain !== null && g.key !== f.domain && g.domain !== f.domain
       && !someAddr(g, members, (a) => a.endsWith(`@${f.domain}`))) return false;
+  if (f.thread !== null && g.key !== f.thread) return false;
   for (const t of f.text) {
     if (!g.key.includes(t) && !g.label.toLowerCase().includes(t) &&
         !g.sub.toLowerCase().includes(t) &&

@@ -4,7 +4,8 @@
  * unsubscribe card. PRIVACY: bodies are plain text only - no HTML is ever
  * rendered, no remote content loaded and nothing is linkified (phishing). */
 
-import { Ban, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff, FileText,
+import { Ban, BellOff, ChevronDown, ChevronLeft, ChevronUp, Copy, EyeOff,
+  FileText,
   FileX, FolderInput, HardDrive, Inbox, MailMinus, MessagesSquare,
   MousePointerClick, MoreHorizontal, Paperclip, Pin, Scissors, ShieldCheck,
   Trash2, User, type LucideIcon } from "lucide-react";
@@ -42,6 +43,13 @@ export interface ReaderHost {
   isBlocked?: (addr: string) => boolean;
   /** The sender Block flow (its own confirm); resolves true when blocked. */
   blockSender?: (addr: string) => Promise<boolean>;
+  /** "Mute this conversation…" for the thread `key` (its own dialog); resolves
+   *  true when muted. Absent: no menu item. */
+  muteConversation?: (key: string) => Promise<boolean>;
+  /** The conversation is muted: the menu item says Unmute instead. */
+  isMuted?: (key: string) => boolean;
+  /** Unmute it (deletes the rule, after a confirm); resolves true when done. */
+  unmuteConversation?: (key: string) => Promise<boolean>;
   /** Can the sender be unsubscribed from here (a single-sender group that
    *  offers a method)? */
   canUnsubscribe?: (addr: string) => boolean;
@@ -173,6 +181,9 @@ interface ToolbarProps {
   /** Open the conversation (absent = no thread / already in it). */
   onConversation?: () => void;
   conversationCount?: number;
+  /** The conversation's key (a Thread group's), for "Mute this conversation";
+   *  default: the open mail's own thread hint. */
+  threadKey?: string;
   headersShown?: boolean;
   onToggleHeaders?: () => void;
   onBack: () => void;
@@ -186,8 +197,8 @@ interface ToolbarProps {
  *  address, Show headers, Block sender): a row of buttons on top at >= 768
  *  px, a bar of icon + caption columns at the bottom of a phone. */
 function ReaderToolbar({ mail, detail, actions, pin, onConversation,
-  conversationCount, headersShown, onToggleHeaders, onBack, locked = false,
-  variant }: ToolbarProps) {
+  conversationCount, threadKey, headersShown, onToggleHeaders, onBack,
+  locked = false, variant }: ToolbarProps) {
   const host = useReaderHost();
   const toast = useOptionalToast();
   const addr = mail.addr;
@@ -197,6 +208,11 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
     && !host.selfAddrs.some((a) => a.toLowerCase() === addr.toLowerCase());
   const [picking, setPicking] = useState(false);
   const canMove = !!actions?.move && host.folders.length > 0;
+  // Mute (last in the menu): only for a mail that is part of a conversation
+  const muteKey = threadKey ?? detail?.thread?.key;
+  const muted = !!muteKey && !!host.isMuted?.(muteKey);
+  const canMute = !!muteKey && (muted ? !!host.unmuteConversation
+    : !!host.muteConversation);
   const convLabel = conversationCount && conversationCount > 1
     ? (top ? t("reader.conversation_n", { n: conversationCount })
       : t("thread.n_mails", { n: conversationCount }))
@@ -266,6 +282,15 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
           {t("block.btn")}
         </MenuItem>
       )}
+      {canMute && <MenuDivider />}
+      {canMute && (
+        <MenuItem onClick={() => void (muted
+          ? host.unmuteConversation!(muteKey!)
+          : host.muteConversation!(muteKey!))}>
+          <BellOff size={16} className="mr-2 inline align-text-bottom" />
+          {t(muted ? "mute.menu_off" : "mute.menu")}
+        </MenuItem>
+      )}
     </Menu>
   );
   return (
@@ -298,8 +323,8 @@ function ReaderToolbar({ mail, detail, actions, pin, onConversation,
 /** Back, the toolbar and the previous / next arrows around a reader's
  *  content. `trailing` sits next to the arrows (e.g. "Expand all"). */
 export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
-  onBack, onConversation, conversationCount, headersShown, onToggleHeaders,
-  trailing, locked, lockHint, navFrom, children }: Omit<ToolbarProps, "variant"> & {
+  onBack, onConversation, conversationCount, threadKey, headersShown,
+  onToggleHeaders, trailing, locked, lockHint, navFrom, children }: Omit<ToolbarProps, "variant"> & {
   nav?: ReaderNav;
   /** Why Trash / Pin / Move are off (shown under the bar). */
   lockHint?: string;
@@ -323,7 +348,8 @@ export function ReaderFrame({ mail, detail, actions, nav, pin, backLabel,
   const toolbar = (variant: "top" | "bottom") => (
     <ReaderToolbar variant={variant} mail={mail} detail={detail}
       actions={actions} pin={pin} onConversation={onConversation}
-      conversationCount={conversationCount} headersShown={headersShown}
+      conversationCount={conversationCount} threadKey={threadKey}
+      headersShown={headersShown}
       onToggleHeaders={onToggleHeaders} onBack={onBack} locked={locked} />
   );
   return (

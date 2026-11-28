@@ -55,6 +55,7 @@ from . import keepsafe as keepsafemod
 from . import knownsenders
 from . import mailops
 from . import mcpserver
+from . import mute as mutemod
 from . import oauthflow
 from . import oauthserver
 from . import overview as overviewmod
@@ -2208,7 +2209,8 @@ class RuleBody(BaseModel):
 @app.get("/api/rules")
 def get_rules():
     """`cap`: the effective per-run cap (mails) every rule run obeys."""
-    return {"rules": rulesmod.load_rules(), "cap": rulesmod.RULE_CAP}
+    return {"rules": [rulesmod.public(r) for r in rulesmod.load_rules()],
+            "cap": rulesmod.RULE_CAP}
 
 
 @app.post("/api/rules")
@@ -2258,7 +2260,7 @@ def post_rules_checkup_ignore(body: CheckupIgnoreBody,
 @app.post("/api/rules/{rule_id}")
 def post_rule_update(rule_id: str, body: dict):
     try:
-        return rulesmod.update_rule(rule_id, body)
+        return rulesmod.public(rulesmod.update_rule(rule_id, body))
     except KeyError:
         raise HTTPException(404, "unknown rule")
     except ValueError as exc:
@@ -2375,6 +2377,104 @@ def post_block(body: BlockBody, account: str | None = Query(None)):
                 body.grouping, [body.key], "trash", acc=acc)
         except (ValueError, RuntimeError) as exc:
             result["trash_error"] = str(exc)
+    return result
+
+
+class MuteBody(BaseModel):
+    key: str                       # the Thread group's key (the conversation)
+    name: str = ""                 # the rule's name; "" = "Mute: <subject>"
+    archive_existing: bool = False
+
+
+def _mute_rule_of(acc, key: str) -> dict | None:
+    """The mute rule of this conversation in this account, if there is one:
+    by a key the conversation had, or by the Message-IDs its mails carry (a
+    reply can change the key of a thread that is the same conversation)."""
+    for r in rulesmod.load_rules():
+        if r.get("origin") != rulesmod.ORIGIN_MUTE or (
+                r.get("account") or accountsmod.default_name()) != acc.name:
+            continue
+        info = mutemod.clean_info(r.get("mute"))
+        if info is not None and mutemod.same_conversation(acc, info, key):
+            return r
+    return None
+
+
+def _mute_now(acc, key: str) -> tuple[dict, bool]:
+    """What muting the conversation would do to the mail that is there now:
+    `(mutemod.plan of every mail in the Inbox, has an Archive folder)`.
+    Without an Archive folder only unread mail counts (it is only marked
+    read)."""
+    protected = cfgmod.normalize_protected(
+        cfgmod.load_config().get("protected"))
+    with acc.lock:
+        archive = bool(acc.folder_roles.get("archive"))
+    return mutemod.plan(acc, key, unread_only=not archive,
+                        pinned=pinstore.load_account(acc.name),
+                        protected=protected), archive
+
+
+@app.get("/api/mute/preview")
+def get_mute_preview(key: str = Query(...),
+                     account: str | None = Query(None)):
+    """What the Mute dialog says about a conversation: its mails and people,
+    how many mails in the Inbox "also archive what is there" would take
+    (`now`; pinned and protected ones are left out and counted apart), and
+    whether it is muted already (`muted` = the rule's id). Read-only."""
+    acc = _acc(account)
+    conv = mutemod.conversation(acc, key)
+    if conv is None:
+        raise HTTPException(400, mailops.coded(mailops.MUTE_UNKNOWN))
+    plan, archive = _mute_now(acc, key)
+    rule = _mute_rule_of(acc, key)
+    return {"key": key, "label": conv["label"], "mails": conv["mails"],
+            "people": conv["people"], "now": len(plan["items"]),
+            "protected": plan["protected"], "pinned": plan["pinned"],
+            "archive": archive, "muted": rule["id"] if rule else None}
+
+
+@app.post("/api/mute")
+def post_mute(body: MuteBody, account: str | None = Query(None)):
+    """One-click "Mute this conversation": a visible, ordinary rule (see
+    backend/mute.py) that archives and marks as read the NEW mail of this
+    one conversation after each scan, optionally also archiving what is in
+    the Inbox now (one step with Undo). Unmute = delete the rule.
+
+    Like Block, the rule starts armed: it runs one report pass (it satisfies
+    the report-first gate, it changes nothing) and is then switched to
+    execute. Nothing existing is touched unless `archive_existing`."""
+    acc = _acc(account)
+    conv = mutemod.conversation(acc, body.key)
+    if conv is None:
+        raise HTTPException(400, mailops.coded(mailops.MUTE_UNKNOWN))
+    if _mute_rule_of(acc, body.key):
+        raise HTTPException(400, mailops.coded(mailops.MUTE_ALREADY))
+    info = mutemod.info_for(conv)
+    try:
+        rule = rulesmod.create_rule({
+            "name": body.name.strip() or f"Mute: {conv['label']}",
+            "grouping": "thread", "query": mutemod.query_of(info),
+            "action": rulesmod.ARCHIVE_READ,
+            "schedule": rulesmod.AFTER_SCAN, "account": acc.name,
+            "origin": rulesmod.ORIGIN_MUTE, "mute": info})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    try:
+        rulesmod.run_rule(rule["id"], rescan=False)   # satisfies report-first
+        rule = rulesmod.update_rule(rule["id"], {"mode": "execute"})
+    except Exception as exc:
+        rulesmod.delete_rule(rule["id"])
+        raise _internal_error(exc, acc)
+    result: dict = {"rule": rulesmod.public(rule)}
+    if body.archive_existing:
+        plan, archive = _mute_now(acc, body.key)
+        if plan["items"]:
+            try:
+                result["queued"] = mailops.delete_messages(
+                    plan["items"], "archive" if archive else "mark_read",
+                    acc=acc, read=archive, label=plan["label"])["queued"]
+            except (ValueError, RuntimeError) as exc:
+                result["archive_error"] = str(exc)
     return result
 
 

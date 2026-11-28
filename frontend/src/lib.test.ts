@@ -669,3 +669,26 @@ describe("grade: filter", () => {
     expect(matchGroup({ ...graded("F"), unsub: false }, f)).toBe(false);
   });
 });
+
+describe("thread: (mirrors backend/rules.py; the key of one conversation)", () => {
+  const KEY = "4f9c1e0a7b2d3c58";
+  it("parses like backend/rules.py; an empty value is plain text", () => {
+    expect(parseFilter(`thread:${KEY}`).thread).toBe(KEY);
+    expect(parseFilter(`thread:${KEY}`).text).toEqual([]);
+    // (the parsers lowercase the query; a key is lowercase hex)
+    expect(parseFilter(`THREAD:${KEY.toUpperCase()}`).thread).toBe(KEY);
+    expect(parseFilter("thread:").thread).toBeNull();
+    expect(parseFilter("thread:").text).toEqual(["thread:"]);
+    expect(parseFilter("plain words").thread).toBeNull();
+  });
+  it("matches exactly the group with that key, nothing else", () => {
+    const f = parseFilter(`thread:${KEY}`);
+    expect(matchGroup(g({ key: KEY, label: "Team dinner" }), f)).toBe(true);
+    expect(matchGroup(g({ key: KEY.slice(0, 8) }), f)).toBe(false);
+    expect(matchGroup(g({ key: `${KEY}0` }), f)).toBe(false);
+    expect(matchGroup(g({ key: "0".repeat(16), label: KEY }), f)).toBe(false);
+    // it narrows like any other word
+    expect(matchGroup(g({ key: KEY, unread: 0 }),
+      parseFilter(`thread:${KEY} unread:>50`))).toBe(false);
+  });
+});

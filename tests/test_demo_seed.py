@@ -97,6 +97,27 @@ def test_the_seed_serves_the_same_state_and_stats(seed):
     assert generated["proton"]["state"]["groups"]["sender"]   # not vacuous
 
 
+def test_the_demo_has_a_muted_conversation(seed):
+    # "Mute this conversation": an armed mute rule on a real Thread group of
+    # the demo (its key is the hash the scan derives from the first mail), whose
+    # two newest mails the rule already archived
+    st = dump(run_demo("--from-seed", str(seed)))["proton"]["state"]
+    mutes = [r for r in st["rules"] if r["origin"] == "mute"]
+    assert len(mutes) == 1
+    rule = mutes[0]
+    assert (rule["mode"], rule["action"], rule["schedule"], rule["grouping"]) \
+        == ("execute", "archive_read", "scan", "thread")
+    key = rule["mute"]["key"]
+    assert rule["query"] == f"thread:{key}"
+    group = st["groups"]["thread"][key]
+    assert group["label"] == "Team dinner on Friday" and group["count"] == 5
+    assert rule["last_run"]["acted"] == 2
+    # the API shows the keys and the date only, never the senders, the
+    # Message-IDs or the handled mails it keeps
+    assert set(rule["mute"]) == {"key", "keys", "since"}
+    assert rule["mute"]["keys"] == [key]
+
+
 @pytest.mark.parametrize("stamp", [
     "2026-10-02 12:00", "2026-10-10 12:00", "2026-10-28 12:00"])
 def test_this_month_reads_the_same_on_activity_and_statistics(stamp):

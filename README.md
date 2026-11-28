@@ -210,6 +210,8 @@ Attachments (and "Keep the mails, remove the files": the mail stays, the
 file goes, one Undo puts it back), rules and a scheduler (start one from a ready-made recipe) with
 a checkup that finds rules that overlap, clash, point at a folder that is gone
 or never match,
+"Mute this conversation" (a busy group thread's new mail is archived and
+marked as read after each scan, until you unmute it),
 one-click and bulk unsubscribe with a
 watchdog, protected senders and mails, a keep-safe check that holds back
 invoices, bookings and contracts from big cleanups, a Trash/Junk browser,

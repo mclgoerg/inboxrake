@@ -44,8 +44,10 @@ import time
 
 from . import accounts
 from . import auditlog
+from . import config as cfgmod
 from . import keepsafe
 from . import mailops
+from . import mute as mutemod
 from . import pinstore
 from . import rulecheckstore
 from . import rules as rulesmod
@@ -70,9 +72,40 @@ def _fp(*parts) -> str:
 
 
 def _dest(rule: dict) -> tuple[str, str]:
-    """Where a rule sends its mails: two rules clash when this differs."""
-    return (rule["action"], rule.get("dest", "") if rule["action"] == "move"
-            else "")
+    """Where a rule sends its mails: two rules clash when this differs. A mute
+    (archive + mark read) sends them to the same place as an archive rule."""
+    action = "archive" if rule["action"] == rulesmod.ARCHIVE_READ \
+        else rule["action"]
+    return (action, rule.get("dest", "") if action == "move" else "")
+
+
+def _mute_plan(rule: dict, acc, pinned_all: set[str]) -> dict:
+    """What a mute rule would act on right now: the new mail of its
+    conversation (`mute.plan`, the same decision a run makes). It keeps no mail
+    on purpose (`kept`), and the conversation counts as matched while the
+    scan holds it."""
+    plan = {"acts": set(), "kept": set(), "wanted": 0, "keys": [],
+            "protected": 0, "pinned": 0, "ks": 0, "grouping": "thread",
+            "after_pin": 0}
+    info = mutemod.clean_info(rule.get("mute"))
+    if info is None:
+        return plan
+    conv = mutemod.conversation(acc, info["key"], info=info)
+    if conv is None:
+        return plan
+    with acc.lock:
+        archive = acc.folder_roles.get("archive")
+    now = mutemod.plan(
+        acc, info["key"], info=info, senders=frozenset(info["senders"]),
+        after=info["since"], unread_only=not archive, pinned=pinned_all,
+        protected=cfgmod.normalize_protected(
+            cfgmod.load_config().get("protected")),
+        done=frozenset(info["done"]))
+    plan.update(acts=set(now["items"][:rulesmod.RULE_CAP]),
+                wanted=conv["mails"], keys=[conv["key"]],
+                protected=now["protected"], pinned=now["pinned"],
+                after_pin=len(now["items"]))
+    return plan
 
 
 # --------------------------------------------------------------- act sets
@@ -90,6 +123,8 @@ def _plan(rule: dict, acc, groups: dict, pinned_all: set[str], ks_enabled
       protected how many matched groups are protected (skipped)
       pinned    pinned mails the run would skip
     """
+    if rule.get("origin") == rulesmod.ORIGIN_MUTE:
+        return _mute_plan(rule, acc, pinned_all)
     f = rulesmod.parse_filter(rule["query"])
     grouping = rule["grouping"]
     keep_latest = rule.get("keep_latest")

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import calendar
 import datetime
+import hashlib
 import json
 import os
 import random
@@ -436,9 +437,45 @@ WANDER = [
                   ">> Hi! Hast du am Samstag Zeit für eine Wanderung?\n"),
 ]
 
+# A busy group thread the demo user muted ("Mute this conversation"): three
+# mails from before the mute are still in the inbox, two that came later were
+# archived and marked read by the mute's rule (created further down). The
+# thread's key is the hash of its first Message-ID, as the scan derives it.
+TEAM_1, TEAM_2, TEAM_3 = ("<team-1@demo.example>", "<team-2@demo.example>",
+                          "<team-3@demo.example>")
+TEAM_KEY = hashlib.sha256(TEAM_1.encode()).hexdigest()[:16]
+_KIM = '"Kim Example" <kim@team.example>'
+_LEE = '"Lee Example" <lee@team.example>'
+_NOA = '"Noa Example" <noa@team.example>'
+TEAM_SUBJECT = "Team dinner on Friday"
+TEAM_INBOX = [
+    make_msg(next(_UID), frm=_KIM, subject=TEAM_SUBJECT, msgid=TEAM_1,
+             size=2200, seen=True, date=_date(6),
+             body="Hi all - shall we do the team dinner on Friday? "
+                  "Reply with what you can bring.\n\nKim"),
+    make_msg(next(_UID), frm=_LEE, subject=f"Re: {TEAM_SUBJECT}",
+             msgid=TEAM_2, irt=TEAM_1, refs=TEAM_1, size=2300, seen=True,
+             date=_date(5), body="Count me in! I can bring the salad.\n\nLee"),
+    make_msg(next(_UID), frm=_NOA, subject=f"Re: {TEAM_SUBJECT}",
+             msgid=TEAM_3, irt=TEAM_2, refs=f"{TEAM_1} {TEAM_2}", size=2300,
+             seen=False, date=_date(4),
+             body="Friday works. Can someone bring the cake?\n\nNoa"),
+]
+TEAM_ARCHIVED = [
+    make_msg(next(_UID), frm=_KIM, subject=f"Re: {TEAM_SUBJECT}",
+             msgid="<team-4@demo.example>", irt=TEAM_3,
+             refs=f"{TEAM_1} {TEAM_2} {TEAM_3}", size=2400, seen=True,
+             date=_date(1.5), body="I will bring the cake.\n\nKim"),
+    make_msg(next(_UID), frm=_LEE, subject=f"Re: {TEAM_SUBJECT}",
+             msgid="<team-5@demo.example>", irt="<team-4@demo.example>",
+             refs=f"{TEAM_1} {TEAM_2} {TEAM_3} <team-4@demo.example>",
+             size=2400, seen=True, date=_date(0.7),
+             body="Perfect, see you all at seven.\n\nLee"),
+]
+
 PROTON_SENT: list[dict] = []       # the user's side of the Proton conversations
 
-PROTON_INBOX = WANDER + (
+PROTON_INBOX = WANDER + TEAM_INBOX + (
     mails('"ACME Store" <news@acme-store.example>',
           ["Weekend SALE - up to 70% off ✨", "Your points expire soon",
            "New arrivals for autumn", "Last chance: free shipping"],
@@ -969,7 +1006,8 @@ PROTON_COPIES = (copies(_by(PROTON_INBOX, "paybank")[:3])
                  + [double_send(_shop[3], 2), double_send(
                      _by(PROTON_INBOX, "photoclub")[1], 4)])
 PROTON_ARCHIVE = (
-    copies(_by(PROTON_INBOX, "cloudbox")[:6])
+    TEAM_ARCHIVED
+    + copies(_by(PROTON_INBOX, "cloudbox")[:6])
     + copies(_by(PROTON_INBOX, "greenenergy")[:4])
     + mails('"Finanzamt Musterstadt" <bescheid@finanzamt-musterstadt.example>',
             ["Steuerbescheid {n}", "Ihre Steuererklärung ist eingegangen"],
@@ -1681,6 +1719,22 @@ def generate() -> dict:
     _au.append(("proton", "rule_execute", _bills_ts, 0, "ok",
                 f"rule:{bills['id']}", bills["name"]))
     _ran(bills, _bills_ts, 0, 0, int(NOW - 40 * 86400))
+    # Mute this conversation: the Team dinner thread was muted two days ago;
+    # its rule archived and marked read the two mails that came after (they
+    # are in Archive), and stays armed. It runs after each scan, which the
+    # demo never does, so this is what a day of using it looks like.
+    _muted_at = int(NOW - 2 * 86400)
+    muted = rules.create_rule({
+        "name": f"Mute: {TEAM_SUBJECT}", "grouping": "thread",
+        "query": f"thread:{TEAM_KEY}", "action": rules.ARCHIVE_READ,
+        "schedule": rules.AFTER_SCAN, "account": "proton",
+        "origin": rules.ORIGIN_MUTE,
+        "mute": {"key": TEAM_KEY, "since": _muted_at,
+                 "senders": ["kim@team.example", "lee@team.example",
+                             "noa@team.example"],
+                 "ids": [TEAM_1, TEAM_2, TEAM_3],
+                 "done": ["<team-4@demo.example>", "<team-5@demo.example>"]}})
+    _ran(muted, int(NOW - 0.7 * 86400), 2, 1, _muted_at)
     # keep-latest runs every day; the receipts rule ran a month ago (before
     # its folder went away); the ticket rule has run weekly and found nothing
     for rule, d, count, groups, created in (

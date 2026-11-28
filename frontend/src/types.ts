@@ -531,6 +531,9 @@ export interface RuleRun {
   /** Keep-safe: mails a Trash run left alone, per class (absent on older
    *  runs and on rules that do not check). */
   kept_safe?: Partial<Record<KeepSafeClass, number>>;
+  /** A mute run on an account with no Archive folder: it only marked the
+   *  mails as read. */
+  read_only?: boolean;
 }
 
 /** Where a rule looks: the main cleanup index, or the Junk / Trash folder
@@ -547,7 +550,8 @@ export interface Rule {
   query: string;
   action: string;
   dest: string;
-  schedule: "manual" | "daily" | "weekly";
+  /** "scan" (after each scan) belongs to a mute only. */
+  schedule: "manual" | "daily" | "weekly" | "scan";
   mode: "report" | "execute";
   keep_latest: number | null;
   older_than_days: number | null;
@@ -557,7 +561,11 @@ export interface Rule {
   /** "auto_empty": the Trash page's "Empty automatically" switch made it.
    *  "mcp": an AI assistant proposed it (a proposal while it is in report
    *  mode; still "mcp" once the user approved it, "manual" after an edit). */
-  origin: "manual" | "block" | "auto_empty" | "mcp";
+  origin: "manual" | "block" | "auto_empty" | "mcp" | "mute";
+  /** A mute ("Mute this conversation"): the conversation's key, every key it
+   *  has had since (a reply can change a thread's key), and the date from which
+   *  its mail counts as new (the senders it remembers stay on the server). Its action is "archive_read" - archive and mark read. */
+  mute?: { key: string; keys?: string[]; since: number };
   /** Which assistant token proposed it, and when (kept as history after an
    *  edit). */
   proposed_by?: { token_id: string; name: string; at: number };
@@ -572,6 +580,23 @@ export interface Rule {
   /** When the rule's definition (filter, action, target, ...) last changed. */
   edited?: number;
   last_run: RuleRun | null;
+}
+
+/** GET /api/mute/preview: what the Mute dialog says about a conversation.
+ *  `now` = mails in the Inbox that "also archive what is there" would take
+ *  (pinned and protected ones are left out, counted apart); without an
+ *  Archive folder (`archive` false) it counts the unread ones, which are only
+ *  marked as read. `muted` = the rule's id when it is muted already. */
+export interface MutePreview {
+  key: string;
+  label: string;
+  mails: number;
+  people: number;
+  now: number;
+  protected: number;
+  pinned: number;
+  archive: boolean;
+  muted: string | null;
 }
 
 /** The Rule checkup's kinds, in the order they are listed. */
@@ -765,7 +790,7 @@ export interface MessageDetail {
   subject: string;
   text: string;
   // Present when the mail belongs to a conversation worth reading as one.
-  thread?: { count: number } | null;
+  thread?: { count: number; key?: string } | null;
   // What the scan / attachment analysis / body index already know about the
   // mail (metadata only; null / absent = not known, e.g. Sent or Junk).
   pinnable?: boolean;     // in the scan index with a Message-ID: can be pinned
