@@ -113,6 +113,24 @@ export function useConnectRoute(): boolean {
   return on;
 }
 
+/** `#/overview/check-in`: where the digest mail's "Start your weekly check-in"
+ *  button and the Monday push lead. It is the Overview (`parseHash` reads the
+ *  first segment); the app opens the check-in over it and tidies the URL. */
+export const isCheckinHash = (hash: string): boolean =>
+  /^#\/overview\/check-in(?:[/?]|$)/.test(hash);
+
+/** The account a check-in link names (`#/overview/check-in?account=work`), or
+ *  null when it names none: the digest mail and the Monday push carry it, so
+ *  the app opens THAT account's check-in whichever one it has selected. */
+export function checkinHashAccount(hash: string): string | null {
+  const q = hash.split("?")[1] ?? "";
+  try {
+    return new URLSearchParams(q).get("account") || null;
+  } catch {
+    return null;
+  }
+}
+
 /** `#/senders` -> "senders"; anything else (empty, unknown) -> null. */
 export function parseHash(hash: string): Page | null {
   const name = hash.replace(/^#\/?/, "").split(/[/?]/)[0];

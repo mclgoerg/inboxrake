@@ -524,8 +524,8 @@ function RuleCard({ rule, busy, error, fresh, badges, onRun, onEdit, onReport,
 }
 
 export function RulesModal({ state, onClose, onChanged, initialQuery = "",
-  initialRecipe, ai, onShowSenders, onShowMails, habits = [], habitFocus,
-  onHabitsChanged }: {
+  initialRecipe, initialEditId, ai, onShowSenders, onShowMails, habits = [],
+  habitFocus, onHabitsChanged }: {
   state: AppState;
   /** "You keep doing this": the suggestions of this account (backend/
    *  habits.py), their card sits after the Rule checkup and before the
@@ -548,6 +548,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
   initialQuery?: string;
   /** Opens New rule > From a recipe with this recipe marked. */
   initialRecipe?: string;
+  /** Opens this rule's editor straight away (the Weekly check-in's Edit… on a
+   *  Rule checkup finding). */
+  initialEditId?: string;
 }) {
   const [form, setForm] = useState({ ...EMPTY, query: initialQuery });
   const [editId, setEditId] = useState<string | null>(null);
@@ -916,6 +919,14 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
       onlyKind: rule.only_kind || EMPTY.onlyKind });
     setEditing(true);
   };
+
+  // The Weekly check-in's Edit… on a finding: that rule's editor, once
+  useEffect(() => {
+    const rule = initialEditId ? rules.find((r) => r.id === initialEditId)
+      : undefined;
+    if (rule) edit(rule);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // What the checkup's buttons do: the sheets close, then the page's own
   // editor / confirm / list takes over.

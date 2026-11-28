@@ -44,8 +44,9 @@ mails you cleaned (lighter bars are estimates from the mails still in the
 mailbox). Beside it a **Last week | Since last visit** card (new mails, new
 senders, senders still mailing after you unsubscribed, mails in Junk, new AI
 verdicts and - only when there is one - which [senders got louder or came
-back](#sender-changes)), "Next steps" (the [Suggestions](#suggestions), and a line
-for [mail past its date](#mail-past-its-date)), "Biggest
+back](#sender-changes)), "Next steps" (the [Suggestions](#suggestions), a line
+for [mail past its date](#mail-past-its-date) and, last, the [weekly
+check-in](#weekly-check-in)), "Biggest
 senders" with a storage bar and "What fills your inbox" (the last 30 days by
 kind). Everything else is one click away in the sidebar (on screens 1024 px
 and wider) or the tab bar at the bottom (phones and tablets: Overview,
@@ -576,6 +577,56 @@ a new pin changes it at once.
 It sits next to the recipe "Only the newest shipping update": that one keeps
 each sender's newest shipping mail, delivered or not; this one only lists
 updates whose parcel has arrived, across senders, and keeps the receipts.
+
+### Weekly check-in
+
+<small class="where">Overview → Next steps (the last line) · the activity digest mail · Settings › Notifications</small>
+
+Inboxrake has several places that ask for a look. The **Weekly check-in**
+walks through them in one go, about two minutes, once a week. Next steps gets
+one more line at its very end - "6 things this week · about 2 minutes ·
+**Start**" (after the suggestions, the subscriptions line and mail past its
+date; outside "Review N" and the top three). **Start** opens a stepper with one
+step per place that has something, skipping the empty ones, always in this
+order:
+
+- **New senders** - the list of Senders › `is:new`; **Keep** (leave it), **Unsubscribe…**, **Block…**.
+- **Still mailing after you unsubscribed** - Senders › `is:still-mailing`; **Block…**, **Trash…**.
+- **Mail past its date** - the reasons and ticks of that sheet, with **Move N to Trash…**, **Show them**, **Open in All mail**.
+- **Replies overdue** - the overdue mails of [Waiting for a reply](#waiting-for-a-reply), with **Remind me** and **No answer needed**.
+- **Rule checkup** - the findings of the [Rule checkup](#rule-checkup), with **Edit…**, **Delete…**, **Compare**, **Show the N senders** and **Ignore**.
+- **Junk waiting** - the senders in your Junk folder, with **Not junk**, **Block…** and **Trash**.
+
+Nothing new happens inside a step: every action is the one that place already
+has, with its own confirm, its own Undo and its own entry in Activity (the
+sender, reply and Junk steps list their first eight rows and point at the full
+page for the rest).
+**Skip** moves on, **Back** goes back, and closing keeps your place until the
+week is over (this browser, per account; the line then says **Continue**). The
+closing card only counts what you did - "5 steps · 47 mails past their date to
+Trash · 2 senders blocked · 1 reminder set" - and says nothing for what you
+skipped.
+
+The window is the one of Overview's **Last week | Since last visit** card: the
+last 7 days, or the time since your last visit (new senders and senders still
+mailing are counted over it; mail past its date, replies, the checkup and
+Junk are as they are now). The count is local, with no AI, and nothing is sent
+anywhere.
+
+Two more ways in: the [activity digest mail](#activity-digest-email) gets one
+more button, **Start your weekly check-in** (the last one, after the others,
+which keep their targets), and - unless you switch it off - a push on **Monday
+at 09:00** (Settings › Notifications → *Remind me of my weekly check-in*, on by
+default for everyone who has notifications set up; the server's clock, like the
+digest). It says only "Your weekly check-in: 6 things" and how long that takes -
+no sender, no subject, no address - and is not sent when there is nothing, nor
+to a device that is looking at Inboxrake. Both links name the account, so they
+open that account's check-in whichever one the app has selected (with several
+accounts, the push also names the account in its second line). They work in a
+browser that has never opened Inboxrake, too: the app first settles on the
+account, then opens the check-in. Tapping the notification while Inboxrake is
+open in the background brings it to the front and follows the link, without a
+reload (this goes for every notification, not just this one).
 
 ### What they send
 
@@ -1440,7 +1491,11 @@ first and every send itself audit-logged. Two settings shape the mail:
 **Language of the mail** (English or Deutsch; until you save the section it
 goes out in English) and **Link to Inboxrake** - the address your Inboxrake is
 reachable at (`http://` or `https://`, no `?` or `#`). With it the mail's
-buttons open the right page; without it they are left out.
+buttons open the right page; without it they are left out. When some place
+wants a look, the mail ends with one more section, **Your weekly check-in**,
+whose **Start your weekly check-in** button comes after all the others and opens
+the [weekly check-in](#weekly-check-in) of that account; the other buttons keep
+their targets and their order.
 
 </div>
 
@@ -1704,8 +1759,12 @@ or address is in it - the one exception is a sent mail's subject, which
 appears in a "no answer yet" push only when you switch **Show the subject in
 the notification** on. "Send test
 notification" checks a device. Under the two switches, a **Waiting for a
-reply** group sets when such a push goes out. Each device belongs to the signed-in user,
-and notifies about that user's accounts only.
+reply** group sets when such a push goes out, and the last row, **Remind me of
+my weekly check-in**, controls the Monday 09:00 push of the [weekly
+check-in](#weekly-check-in) - **on by default** for everyone who has
+notifications on, and it names nobody (only "Your weekly check-in: 6 things").
+Each device belongs to the signed-in user, and notifies about that user's
+accounts only.
 
 Requirements: Inboxrake served over **HTTPS**, and the server must be able to
 reach the push services over outbound HTTPS (Apple, Google, Mozilla,

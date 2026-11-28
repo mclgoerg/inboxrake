@@ -34,6 +34,7 @@ vi.mock("./api", () => ({
 const END = "https://web.push.example/abc";
 let existing: ReturnType<typeof fakeSub> | null;
 let registerCalls: string[];
+let swListeners: ((e: { data: unknown }) => void)[];
 let permission: NotificationPermission;
 let requestPermission: () => Promise<NotificationPermission>;
 
@@ -61,6 +62,10 @@ function setCapable(on: boolean) {
     (globalThis as any).Notification = N;
     Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: {
       register: (url: string) => { registerCalls.push(url); return Promise.resolve({}); },
+      addEventListener: (type: string, fn: (e: { data: unknown }) => void) => {
+        if (type === "message") swListeners.push(fn);
+      },
+      startMessages: () => {},
       get ready() {
         calls.push("sw.ready");
         return Promise.resolve({ pushManager: {
@@ -94,6 +99,7 @@ beforeEach(() => {
     keyFetches: 0, failSubscribe: false, subscribeError: null, key: "BAUG" });
   existing = null;
   registerCalls = [];
+  swListeners = [];
   permission = "default";
   requestPermission = () => Promise.resolve("granted");
   localStorage.clear();
@@ -151,6 +157,44 @@ test("no worker in a demo build, or over http", async () => {
   secure(false);
   (await load()).registerServiceWorker();
   expect(registerCalls).toEqual([]);
+});
+
+// A tap on a notification while the app is open: the worker posts the link,
+// the app follows its hash (no reload).
+test("the page listens for the worker's open requests and follows the hash",
+  async () => {
+  window.location.hash = "#/overview";
+  (await load()).registerServiceWorker();
+  expect(swListeners).toHaveLength(1);
+  swListeners[0]({ data: { type: "open",
+    url: "/#/overview/check-in?account=work%20mail" } });
+  expect(window.location.hash).toBe("#/overview/check-in?account=work%20mail");
+  swListeners[0]({ data: { type: "open", url: "/#/waiting" } });
+  expect(window.location.hash).toBe("#/waiting");
+  window.location.hash = "";
+});
+
+test("only the worker's own kind of message, only this origin, only a hash",
+  async () => {
+  window.location.hash = "#/senders";
+  await new Promise((r) => setTimeout(r, 20));     // its own hashchange first
+  const push = await load();
+  for (const data of [null, "open", { type: "other", url: "/#/waiting" },
+    { type: "open" }, { type: "open", url: 5 },
+    { type: "open", url: "https://evil.example/#/waiting" },
+    { type: "open", url: "/" }, { type: "open", url: "/#nothing" },
+    { type: "open", url: "http://[bad" }]) {
+    push.followPushLink(data);
+    expect(window.location.hash).toBe("#/senders");
+  }
+  // the same hash is not set again (no needless hashchange)
+  const on = vi.fn();
+  window.addEventListener("hashchange", on);
+  push.followPushLink({ type: "open", url: "/#/senders" });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(on).not.toHaveBeenCalled();
+  window.removeEventListener("hashchange", on);
+  window.location.hash = "";
 });
 
 test("a failing registration is swallowed", async () => {

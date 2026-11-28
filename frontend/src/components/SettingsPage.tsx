@@ -15,6 +15,7 @@ import type { AdminTenantStats, AppState, AssistantAccess, AuthMethod, AuthMode,
   DigestSchedule, FoldersResp, ImapAccount, KeepSafeClass, OauthProvider, Preset, Security,
   SmtpSecurity } from "../types";
 import { AliasServiceSection } from "./AliasServiceSettings";
+import { CheckinNotifySettings } from "./CheckinSettings";
 import { AssistantsSection, useAssistantTokens } from "./AssistantsSettings";
 import { FolderSettings } from "./FolderSettings";
 import { KEEP_SAFE_LOOK } from "./KeepSafeConfirm";
@@ -811,7 +812,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
         t("habit.set.row"), t("habit.set.hidden")]),
     notifications: sec("notifications", <Bell size={16} />, "keep", undefined,
       [t("notify.title"), t("waiting.notify_tell"), t("waiting.after"),
-        t("waiting.subject")]),
+        t("waiting.subject"), t("checkin.notify_row")]),
     protected: sec("protected", <Shield size={16} />, "safe",
       cfg.protected?.length ? String(cfg.protected.length) : undefined, []),
     keepsafe: sec("keepsafe", <ShieldCheck size={16} />, "safe", undefined,
@@ -1386,6 +1387,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     )}
     <WaitingNotifySettings notificationsOn={notifyOn}
       onChanged={onWaitingChanged} />
+    <CheckinNotifySettings notificationsOn={notifyOn} />
     </>
   );
 

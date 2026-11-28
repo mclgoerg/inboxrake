@@ -38,7 +38,13 @@ self.addEventListener("notificationclick", (event) => {
     const wins = await self.clients.matchAll(
       { type: "window", includeUncontrolled: true });
     for (const win of wins) {
-      if ("focus" in win) return win.focus();
+      if ("focus" in win) {
+        // an open app follows the notification's link itself, without a
+        // reload (push.ts followPushLink); focusing alone would leave "Tap to
+        // start" doing nothing
+        win.postMessage({ type: "open", url });
+        return win.focus();
+      }
     }
     return self.clients.openWindow(url);
   })());

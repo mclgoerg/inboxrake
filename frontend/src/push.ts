@@ -44,8 +44,31 @@ export function registerServiceWorker(): void {
   if (import.meta.env.VITE_DEMO === "1") return;
   if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
   void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // a tap on a notification while this page is open (see sw.js)
+  navigator.serviceWorker.addEventListener?.("message",
+    (e) => followPushLink(e.data));
+  navigator.serviceWorker.startMessages?.();
   void navigator.serviceWorker.ready.then((r) => { readyReg = r; },
     () => {});
+}
+
+/** The service worker tells an OPEN app where a tapped notification leads
+ *  (`{ type: "open", url }`); the app goes there by its hash - no reload, and
+ *  never another origin or another kind of message. */
+export function followPushLink(data: unknown): void {
+  const d = data as { type?: unknown; url?: unknown } | null;
+  if (!d || d.type !== "open" || typeof d.url !== "string") return;
+  let hash = "";
+  try {
+    const u = new URL(d.url, window.location.href);
+    if (u.origin !== window.location.origin) return;
+    hash = u.hash;
+  } catch {
+    return;
+  }
+  if (hash.startsWith("#/") && hash !== window.location.hash) {
+    window.location.hash = hash;
+  }
 }
 
 let readyReg: ServiceWorkerRegistration | null = null;

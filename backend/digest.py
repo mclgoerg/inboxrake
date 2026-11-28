@@ -29,10 +29,12 @@ import os
 import re
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 from . import accounts
 from . import auditlog
+from . import checkin as checkinmod
 from . import config as cfgmod
 from . import labelstore
 from . import mailops
@@ -91,6 +93,10 @@ _EN = {
     "waiting_one": "{n} person hasn't answered you",
     "waiting_other": "{n} people haven't answered you",
     "someone": "Someone",
+    "checkin": "Your weekly check-in",
+    "checkin_sub_one": "{n} thing · about {m} min",
+    "checkin_sub_other": "{n} things · about {m} min",
+    "btn_checkin": "Start your weekly check-in",
     "ai_one": "The AI says {n} mail can go",
     "ai_other": "The AI says {n} mails can go",
     "btn_block": "Block",
@@ -160,6 +166,10 @@ _DE = {
     "waiting_one": "{n} Person hat dir nicht geantwortet",
     "waiting_other": "{n} Personen haben dir nicht geantwortet",
     "someone": "Jemand",
+    "checkin": "Dein Wochen-Check",
+    "checkin_sub_one": "{n} Ding · etwa {m} Min.",
+    "checkin_sub_other": "{n} Dinge · etwa {m} Min.",
+    "btn_checkin": "Deinen Wochen-Check starten",
     "ai_one": "Die KI sagt: {n} Mail kann weg",
     "ai_other": "Die KI sagt: {n} Mails können weg",
     "btn_block": "Blockieren",
@@ -426,6 +436,20 @@ def _rows_data(S: dict, d: dict) -> tuple[list[dict], list[dict]]:
     return needs, happened
 
 
+def _checkin_rows(S: dict, d: dict, account: str) -> list[dict]:
+    """The weekly check-in: its own section AFTER the other two, so its
+    button comes after the five of "Needs you" / "What happened". The link
+    names the account, so it opens that account's check-in whichever one the
+    app has selected."""
+    c = d.get("checkin")
+    if not c:
+        return []
+    route = "overview/check-in?account=" + urllib.parse.quote(account, safe="")
+    return [{"icon": "✓", "tone": "safe",
+             "title": _plural(S, "checkin_sub", c["things"], m=c["minutes"]),
+             "sub": "", "btn": (S["btn_checkin"], route)}]
+
+
 def _link(url: str, route: str) -> str:
     return f"{url}/#/{route}"
 
@@ -450,6 +474,7 @@ def _since(S: dict, ts: float) -> str:
 def _compose_text(S: dict, d: dict, account: str, url: str,
                   banner: str | None) -> str:
     needs, happened = _rows_data(S, d)
+    checkin = _checkin_rows(S, d, account)
     lines = []
     if banner:
         lines += [banner, ""]
@@ -462,7 +487,8 @@ def _compose_text(S: dict, d: dict, account: str, url: str,
         key = "size_less" if d["delta"] < 0 else "size_more"
         lines.append(S[key].format(
             size=_fmt_bytes(abs(d["delta"]), d["lang"])))
-    for title, rows in ((S["needs_you"], needs), (d["happened_title"], happened)):
+    for title, rows in ((S["needs_you"], needs), (d["happened_title"], happened),
+                        (S["checkin"], checkin)):
         if not rows:
             continue
         lines += ["", title.upper()]
@@ -608,6 +634,7 @@ def _compose_html(S: dict, d: dict, account: str, url: str,
     esc = htmlmod.escape
     L = _LIGHT
     needs, happened = _rows_data(S, d)
+    checkin = _checkin_rows(S, d, account)
     banner_html = (
         f'<tr><td class="chip ac" style="padding:10px 24px;'
         f'background-color:{L["chip"]};font-size:12px;color:{L["accent"]};'
@@ -688,6 +715,7 @@ def _compose_html(S: dict, d: dict, account: str, url: str,
         </td></tr>
         {_section_html(S["needs_you"], needs, url)}
         {_section_html(d["happened_title"], happened, url)}
+        {_section_html(S["checkin"], checkin, url)}
         <tr><td style="padding:18px 24px 0;"></td></tr>
         <tr><td class="foot mu" style="padding:14px 24px;
           background-color:{L["panel2"]};font-size:12px;color:{L["muted"]};">
@@ -812,6 +840,15 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
     replied = mailops.load_replied(acc)
     junk_replied = sum(1 for m in mailops.role_mails("junk", acc)
                        if m.get("addr") in replied)
+    # the weekly check-in: how many places want a look (the same count as the
+    # Overview line and the Monday push; none = no button)
+    try:
+        c = checkinmod.summary(acc, None, now, ov)
+        checkin = {"things": c["things"], "minutes": c["minutes"]} \
+            if c["things"] else None
+    except Exception:
+        log.exception("digest: weekly check-in unavailable")
+        checkin = None
 
     delta = None
     if indexed:
@@ -825,7 +862,7 @@ def _snapshot(account: str, since_ts: int, now: float) -> dict:
             "size": size if indexed else None, "delta": delta,
             "still": len(still_senders), "still_mails": still_mails,
             "junk": junk, "junk_replied": junk_replied,
-            "waiting": waiting_names,
+            "waiting": waiting_names, "checkin": checkin,
             "ai_mails": ai_mails, "ai_bytes": ai_bytes}
 
 
@@ -908,6 +945,7 @@ def compose_demo(account: str, lang: str | None = None,
          "unsub_outcomes": {"done": 2, "link": 1, "failed": 1},
          "rules": [(S["demo_name"], 3, 38)],
          "weekly": weekly, "junk_replied": 1,
+         "checkin": {"things": 6, "minutes": 2},
          "range": _range(S, 0, time.time()),
          "happened_title": S["happened"]}
     return _build(account, d, lang, url, S["demo_banner"], True)
