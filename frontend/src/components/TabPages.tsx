@@ -772,7 +772,8 @@ function DocumentsCard({ state, onOpen }: {
               year: year.year })}
           </span>
           <span className="block type-meta text-muted">
-            {t("docs.card_invoices", { n: year.kinds.invoices.files })}
+            {t("docs.card_sub2", { invoices: t("docs.card_invoices",
+              { n: year.kinds.invoices.files }) })}
           </span>
         </>
       ) : (

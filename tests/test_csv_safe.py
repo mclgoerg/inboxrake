@@ -44,6 +44,20 @@ def test_cell_leaves_numbers_and_empty_alone(value):
     assert csvsafe.cell(value) is value
 
 
+@pytest.mark.parametrize("lead", TRIGGERS)
+def test_cell_neutralises_a_trigger_after_a_semicolon(lead):
+    # European Excel splits a comma .csv on ";" too: x;=1+1 is two cells
+    assert csvsafe.cell("x;" + lead + "1+1") == "x;'" + lead + "1+1"
+    assert csvsafe.cell("a;b;" + lead + "c") == "a;b;'" + lead + "c"
+    # ... and a leading trigger still gets its own quote
+    assert csvsafe.cell(lead + ";" + lead) == "'" + lead + ";'" + lead
+
+
+@pytest.mark.parametrize("value", ["a;b", "x; =1", "a;'=1", "x;1", ";", "a;"])
+def test_cell_leaves_other_semicolons_alone(value):
+    assert csvsafe.cell(value) == value
+
+
 def test_row_applies_to_every_cell():
     assert csvsafe.row(["=a", 1, -2, "ok", "@b", ""]) == \
         ["'=a", 1, -2, "ok", "'@b", ""]
@@ -66,6 +80,14 @@ def test_audit_export_neutralises_every_string_column(bridge, lead):
     assert row[2:4] == ["'" + lead + "who", "'" + lead + "act"]
     assert row[6:] == ["'" + lead + "label", "'" + lead + "out",
                        "'" + lead + "err"]
+
+
+def test_audit_export_neutralises_a_formula_after_a_semicolon(bridge):
+    auditlog.record("trash", account="default", label="x;=HYPERLINK(1)",
+                    actor="a;@b", outcome="ok;-1")
+    (row,) = audit_rows()
+    assert row[2] == "a;'@b" and row[6] == "x;'=HYPERLINK(1)"
+    assert row[7] == "ok;'-1"
 
 
 def test_audit_export_formula_label_is_text(bridge):
@@ -144,6 +166,16 @@ def test_group_export_neutralises_every_string_column(bridge, lead):
     assert row[1] == "'" + lead + "label"
     assert row[7:] == ["'" + lead + "tag", "'" + lead + "verdict",
                        "'" + lead + "reason"]
+
+
+def test_group_export_neutralises_a_formula_after_a_semicolon(bridge):
+    rec = scanned_record()
+    rec["label"] = "Shop;=cmd|' /C calc'!A0"
+    rec["tags"] = ["t;+1"]
+    rec["ai"] = {"verdict": "keep;@x", "reason": "r;-2"}
+    (row,) = export_rows(keys=["noreply@dhl.example"])[1:]
+    assert row[1] == "Shop;'=cmd|' /C calc'!A0"
+    assert row[7:] == ["t;'+1", "keep;'@x", "r;'-2"]
 
 
 def test_group_export_key_is_neutralised(bridge):

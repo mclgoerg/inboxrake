@@ -16,7 +16,8 @@ import type {
   CopyJob, CopyKindId, CopyPlan, CopyTell, TmListing, TmPreview,
   FolderCheck, FolderMergeResult, FolderRule, YourFoldersResp, RemoveCheck,
   HabitsResp,
-  DocFile, DocsPage, DocsSummary,
+  DocFile, DocKind, DocsPage, DocsPlan, DocsSummary, DocsZipRequest,
+  DocsZipResult,
 } from "./types";
 import { userZone, type ArrivalSlot, type RhythmPeriod, type RhythmResp }
   from "./rhythm";
@@ -268,7 +269,9 @@ const ERROR_CODES: Record<string, string> = {
   docs_changed: "ferr.docs_changed",
   docs_too_big: "ferr.docs_too_big",
   docs_failed: "ferr.docs_failed",
+  docs_nothing: "ferr.docs_nothing",
   docs_busy: "ferr.docs_busy",
+  docs_too_many: "ferr.docs_too_many",
   undo_through_removal: "ferr.undo_through_removal",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",
@@ -760,6 +763,21 @@ export const api = {
       body: JSON.stringify({ folder, uid, name: file.name, size: file.size }) });
     if (!res.ok) await failedDownload(res);
     saveBlob(dispositionName(res) ?? file.name, await res.blob());
+  },
+  /** What a year's .zip would hold and in how many downloads. */
+  documentsPlan: (year: number, kinds: DocKind[]) =>
+    req<DocsPlan>("/api/documents/zip/plan", { year, kinds }),
+  /** One download of a year's .zip, handed to the browser; says what it held. */
+  downloadDocumentsZip: async (b: DocsZipRequest): Promise<DocsZipResult> => {
+    const res = await fetch(withAccount("/api/documents/zip"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b) });
+    if (!res.ok) await failedDownload(res);
+    const n = (h: string) => Number(res.headers.get(h)) || 0;
+    saveBlob(dispositionName(res) ?? `inboxrake-documents-${b.year}.zip`,
+      await res.blob());
+    return { mails: n("X-Docs-Mails"), files: n("X-Docs-Files"),
+      skipped: n("X-Docs-Skipped"), pinned: n("X-Docs-Pinned") };
   },
   duplicates: () => req<DupSet[]>("/api/duplicates"),
   duplicatesSummary: () => req<DupSummary>("/api/duplicates/summary"),

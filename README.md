@@ -229,7 +229,8 @@ reminders and an optional amount read from the latest receipt), "Waiting
 for a reply" (the mails you sent that nobody answered, with a reminder),
 "Your addresses" (which of your aliases leaked, retire one), "Your documents"
 (the invoices, contracts, tickets and tax mail that carry a file, by year, with
-each file one tap away), space
+each file one tap away - or a whole year as one .zip with a list, for tax
+time), space
 map, statistics (including when your mail arrives, by weekday and hour),
 "Your year in mail", audit log with a Time machine (restore your mailbox to
 an earlier point), multiple strictly separate
