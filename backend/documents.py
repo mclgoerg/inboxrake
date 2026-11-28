@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from urllib.parse import quote
 
@@ -57,6 +58,36 @@ GONE = mailops.DOCS_GONE
 CHANGED = mailops.DOCS_CHANGED
 TOO_BIG = mailops.DOCS_TOO_BIG
 FAILED = mailops.DOCS_FAILED
+BUSY = mailops.DOCS_BUSY
+
+
+class _Slots:
+    """How many reads of one (tenant, account) are going on: a download holds
+    a whole mail (up to the cap) and its decoded file in memory, so only a few
+    may run at once."""
+
+    def __init__(self):
+        self._n: dict[tuple[str, str], int] = {}
+        self._lock = threading.Lock()
+
+    def take(self, key: tuple[str, str], limit: int) -> bool:
+        with self._lock:
+            if self._n.get(key, 0) >= limit:
+                return False
+            self._n[key] = self._n.get(key, 0) + 1
+            return True
+
+    def drop(self, key: tuple[str, str]) -> None:
+        with self._lock:
+            left = self._n.get(key, 0) - 1
+            if left > 0:
+                self._n[key] = left
+            else:
+                self._n.pop(key, None)
+
+
+FILE_PARALLEL = 2               # one-file downloads of an account at a time
+_FILES = _Slots()
 
 
 class Refused(Exception):
@@ -81,8 +112,11 @@ TAX_RE = re.compile(
     r"steuer(bescheid|bescheide|erkl[aä]rung|bescheinigung|nummer|-?id\b|"
     r"festsetzung|vorauszahlung|nachzahlung|erstattung|jahr\b)|"
     r"(lohn|einkommen|umsatz|grund|kirchen|gewerbe|kfz)-?steuer|\bfinanzamt|"
-    r"bescheid(e|s)?\b(?!\s+(?:geb|sag|wiss))|bescheinigung|\bbeh[oö]rde|"
-    r"\bamtlich|"
+    # "Bescheid" alone is also "let me know" ("sag Bescheid"): only a compound
+    # (Gebührenbescheid) or the notice's own words ("Bescheid für 2025")
+    r"[a-zäöüß]bescheid(e|s)?\b|"
+    r"\bbescheid(e|s)?\s+(?:f[uü]r|[uü]ber|vom|zum|zur|nr\b)|"
+    r"bescheinigung|\bbeh[oö]rde|\bamtlich|"
     r"b[uü](ß|ss)geld|ordnungswidrigkeit|\banh[oö]rung\b|"
     r"rentenanpassung|\bzoll(amt|anmeldung)|"
     # EN
@@ -118,8 +152,10 @@ def kind_of(m: dict) -> str | None:
     like Keep-safe does, first match wins: a subject that names an invoice or
     receipt is an invoice; then tax & official (its words are specific); then
     contracts & policies; then the weaker bill and payment words (invoices &
-    bills); then bookings & tickets. A mail without a subject, a request to
-    rate or review, and (for tax) promotional mail belong to none."""
+    bills); then bookings & tickets. A mail without a subject and a request to
+    rate or review belong to none; promotional mail and newsletters are no tax
+    mail and no contract by the page's own contract words (Keep-safe's class
+    of terms and privacy notices is as it is)."""
     subject = m.get("subject") or ""
     if not subject or smartkinds.SURVEY_RE.search(subject):
         return None
@@ -130,7 +166,7 @@ def kind_of(m: dict) -> str | None:
     soft = "p" in hint or bool(smartkinds.PROMO_RE.search(subject))
     if not soft and TAX_RE.search(subject):
         return TAX
-    if "contracts" in classes or CONTRACT_RE.search(subject):
+    if "contracts" in classes or (not soft and CONTRACT_RE.search(subject)):
         return CONTRACTS
     if "invoices" in classes:
         return INVOICES
@@ -334,20 +370,26 @@ def read_file(acc, folder: str, uid: int, name: str, size: int
     """`(content, file name)` of one file of one listed mail, read from the
     mail server now. Raises `Refused`."""
     m = _listed_mail(acc, folder, uid, name, size)
-    raw = read_mail(acc, m)
+    key = (acc.tenant, acc.name)
+    if not _FILES.take(key, FILE_PARALLEL):
+        raise Refused(BUSY, 409)
     try:
-        root = mimecut.parse(raw)
-    except mimecut.MimeError:
-        raise Refused(CHANGED, 409)
-    msgid = (m.get("msgid") or "").strip()
-    if msgid and str(root.msg.get("Message-ID", "")).strip() != msgid:
-        raise Refused(CHANGED, 409)
-    found, _missing = removefiles._pick_for(root, m, [(name, size)], [0])
-    if not found:
-        raise Refused(CHANGED, 409)
-    try:
-        return mimecut.payload(raw, found[0].part), name
-    except Exception:
-        # a part whose content cannot be decoded (damaged base64)
-        log.warning("a file of a mail could not be decoded")
-        raise Refused(FAILED, 502)
+        raw = read_mail(acc, m)
+        try:
+            root = mimecut.parse(raw)
+        except mimecut.MimeError:
+            raise Refused(CHANGED, 409)
+        msgid = (m.get("msgid") or "").strip()
+        if msgid and str(root.msg.get("Message-ID", "")).strip() != msgid:
+            raise Refused(CHANGED, 409)
+        found, _missing = removefiles._pick_for(root, m, [(name, size)], [0])
+        if not found:
+            raise Refused(CHANGED, 409)
+        try:
+            return mimecut.payload(raw, found[0].part), name
+        except Exception:
+            # a part whose content cannot be decoded (damaged base64)
+            log.warning("a file of a mail could not be decoded")
+            raise Refused(FAILED, 502)
+    finally:
+        _FILES.drop(key)

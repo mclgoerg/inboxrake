@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /* Where the All accounts page is opened from: one more row after the account
- * cards (switcher popover and phone sheet), the last item under Insights in
- * the sidebar, and the last card of the phone's Insights tab - each only with
- * two accounts or more, and none of them changes what was there. */
+ * cards (switcher popover and phone sheet), an item under Insights in the
+ * sidebar (after Waiting for a reply, before Your documents) and a card on the
+ * phone's Insights tab (after Waiting for a reply, before Your documents) -
+ * each only with two accounts or more, and none of them changes what was
+ * there. */
 
 import { cleanup, fireEvent, render, screen, waitFor, within }
   from "@testing-library/react";
@@ -139,7 +141,7 @@ const side = (allAccounts?: boolean) => {
   return onOpen;
 };
 
-test("sidebar: All accounts is the last item under Insights, after Waiting for a reply", () => {
+test("sidebar: All accounts follows Waiting for a reply, before Your documents", () => {
   const onOpen = side(true);
   const names = screen.getAllByRole("button").map((b) => b.textContent ?? "");
   const at = (re: RegExp) => names.findIndex((n) => re.test(n));

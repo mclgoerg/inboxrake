@@ -281,6 +281,7 @@ export const EN: Record<string, string> = {
   "ferr.docs_changed": "The mail on the server is not the one the scan saw. Scan again, then try again.",
   "ferr.docs_too_big": "That mail is bigger than {mb} MB, so it cannot be downloaded here.",
   "ferr.docs_failed": "The file could not be fetched from your mail server. Nothing was changed.",
+  "ferr.docs_busy": "Another download of your documents is still running - try again when it has finished.",
   "ferr.undo_through_removal": "That restore brought back mails whose files Inboxrake had taken out, so it cannot be undone as one step. Nothing was moved: the originals are back in their folders - take the files out again if you want them gone.",
   "login.title": "Sign in to Inboxrake",
   "login.submit": "Sign in",

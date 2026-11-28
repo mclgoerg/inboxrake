@@ -55,6 +55,10 @@ def _m(subject, addr="x@sender.example", unsub=False):
     ("Your W-2 for 2025", "tax"),
     ("Residence permit decision", "tax"),
     ("Anhörung zum Bußgeldbescheid", "tax"),
+    ("Gebührenbescheid 2026", "tax"),
+    ("Bescheid über die Festsetzung", "tax"),
+    ("Bescheid vom 3. März", "tax"),
+    ("Bescheid Nr. 4711", "tax"),
 ])
 def test_what_a_subject_is(subject, kind):
     assert documents.kind_of(_m(subject)) == kind
@@ -74,6 +78,14 @@ def test_what_a_subject_is(subject, kind):
      False),
     ("Steuerbescheid Tipps", "news@kanzlei.example", True),
     ("Bitte kurz Bescheid geben", "x@sender.example", False),
+    # "Bescheid" alone is "let me know", not a notice
+    ("Gib mir Bescheid wegen Samstag", "x@sender.example", False),
+    ("Fotos vom Urlaub - sag Bescheid", "x@sender.example", False),
+    # the contract words of the page are no promotion's
+    ("Black Friday: 50% auf deinen neuen Vertrag", "x@sender.example", False),
+    ("Your contract ends soon - renew now and save 20%", "news@sender.example",
+     True),
+    ("Your contract ends soon - renew now", "news@sender.example", True),
     ("How was our tax return service? Take the survey", "x@sender.example",
      False),
     ("How was your contract? Take our survey", "x@sender.example", False),
@@ -81,6 +93,14 @@ def test_what_a_subject_is(subject, kind):
 ])
 def test_what_a_subject_is_not(subject, addr, unsub):
     assert documents.kind_of(_m(subject, addr, unsub)) is None
+
+
+def test_keep_safes_own_contract_class_is_as_it_is():
+    # the exclusion is for the page's contract words, not for Keep-safe's class
+    assert documents.kind_of(_m("Terms of service update", "news@x.example",
+                                True)) == "contracts"
+    assert documents.kind_of(_m("Your contract ends soon - renew now",
+                                "billing@x.example", False)) == "contracts"
 
 
 def test_the_priority_of_the_kinds():
@@ -421,6 +441,31 @@ def test_a_server_failure_is_a_code_never_its_text(monkeypatch):
     r = client.post("/api/documents/file", json=file_body(by[INVOICE[0]]))
     assert r.status_code == 502 and "secret-host" not in r.text
     assert r.json()["detail"].startswith("host_not_found")
+
+
+def test_only_a_few_downloads_of_an_account_run_at_once(monkeypatch):
+    _ready(monkeypatch)
+    by = {r["subject"]: r for r in rows(client)}
+    body = file_body(by[INVOICE[0]])
+    acc = accountsmod.get()
+    key = (acc.tenant, acc.name)
+    for _ in range(documents.FILE_PARALLEL):
+        assert documents._FILES.take(key, documents.FILE_PARALLEL)
+    try:
+        r = client.post("/api/documents/file", json=body)
+        assert (r.status_code, r.json()["detail"]) == (409, "docs_busy")
+        # another account's places are its own
+        assert documents._FILES.take(("other", "account"), 1)
+        documents._FILES.drop(("other", "account"))
+    finally:
+        for _ in range(documents.FILE_PARALLEL):
+            documents._FILES.drop(key)
+    assert client.post("/api/documents/file", json=body).status_code == 200
+    # a download that fails gives its place back
+    monkeypatch.setattr(mailops, "connect", lambda *a, **k: 1 / 0)
+    for _ in range(documents.FILE_PARALLEL + 1):
+        assert client.post("/api/documents/file", json=body).status_code == 502
+    assert documents._FILES._n == {}
 
 
 def test_a_file_that_cannot_be_decoded_is_a_failure_not_a_crash(monkeypatch):

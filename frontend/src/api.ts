@@ -267,6 +267,7 @@ const ERROR_CODES: Record<string, string> = {
   docs_changed: "ferr.docs_changed",
   docs_too_big: "ferr.docs_too_big",
   docs_failed: "ferr.docs_failed",
+  docs_busy: "ferr.docs_busy",
   undo_through_removal: "ferr.undo_through_removal",
   // the in-browser demo (backend/demo.py)
   not_in_demo: "ferr.not_in_demo",

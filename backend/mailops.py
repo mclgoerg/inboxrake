@@ -316,6 +316,7 @@ DOCS_GONE = "docs_gone"                 # the mail / file is not in the list
 DOCS_CHANGED = "docs_changed"           # the server's mail is not the scanned one
 DOCS_TOO_BIG = "docs_too_big"           # mb=: the mail is bigger than the read cap
 DOCS_FAILED = "docs_failed"             # anything unexpected (see the log)
+DOCS_BUSY = "docs_busy"                 # too many downloads of this account at once
 FOLDER_ERROR_CODES = frozenset({
     "action_cancelled",
     "undo_copy_unknown", "protected_sender_selected",
@@ -334,6 +335,7 @@ FOLDER_ERROR_CODES = frozenset({
     RM_NOTHING, RM_NOT_SCANNED, RM_CHANGED, RM_ZIP_TOO_BIG, RM_FAILED,
     UNDO_THROUGH_REMOVAL,
     DOCS_NOT_SCANNED, DOCS_GONE, DOCS_CHANGED, DOCS_TOO_BIG, DOCS_FAILED,
+    DOCS_BUSY,
     NOT_IN_DEMO, PUSH_INVALID, PUSH_UNKNOWN, PUSH_HTTP, PUSH_UNREACHABLE,
     *ALIAS_CODES,
     ASSISTANTS_OFF,

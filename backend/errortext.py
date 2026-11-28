@@ -99,6 +99,8 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'That mail is bigger than {mb} MB, so it cannot be downloaded here.',
     'docs_failed':
         'The file could not be fetched from your mail server. Nothing was changed.',
+    'docs_busy':
+        'Another download of your documents is still running - try again when it has finished.',
     'undo_through_removal':
         'That restore brought back mails whose files Inboxrake had taken out, so it cannot be undone as one step. Nothing was moved: the originals are back in their folders - take the files out again if you want them gone.',
     'copy_unfinished':

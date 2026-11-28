@@ -3001,6 +3001,7 @@ export const DE: Record<string, string> = {
   "ferr.docs_changed": "Die Mail auf dem Server ist nicht die, die der Scan gesehen hat. Scanne erneut und versuche es dann noch einmal.",
   "ferr.docs_too_big": "Diese Mail ist größer als {mb} MB und lässt sich hier nicht herunterladen.",
   "ferr.docs_failed": "Die Datei konnte nicht von deinem Mailserver geholt werden. Es wurde nichts geändert.",
+  "ferr.docs_busy": "Ein anderer Download deiner Dokumente läuft noch - versuche es noch einmal, wenn er fertig ist.",
   "ferr.undo_through_removal": "Diese Wiederherstellung hat Mails zurückgebracht, aus denen Inboxrake Dateien entfernt hatte, deshalb lässt sie sich nicht in einem Schritt zurücknehmen. Es wurde nichts verschoben: Die Originale liegen wieder in ihren Ordnern - entferne die Dateien erneut, wenn sie weg sein sollen.",
   "login.title": "Bei Inboxrake anmelden",
   "login.submit": "Anmelden",
