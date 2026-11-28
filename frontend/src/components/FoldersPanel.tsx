@@ -6,7 +6,7 @@ import { nowDate } from "../clock";
 import { api, fmtSize, mailKey } from "../api";
 import { groupByDate, monthHeading } from "../dayGroups";
 import { getLang, t } from "../i18n";
-import { confirmTrash } from "../keepsafe";
+import { junkBlock, junkMove } from "../junkMoves";
 import { fmtDate } from "../lib";
 import type { AppState, FolderRole, Mail, PurgeSelect, SenderGroup, TrashResp,
   UndoIdent }
@@ -224,37 +224,15 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
     setBusy(true);
     setNote("");
     try {
-      let r;
-      try {
-        r = await api.folderMove("junk", action, uids, list.uv);
-      } catch (e: any) {
-        // protected senders / pinned mails need an explicit yes (same as
-        // every other Trash move)
-        if (action !== "trash" || !e.code) throw e;
-        if (!await confirmDialog({
-          title: t("fp.confirm_protected_title"),
-          body: String(e.message), tone: "danger",
-          confirmLabel: t("fp.confirm_protected_btn") })) {
-          setBusy(false);
-          return false;
-        }
-        r = await api.folderMove("junk", action, uids, list.uv, true);
+      // the questions and the result toast are shared with the Weekly
+      // check-in's Junk step (junkMoves.ts)
+      const r = await junkMove({ uv: list.uv, toast, undo: undoMove,
+        protect: onProtect }, action, uids);
+      if (!r) {
+        setBusy(false);
+        return false;
       }
       dropped(new Set(uids), r.moved);
-      const undo = r.undo ? { label: t("Undo"),
-        onClick: () => undoMove(r.undo!) } : undefined;
-      if (action === "not_junk") {
-        toast.show(t("fp.not_junk_done", { n: r.moved }), {
-          variant: "success", action: undo, duration: 12000,
-          action2: r.senders.length ? {
-            label: t("fp.protect_sender", { n: r.senders.length }),
-            onClick: () => { void onProtect(r.senders); },
-          } : undefined,
-        });
-      } else {
-        toast.show(t("toast.moved_trash", { n: r.moved }),
-          { variant: "success", action: undo });
-      }
       clearMoveNotice();
       onChanged();
       setBusy(false);
@@ -357,30 +335,17 @@ export function FoldersPanel({ state, initialRole = "trash", onClose,
   // Block only creates the block rule; the sender's mail already in Junk
   // stays unless you say so (the same second question as the group Block).
   const blockRow = async (g: SenderGroup) => {
-    if (!onBlock || !await onBlock(g.addr)) return;
-    let uids = g.uids;
-    try {
-      // a big move carries the keep-safe box: the mails kept safe are
-      // protected (their pin keeps them out of the move)
-      const answer = await confirmTrash({
-        title: t("fp.block_trash", { n: g.uids.length }), bullets: [],
-        tone: "danger", cancelLabel: t("fp.block_keep"),
-        label: (k) => t("confirm.btn_n", { verb: t("fp.to_trash"), n: k }),
-        n: g.uids.length,
-        scope: list ? { items: g.uids.map((u) => [list.folder, u] as
-          [string, number]), role: "junk" }
-          : null });
-      if (!answer.ok) return;
-      const kept = new Set(answer.pinned.map(([, u]) => u));
-      uids = g.uids.filter((u) => !kept.has(u));
-    } catch (e: any) {
+    if (!onBlock || !list) return;
+    const out = await junkBlock(g, { folder: list.folder, block: onBlock });
+    if (out.error !== undefined) {
       // the block stands; nothing is moved on a failed protection
-      const msg = t("err.generic", { msg: e.message ?? e });
+      const msg = t("err.generic", { msg: (out.error as any)?.message
+        ?? String(out.error) });
       setNote(msg);
       toast.show(msg, { variant: "error" });
       return;
     }
-    if (uids.length) await moveJunk("trash", uids);
+    if (out.uids.length) await moveJunk("trash", out.uids);
   };
 
   const purgeOlder = async () => {

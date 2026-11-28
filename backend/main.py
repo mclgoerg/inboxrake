@@ -39,6 +39,8 @@ from . import auditlog
 from . import auth as authmod
 from . import bodyindex
 from . import bodylimit
+from . import checkin as checkinmod
+from . import checkinstore
 from . import autoscan as autoscanmod
 from . import config as cfgmod
 from . import copystore
@@ -234,6 +236,7 @@ async def _lifespan(app: FastAPI):
     autoscanmod.start_scheduler()
     subscriptions.start_scheduler()
     waiting.start_scheduler()
+    checkinmod.start_scheduler()
     yield
 
 def _app_version() -> str:
@@ -2172,6 +2175,40 @@ def get_expired_mails(reasons: str | None = Query(None, max_length=100),
         raise HTTPException(400, str(exc))
 
 
+# ------------------------------------------------------- weekly check-in
+
+class CheckinSettingsBody(BaseModel):
+    push: bool | None = None
+
+
+@app.get("/api/checkin")
+def get_checkin(since: int | None = Query(None, ge=0),
+                account: str | None = Query(None)):
+    """The Weekly check-in of ONE account: which places have something (new
+    senders, still mailing, mail past its date, replies overdue, the Rule
+    checkup, Junk), how many things that makes and about how many minutes.
+    Same window as Overview's Last week card: the last 7 days, or - with
+    `since` = the previous visit's epoch seconds - the time since then.
+    Counts only; local data, nothing is asked of the mail server."""
+    acc = _acc(account)
+    try:
+        return checkinmod.summary(acc, since)
+    except Exception as exc:
+        raise _internal_error(exc, acc)
+
+
+@app.get("/api/checkin/settings")
+def get_checkin_settings():
+    """The per-user Monday-push switch (on unless switched off)."""
+    return checkinmod.settings_view()
+
+
+@app.post("/api/checkin/settings")
+def post_checkin_settings(body: CheckinSettingsBody):
+    """`push`: the Monday 09:00 notification of the weekly check-in."""
+    return checkinmod.set_settings(body.push)
+
+
 @app.get("/api/sender-changes")
 def get_sender_changes(account: str | None = Query(None)):
     """The senders of ONE account that got louder (more than twice their
@@ -3560,6 +3597,7 @@ def post_config(body: dict, request: Request, response: Response):
         autoscanmod.drop_account(str(body["delete_account"]))
         accountcopy.drop_account(str(body["delete_account"]))
         copystore.drop_account(str(body["delete_account"]))
+        checkinstore.drop_account(str(body["delete_account"]))
     if isinstance(body.get("rename_account"), dict):
         # The config rename succeeded - carry every per-account artifact
         # (runtime state, verdicts, unsubscribes, replied cache, stats,
@@ -3594,6 +3632,7 @@ def post_config(body: dict, request: Request, response: Response):
             autoscanmod.rename_account(old, new)
             accountcopy.rename_account(old, new)
             copystore.rename_account(old, new)
+            checkinstore.rename_account(old, new)
             auditlog.rename_account(old, new)
             assistanttokens.rename_account(tenants.current().id, old, new)
             logging.getLogger("inboxrake.mail").info(

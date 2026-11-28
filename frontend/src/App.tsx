@@ -15,7 +15,9 @@ import { nFiles, nMails } from "./components/RemoveFilesConfirm";
 import { openProposals } from "./proposals";
 import { afterBackSettles } from "./backStack";
 import { accountEpoch, accountGuard, noteAccountSwitch } from "./accountGuard";
-import { DEFAULT_PAGE, gotoSettings, isTabPage, isToolPage, TOOL_TAB, useNav,
+import { checkinHashAccount, DEFAULT_PAGE, gotoSettings, isCheckinHash,
+  isTabPage, isToolPage,
+  TOOL_TAB, useNav,
   restoreScrollOnNext, useScrollPerPage, useConnectRoute, useSettingsRoute, useSidebar, type Page, type ToolPage } from "./nav";
 import { TabBar } from "./components/TabBar";
 import { CleanupPage, InsightsPage } from "./components/TabPages";
@@ -58,6 +60,7 @@ import { Welcome } from "./components/Welcome";
 import { Wizard, WIZARD_RESUME_KEY, type WizardStep } from "./components/Wizard";
 import { SpaceMapPanel } from "./components/SpaceMapPanel";
 import { ChangesNote } from "./components/SenderChanges";
+import type { CheckinActions, CheckinTarget } from "./components/CheckinSteps";
 import { ExpiredSheet } from "./components/ExpiredSheet";
 import { StatsPanel } from "./components/StatsPanel";
 import type { ArrivalSlot } from "./rhythm";
@@ -73,6 +76,7 @@ import { activeFilterLabel, FilterField, FilterMenu } from "./components/FilterM
 import { SelectMatches } from "./components/SelectMatches";
 import { CheckupChip } from "./components/RuleCheckup";
 import { Overview, type OverviewPhase } from "./components/Overview";
+import { WeeklyCheckin } from "./components/WeeklyCheckin";
 import type { QuickWinCard } from "./quickwins";
 import { focusSpecialFolders } from "./components/FolderSettings";
 import { FoldersPanel } from "./components/FoldersPanel";
@@ -300,6 +304,9 @@ export default function App() {
   // The "You keep doing this" suggestion the Rules page brings into view
   // ("Automate…" of a toast, Review of the Overview line).
   const [habitFocus, setHabitFocus] = useState("");
+  // The Weekly check-in's Edit… on a Rule checkup finding: the rule whose
+  // editor the Rules page opens with (handed over once: see the effect below)
+  const [rulesEdit, setRulesEdit] = useState("");
   const [aiFilterOpen, setAiFilterOpen] = useState(false);
   const [attsOpen, setAttsOpen] = useState(false);
   const [dupsOpen, setDupsOpen] = useState(false);
@@ -356,6 +363,11 @@ export default function App() {
   useEffect(() => {
     if (shownTool !== "waiting") setWaitingFocus(null);
   }, [shownTool]);
+  // The rule to edit is for the visit it was asked for: spent once the Rules
+  // page has opened with it.
+  useEffect(() => {
+    if (rulesEdit && shownTool === "rules") setRulesEdit("");
+  }, [rulesEdit, shownTool]);
   // "Only the unused" is for the visit the Overview's Review started.
   useEffect(() => {
     if (shownTool !== "subscriptions") setSubsOnlyUnused(false);
@@ -456,7 +468,8 @@ export default function App() {
 
   // Drop a stale saved account (e.g. deleted meanwhile) once cfg is known.
   useEffect(() => {
-    if (cfg && (!account || !cfg.accounts[account])) {
+    // (own names only: "constructor" or "__proto__" is no account)
+    if (cfg && (!account || !Object.hasOwn(cfg.accounts, account))) {
       switchAccount(cfg.default_account);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -659,6 +672,49 @@ export default function App() {
   const habits = habitList(habitsApi.data);
   const openHabit = (id: string) => { setHabitFocus(id); openTool("rules"); };
   openHabitRef.current = openHabit;
+  /* The Weekly check-in (backend/checkin.py, WeeklyCheckin.tsx): the stepper
+     over whatever page is open. Started by the Overview's last Next steps line
+     (`since` = the previous visit when its Last week card shows "since your
+     last visit"), or by the link of the digest mail / the Monday push
+     (`#/overview/check-in`: the Overview with the stepper over it). */
+  const [checkinOpen, setCheckinOpen] = useState<
+    { since: number | null } | null>(null);
+  // A link's request waits here until the account is settled: on a cold load
+  // (no account stored yet) the account goes "" -> the default one, and a
+  // stepper opened before that would be closed by the switch. `account` =
+  // the account the link names (the digest mail and the push do), or null.
+  const [checkinAsk, setCheckinAsk] = useState<
+    { account: string | null } | null>(null);
+  useEffect(() => { setCheckinOpen(null); }, [account]);
+  useEffect(() => {
+    if (!authOk) return;
+    const ask = () => {
+      if (!isCheckinHash(window.location.hash)) return;
+      const who = checkinHashAccount(window.location.hash);
+      window.history.replaceState(window.history.state, "", "#/overview");
+      setCheckinAsk({ account: who });
+    };
+    ask();
+    window.addEventListener("hashchange", ask);
+    return () => window.removeEventListener("hashchange", ask);
+  }, [authOk]);
+  // ... then it is answered for the account it names (switching to it first,
+  // as the switcher does; an account that is gone falls back to the selected
+  // one). After the effect above, so a switch that just happened cannot close
+  // what this opens.
+  useEffect(() => {
+    if (!checkinAsk || !cfg || !account
+        || !Object.hasOwn(cfg.accounts, account)) return;
+    const want = checkinAsk.account;
+    // (an account of this install, not an inherited name like "constructor")
+    if (want && want !== account && Object.hasOwn(cfg.accounts, want)) {
+      switchAccount(want);
+      return;
+    }
+    setCheckinAsk(null);
+    setCheckinOpen({ since: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkinAsk, cfg, account]);
 
   /* A reminder the user asked for fired (3 days before a subscription's next
      receipt): the server also pushes it to devices that are not looking at the
@@ -1734,6 +1790,29 @@ export default function App() {
     setAllMailsSlot(slot);
     setFlat(true);
   };
+  // The Rule checkup's "Show the N senders": the Sender list, narrowed to
+  // them (from the Rules page, and from the Weekly check-in's Rule checkup).
+  const showSendersSubset = (keys: string[]) => {
+    setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
+    setFlat(false); setMode("sender");
+    setSelected(new Set()); setFocusIdx(-1); cancelFollow();
+    setDetail(null);
+    setFilter("");
+    setSenderSubset(new Set(keys));
+  };
+  // The receipts Mail past its date keeps: All mail, narrowed to them.
+  const showKeptReceipts = (n: number) => {
+    setAllMailsQuery(""); setAllMailsSlot(null);
+    setAllMailsFinding({ id: KEPT_VIEW, n });
+    setFlat(true);
+  };
+  // ... and "Show the N mails" of a finding: All mail, narrowed to them.
+  const showFindingMails = (id: string, n: number) => {
+    setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
+    setAllMailsQuery(""); setAllMailsSlot(null);
+    setAllMailsFinding({ id, n });
+    setFlat(true);
+  };
 
   // Saved filter presets: unlike selectPreset() above (which ADDS to the
   // selection), tapping one REPLACES the filter query - they are one-tap
@@ -2086,13 +2165,15 @@ export default function App() {
     }
   };
 
-  const blockGroup = async (g: Group, grouping: Grouping = mode) => {
+  // Resolves whether the sender is blocked now (the Weekly check-in counts it).
+  const blockGroup = async (g: Group, grouping: Grouping = mode):
+      Promise<boolean> => {
     const tg = shortcutTarget(grouping, g);
-    if (!tg) return;
+    if (!tg) return false;
     if (!await confirmDialog({
       title: t("confirm.block_title", { label: g.label }),
       body: t("confirm.block_body"), tone: "danger",
-      confirmLabel: t("Block") })) return;
+      confirmLabel: t("Block") })) return false;
     // Declining this second question still blocks - it only skips trashing.
     // A Smart company row holds only the domain's SMALL senders: trash
     // exactly that row (the count the user confirmed), not the whole
@@ -2121,8 +2202,10 @@ export default function App() {
       if (trashExisting && poolOnly) await api.deleteGroups(grouping, [g.key]);
       notify(t("toast.blocked", { label: g.label }), "success");
       refresh();
+      return true;
     } catch (e: any) {
       fail(e);
+      return false;
     }
   };
 
@@ -2691,6 +2774,35 @@ export default function App() {
       goPage("settings");
     },
   })[tool]();
+  // The Weekly check-in hosts each place's own list and actions: every action
+  // is the one the page already has (its confirm, Undo and Activity entry),
+  // never a copy of it.
+  const checkinActions: CheckinActions = {
+    blockGroup: (g) => blockGroup(g, "sender"),
+    // resolves what the move really queued (not the group's count: pinned and
+    // kept-safe mails stay), null when it did not go ahead
+    trashGroup: async (g) => {
+      lastQueued.current = null;
+      const ok = await actOn("sender", state?.groups?.sender ?? {}, [g.key],
+        "trash");
+      return ok ? lastQueued.current ?? 0 : null;
+    },
+    unsubscribe: (g) => unsubscribeOne("sender", g.key),
+    blockAddress, protect: protectSenders, undo: undoEntry, changed: refresh,
+  };
+  // A step that wants a page of its own: the check-in closes (it keeps its
+  // place) and the app opens that page.
+  const checkinGo = (to: CheckinTarget) => {
+    setCheckinOpen(null);
+    if (to.to === "senders") openSendersFiltered(to.query);
+    else if (to.to === "subset") showSendersSubset(to.keys);
+    else if (to.to === "all") openAllMailNewest(to.query);
+    else if (to.to === "kept") showKeptReceipts(to.n);
+    else if (to.to === "mails") showFindingMails(to.id, to.n);
+    else if (to.to === "rules") { setRulesEdit(to.edit ?? ""); openTool("rules"); }
+    else if (to.to === "waiting") openTool("waiting");
+    else openTool("junk");
+  };
   /** Esc / Back from Settings: where it was opened from. */
   const closeSettings = () => goPage(settingsFrom.current ?? DEFAULT_PAGE, true);
   /** Settings > an account > "Move to another account…". */
@@ -3316,26 +3428,14 @@ export default function App() {
           if (h) habitsApi.drop(h.id);
           void habitsApi.reload();
         }}
+        initialEditId={rulesEdit || undefined}
         ai={aiEnabled || demo ? { disabled: demo,
           hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {
           setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
         })}
-        onShowSenders={(keys) => {
-          // the Rule checkup's senders: the Sender list, narrowed to them
-          setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
-          setFlat(false); setMode("sender");
-          setSelected(new Set()); setFocusIdx(-1); cancelFollow();
-          setDetail(null);
-          setFilter("");
-          setSenderSubset(new Set(keys));
-        }}
-        onShowMails={(id, n) => {
-          setRulesOpen(false); setRulesSeed(""); setRulesRecipe(""); setHabitFocus("");
-          setAllMailsQuery(""); setAllMailsSlot(null);
-          setAllMailsFinding({ id, n });
-          setFlat(true);
-        }}
+        onShowSenders={showSendersSubset}
+        onShowMails={showFindingMails}
         onChanged={refresh}
       />
     )}
@@ -3867,6 +3967,7 @@ export default function App() {
             }}
             expired={expired}
             onReviewExpired={() => setExpiredOpen(true)}
+            onStartCheckin={(since) => setCheckinOpen({ since })}
             waiting={waiting} onOpenWaiting={() => openTool("waiting")}
             habits={habits.length}
             onReviewHabits={() => openHabit(habits[0]?.id ?? "")} />
@@ -3974,13 +4075,17 @@ export default function App() {
             openAllMailNewest("is:expired");
           }}
           onShowKept={() => {
-            // the receipts Mail past its date keeps: All mail, narrowed to them
             setExpiredOpen(false);
-            setAllMailsQuery(""); setAllMailsSlot(null);
-            setAllMailsFinding({ id: KEPT_VIEW, n: expired.kept });
-            setFlat(true);
+            showKeptReceipts(expired.kept);
           }}
           onMoved={refresh} />
+      )}
+      {/* The Weekly check-in: a real dialog over whatever page is open. */}
+      {checkinOpen && state && (
+        <WeeklyCheckin key={account} account={account} since={checkinOpen.since}
+          groups={state.groups.sender ?? {}} blockedKeys={blockedAddrs}
+          rules={state.rules ?? []} actions={checkinActions}
+          navigate={checkinGo} onClose={() => setCheckinOpen(null)} />
       )}
       {/* A real dialog over whatever page is open - not a page of the slot. */}
       {unsubSheet && state && (

@@ -19,7 +19,9 @@ rule proposal (`proposal`, the maintainer's decision for the MCP endpoint), the
 notice of a new AI connection (`connection`), a subscription reminder (`reminder`: the person switched that very reminder on,
 so it is theirs; backend/subscriptions.py) and "no answer yet" on a mail you
 sent (`waiting`: a "Remind me" on one mail or "Tell me when a reply is
-overdue", both the person's own switch; backend/waiting.py) - and never to a device that
+overdue", both the person's own switch; backend/waiting.py) and the Monday
+weekly check-in (`checkin`: on for everyone with a device until switched off in
+Settings; backend/checkin.py) - and never to a device that
 reported the app visible a moment ago (presence): the in-app toast covers
 that. Whatever IS sent shows a notification (browsers revoke a subscription
 that gets silent pushes), and carries short generic text - never a subject or
@@ -27,7 +29,9 @@ an address. The one thing a reminder adds is the service's name, the point of
 a reminder the person asked for, plus the amount and date it was announced
 with. A waiting push adds the person's name (or the company's, or just
 "Someone") and the days it has waited - and the mail's subject only when the
-person switched "Show the subject in the notification" on (default off).
+person switched "Show the subject in the notification" on (default off). The
+weekly check-in push names nobody at all: how many places want a look and how
+long that takes.
 
 Files (per tenant, atomic write, tolerant read): push_subscriptions.json,
 `{"subscriptions": [{endpoint, p256dh, auth, lang, origin, created}]}`; the
@@ -447,6 +451,9 @@ STRINGS = {
         "waiting_days_other": "{n} days",
         "waiting_usual_one": "{days} - they usually answer within 1 day.",
         "waiting_usual_other": "{days} - they usually answer within {n} days.",
+        "checkin_one": "Your weekly check-in: {n} thing",
+        "checkin_other": "Your weekly check-in: {n} things",
+        "checkin_body": "About {m} min. Tap to start.",
         "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
                    "Sep", "Oct", "Nov", "Dec"],
         "test": "Notifications work",
@@ -483,6 +490,9 @@ STRINGS = {
         "waiting_days_other": "{n} Tage",
         "waiting_usual_one": "{days} - antwortet sonst innerhalb von 1 Tag.",
         "waiting_usual_other": "{days} - antwortet sonst innerhalb von {n} Tagen.",
+        "checkin_one": "Dein Wochen-Check: {n} Ding",
+        "checkin_other": "Dein Wochen-Check: {n} Dinge",
+        "checkin_body": "Etwa {m} Min. Tippe zum Starten.",
         "months": ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli",
                    "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
         "test": "Benachrichtigungen funktionieren",
@@ -562,9 +572,29 @@ def _waiting_payload(lang: str, account: str, prefix: bool,
             "tag": f"{account}:waiting:{digest}", "url": "/#/waiting"}
 
 
+def _checkin_payload(lang: str, account: str, prefix: bool,
+                     params: dict) -> dict:
+    """Monday's weekly check-in: how many places want a look and how long it
+    takes - nothing else. No name, no subject, no address (a lock screen shows
+    this); the account only when there are several."""
+    t = STRINGS.get(lang) or STRINGS["en"]
+    n = max(0, int(params.get("n") or 0))
+    m = max(1, int(params.get("minutes") or 1))
+    body = " · ".join(p for p in ([account] if prefix else []) + [
+        t["checkin_body"].format(m=m)] if p)
+    return {"title": t["checkin_one" if n == 1 else "checkin_other"].format(
+        n=n), "body": body, "tag": f"{account}:checkin",
+        # the account is named in the link, so the app opens that account's
+        # check-in whichever one it has selected (it is not shown anywhere)
+        "url": "/#/overview/check-in?account="
+        + urllib.parse.quote(account, safe="")}
+
+
 def _payload(lang: str, kind: str, ok: bool, account: str, prefix: bool,
              n: int = 0, label: str = "", params: dict | None = None) -> dict:
     t = STRINGS.get(lang) or STRINGS["en"]
+    if kind == "checkin":
+        return _checkin_payload(lang, account, prefix, params or {})
     if kind == "reminder":
         return _reminder_payload(lang, account, prefix, params or {})
     if kind == "waiting":
@@ -644,6 +674,13 @@ def waiting(acc, **params) -> None:
     "Show the subject in the notification" on - the caller leaves it out
     otherwise. Delivered like `reminder`."""
     job_finished(acc, "waiting", True, **params)
+
+
+def checkin(acc, n: int, minutes: int) -> None:
+    """The Monday weekly check-in (backend/checkin.py): `n` places have
+    something, about `minutes` minutes. Nothing else goes into it - the text
+    names nobody and no mail. Delivered like `reminder`."""
+    job_finished(acc, "checkin", True, n=n, minutes=minutes)
 
 
 def _deliver(acc, kind: str, ok: bool, params: dict) -> None:

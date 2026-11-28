@@ -1,4 +1,5 @@
-import { CalendarX, Check, ChevronRight, Ghost, Hourglass, Info, Mail,
+import { CalendarCheck, CalendarX, Check, ChevronRight, Ghost, Hourglass, Info,
+  Mail,
   MoreHorizontal,
   Newspaper, Paperclip, Repeat, RotateCcw, ShieldAlert, Sparkles, BellOff,
   TrendingDown, TrendingUp, TriangleAlert, UserPlus, X } from "lucide-react";
@@ -477,7 +478,7 @@ const CARD_TILE: Record<string, { icon: ReactNode; tone: TagTone }> = {
  *  confirm, the cross hides a row until it grows - nothing here touches the
  *  mailbox itself. */
 export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
-  onCleanUp, subs, past, habit }: {
+  onCleanUp, subs, past, habit, checkin }: {
   cards: QuickWinCard[];
   /** The "N subscriptions you may not use" line (backend/subscriptions.py);
    *  absent while there is nothing that looks unused. Its Review opens the
@@ -494,6 +495,11 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
    *  outside the top-3 cap and outside "Review N". Absent without a
    *  suggestion (or with the setting off). */
   habit?: { n: number; onReview: () => void } | null;
+  /** The "Weekly check-in" line (backend/checkin.py): the LAST line, after
+   *  the others, outside the top-3 cap and "Review N". `text` = "6 things this
+   *  week · about 2 minutes"; `resume` = a place is kept (Continue). Absent
+   *  while no place has something. */
+  checkin?: { text: string; resume: boolean; onStart: () => void } | null;
   /** Mails + size the union of all cards could free. */
   canGo: { mails: number; size: number };
   onDismiss: (c: QuickWinCard) => void;
@@ -667,6 +673,32 @@ export function NextSteps({ cards, canGo, onDismiss, onReview, onReviewMany,
             <Button variant="tinted" size="sm" className="shrink-0"
               aria-label={`${t("qw.review")}: ${t("habit.next_title")}`}
               onClick={habit.onReview}>{t("qw.review")}</Button>
+          </li>
+        )}
+        {checkin && (
+          <li data-testid="checkin-step"
+            className={`${ROW_LINE} flex items-center gap-3 py-2`}>
+            {/* decorative, like the lines above: not part of "Review N" */}
+            <span aria-hidden className="inline-flex size-8 shrink-0
+              items-center justify-center">
+              <span className="inline-flex size-5 items-center justify-center
+                rounded-full bg-accent text-on-accent">
+                <Check size={14} /></span>
+            </span>
+            <span className="shrink-0"><IconTile tone="safe">
+              <CalendarCheck size={16} /></IconTile></span>
+            <div className="min-w-0 flex-1">
+              <div className="type-body font-medium">
+                {t("overview.checkin_title")}</div>
+              <div className="line-clamp-2 type-meta text-muted">
+                {checkin.text}</div>
+            </div>
+            <Button size="sm" className="shrink-0"
+              aria-label={`${t(checkin.resume ? "checkin.resume"
+                : "checkin.start")}: ${t("overview.checkin_title")}`}
+              onClick={checkin.onStart}>
+              {t(checkin.resume ? "checkin.resume" : "checkin.start")}
+            </Button>
           </li>
         )}
       </ul>

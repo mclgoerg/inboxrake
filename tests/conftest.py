@@ -24,6 +24,7 @@ from backend import auditlog as auditlogmod   # noqa: E402
 from backend import assistanttokens          # noqa: E402
 from backend import auth as authmod            # noqa: E402
 from backend import autoscan as autoscanmod   # noqa: E402
+from backend import checkinstore              # noqa: E402
 from backend import config as cfgmod          # noqa: E402
 from backend import digest as digestmod       # noqa: E402
 from backend import knowledgestore            # noqa: E402
@@ -104,6 +105,9 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(waitstore, "WAITING_PATH", tmp_path / "waiting.json")
     monkeypatch.setattr(waitstore, "SENT_INDEX_PATH",
                         tmp_path / "sent_index.json")
+    monkeypatch.setattr(checkinstore, "CHECKIN_PATH",
+                        tmp_path / "checkin.json")
+    checkinstore._cache.clear()
     monkeypatch.setattr(accountcopy, "ACCOUNT_COPY_PATH",
                         tmp_path / "account_copy.json")
     monkeypatch.setattr(accountcopy, "LEDGER_PATH",

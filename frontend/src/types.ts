@@ -1568,6 +1568,22 @@ export interface WaitingSender {
   usual_days: number | null; subject: string;
 }
 
+/** GET /api/checkin (backend/checkin.py): the Weekly check-in's places that
+ *  have something, in walking order (empty ones are left out). */
+export type CheckinPlace = "new" | "still" | "past" | "waiting" | "rules"
+  | "junk";
+export interface CheckinResp {
+  /** the window of Overview's Last week card (`since` = since the last visit) */
+  window: "week" | "since";
+  from: number;
+  steps: { id: CheckinPlace; n: number }[];
+  /** the number of places = "N things" */
+  things: number;
+  minutes: number;
+}
+/** GET|POST /api/checkin/settings: the per-user Monday push (on by default). */
+export interface CheckinSettingsResp { push: boolean }
+
 /** GET /api/overview: counts behind the Overview, one account. */
 export interface OverviewResp {
   now: number;

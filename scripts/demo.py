@@ -72,6 +72,7 @@ os.environ.update(
     SENDER_CHANGES_PATH=str(DATA / "sender_changes.json"),
     WAITING_PATH=str(DATA / "waiting.json"),
     SENT_INDEX_PATH=str(DATA / "sent_index.json"),
+    CHECKIN_PATH=str(DATA / "checkin.json"),
     KNOWN_SENDERS_PATH=str(DATA / "known_senders.json"),
     PRESETS_PATH=str(DATA / "presets.json"),
     AUTOSCAN_PATH=str(DATA / "autoscan.json"),

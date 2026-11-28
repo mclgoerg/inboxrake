@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { restoreScrollOnNext, useScrollPerPage, hashOf, isTabPage, isToolPage, TOOL_TAB, parseHash, parseSettingsRoute, settingsHash, useNav,
+import { restoreScrollOnNext, useScrollPerPage, hashOf, checkinHashAccount, isCheckinHash, isTabPage, isToolPage, TOOL_TAB, parseHash, parseSettingsRoute, settingsHash, useNav,
   type Page } from "./nav";
 
 beforeEach(() => { window.location.hash = ""; });
@@ -218,4 +218,28 @@ test("isConnectHash is the consent page route and nothing that merely starts lik
   expect(isConnectHash("#/connect?x=1")).toBe(true);
   for (const h of ["", "#/", "#/connections", "#/settings/connect", "#connect"])
     expect(isConnectHash(h)).toBe(false);
+});
+
+test("the weekly check-in's link is the Overview with a second segment", () => {
+  // the digest mail's button and the Monday push lead here: the page is the
+  // Overview (whatever view was kept), the app opens the stepper over it
+  expect(isCheckinHash("#/overview/check-in")).toBe(true);
+  expect(isCheckinHash("#/overview/check-in?x=1")).toBe(true);
+  expect(isCheckinHash("#/overview/check-in/")).toBe(true);
+  expect(parseHash("#/overview/check-in")).toBe("overview");
+  for (const other of ["", "#/overview", "#/overview/check", "#/senders",
+    "#/overview/check-ins", "#/check-in"]) {
+    expect(isCheckinHash(other)).toBe(false);
+  }
+});
+
+test("a check-in link names its account, or none", () => {
+  expect(checkinHashAccount("#/overview/check-in?account=work")).toBe("work");
+  expect(checkinHashAccount("#/overview/check-in?account=Work%20%26%20mail"))
+    .toBe("Work & mail");
+  expect(checkinHashAccount("#/overview/check-in?x=1&account=b")).toBe("b");
+  for (const none of ["#/overview/check-in", "#/overview/check-in?",
+    "#/overview/check-in?account=", "#/overview/check-in?other=a", ""]) {
+    expect(checkinHashAccount(none)).toBeNull();
+  }
 });

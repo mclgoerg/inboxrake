@@ -22,8 +22,8 @@ from pathlib import Path
 
 from conftest import FakeIMAP, make_msg
 from backend import (accounts, aliasservice, bodyindex, copystore, demo,
-                     knowledgestore, mailops, pinstore, rules, unsubstore,
-                     verdictstore, waitstore)
+                     knownsenders, knowledgestore, mailops, pinstore, rules,
+                     unsubstore, verdictstore, waitstore)
 from backend import config as cfgmod
 
 if "CONFIG_PATH" not in os.environ:
@@ -1886,6 +1886,21 @@ def generate() -> dict:
         st = mailops.public_state(acc)
         print(f"[demo] {name}: {len(st['groups']['sender'])} senders, "
               f"{sum(g['count'] for g in st['groups']['sender'].values())} mails")
+    # New senders (Overview's Last week row and the Weekly check-in's first
+    # step): a dozen of the small senders turned up this week. The scans above
+    # are the baseline (every sender known since forever), so their first-seen
+    # times are set by hand, spread over the last five days; the ones you can
+    # unsubscribe from come first, so the step shows all three of its buttons.
+    _groups = mailops.public_state(accounts.get("proton"))["groups"]["sender"]
+    _small = sorted(((not g["unsub"], g["count"], key)
+                     for key, g in _groups.items()
+                     if not g["protected"] and not g["unsubscribed"]
+                     and not g.get("still_mailing")))
+    _known = knownsenders._read()
+    for _i, (_no_unsub, _n, _key) in enumerate(_small[:12]):
+        _known["accounts"]["proton"]["addrs"][_key] = int(
+            NOW - (0.5 + _i % 5) * 86400)
+    knownsenders._write(_known)
     # Waiting for a reply: "No answer needed" on one mail and a reminder on the
     # tax advisor's, as the board shows.
     waitstore.set_needed("<wait-nn@demo.example>", True, "proton")

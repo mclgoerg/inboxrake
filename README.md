@@ -200,7 +200,10 @@ its date - old sign-in codes, updates of parcels that have arrived,
 reminders of things that are over, ended offers, and the automatic mail -
 out-of-office replies, delivery failures, read receipts and calendar answers
 - found from the subject, the date and the mail's headers, with the receipts
-kept), five views (Sender, Smart
+kept; and a weekly check-in that walks you through everything that needs you
+- new senders, senders still mailing, mail past its date, overdue replies,
+the rule checkup, Junk - in about two minutes, with an optional Monday
+notification), five views (Sender, Smart
 pools of small senders, Subject, Thread, all mails), a sender detail and a
 mail reader that loads no remote content (a sender that mixes ads, order
 confirmations and shipping updates shows what it sends, so you can trash one

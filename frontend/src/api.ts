@@ -5,6 +5,7 @@ import type {
   AccountSummary, AllAccountsResp, AddressReport, AddressRetired, AdminTenantStats, AliasServiceStatus, AiFilterResult, AiGroupResult, AppState, AttMail, AuditBy, AuditResp, AuthProbe,
   KnowledgeList, KnowledgeSaved, KnowledgeSrc, SenderLabels, Verdict,
   AttSummary, Config, ConversationResp, DupKind, DupSet, DupSummary, FilterPreset, FoldersResp, Grouping, IndexInfo, TrackerReport,
+  CheckinResp, CheckinSettingsResp,
   ExpiredResp, Mail, MessageDetail, SubReminder, SubscriptionsResp,
   WaitingDetail, WaitingReminder, WaitingResp, WaitingSender,
   WaitingSettingsResp,
@@ -931,6 +932,16 @@ export const api = {
   waitingSettings: (patch: Partial<WaitingSettingsResp>, account?: string) =>
     req<WaitingSettingsResp>(forAccount("/api/waiting/settings", account),
       patch),
+  // The Weekly check-in (backend/checkin.py): which places have something
+  // (the window of Overview's Last week card: `since` = epoch s of the
+  // previous visit, else the last 7 days) and the Monday push switch.
+  checkin: (since?: number | null) =>
+    req<CheckinResp>("/api/checkin"
+      + (since == null ? "" : `?since=${Math.floor(since)}`)),
+  checkinSettingsGet: () =>
+    req<CheckinSettingsResp>("/api/checkin/settings"),
+  checkinSettings: (patch: Partial<CheckinSettingsResp>) =>
+    req<CheckinSettingsResp>("/api/checkin/settings", patch),
   // Your addresses (backend/addresses.py) and the optional alias service
   addresses: () => req<AddressReport>("/api/addresses"),
   addressesSummary: () =>

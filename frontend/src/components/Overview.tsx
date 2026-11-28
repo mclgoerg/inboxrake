@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cleanedWeeks, entriesSince, WEEK_S } from "../activity";
 import { api } from "../api";
+import { lineText, loadProgress } from "../checkin";
 import { nowMs } from "../clock";
 import { t } from "../i18n";
 import { fmtSize } from "../lib";
@@ -11,7 +12,7 @@ import { computeQuickWins, isDismissed, loadDismissed, MIN_BYTES, MIN_MAILS,
   saveDismissed, unionTotals, type Dismissed, type QuickWinCard }
   from "../quickwins";
 import { fmtMoney, unusedNames } from "../subscriptions";
-import type { AuditEntry, ExpiredResp, Group, OverviewResp, Rule,
+import type { AuditEntry, CheckinResp, ExpiredResp, Group, OverviewResp, Rule,
   SubscriptionsResp, WaitingSummary } from "../types";
 import { BalanceCard, CARD, CardHead, KindsCard, LastWeekCard, NextSteps,
   type WeekRange } from "./OverviewCards";
@@ -87,6 +88,10 @@ export interface OverviewProps {
   habits?: number;
   /** Review of that line: the Rules page, at the suggestions. */
   onReviewHabits?: () => void;
+  /** Start of the Weekly check-in, after every other Next steps line;
+   *  `since` = the previous visit (ms) while the Last week card shows "since
+   *  your last visit", else null. Without it there is no line. */
+  onStartCheckin?: (since: number | null) => void;
 }
 
 /** First-run guidance in place of the figures (setup not done / sign-in
@@ -202,6 +207,42 @@ function useOverviewData(account: string, rev: number,
     retry: () => setTries((n) => n + 1) };
 }
 
+/** The Weekly check-in's places that have something (`/api/checkin`) over the
+ *  window of the Last week card (`since` = ms of the previous visit while the
+ *  card shows "since your last visit", else the last 7 days). Fetched when the
+ *  account, its last scan or the window changes, and - at most every
+ *  REFETCH_MS - after an action. Null while unknown or failed (no line). */
+function useCheckin(account: string, rev: number, scannedTs: number | null,
+    since: number | null, on: boolean): CheckinResp | null {
+  const [data, setData] = useState<CheckinResp | null>(null);
+  const last = useRef(0);
+  const ask = useRef(0);
+  useEffect(() => { setData(null); }, [account]);
+  const load = useCallback(() => {
+    const me = ++ask.current;
+    last.current = Date.now();
+    Promise.resolve()
+      .then(() => api.checkin(since === null ? null : since / 1000))
+      .then((d) => { if (me === ask.current) setData(d); })
+      .catch(() => { /* no line */ });
+  }, [since]);
+  useEffect(() => {
+    if (on) load();
+    return () => { ask.current++; };
+  }, [account, since, on, scannedTs, load]);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (!on) return;
+    const wait = Math.max(0, last.current + REFETCH_MS - Date.now());
+    if (wait === 0) { load(); return; }
+    const h = setTimeout(load, wait);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rev]);
+  return data;
+}
+
 /** The moment of the previous visit of `account` (ms; null = none yet).
  *  Leaving the Overview - or the page - records the visit. */
 function usePreviousVisit(account: string): number | null {
@@ -233,6 +274,10 @@ export function Overview(p: OverviewProps) {
   const { data, cleaned, cleanedFloor, failed, retry } = useOverviewData(
     account, p.rev, p.scannedTs, p.rules, since,
     p.phase === "data" && groups.length > 0);
+  // the Weekly check-in follows the window the Last week card shows
+  const checkinSince = since !== null && range === "since" ? since : null;
+  const checkin = useCheckin(account, p.rev, p.scannedTs, checkinSince,
+    p.phase === "data" && groups.length > 0 && !!p.onStartCheckin);
   const totals = useMemo(() => totalsOf(groups), [groups]);
   const trend = useMemo(
     () => trendOf(data?.trend ?? null, totals.size, nowMs()),
@@ -273,7 +318,14 @@ export function Overview(p: OverviewProps) {
   // Review (it never joins the cards either)
   const habitLine = (p.habits ?? 0) > 0 && p.onReviewHabits
     ? { n: p.habits!, onReview: p.onReviewHabits } : null;
-  const hasNext = cards.length > 0 || !!subsLine || !!pastLine || !!habitLine;
+  // The Weekly check-in: the very last line, only while some place has
+  // something; "Continue" while a place is kept for this week
+  const checkinLine = checkin && checkin.things > 0 && p.onStartCheckin ? {
+    text: lineText(checkin.things, checkin.minutes, checkin.window),
+    resume: loadProgress(account, nowMs()) !== null,
+    onStart: () => p.onStartCheckin?.(checkinSince) } : null;
+  const hasNext = cards.length > 0 || !!subsLine || !!pastLine || !!habitLine
+    || !!checkinLine;
   const dismiss = (c: QuickWinCard) => {
     const next = { ...dismissed, [c.def.id]: c.mails };
     saveDismissed(account, next);
@@ -298,7 +350,7 @@ export function Overview(p: OverviewProps) {
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
                 onCleanUp={p.onCleanUp} subs={subsLine} past={pastLine}
-                habit={habitLine} />
+                habit={habitLine} checkin={checkinLine} />
             </div>
           )}
         </div>
