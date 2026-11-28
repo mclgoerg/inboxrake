@@ -89,6 +89,16 @@ TEXT: dict[str, str | tuple[str, str]] = {
         'The files are too big for one download (over {mb} MB). Remove them without downloading, or choose fewer.',
     'rm_failed':
         'The files could not be removed. Mails that were not finished are untouched.',
+    'docs_not_scanned':
+        'Scan the account first.',
+    'docs_gone':
+        'That document is not in the list any more. Scan again and reopen the page.',
+    'docs_changed':
+        'The mail on the server is not the one the scan saw. Scan again, then try again.',
+    'docs_too_big':
+        'That mail is bigger than {mb} MB, so it cannot be downloaded here.',
+    'docs_failed':
+        'The file could not be fetched from your mail server. Nothing was changed.',
     'undo_through_removal':
         'That restore brought back mails whose files Inboxrake had taken out, so it cannot be undone as one step. Nothing was moved: the originals are back in their folders - take the files out again if you want them gone.',
     'copy_unfinished':

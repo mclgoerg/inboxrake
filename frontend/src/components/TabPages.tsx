@@ -1,4 +1,5 @@
 import { AtSign, BarChart3, Boxes, ChevronRight, ClipboardList, Clock, Copy, Eye,
+  FileText,
   FolderTree,
   Ghost, History, Hourglass, Layers, LayoutGrid, Paperclip, Play, Repeat, ShieldAlert,
   Sparkles, Trash2, Wand2 }
@@ -9,13 +10,14 @@ import { nowDate } from "../clock";
 import { fmtNum, fmtPct } from "../numfmt";
 import { getLang, t } from "../i18n";
 import { fmtAgo, fmtSizeGb } from "../lib";
+import { latestYear, yearOf } from "../documents";
 import { biggestSenders, totalsOf } from "../overview";
 import { computeQuickWins, isDismissed, loadDismissed, splitTotals } from "../quickwins";
 import { openProposals } from "../proposals";
 import { senderItem, toneOf } from "../spacemap";
 import { monthlyText } from "../subscriptions";
 import { squarify } from "../treemap";
-import type { AppState, AuditEntry, DupSummary, Group, StatsResp,
+import type { AppState, AuditEntry, DocsSummary, DupSummary, Group, StatsResp,
   SubscriptionsResp, TrackerReport, WaitingSummary, WrappedResp,
   YourFoldersResp }
   from "../types";
@@ -42,7 +44,7 @@ import { Avatar, Button, LINK_ACCENT, MiniBars, Ring }
 export type TabTool = "triage" | "duplicates" | "attachments" | "rules"
   | "junk" | "trash" | "stats" | "space" | "wrapped" | "trackers"
   | "subscriptions" | "addresses" | "waiting" | "accounts" | "activity"
-  | "yourfolders";
+  | "yourfolders" | "documents";
 
 /** Legend / bar colour of each quick-win source (semantic tokens). */
 const SOURCE_FILL: Record<string, string> = {
@@ -730,7 +732,57 @@ export function InsightsPage({ groups, state, subs, waiting, accounts, onOpen,
       {accounts && accounts.length >= 2 && (
         <AllAccountsCard names={accounts} onOpen={() => onOpen("accounts")} />
       )}
+
+      {/* the very last card: Your documents (after All accounts when it is
+          there) */}
+      <DocumentsCard state={state} onOpen={() => onOpen("documents")} />
     </div>
+  );
+}
+
+/** The last card of the Insights tab: opens Your documents. It reads the same
+ *  summary the page does (the scan and the attachment analysis - nothing is
+ *  asked of the mail server) and changes nothing. */
+function DocumentsCard({ state, onOpen }: {
+  state: AppState | null; onOpen: () => void;
+}) {
+  const [data, setData] = useState<DocsSummary | null>(null);
+  const account = state?.account ?? "";
+  const scan = state?.scanned_ts ?? null;
+  const analysis = state?.atts?.status;
+  const done = state?.status === "done";
+  useEffect(() => {
+    if (!done) { setData(null); return; }
+    let alive = true;
+    Promise.resolve().then(() => api.documentsSummary())
+      .then((d) => alive && setData(d))
+      .catch(() => alive && setData(null));
+    return () => { alive = false; };
+  }, [account, scan, analysis, done]);
+  const year = yearOf(data, latestYear(data));
+  return (
+    <button type="button" onClick={onOpen} className={CARD_BTN}>
+      <WidgetTitle icon={<FileText size={16} />} chevron>
+        {t("docs.menu")}
+      </WidgetTitle>
+      {year ? (
+        <>
+          <span className="mt-2 block type-meta font-semibold text-body">
+            {t("docs.card_line", { files: t("docs.n_files", { n: year.files }),
+              year: year.year })}
+          </span>
+          <span className="block type-meta text-muted">
+            {t("docs.card_invoices", { n: year.kinds.invoices.files })}
+          </span>
+        </>
+      ) : (
+        <span className="mt-2 block type-meta text-muted">
+          {!data ? t("docs.card_sub")
+            : !data.analyzed ? t("docs.card_analyze")
+            : t("docs.card_none")}
+        </span>
+      )}
+    </button>
   );
 }
 

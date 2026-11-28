@@ -187,7 +187,7 @@ const insights = (accounts?: string[]) => {
   return onOpen;
 };
 
-test("Insights: the card is the last one, after Waiting for a reply", async () => {
+test("Insights: the card follows Waiting for a reply, Your documents comes after it", async () => {
   const onOpen = insights(["a", "b", "c", "d"]);
   const card = await screen.findByRole("button", { name: /^All accounts/ });
   await waitFor(() => expect(card.textContent).toContain("4 mailboxes · 7.3 GB"));
@@ -195,7 +195,10 @@ test("Insights: the card is the last one, after Waiting for a reply", async () =
   const waiting = screen.getByRole("button", { name: /^Waiting for a reply/ });
   expect(waiting.compareDocumentPosition(card)
     & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(card.parentElement!.lastElementChild).toBe(card);
+  // only Your documents (the page after it) comes later
+  expect(card.nextElementSibling).toBe(
+    screen.getByRole("button", { name: /^Your documents/ }));
+  expect(card.parentElement!.lastElementChild).toBe(card.nextElementSibling);
   for (const name of [/^Statistics/, /^Subscriptions/, /^Your addresses/])
     expect(screen.getByRole("button", { name })).toBeTruthy();
   fireEvent.click(card);
