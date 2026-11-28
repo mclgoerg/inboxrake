@@ -53,7 +53,7 @@ def test_bulk_one_click_post_and_link(bridge, monkeypatch):
     groups = mailops.public_state()["groups"]["sender"]
     shop_g = groups["news@shop.example"]["unsubscribed"]
     assert shop_g == {"n": 1, "of": 1, "status": "done", "link": "",
-                      "addr": ""}
+                      "addr": "", "ts": shop["ts"]}
     dhl_g = groups["noreply@dhl.example"]["unsubscribed"]
     assert dhl_g["status"] == "link" and dhl_g["addr"] == "noreply@dhl.example"
     assert dhl_g["link"].startswith("https://dhl.example/")
