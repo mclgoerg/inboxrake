@@ -562,10 +562,10 @@ export interface Rule {
    *  "mcp": an AI assistant proposed it (a proposal while it is in report
    *  mode; still "mcp" once the user approved it, "manual" after an edit). */
   origin: "manual" | "block" | "auto_empty" | "mcp" | "mute";
-  /** A mute ("Mute this conversation"): the conversation's key and the date
-   *  from which its mail counts as new (the senders it remembers stay on the
-   *  server). Its action is "archive_read" - archive and mark read. */
-  mute?: { key: string; since: number };
+  /** A mute ("Mute this conversation"): the conversation's key, every key it
+   *  has had since (a reply can change a thread's key), and the date from which
+   *  its mail counts as new (the senders it remembers stay on the server). Its action is "archive_read" - archive and mark read. */
+  mute?: { key: string; keys?: string[]; since: number };
   /** Which assistant token proposed it, and when (kept as history after an
    *  edit). */
   proposed_by?: { token_id: string; name: string; at: number };

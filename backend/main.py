@@ -2387,13 +2387,17 @@ class MuteBody(BaseModel):
 
 
 def _mute_rule_of(acc, key: str) -> dict | None:
-    """The mute rule of this conversation in this account, if there is one."""
-    query = mutemod.query_of({"key": key})
-    return next((r for r in rulesmod.load_rules()
-                 if r.get("origin") == rulesmod.ORIGIN_MUTE
-                 and r.get("query") == query
-                 and (r.get("account") or accountsmod.default_name())
-                 == acc.name), None)
+    """The mute rule of this conversation in this account, if there is one:
+    by a key the conversation had, or by the Message-IDs its mails carry (a
+    reply can change the key of a thread that is the same conversation)."""
+    for r in rulesmod.load_rules():
+        if r.get("origin") != rulesmod.ORIGIN_MUTE or (
+                r.get("account") or accountsmod.default_name()) != acc.name:
+            continue
+        info = mutemod.clean_info(r.get("mute"))
+        if info is not None and mutemod.same_conversation(acc, info, key):
+            return r
+    return None
 
 
 def _mute_now(acc, key: str) -> tuple[dict, bool]:

@@ -2130,7 +2130,9 @@ export default function App() {
   const muteRuleIds = useMemo(() => {
     const out = new Map<string, string>();
     for (const r of state?.rules ?? []) {
-      if (r.origin === "mute" && r.mute?.key) out.set(r.mute.key, r.id);
+      if (r.origin !== "mute" || !r.mute) continue;
+      // (a reply can change a thread's key: the mute knows every key it had)
+      for (const k of r.mute.keys ?? [r.mute.key]) out.set(k, r.id);
     }
     return out;
   }, [state?.rules]);
@@ -2141,7 +2143,11 @@ export default function App() {
   const muteConversation = async (key: string): Promise<boolean> => {
     try {
       const preview = await api.mutePreview(key);
-      if (preview.muted) { refresh(); return false; }   // muted meanwhile
+      if (preview.muted) {                         // muted meanwhile
+        notify(t("ferr.mute_already"));
+        refresh();
+        return false;
+      }
       const answer = await askMute(preview);
       if (!answer) return false;
       const r = await api.mute(key,
@@ -2149,9 +2155,11 @@ export default function App() {
       if (r.archive_error) {
         notify(t("mute.archive_failed", { msg: r.archive_error }), "error");
       } else {
+        // (no Archive folder: the mail is only marked as read)
+        const read = preview.archive ? "" : "_read";
         notify(r.queued
-          ? t("toast.muted_n", { label: preview.label, n: r.queued })
-          : t("toast.muted", { label: preview.label }), "success");
+          ? t(`toast.muted${read}_n`, { label: preview.label, n: r.queued })
+          : t(`toast.muted${read}`, { label: preview.label }), "success");
       }
       refresh();
       return true;

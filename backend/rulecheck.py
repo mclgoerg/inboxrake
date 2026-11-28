@@ -90,18 +90,19 @@ def _mute_plan(rule: dict, acc, pinned_all: set[str]) -> dict:
     info = mutemod.clean_info(rule.get("mute"))
     if info is None:
         return plan
-    conv = mutemod.conversation(acc, info["key"])
+    conv = mutemod.conversation(acc, info["key"], info=info)
     if conv is None:
         return plan
     with acc.lock:
         archive = acc.folder_roles.get("archive")
     now = mutemod.plan(
-        acc, info["key"], senders=frozenset(info["senders"]),
+        acc, info["key"], info=info, senders=frozenset(info["senders"]),
         after=info["since"], unread_only=not archive, pinned=pinned_all,
         protected=cfgmod.normalize_protected(
-            cfgmod.load_config().get("protected")))
+            cfgmod.load_config().get("protected")),
+        done=frozenset(info["done"]))
     plan.update(acts=set(now["items"][:rulesmod.RULE_CAP]),
-                wanted=conv["mails"], keys=[info["key"]],
+                wanted=conv["mails"], keys=[conv["key"]],
                 protected=now["protected"], pinned=now["pinned"],
                 after_pin=len(now["items"]))
     return plan

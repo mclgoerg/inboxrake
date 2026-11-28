@@ -112,8 +112,10 @@ def test_the_demo_has_a_muted_conversation(seed):
     group = st["groups"]["thread"][key]
     assert group["label"] == "Team dinner on Friday" and group["count"] == 5
     assert rule["last_run"]["acted"] == 2
-    # the API shows the key and the date only, never the senders it keeps
-    assert set(rule["mute"]) == {"key", "since"}
+    # the API shows the keys and the date only, never the senders, the
+    # Message-IDs or the handled mails it keeps
+    assert set(rule["mute"]) == {"key", "keys", "since"}
+    assert rule["mute"]["keys"] == [key]
 
 
 @pytest.mark.parametrize("stamp", [

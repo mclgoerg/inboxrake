@@ -67,6 +67,16 @@ test("pinned and protected mail already there is counted as left alone",
     expect(screen.getByText(
       "Left alone now: 1 pinned, 2 from protected senders.")).toBeTruthy();
     cleanup();
+    // only the parts that are not zero
+    show(preview({ pinned: 0, protected: 3 }));
+    expect(screen.getByText("Left alone now: 3 from protected senders."))
+      .toBeTruthy();
+    expect(screen.queryByText(/0 pinned/)).toBeNull();
+    cleanup();
+    show(preview({ pinned: 2, protected: 0 }));
+    expect(screen.getByText("Left alone now: 2 pinned.")).toBeTruthy();
+    expect(screen.queryByText(/protected senders\./)).toBeNull();
+    cleanup();
     show();
     expect(screen.queryByText(/Left alone now/)).toBeNull();
   });
@@ -134,7 +144,7 @@ test("German: the same dialog, in du-form", () => {
     .toBeTruthy();
   expect(within(dlg).getByText(/Nichts wird je in den Papierkorb/))
     .toBeTruthy();
-  expect(within(dlg).getByText(/Bleibt jetzt unangetastet: 1 angeheftete, 1 von geschützten/))
+  expect(within(dlg).getByText(/Bleibt jetzt unangetastet: 1 angeheftet, 1 von geschützten Absendern\./))
     .toBeTruthy();
   expect(within(dlg).getByRole("button", { name: "Abbrechen" })).toBeTruthy();
   expect(within(dlg).getByRole("button", { name: "Stummschalten" })).toBeTruthy();

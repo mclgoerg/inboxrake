@@ -600,14 +600,24 @@ def _normalise(r: dict) -> bool:
         r["origin"] = "manual"           # nor can it fake an assistant
     if r["origin"] == ORIGIN_MUTE:
         info = mute.clean_info(r.get("mute"))
-        if (r.get("scope", "mail") != "mail" or r.get("grouping") != "thread"
-                or r.get("action") != ARCHIVE_READ or info is None
-                or r.get("query") != mute.query_of(info)):
-            # a hand-edited file cannot make a mute out of anything else;
-            # what is left has an action no run accepts (see `run_rule`)
-            r["origin"] = "manual"
+        if r.get("scope", "mail") != "mail":
+            r["origin"] = "manual"       # (the purge rules' own checks apply)
         else:
-            r["mute"] = info
+            # A mute stays a mute, with the action and the schedule of one -
+            # never an ordinary Thread rule, which would archive the whole
+            # conversation: an older release may have accepted an edit that
+            # also named a known action (it knows no mute and sent the rule
+            # back to Report only). It is armed again by the user's own
+            # report -> Active, like any edited rule.
+            r["action"] = ARCHIVE_READ
+            r["dest"] = ""
+            r["keep_latest"] = r["older_than_days"] = r["only_kind"] = None
+            if r.get("schedule") not in MUTE_SCHEDULES:
+                r["schedule"] = "manual"
+            if info is not None:
+                r["mute"] = info
+            # (a record or a filter that is no mute's - a hand edit - is a
+            # mute no run accepts: see `_run_mute`)
     r.setdefault("scope", "mail")        # tolerate pre-purge rules.json
     r.setdefault("report_at", None)
     r.setdefault("reset_reason", "")
@@ -705,11 +715,9 @@ def _save(rules: list[dict]) -> None:
         if r.get("scope", "mail") != "mail" \
                 and r.get("action") != PURGE_ACTION:
             raise ValueError("a Junk / Trash rule can only purge")
-        # ... and a mute must carry the action (and the `thread:` word) an
-        # older release rejects, whatever happened to the rule in memory
-        if r.get("origin") == ORIGIN_MUTE and (
-                r.get("action") != ARCHIVE_READ
-                or not parse_filter(r.get("query", ""))["thread"]):
+        # ... and a mute must carry the action an older release rejects,
+        # whatever happened to the rule in memory
+        if r.get("origin") == ORIGIN_MUTE and r.get("action") != ARCHIVE_READ:
             raise ValueError("a mute rule can only archive and mark read")
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1465,11 +1473,14 @@ def _await_job(completion: dict, queued: dict, result: dict) -> None:
             if result["acted"] else cause)
 
 
-def _remember_handled(rule_id: str, msgids: list[str]) -> None:
+def _remember_handled(rule_id: str, msgids: list[str],
+                      key: str | None = None) -> None:
     """The mails a mute run handled (by Message-ID; a mail without one cannot
-    be remembered), kept on the rule, the newest `mute.DONE_MAX`."""
+    be remembered), kept on the rule, the newest `mute.DONE_MAX` - and the
+    key its conversation has in the scan now, when it changed (see
+    mute.py)."""
     ids = [i for i in msgids if i]
-    if not ids:
+    if not ids and key is None:
         return
     with _LOCK:
         rules = load_rules()
@@ -1477,18 +1488,26 @@ def _remember_handled(rule_id: str, msgids: list[str]) -> None:
         info = mute.clean_info(rule.get("mute")) if rule else None
         if rule is None or info is None:
             return
-        info["done"] = list(dict.fromkeys(info["done"] + ids))[-mute.DONE_MAX:]
+        before = info
+        if ids:
+            info = {**info, "done": list(dict.fromkeys(
+                info["done"] + ids))[-mute.DONE_MAX:]}
+        if key is not None:
+            info = mute.with_key(info, key) or info
+        if info == before:
+            return
         rule["mute"] = info
         _save(rules)
 
 
 def public(rule: dict) -> dict:
     """The rule as the API and the UI get it: a mute's record is cut down to
-    its key and date (the senders and the handled mails stay on the server)."""
+    its keys and date (the senders, the Message-IDs and the handled mails stay
+    on the server)."""
     info = rule.get("mute")
     if not isinstance(info, dict):
         return rule
-    return {**rule, "mute": {k: info[k] for k in ("key", "since")
+    return {**rule, "mute": {k: info[k] for k in ("key", "keys", "since")
                              if k in info}}
 
 
@@ -1508,10 +1527,14 @@ def _run_mute(rule: dict, acc, result: dict, quiet: bool) -> bool:
     pinned = pinstore.load_account(acc.name)
     with acc.lock:
         archive = acc.folder_roles.get("archive")
-    plan = mute.plan(acc, info["key"], senders=frozenset(info["senders"]),
+    plan = mute.plan(acc, info["key"], info=info,
+                     senders=frozenset(info["senders"]),
                      after=info["since"], unread_only=not archive,
                      pinned=pinned, protected=plist,
                      done=frozenset(info["done"]))
+    if plan["found"] and plan["key"] not in info["keys"]:
+        # the conversation's key changed (see mute.py): remember the new one
+        _remember_handled(rule["id"], [], key=plan["key"])
     items = plan["items"]
     if quiet and not items:
         return False
@@ -1521,7 +1544,7 @@ def _run_mute(rule: dict, acc, result: dict, quiet: bool) -> bool:
         capped=len(items) - len(picked),
         # (mails here, not groups: a conversation is one group)
         skipped_protected=plan["protected"], skipped_pinned=plan["pinned"],
-        preview=[{"key": info["key"], "label": plan["label"],
+        preview=[{"key": plan["key"], "label": plan["label"],
                   "count": len(items)}] if items else [])
     if not archive:
         result["read_only"] = True
@@ -1559,28 +1582,40 @@ AFTER_SCAN_POLL = 1.0     # ... and how often it asks again
 
 
 def after_scan(acc) -> None:
-    """A scan of `acc` ended: run this account's active "after each scan"
-    rules (the mutes), each quietly - a run with nothing to do leaves no trace.
-    In a thread of its own (never holds up the scan, and a rule run that is in
-    progress - maybe the very one that asked for this scan - finishes first).
-    Never raises; does nothing in the demo (it never scans)."""
+    """A scan of `acc` ended: every mute of the account notes the key its
+    conversation has now (so the menus still see it as muted), and its active
+    "after each scan" rules run, each quietly - a run with nothing to do leaves
+    no trace. In a thread of its own (never holds up the scan, and a rule run
+    that is in progress - maybe the very one that asked for this scan -
+    finishes first). Never raises; does nothing in the demo (it never
+    scans)."""
     try:
         if demo.enabled():
             return
         default = accounts.default_name()
-        ids = [r["id"] for r in load_rules()
-               if r.get("schedule") == AFTER_SCAN
-               and r.get("origin") == ORIGIN_MUTE and r.get("mode") == "execute"
-               and (r.get("account") or default) == acc.name]
-        if ids:
-            threading.Thread(target=tenants.call_in,
-                             args=(acc.tenant, _after_scan_runs, ids),
-                             daemon=True).start()
+        mutes = [r for r in load_rules() if r.get("origin") == ORIGIN_MUTE
+                 and (r.get("account") or default) == acc.name]
+        if mutes:
+            ids = [r["id"] for r in mutes if r.get("schedule") == AFTER_SCAN
+                   and r.get("mode") == "execute"]
+            threading.Thread(
+                target=tenants.call_in,
+                args=(acc.tenant, _after_scan_runs, acc,
+                      [r["id"] for r in mutes], ids), daemon=True).start()
     except Exception:
         log.exception("could not start the runs after the scan")
 
 
-def _after_scan_runs(ids: list[str]) -> None:
+def _after_scan_runs(acc, mutes: list[str], ids: list[str]) -> None:
+    for rule_id in mutes:
+        try:
+            rule = next((r for r in load_rules() if r["id"] == rule_id), None)
+            info = mute.clean_info(rule.get("mute")) if rule else None
+            key = mute.current_key(acc, info) if info else None
+            if key is not None and key not in info["keys"]:
+                _remember_handled(rule_id, [], key=key)
+        except Exception:
+            log.exception("mute %s could not follow its conversation", rule_id)
     for rule_id in ids:
         deadline = time.monotonic() + AFTER_SCAN_WAIT
         while True:

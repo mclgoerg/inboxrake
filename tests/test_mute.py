@@ -111,6 +111,156 @@ def mail(bridge, folder, uid):
     return next(m for m in bridge.mailbox[folder] if m["uid"] == uid)
 
 
+# ------------------------------------------------ a key that changes with a reply
+
+# A thread's key is the hash of the smallest first References entry. With
+# replies that list only their parent, the second reply after the mute makes
+# another id the smallest root: the key changes, the conversation does not.
+ZZ, YY, XX, WW = "<zz1@x>", "<yy2@x>", "<xx3@x>", "<ww4@x>"
+
+
+@pytest.fixture
+def drifting(bridge):
+    bridge.mailbox["INBOX"] += [
+        make_msg(30, frm=ALICE, subject="Plan", msgid=ZZ,
+                 date=stamp(-5 * 86400)),
+        make_msg(31, frm=BOB, subject="Re: Plan", msgid=YY, irt=ZZ, refs=ZZ,
+                 date=stamp(-4 * 86400))]
+    mailops.run_scan()
+    return bridge
+
+
+def parent_only(uid, frm, msgid, parent, delta=120, **kw):
+    return make_msg(uid, frm=frm, subject="Re: Plan", msgid=msgid, irt=parent,
+                    refs=parent, date=stamp(delta), **kw)
+
+
+def test_the_conversations_key_changes_with_a_parent_only_reply(drifting):
+    first = key_of()
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    mailops.run_scan()
+    assert key_of() != first                       # (the premise)
+
+
+def test_a_mute_follows_its_conversation_when_the_key_changes(drifting):
+    first = key_of()
+    rid = do_mute()["rule"]["id"]
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    scan_and_settle()
+    second = key_of()
+    assert second != first
+    # the reply (from a participant) is archived and read, like any new mail
+    assert 50 in uids(drifting, "Archive")
+    assert mail(drifting, "Archive", 50)["seen"] is True
+    # ... the rule's filter stays what it was; it knows the new key
+    rule = rule_of_id(rid)
+    assert rule["query"] == f"thread:{first}"
+    assert rule["mute"]["keys"] == [first, second]
+    assert client.get("/api/rules").json()["rules"][0]["mute"]["keys"] \
+        == [first, second]
+    # the next reply lists only the one before it: a handled mail, so it
+    # hits the conversation, and the key may change again
+    drifting.mailbox["INBOX"].append(parent_only(51, BOB, WW, XX, delta=300))
+    scan_and_settle()
+    assert 51 in uids(drifting, "Archive")
+    assert key_of() in rule_of_id(rid)["mute"]["keys"]
+
+
+def test_the_menu_sees_a_conversation_whose_key_changed_as_muted(drifting):
+    rid = do_mute()["rule"]["id"]
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    scan_and_settle()
+    new_key = key_of()
+    pre = client.get("/api/mute/preview", params={"key": new_key}).json()
+    assert pre["muted"] == rid
+    r = client.post("/api/mute", json={"key": new_key})
+    assert r.status_code == 400
+    assert r.json()["detail"] == mailops.coded(mailops.MUTE_ALREADY)
+    assert len(rulesmod.load_rules()) == 1
+    # another conversation of the same people is another conversation
+    drifting.mailbox["INBOX"] += [
+        make_msg(60, frm=ALICE, subject="Lunch", msgid="<l1@x>",
+                 date=stamp(-60)),
+        make_msg(61, frm=BOB, subject="Re: Lunch", msgid="<l2@x>",
+                 irt="<l1@x>", refs="<l1@x>", date=stamp(-30))]
+    mailops.run_scan()
+    other = key_of("Lunch")
+    assert client.get("/api/mute/preview", params={"key": other}
+                      ).json()["muted"] is None
+
+
+def test_the_conversation_is_known_by_its_message_ids_before_the_key_is_noted(
+        drifting):
+    do_mute()
+    first = key_of()
+    info = mute.clean_info(rulesmod.load_rules()[0]["mute"])
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    mailops.run_scan()
+    settle()
+    new_key = key_of()
+    assert new_key != first
+    acc = accountsmod.get()
+    only_first = {**info, "keys": [first]}          # (the new key not noted yet)
+    assert mute.same_conversation(acc, only_first, new_key)
+    assert mute.current_key(acc, only_first) == new_key
+    # another conversation, of the same people, is not it
+    drifting.mailbox["INBOX"] += [
+        make_msg(60, frm=ALICE, subject="Lunch", msgid="<l1@x>",
+                 date=stamp(-60)),
+        make_msg(61, frm=BOB, subject="Re: Lunch", msgid="<l2@x>", irt="<l1@x>",
+                 refs="<l1@x>", date=stamp(-30))]
+    mailops.run_scan()
+    settle()
+    assert not mute.same_conversation(acc, only_first, key_of("Lunch"))
+    # a record that kept no Message-IDs (an older one) knows its keys only
+    bare = {**only_first, "ids": [], "done": []}
+    assert not mute.same_conversation(acc, bare, new_key)
+    assert mute.current_key(acc, bare) is None
+
+
+def test_a_reply_after_the_key_changed_follows_the_same_rules(drifting):
+    pinstore.set_pinned("<p1@x>", True, accountsmod.get().name)
+    cfgmod.update_config({"protected": ["bob@corp.example"]})
+    do_mute()
+    drifting.mailbox["INBOX"] += [
+        parent_only(50, ALICE, XX, YY),                   # the key changes
+        parent_only(51, CAROL, "<c9@x>", YY, delta=130),  # not in it yet
+        parent_only(52, ALICE, "<p1@x>", YY, delta=140),  # pinned
+        parent_only(53, BOB, "<b9@x>", YY, delta=150),    # protected
+        make_msg(54, frm=ALICE, subject="Re: Plan", msgid="<n1@x>",
+                 date=stamp(160))]                        # subject only
+    scan_and_settle()
+    assert uids(drifting, "Archive") - {10} == {50}   # (10: not ours)
+    assert {51, 52, 53, 54} <= uids(drifting)
+
+
+def test_a_mute_in_report_only_notes_the_new_key_too(drifting):
+    rid = do_mute()["rule"]["id"]
+    rulesmod.update_rule(rid, {"mode": "report"})
+    first = key_of()
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    scan_and_settle()
+    assert rule_of_id(rid)["mute"]["keys"] == [first, key_of()]
+    assert 50 in uids(drifting)                     # (Report only: no move)
+
+
+def test_the_rule_checkup_finds_the_conversation_after_the_key_changed(
+        drifting):
+    rid = do_mute()["rule"]["id"]
+    rulesmod.update_rule(rid, {"mode": "report"})
+    drifting.mailbox["INBOX"].append(parent_only(50, ALICE, XX, YY))
+    mailops.run_scan()
+    settle()
+    rule = rule_of_id(rid)
+    plan = rulecheck._mute_plan(rule, accountsmod.get(), set())
+    assert plan["wanted"] == 3 and plan["after_pin"] == 1
+    assert plan["keys"] == [key_of()]
+
+
+def rule_of_id(rid: str) -> dict:
+    return next(r for r in rulesmod.load_rules() if r["id"] == rid)
+
+
 # ------------------------------------------------------------ the `thread:` word
 
 def test_thread_word_matches_exactly_one_conversation(convo):
@@ -157,7 +307,8 @@ def test_mute_makes_an_armed_visible_rule(convo):
     stored = rule_of()["mute"]
     assert set(stored["senders"]) == {"alice@friends.example",
                                       "bob@corp.example"}
-    assert rule["mute"] == {"key": key, "since": stored["since"]}
+    assert rule["mute"] == {"key": key, "keys": [key],
+                            "since": stored["since"]}
     newest = max(m["ts"] for m in accountsmod.get().index.values()
                  if m["addr"] in stored["senders"])
     assert stored["since"] >= newest
@@ -584,8 +735,7 @@ def test_the_rule_cannot_be_written_without_its_sealing_action(convo):
     rules[0]["action"] = "archive"
     with pytest.raises(ValueError, match="mute rule can only"):
         rulesmod._save(rules)
-    rules[0]["action"] = "archive_read"
-    rules[0]["query"] = "from:alice@friends.example"
+    rules[0]["action"] = "trash"
     with pytest.raises(ValueError, match="mute rule can only"):
         rulesmod._save(rules)
 
@@ -621,16 +771,54 @@ def test_a_mute_keeps_its_conversation_but_can_be_renamed_and_rescheduled(
     assert again["schedule"] == "scan" and again["mode"] == "execute"
 
 
-def test_a_hand_edited_file_cannot_fake_a_mute(convo):
+def test_a_hand_edited_file_cannot_make_a_mute_run_wild(convo):
     rid = do_mute()["rule"]["id"]
     path = rulesmod._path()
     data = json.loads(path.read_text())
     data["rules"][0]["mute"] = {"key": "zz", "senders": "x", "since": 0}
+    data["rules"][0]["action"] = "archive"
     path.write_text(json.dumps(data))
     rule = next(r for r in rulesmod.load_rules() if r["id"] == rid)
-    assert rule["origin"] == "manual"              # a plain rule now ...
-    with pytest.raises(RuntimeError, match="bad action"):
-        rulesmod.run_rule(rid, rescan=False)       # ... that no run accepts
+    # it stays a mute (never an ordinary Thread rule that archives the whole
+    # conversation) that no run accepts - and it does not stop the other rules
+    assert rule["origin"] == "mute" and rule["action"] == "archive_read"
+    with pytest.raises(RuntimeError, match="bad mute rule"):
+        rulesmod.run_rule(rid, rescan=False)
+    assert uids(convo) >= {30, 31, 32} and not uids(convo, "Archive") & {30, 31, 32}
+    rulesmod.create_rule({"name": "another", "query": "is:unsub"})
+    assert len(rulesmod.load_rules()) == 2
+
+
+def test_an_edit_by_an_older_release_does_not_turn_the_mute_into_a_plain_rule(
+        convo):
+    # 98f9a2d refuses every edit of the rule - except one that also names a
+    # known action: it takes it and sends the rule back to Report only
+    rid = do_mute()["rule"]["id"]
+    path = rulesmod._path()
+    data = json.loads(path.read_text())
+    data["rules"][0].update(
+        action="archive", schedule="daily", mode="report", report_runs=0,
+        report_sig="", report_box="", report_at=None, reset_reason="edited")
+    path.write_text(json.dumps(data))
+    rule = next(r for r in rulesmod.load_rules() if r["id"] == rid)
+    # restored as the mute it is, in Report only - not an ordinary rule
+    assert rule["origin"] == "mute" and rule["action"] == "archive_read"
+    assert rule["schedule"] == "manual" and rule["mode"] == "report"
+    assert rule["dest"] == "" and rule["keep_latest"] is None
+    # a report counts only new mail, not the whole conversation ...
+    run = rulesmod.run_rule(rid, rescan=False)
+    assert (run["mode"], run["mails"], run["acted"]) == ("report", 0, 0)
+    # ... and once the user arms it again, a run archives only what is new
+    rulesmod.update_rule(rid, {"mode": "execute"})
+    convo.mailbox["INBOX"].append(
+        reply(50, ALICE, "<c4@x>", "<c3@x>", "<c1@x> <c2@x> <c3@x>"))
+    mailops.run_scan()
+    settle()
+    run = rulesmod.run_rule(rid, rescan=False)
+    assert (run["mails"], run["acted"]) == (1, 1)
+    wait_delete_done()
+    assert uids(convo, "Archive") - {10} == {50}      # (10: not ours)
+    assert uids(convo) >= {30, 31, 32}
 
 
 # ------------------------------------------------------------ backup and import
@@ -703,8 +891,18 @@ def test_clean_info_accepts_one_shape_only():
                                                  " b@x.example "],
           "since": 1700000000.9}
     assert mute.clean_info(ok) == {"key": "4f9c1e0a7b2d3c58",
+                                   "keys": ["4f9c1e0a7b2d3c58"],
                                    "senders": ["a@x.example", "b@x.example"],
-                                   "since": 1700000000, "done": []}
+                                   "since": 1700000000, "ids": [], "done": []}
+    # the keys a conversation had: the rule's own first, valid ones only
+    more = mute.clean_info({**ok, "keys": ["0123456789abcdef", "nope", 7,
+                                           "4f9c1e0a7b2d3c58"],
+                            "ids": ["<a@x>", "", "<a@x>"]})
+    assert more["keys"] == ["4f9c1e0a7b2d3c58", "0123456789abcdef"]
+    assert more["ids"] == ["<a@x>"]
+    assert mute.with_key(more, "0123456789abcdef") is None
+    assert mute.with_key(more, "fedcba9876543210")["keys"] == [
+        "4f9c1e0a7b2d3c58", "0123456789abcdef", "fedcba9876543210"]
     assert mute.clean_info({**ok, "done": ["<a@x>", "", 5, "<a@x>"]})["done"] \
         == ["<a@x>"]
     for bad in (None, [], {}, {**ok, "key": "XYZ"}, {**ok, "key": 5},

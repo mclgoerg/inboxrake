@@ -788,9 +788,6 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     }
   };
 
-  /** Approve a proposal: the destructive-action confirm (what moves, what is
-   *  skipped, how it runs; "Run it once now"), then the ordinary report ->
-   *  Active switch (the server's gate is unchanged) and, if asked, a run. */
   /** Unmute: deletes the mute's rule after a confirm (what it archived stays
    *  in Archive). */
   const unmute = async (rule: Rule) => {
@@ -807,6 +804,9 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
     }
   };
 
+  /** Approve a proposal: the destructive-action confirm (what moves, what is
+   *  skipped, how it runs; "Run it once now"), then the ordinary report ->
+   *  Active switch (the server's gate is unchanged) and, if asked, a run. */
   const approve = async (rule: Rule) => {
     setCardErr(null);
     const r = rule.last_run;

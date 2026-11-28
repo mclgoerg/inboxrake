@@ -1291,7 +1291,10 @@ What a run touches is narrow on purpose:
 
 - **Only this conversation.** Mails are joined by their reply headers (the same
   as the conversation view); subjects never merge them. A new conversation
-  from the same people, even with the same subject, is not touched.
+  from the same people, even with the same subject, is not touched. A reply
+  that lists only its parent can change the key Inboxrake gives a thread; the
+  mute keeps the conversation's Message-IDs and follows it, so the menus still
+  show it as muted.
 - **Only new mail.** What was in the conversation when you muted it stays where
   it is (unless you ticked the extra step). Each new mail is handled once: if
   you put one back in your inbox - with Undo or by hand - it stays there.

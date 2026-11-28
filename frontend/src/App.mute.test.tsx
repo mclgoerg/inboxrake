@@ -225,4 +225,55 @@ test("a conversation that was muted meanwhile is not muted twice", async () => {
   await waitFor(() => expect(mutePreview).toHaveBeenCalled());
   await expectNoDialog();
   expect(muteCall).not.toHaveBeenCalled();
+  // it says so
+  expect(await screen.findByText(/already muted/)).toBeTruthy();
 });
+
+test("a reply can change a thread's key: the mute knows the keys it had, so "
+  + "the menu offers Unmute", async () => {
+  // the rule was made under another key; the conversation has KEY now
+  const drifted: Rule = { ...muteRule, query: "thread:0123456789abcdef",
+    mute: { key: "0123456789abcdef", keys: ["0123456789abcdef", KEY],
+      since: 1 } };
+  await mount([drifted]);
+  await openThread();
+  await paneMore();
+  expect(screen.queryByRole("menuitem",
+    { name: "Mute this conversation…" })).toBeNull();
+  expect(await screen.findByRole("menuitem",
+    { name: "Unmute this conversation" })).toBeTruthy();
+});
+
+test("without an Archive folder the toast says the mail is marked read, "
+  + "not archived", async () => {
+  mutePreview.mockResolvedValue(preview({ archive: false, now: 2 }));
+  muteCall.mockResolvedValue({ rule: muteRule, queued: 2 });
+  await mount();
+  await openThread();
+  await paneMore();
+  fireEvent.click(await screen.findByRole("menuitem",
+    { name: "Mute this conversation…" }));
+  const dlg = await findDialog();
+  fireEvent.click(within(dlg).getByRole("checkbox",
+    { name: /Also mark the 2 unread mails already in it as read/ }));
+  await pressDialog("Mute");
+  await waitFor(() => expect(muteCall).toHaveBeenCalledWith(
+    KEY, "Mute: Team dinner", true));
+  expect(await screen.findByText(/marked 2 mails as read/)).toBeTruthy();
+  expect(screen.queryByText(/archived/)).toBeNull();
+});
+
+test("with an Archive folder the toast says how many mails were archived",
+  async () => {
+    muteCall.mockResolvedValue({ rule: muteRule, queued: 2 });
+    await mount();
+    await openThread();
+    await paneMore();
+    fireEvent.click(await screen.findByRole("menuitem",
+      { name: "Mute this conversation…" }));
+    const dlg = await findDialog();
+    fireEvent.click(within(dlg).getByRole("checkbox",
+      { name: /Also archive the 2 mails already in your inbox/ }));
+    await pressDialog("Mute");
+    expect(await screen.findByText(/and archived 2 mails/)).toBeTruthy();
+  });

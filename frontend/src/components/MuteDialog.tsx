@@ -44,7 +44,12 @@ export function MuteDialog({ preview, onResult }: {
   // not a danger dialog: the primary button has focus (nothing is trashed)
   useLayoutEffect(() => { ok.current?.focus(); }, []);
   const archive = preview.archive;
-  const left = preview.pinned + preview.protected;
+  // what is left alone now: only the parts that are not zero
+  const left = [
+    preview.pinned > 0 && t("mute.left_pinned", { n: preview.pinned }),
+    preview.protected > 0
+      && t("mute.left_protected", { n: preview.protected }),
+  ].filter(Boolean).join(", ");
   return (
     <Modal size="sm" labelledBy={titleId} describedBy={bodyId}
       onClose={() => onResult(null)}>
@@ -72,10 +77,7 @@ export function MuteDialog({ preview, onResult }: {
           </div>
           <Notice icon={<Info size={16} />}>
             <div>{t("mute.note")}</div>
-            {left > 0 && (
-              <div className="mt-1">{t("mute.left", {
-                pinned: preview.pinned, protected: preview.protected })}</div>
-            )}
+            {left && <div className="mt-1">{t("mute.left", { list: left })}</div>}
           </Notice>
         </div>
       </div>

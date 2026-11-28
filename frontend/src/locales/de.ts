@@ -1104,6 +1104,9 @@ export const DE: Record<string, string> = {
   "toast.muted": "„{label}“ stummgeschaltet: neue Mails dazu werden nach jedem Scan archiviert und als gelesen markiert.",
   "toast.muted_n": "„{label}“ stummgeschaltet und {n} Mails archiviert.",
   "toast.muted_n_one": "„{label}“ stummgeschaltet und 1 Mail archiviert.",
+  "toast.muted_read": "„{label}“ stummgeschaltet: neue Mails dazu werden nach jedem Scan als gelesen markiert.",
+  "toast.muted_read_n": "„{label}“ stummgeschaltet und {n} Mails als gelesen markiert.",
+  "toast.muted_read_n_one": "„{label}“ stummgeschaltet und 1 Mail als gelesen markiert.",
   "toast.unmuted": "Stummschaltung von „{label}“ aufgehoben.",
   "toast.unmuted_rule": "Stummschaltung aufgehoben.",
   "unblock.tip":
@@ -2391,7 +2394,9 @@ export const DE: Record<string, string> = {
   "mute.existing_sub": "ein Schritt, den du rückgängig machen kannst",
   "mute.existing_read_sub": "ein Schritt",
   "mute.note": "Angefasst werden nur Mails dieser Konversation (nach ihren Antwort-Headern) - nie eine neue Konversation mit denselben Leuten, nie angeheftete Mails oder geschützte Absender, und eine Mail von jemandem, der noch nicht in der Konversation war, kommt durch. Ohne Archiv-Ordner wird nur als gelesen markiert. Nichts wird je in den Papierkorb verschoben.",
-  "mute.left": "Bleibt jetzt unangetastet: {pinned} angeheftete, {protected} von geschützten Absendern.",
+  "mute.left": "Bleibt jetzt unangetastet: {list}.",
+  "mute.left_pinned": "{n} angeheftet",
+  "mute.left_protected": "{n} von geschützten Absendern",
   "mute.btn": "Stummschalten",
   "mute.rule_name": "Stumm: {label}",
   "mute.unmute": "Stummschaltung aufheben",
@@ -4836,11 +4841,11 @@ export const DE: Record<string, string> = {
     "Dieser Absender bzw. diese Domain lässt sich nicht blockieren: Es ist "
     + "keine einfache Adresse oder kein einfacher Domainname.",
   "ferr.mute_unknown":
-    "Diese Unterhaltung steht nicht mehr im letzten Scan – scanne neu und "
+    "Diese Konversation steht nicht mehr im letzten Scan – scanne neu und "
     + "versuche es noch einmal.",
   "ferr.mute_already":
-    "Diese Unterhaltung ist schon stummgeschaltet – hebe es in der "
-    + "Regelliste wieder auf.",
+    "Diese Konversation ist schon stummgeschaltet – hebe die Stummschaltung "
+    + "in der Regelliste auf.",
   "ferr.no_account":
     "Es ist noch kein Mail-Konto eingerichtet – trage zuerst in den "
     + "Einstellungen die Zugangsdaten ein.",

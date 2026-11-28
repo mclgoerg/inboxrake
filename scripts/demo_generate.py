@@ -1732,6 +1732,7 @@ def generate() -> dict:
         "mute": {"key": TEAM_KEY, "since": _muted_at,
                  "senders": ["kim@team.example", "lee@team.example",
                              "noa@team.example"],
+                 "ids": [TEAM_1, TEAM_2, TEAM_3],
                  "done": ["<team-4@demo.example>", "<team-5@demo.example>"]}})
     _ran(muted, int(NOW - 0.7 * 86400), 2, 1, _muted_at)
     # keep-latest runs every day; the receipts rule ran a month ago (before
