@@ -287,6 +287,26 @@ test("the account named is the one already selected: nothing is switched; an " +
   expect(localStorage.getItem("pmc_account")).toBe("proton");
 });
 
+test.each(["constructor", "__proto__", "toString", "hasOwnProperty"])(
+  "an inherited name (%s) is no account: the link opens the selected " +
+  "account's check-in and nothing is switched or saved", async (name) => {
+  await mount(`#/overview/check-in?account=${name}`);
+  await stepper();
+  expect(setAccountCalls).not.toHaveBeenCalledWith(name);
+  expect(localStorage.getItem("pmc_account")).toBe("proton");
+  // the Overview still has its numbers: the account was never replaced
+  expect(screen.getByRole("region", { name: "Next steps" })).toBeTruthy();
+});
+
+test.each(["constructor", "__proto__", "toString"])(
+  "a remembered bogus account (%s) falls back to the default one on load",
+  async (name) => {
+  await mount("", name);
+  await waitFor(() => expect(localStorage.getItem("pmc_account"))
+    .toBe("proton"));
+  expect(setAccountCalls).toHaveBeenLastCalledWith("proton");
+});
+
 test("a fresh browser and a named account together", async () => {
   await mount("#/overview/check-in?account=other", null);
   await stepper();

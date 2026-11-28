@@ -468,7 +468,8 @@ export default function App() {
 
   // Drop a stale saved account (e.g. deleted meanwhile) once cfg is known.
   useEffect(() => {
-    if (cfg && (!account || !cfg.accounts[account])) {
+    // (own names only: "constructor" or "__proto__" is no account)
+    if (cfg && (!account || !Object.hasOwn(cfg.accounts, account))) {
       switchAccount(cfg.default_account);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -702,9 +703,11 @@ export default function App() {
   // one). After the effect above, so a switch that just happened cannot close
   // what this opens.
   useEffect(() => {
-    if (!checkinAsk || !cfg || !account || !cfg.accounts[account]) return;
+    if (!checkinAsk || !cfg || !account
+        || !Object.hasOwn(cfg.accounts, account)) return;
     const want = checkinAsk.account;
-    if (want && want !== account && cfg.accounts[want]) {
+    // (an account of this install, not an inherited name like "constructor")
+    if (want && want !== account && Object.hasOwn(cfg.accounts, want)) {
       switchAccount(want);
       return;
     }
