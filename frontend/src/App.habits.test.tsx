@@ -144,7 +144,9 @@ test("a step that made a habit appear: the toast keeps its text and Undo and "
   finishTrash();
   const msg = await screen.findByText("Moved 12 mails to Trash");
   const bar = msg.closest("[data-variant]") as HTMLElement;
-  // Undo first, Automate… next to it; nothing else was added to the text
+  // Undo first, Automate… next to it (it joins when the answer arrives);
+  // nothing else was added to the text
+  await within(bar).findByRole("button", { name: "Automate…" });
   const names = within(bar).getAllByRole("button").map((b) => b.textContent
     || b.getAttribute("aria-label"));
   expect(names.slice(0, 2)).toEqual(["Undo", "Automate…"]);
@@ -280,7 +282,7 @@ test("a mark-as-read step (no Undo) can offer Automate… too", async () => {
     action: "mark_read" }) as any });
   const msg = await screen.findByText("Done: 9 mails processed.");
   const bar = msg.closest("[data-variant]") as HTMLElement;
-  expect(within(bar).getByRole("button", { name: "Automate…" })).toBeTruthy();
+  expect(await within(bar).findByRole("button", { name: "Automate…" })).toBeTruthy();
   expect(within(bar).queryByRole("button", { name: "Undo" })).toBeNull();
 });
 
