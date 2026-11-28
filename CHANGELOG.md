@@ -6,43 +6,167 @@
 ### Features
 
 * a grade from A to F for every sender, with the reasons ([#413](https://github.com/mclgoerg/inboxrake/issues/413)) ([f3afacb](https://github.com/mclgoerg/inboxrake/commit/f3afacb59fb703eec9020242b0108712b2c1b4ae))
+  <!-- release-notes:413 -->
+  - Every sender now has a grade from A to F with the reasons (how much you open, how often it mails, tracking, one-click unsubscribe, whether it stops when asked, mail size): open a sender to see its report card.
+  - Sort the Senders list by Grade (worst first), filter with `grade:d`, `grade:<=c` or `grade:>=b` (also in rules), and see how your senders spread over A-F in the last card of Statistics.
+  - Nothing is stored or sent anywhere, and a grade never changes anything by itself. A rule that uses `grade:` can't run on an older version.
 * a rule checkup that finds overlapping, broken and idle rules ([#403](https://github.com/mclgoerg/inboxrake/issues/403)) ([1834d0f](https://github.com/mclgoerg/inboxrake/commit/1834d0fe873aa03ada496049dc8b42c2c4e46e1e))
+  <!-- release-notes:403 -->
+  - New: a Rule checkup on the Rules page finds rules that overlap or conflict, point at a folder that is gone, never match, only meet protected mail, or have an old report. It only tells you; nothing changes unless you press a button.
+  - Each finding names the rules and senders, with Edit, Delete, Compare, Show the senders / mails and Ignore; affected rule cards get a small badge. On a phone it is one row that opens the same list.
+  - Nothing to do when upgrading; "never matches" fills in as your rules run.
 * a weekly check-in that walks you through what needs you ([#418](https://github.com/mclgoerg/inboxrake/issues/418)) ([6849853](https://github.com/mclgoerg/inboxrake/commit/6849853b08bd2ad87ab3d62b29c72ca641b00770))
+  <!-- release-notes:418 -->
+  - A weekly check-in walks you through everything that needs you - new senders, senders still mailing, mail past its date, overdue replies, the rule checkup and Junk - one step per place, skipping the empty ones, with each place's own buttons. Start it from the last Next steps line on Overview or from the new button in the activity digest mail.
+  - On Monday at 09:00 you get a notification ("Your weekly check-in: 6 things") when there is something to look at; it names nobody. It is on by default for everyone with notifications set up - switch it off in Settings › Notifications.
+  - Tapping any notification while Inboxrake is already open now takes you to the page it is about (before, it only brought the app to the front).
 * AI assistants can clean up mail (opt-in) ([#364](https://github.com/mclgoerg/inboxrake/issues/364)) ([1eb880c](https://github.com/mclgoerg/inboxrake/commit/1eb880ce0a991166345b352d394272b32ac6ca6a))
+  <!-- release-notes:364 -->
+  AI assistants can now clean up mail if you opt in. With an Act token an assistant can move mail to Trash, Archive or a folder, mark it read, protect senders and pin mails, always from a preview of exact mails, never touching protected or pinned mail, within a daily limit per token, with every step shown "by <token>" in Activity and undoable. Off by default: an admin sets the cap to "Also act" and you create an Act token. Only use it with an assistant you watch, and never together with tools that can send data out, because mail text written by strangers can try to instruct the assistant.
 * AI assistants can propose rules for you to approve ([#365](https://github.com/mclgoerg/inboxrake/issues/365)) ([46475dc](https://github.com/mclgoerg/inboxrake/commit/46475dc74c1a917b02480482acf50f0a6e95b96e))
+  <!-- release-notes:365 -->
+  - AI assistants you connect (Settings › AI assistants) can now be allowed to propose cleanup rules. A proposal waits in Rules, with its report, until you approve, edit or decline it; the assistant cannot approve or run it.
+  - You are told about a new proposal in the app, by browser notification and push (generic text), and by email (on by default, switch in Settings › AI assistants).
 * AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+  <!-- release-notes:363 -->
+  - Settings has a new section, **AI assistants**: an admin switches assistant access on there (it is off by default).
+  - Create an access token for Claude Code, Cursor, VS Code or Claude Desktop; the token is shown once with a ready-to-paste setup line. Revoke it any time.
+  - Only the Read level exists so far; assistants can ask about your mailbox but change nothing.
 * an All accounts page across your mailboxes ([#408](https://github.com/mclgoerg/inboxrake/issues/408)) ([394e8c6](https://github.com/mclgoerg/inboxrake/commit/394e8c6820508fe252f0d6434ab1ce2db0ab9982))
+  <!-- release-notes:408 -->
+  - New: an **All accounts** page (Insights, with two accounts or more; also a row in the account switcher): every mailbox side by side with its size, new mail and the result of its last scan, where your space is, and the newsletters and shops that write to more than one of your accounts. It is a page, not a mode - the account you are in stays selected.
+  - On such a sender: **Unsubscribe / Trash / Archive / Block in N** - one confirm lists each account (Trash shows what Keep-safe holds back), then one step per account with its own Undo; the toast has **Undo all N**. Unsubscribe runs separately in each account.
+  - **Scan all** scans your mailboxes one after the other.
+  - Good to know: Block in N adds one daily Block rule per account (mails that are already there stay).
 * approve and manage AI app connections ([#368](https://github.com/mclgoerg/inboxrake/issues/368)) ([8d5a942](https://github.com/mclgoerg/inboxrake/commit/8d5a9429133b38edaa0841c6040f2e264b0a317d))
+  <!-- release-notes:368 -->
+  You can approve claude.ai and ChatGPT connections from a page in Inboxrake and manage them under Settings › AI assistants. Admins switch the feature on there; it needs a sign-in and `INBOXRAKE_PUBLIC_URL`.
 * clear out old out-of-office replies, bounces and read receipts ([#414](https://github.com/mclgoerg/inboxrake/issues/414)) ([422c522](https://github.com/mclgoerg/inboxrake/commit/422c522a5b0dc3f03f50528a16bc69838d711604))
+  <!-- release-notes:414 -->
+  - Mail past its date now also finds out-of-office replies and delivery failures older than a week (ticked), and read receipts and calendar answers (unticked) - only when the mail's own headers say so; job applications, invoices, bookings and other Keep-safe mail are never listed.
+  - New filter word `is:auto` in All mail, with a button in the filter builder.
+  - `is:expired` and Open in All mail now also show automatic mail.
+  - The first scan after updating reads two more headers of the mail Inboxrake already knows, so it takes a little longer; calendar answers show up once you have run Attachments → Analyze.
 * copy what matters to another account ([#370](https://github.com/mclgoerg/inboxrake/issues/370)) ([463e4d7](https://github.com/mclgoerg/inboxrake/commit/463e4d78f56bbb9822c4d94b73f6c25ff42e1134))
+  <!-- release-notes:370 -->
+  - New: **Settings › your account › Move to another account…** copies what matters - people you write to, orders, account mail, bookings, protected senders and pinned mails - into a new folder of another of your accounts, keeping dates, read state and flags. Nothing is deleted; the originals stay where they are.
+  - The copy runs on the server (pause, resume, carries on after a restart), skips mails that are already there and checks each one afterwards. A "Tell them" checklist lists the senders that still write to your old address; newsletters lead to the unsubscribe review instead.
+  - Needs both accounts connected and the source scanned once.
 * download a year of your documents as one zip with an index list ([#419](https://github.com/mclgoerg/inboxrake/issues/419)) ([baa1a29](https://github.com/mclgoerg/inboxrake/commit/baa1a2922feb9d4d03920b72d2334b8b21564d5f))
+  <!-- release-notes:419 -->
+  - **Your documents** gets **Download 2026…**: one `.zip` of the year on your own server - folders by kind and month (invoices & bills, contracts & policies, bookings & tickets, tax & official) and, if you like, an `index.csv` with date, sender, subject, file and the amount when the subject names one. Handy for tax time.
+  - A tick keeps all those mails safe (protected from bulk actions and rules) in the same step. Above 256 MB the year comes in several downloads.
+  - Good to know: the files are read from your mail server when you ask, one mail at a time; mails that cannot be read just then are left out and counted. Your browser may ask to allow more than one download.
 * find copies across your accounts and search all of them ([#409](https://github.com/mclgoerg/inboxrake/issues/409)) ([bcd20e4](https://github.com/mclgoerg/inboxrake/commit/bcd20e44100caf6356635dc82cc0315d1dfc3821))
+  <!-- release-notes:409 -->
+  - **All accounts** gets **Same mails in several accounts**: the exact copies (same Message-ID and size) two of your mailboxes hold - for example forwards. **Review…** lets you keep them in one account and move the copies in the other to Trash in one step with Undo, or just look at them. Pinned mails, protected senders and everything you copied with "Move to another account" are never touched.
+  - **Search** has a new choice, **This account | All accounts**: results of every mailbox with an account chip; opening one switches to its account, and Trash selected runs one step per account.
+  - Before copies move to Trash, Inboxrake looks at both mailboxes (read only): a copy that is no longer there stays, two accounts that are really one mailbox are never offered, and nothing moves while either account is busy.
+  - Good to know: the page reads each account's last scan, so scan first if you moved mail around meanwhile.
 * find mail that is past its date and clean it up safely ([#405](https://github.com/mclgoerg/inboxrake/issues/405)) ([c34c2c8](https://github.com/mclgoerg/inboxrake/commit/c34c2c8f488ae157223426ea2a6d2ef59acfa4d7))
+  <!-- release-notes:405 -->
+  - Overview › Next steps has a new line, **Mail past its date**: old sign-in codes, updates for parcels that have arrived, reminders for appointments and events that are over, and offers that have ended - found from the subject and the date, on your server, with no AI. Review shows what it found; the receipts, invoices and bookings of the same orders and appointments are kept.
+  - **Move N to Trash…** uses the usual confirm and Undo; protected mails and mail from protected senders are never listed. Offers start unticked.
+  - All mail understands a new filter word, `is:expired`.
+  - Nothing changes by itself and nothing is stored. An assistant token without subject access cannot use `is:expired`.
 * find the subscriptions you still pay for ([#373](https://github.com/mclgoerg/inboxrake/issues/373)) ([30f77dd](https://github.com/mclgoerg/inboxrake/commit/30f77dd4c6a6bab057e1e406b793b32a12d87b00))
+  <!-- release-notes:373 -->
+  - New: Insights › Subscriptions shows the senders that bill you monthly or yearly, what the last receipt says they cost, when the next one is due, and which ones look unused (no sign-in alert, nothing opened for 90 days). It also adds a reminder 3 days before a renewal, a calendar file, and a line on the Overview when something looks unused.
+  - Everything is read from mail already in your scan - no AI. Amounts come from the receipt's subject; an optional switch (off by default) also reads the text of the latest receipt on your own server to find the amount, and keeps only the amount.
 * hosted AI apps can connect over OAuth ([#366](https://github.com/mclgoerg/inboxrake/issues/366)) ([458867b](https://github.com/mclgoerg/inboxrake/commit/458867b51a51d30102dfecb09e7516cb8b0fa014))
+  <!-- release-notes:366 -->
+  Groundwork for connecting hosted AI apps (claude.ai custom connectors, OpenAI's apps) over OAuth. It is off by default and the admin switch and consent page arrive with the next update, so nothing changes yet. Needs `INBOXRAKE_PUBLIC_URL` set when you turn it on later.
 * keep invoices, bookings and contracts out of big cleanups ([#371](https://github.com/mclgoerg/inboxrake/issues/371)) ([2ec6fdb](https://github.com/mclgoerg/inboxrake/commit/2ec6fdb2d7b9cde40cdc9908db390996b04aec60))
+  <!-- release-notes:371 -->
+  - Before a big cleanup (more than 20 mails to Trash) Inboxrake now points out invoices, bookings, contracts and job applications among them; the ones you leave ticked are protected and stay.
+  - Settings › Keep-safe switches each kind (account & security mail is off by default) and whether rule runs skip them too; a rule's report shows how many it kept safe.
 * mute a busy conversation so its new mail is archived and read ([#412](https://github.com/mclgoerg/inboxrake/issues/412)) ([c15c580](https://github.com/mclgoerg/inboxrake/commit/c15c580bd40310e83ef29222729fc0abd093b29b))
+  <!-- release-notes:412 -->
+  - New: "Mute this conversation…" in the mail reader's ⋯ menu and in the pane's More menu in Thread grouping. New mail of that conversation is archived and marked as read after each scan; nothing is trashed, pinned mail, protected senders and anyone who was not in the conversation yet are left alone. Unmute it from the rule's card.
+  - New rule filter word `thread:` and a rule schedule "after each scan" (used by mutes).
+  - Upgrade note: after a rollback to an older version a mute rule stays in the list but is not run there (it refuses it); upgrading again picks it up.
 * notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+  <!-- release-notes:358 -->
+  - Notifications now reach you with Inboxrake closed, including on iPhone and iPad (add Inboxrake to the Home Screen first, iOS 16.4+), when a scan or clean-up you started finishes.
+  - Turn it on once per device in Settings -> Notifications. Needs HTTPS and outbound HTTPS from the server to the push services.
 * read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+  <!-- release-notes:361 -->
+  - New, off by default: an administrator can switch on read-only access for AI assistants (Claude Code, Cursor, ...) over MCP; each user creates their own access tokens for chosen accounts. Assistants see sender names and addresses, counts, sizes, dates, folder, rule and activity names - subject lines only if you allow them, never mail bodies.
+  - No Settings screen yet: it follows in a separate PR; until then the cap is `assistants.access` in the server settings and tokens come from `/api/assistants/tokens`.
 * remove attachments and keep the mail ([#411](https://github.com/mclgoerg/inboxrake/issues/411)) ([98f9a2d](https://github.com/mclgoerg/inboxrake/commit/98f9a2dcfec8d8db2a78a8a140697d9c7fe616a5))
+  <!-- release-notes:411 -->
+  - New: "Keep the mails, remove the files…" on the Attachments page frees the space of big files but keeps the messages. Inboxrake saves each mail again without the chosen files (same folder, date, read state and Message-ID), checks the copy, then moves the original to Trash; Undo swaps them back until Trash is emptied.
+  - In the mail reader, tap an attachment chip and choose "Remove the file, keep the mail…". The confirm can download the files as a .zip first.
+  - Pinned mails, protected senders, and signed or encrypted mail are never changed (they are named or skipped with the reason); files in mails Keep-safe covers start unticked. Not available on Gmail accounts.
 * restore your mailbox to an earlier point in time ([#374](https://github.com/mclgoerg/inboxrake/issues/374)) ([d996b3e](https://github.com/mclgoerg/inboxrake/commit/d996b3e1708f928e463de226638b15311f7ee2be))
+  <!-- release-notes:374 -->
+  - Activity has a new **Time machine**: pick any point of the last 30 days and restore everything Inboxrake moved since, newest step first, in one job. You see what comes back first (mails, size, folders, senders, what can't, and rules that would move them again, which you can pause). Protected senders and pinned mails stay put, you can restore only some senders, and the restore itself can be undone.
+  - Undo steps are kept for **30 days** (up to 500 steps) and survive restarts and updates, instead of the last 10 until restart. Steps from before this update are not in the Time machine.
 * rules suggested from the cleanups you keep doing by hand ([#415](https://github.com/mclgoerg/inboxrake/issues/415)) ([63c75ed](https://github.com/mclgoerg/inboxrake/commit/63c75ede93aa5d2ed87da2b7337721559e147b07))
+  <!-- release-notes:415 -->
+  - New: when you keep doing the same cleanup by hand (the same sender, at least 3 times on 3 different days), Rules shows a "You keep doing this" card with the ready rule, Overview > Next steps has a line for it, and the toast of the cleanup offers Automate…. "Make it a rule" starts in Report only, so nothing moves until you switch it to Active; "Why these?" shows the steps it is based on.
+  - Settings > General > "Suggest rules from what I do" switches it off; "Hidden suggestions" brings back senders you said "Not this one" to.
+  - Upgrade note: only cleanups you do after the update count (older Activity entries do not say which sender they were about), so the first suggestion appears with the third repeat.
 * see and tidy your own folders ([#410](https://github.com/mclgoerg/inboxrake/issues/410)) ([85037ec](https://github.com/mclgoerg/inboxrake/commit/85037ec89639ffba8a49634bf6b0286287c67002))
+  <!-- release-notes:410 -->
+  - New page **Your folders** (Clean up, after Trash; on phones the last tile of the Clean up tab): your folders with mails, size, newest mail and the rules that use them, plus hints for look-alike names, empty folders and folders gone quiet.
+  - Merge a folder into another one as one step you can undo (optionally deleting the emptied folder), rename folders, create one (also from the Move folder picker) and delete empty ones. Inbox, Archive, Sent, Drafts, Junk, Trash, your provider's own folders and labels are never merged or deleted.
+  - A rule that moves mail into a folder you merge or rename now points at the new folder and goes back to Report only - the confirm names it first; Undo of a merge points it back.
 * see what kinds of mail a sender sends and act on one kind ([#406](https://github.com/mclgoerg/inboxrake/issues/406)) ([dfc2af2](https://github.com/mclgoerg/inboxrake/commit/dfc2af21db9cd9d6f5dcc35cc69000b6a058b02d))
+  <!-- release-notes:406 -->
+  - A sender that sends several kinds of mail (order confirmations, shipping updates, ads) now shows a "What they send" box in its pane: trash, archive, move, mark read or protect just one kind, or make a rule for it ("Always trash their ads...").
+  - Rules have a third choice next to "keep newest N" and "only mails older than N days": "only one kind of mail". The new filter word `kind:ads` (also orders, shipping, invoices, appointments, jobs, support, accounts) narrows All mail to a kind.
+  - The kind is read from the subject on your server, without AI; where it is not clear a mail has no kind and is never counted as an ad. New rules start in Report only.
+  - Upgrading needs nothing. After a rollback to an older version, delete rules limited to a kind or leave them off: that version cannot run them.
 * see when your mail arrives ([#369](https://github.com/mclgoerg/inboxrake/issues/369)) ([4029560](https://github.com/mclgoerg/inboxrake/commit/40295608e6c6cb621776497f2eced8c1421d4711))
+  <!-- release-notes:369 -->
+  - Statistics shows **When mail arrives**: a weekday × hour map of your mail in your own time zone, filterable by Newsletters / People / Orders; click an hour to see those mails.
+  - "What stands out" points out patterns (a morning newsletter wave, a sender that mails every day with Unsubscribe, a weekday shop-mail peak); a sender's detail shows its usual hours.
+  - On phones the Insights tab gets two matching widgets. No upgrade steps.
 * see which mails you sent are still waiting for a reply ([#407](https://github.com/mclgoerg/inboxrake/issues/407)) ([d2b35a3](https://github.com/mclgoerg/inboxrake/commit/d2b35a3e10f059d8b7e7950cd7ee4633ac1495b8))
+  <!-- release-notes:407 -->
+  - New: Insights › Waiting for a reply lists the mails you sent that nobody has answered, marks the ones overdue by that person's usual answer time, and lets you set a reminder per mail or switch on "Tell me when a reply is overdue" (Settings › Notifications). Inboxrake never sends mail for you.
+  - It is off until you switch on "Watch my sent mail for replies" in Settings › Account (per account). The first scan after that also reads the headers of the last 90 days of your Sent folder (no mail text); later scans read only what is new.
+  - Notifications say who and how long, not the subject, unless you switch the subject on.
 * see which of your addresses leaked and retire an alias ([#372](https://github.com/mclgoerg/inboxrake/issues/372)) ([c89e28d](https://github.com/mclgoerg/inboxrake/commit/c89e28d13341e33c93f0925b098a37a0695c5dd4))
+  <!-- release-notes:372 -->
+  - New page **Your addresses** (Insights): see every address your mail arrived on - aliases, `+tags`, a catch-all, forwarding addresses - who you gave it to, and which one looks leaked, with a timeline and the strangers behind it.
+  - Optional **Settings › Alias service** (SimpleLogin or addy.io): retire a leaked alias in one step (reversible), get a fresh alias for the sender and send the strangers' mail to Junk. Without it everything else works.
+  - The first scan after the update also reads the receiving address of the mails already scanned (a light header-only request); it can take a little longer on large mailboxes.
 * see which senders got louder or came back ([#404](https://github.com/mclgoerg/inboxrake/issues/404)) ([a14c231](https://github.com/mclgoerg/inboxrake/commit/a14c231a68661da246fb84f5d7cc3cbfabe91c35))
+  <!-- release-notes:404 -->
+  - The Overview's Last week card now shows which senders got louder (more than twice their usual week) or came back after 6+ months of silence. Each row opens Senders with the new filters `is:louder` / `is:back`, which rules can use too.
+  - A sender's arrival strip says when its rhythm changed, and Statistics has a new card "Changes in the last 30 days" with Unsubscribe…, Block… or Show mails.
+  - Upgrade note: counting starts with the first scan after the update; until 8 weeks of counts exist only senders you never cleaned are compared.
 * snooze mail or a sender, or get a noisy sender in one batch ([#417](https://github.com/mclgoerg/inboxrake/issues/417)) ([553a7ee](https://github.com/mclgoerg/inboxrake/commit/553a7eed39b02e2d9a6ba2533311e3c5e77d811e))
+  <!-- release-notes:417 -->
+  - New **Not now…** (last in a sender's More menu, the mail reader's ⋯ menu and the selection bar's More menu): hide a sender's unread mail or a single mail until later today, tomorrow, Monday, next weekend or a date you pick - it waits in a server folder called Snoozed and comes back unread - or let a noisy sender deliver once a day or once a week in one batch.
+  - New **Snoozed** page at the end of Clean up (and its phone tile): see what is out of sight, bring it back now, or turn a batch off.
+  - Works with Proton Bridge (the folder is made below Folders/).
+  - Upgrade note: the first time you use Not now, Inboxrake creates a folder named Snoozed on your mail server and remembers it; it is skipped by scans, Your folders and the account copy. A folder of yours that already has that name is left alone.
 * start a rule from a recipe ([#367](https://github.com/mclgoerg/inboxrake/issues/367)) ([df1ed8c](https://github.com/mclgoerg/inboxrake/commit/df1ed8c0d97795f4b15554cbd92ecc553489cb55))
+  <!-- release-notes:367 -->
+  - New rule starts from a recipe: nine ready-made rules, each showing how many mails it would catch right now.
+  - Add creates a normal rule in Report only mode and runs its report once; you switch it to Active when it looks right.
+  - On a fresh install the empty Rules page offers the top three recipes.
 * your documents by year, with a download for each file ([#416](https://github.com/mclgoerg/inboxrake/issues/416)) ([0c15de8](https://github.com/mclgoerg/inboxrake/commit/0c15de8d05fae5516ccc51031e42a190dd3a89b9))
+  <!-- release-notes:416 -->
+  - New page **Your documents** (Insights, the last item; on phones the last card of the Insights tab): your invoices & bills, contracts & policies, bookings & tickets and tax & official mail that carry a file, by year, with the file one tap away. The first time it asks to analyze your attachments (the same analysis as on the Attachments page).
+  - Open the mail, download its file (a mail with several files offers a menu) or keep it safe (protect it from bulk actions and rules). Files are read from your mail server only when you download them; nothing is sent anywhere else and nothing is changed or deleted.
+  - Good to know: the page reads the last scan and analysis, so scan again after new mail arrives; a download is refused with a reason if the mail on the server is not the one the scan saw.
 
 
 ### Bug Fixes
 
 * clearer assistant access choice in Settings ([#377](https://github.com/mclgoerg/inboxrake/issues/377)) ([df4bfec](https://github.com/mclgoerg/inboxrake/commit/df4bfec673651f90130839051271f8a0eb404463))
+  <!-- release-notes:377 -->
+  Settings › AI assistants now shows the assistant access choice as a list with a short description under each option, instead of cramped buttons on phones.
 * keep unsubscribe links out of the server log ([#400](https://github.com/mclgoerg/inboxrake/issues/400)) ([7d94d20](https://github.com/mclgoerg/inboxrake/commit/7d94d204f3f1338350eedc8bd9c1830196a0c53a))
+  <!-- release-notes:400 -->
+  - A failed unsubscribe no longer writes the sender's unsubscribe link or address (which can contain a personal token) to the server log; the log names the kind of failure instead.
 * notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+  <!-- release-notes:360 -->
+  - Notifications no longer repeat the app name: the title now says what happened (for example "Scan finished"), with the account and details below it.
 
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
