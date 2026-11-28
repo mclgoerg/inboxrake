@@ -350,9 +350,7 @@ export function Overview(p: OverviewProps) {
               <NextSteps cards={cards} canGo={canGo} onDismiss={dismiss}
                 onReview={p.onReview} onReviewMany={p.onReviewMany}
                 onCleanUp={p.onCleanUp} subs={subsLine} past={pastLine}
-                habit={habitLine}
-
-                checkin={checkinLine} />
+                habit={habitLine} checkin={checkinLine} />
             </div>
           )}
         </div>

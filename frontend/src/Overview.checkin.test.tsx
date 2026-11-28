@@ -118,22 +118,37 @@ test("with the line alone, Next steps is only that line", async () => {
   expect(screen.queryByTestId("qw-card")).toBeNull();
 });
 
-test("it comes last: after the cards, the subscriptions line and Mail past " +
-  "its date", async () => {
+test("it comes last: after the cards, the subscriptions line, Mail past its " +
+  "date and You keep doing this", async () => {
   render(<Overview {...base} groups={FIVE} subs={resp()}
-    expired={EXPIRED} />);
+    expired={EXPIRED} habits={2} onReviewHabits={vi.fn()} />);
   const region = await nextSteps();
   await screen.findByTestId("checkin-step");
   expect(within(region).getAllByRole("listitem").map((r) =>
     r.getAttribute("data-testid"))).toEqual(
-    ["qw-card", "qw-card", "qw-card", "subs-step", "past-step",
+    ["qw-card", "qw-card", "qw-card", "subs-step", "past-step", "habit-step",
       "checkin-step"]);
+});
+
+test("the habit line's Review and the check-in's Start each do their own " +
+  "thing", async () => {
+  const onReviewHabits = vi.fn();
+  render(<Overview {...base} habits={1} onReviewHabits={onReviewHabits} />);
+  const habit = await screen.findByTestId("habit-step");
+  await screen.findByTestId("checkin-step");
+  fireEvent.click(within(habit).getByRole("button", { name: /^Review/ }));
+  expect(onReviewHabits).toHaveBeenCalledTimes(1);
+  expect(onStartCheckin).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByTestId("checkin-step")).getByRole(
+    "button", { name: /^Start/ }));
+  expect(onStartCheckin).toHaveBeenCalledTimes(1);
+  expect(onReviewHabits).toHaveBeenCalledTimes(1);
 });
 
 test("the cards, Review 3 and Show all 5 do not know about the line",
   async () => {
   render(<Overview {...base} groups={FIVE} subs={resp()}
-    expired={EXPIRED} />);
+    expired={EXPIRED} habits={2} onReviewHabits={vi.fn()} />);
   const region = await nextSteps();
   await screen.findByTestId("checkin-step");
   expect(screen.getAllByTestId("qw-card")).toHaveLength(TOP_CARDS);
@@ -143,7 +158,7 @@ test("the cards, Review 3 and Show all 5 do not know about the line",
   expect(within(region).getAllByRole("listitem").map((r) =>
     r.getAttribute("data-testid"))).toEqual(
     ["qw-card", "qw-card", "qw-card", "qw-card", "qw-card",
-      "subs-step", "past-step", "checkin-step"]);
+      "subs-step", "past-step", "habit-step", "checkin-step"]);
   // each card keeps Review / Clean up… / Not now
   const card = screen.getAllByTestId("qw-card")[0];
   expect(within(card).getByRole("button", { name: "Review" })).toBeTruthy();
