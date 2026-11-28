@@ -1,5 +1,49 @@
 # Changelog
 
+## [2.4.0](https://github.com/mclgoerg/inboxrake/compare/v2.3.0...v2.4.0) (2026-11-28)
+
+
+### Features
+
+* a grade from A to F for every sender, with the reasons ([#413](https://github.com/mclgoerg/inboxrake/issues/413)) ([f3afacb](https://github.com/mclgoerg/inboxrake/commit/f3afacb59fb703eec9020242b0108712b2c1b4ae))
+* a rule checkup that finds overlapping, broken and idle rules ([#403](https://github.com/mclgoerg/inboxrake/issues/403)) ([1834d0f](https://github.com/mclgoerg/inboxrake/commit/1834d0fe873aa03ada496049dc8b42c2c4e46e1e))
+* a weekly check-in that walks you through what needs you ([#418](https://github.com/mclgoerg/inboxrake/issues/418)) ([6849853](https://github.com/mclgoerg/inboxrake/commit/6849853b08bd2ad87ab3d62b29c72ca641b00770))
+* AI assistants can clean up mail (opt-in) ([#364](https://github.com/mclgoerg/inboxrake/issues/364)) ([1eb880c](https://github.com/mclgoerg/inboxrake/commit/1eb880ce0a991166345b352d394272b32ac6ca6a))
+* AI assistants can propose rules for you to approve ([#365](https://github.com/mclgoerg/inboxrake/issues/365)) ([46475dc](https://github.com/mclgoerg/inboxrake/commit/46475dc74c1a917b02480482acf50f0a6e95b96e))
+* AI assistants section in Settings ([#363](https://github.com/mclgoerg/inboxrake/issues/363)) ([e7ceb5a](https://github.com/mclgoerg/inboxrake/commit/e7ceb5a824e935255e22467118f96ee9d1188e80))
+* an All accounts page across your mailboxes ([#408](https://github.com/mclgoerg/inboxrake/issues/408)) ([394e8c6](https://github.com/mclgoerg/inboxrake/commit/394e8c6820508fe252f0d6434ab1ce2db0ab9982))
+* approve and manage AI app connections ([#368](https://github.com/mclgoerg/inboxrake/issues/368)) ([8d5a942](https://github.com/mclgoerg/inboxrake/commit/8d5a9429133b38edaa0841c6040f2e264b0a317d))
+* clear out old out-of-office replies, bounces and read receipts ([#414](https://github.com/mclgoerg/inboxrake/issues/414)) ([422c522](https://github.com/mclgoerg/inboxrake/commit/422c522a5b0dc3f03f50528a16bc69838d711604))
+* copy what matters to another account ([#370](https://github.com/mclgoerg/inboxrake/issues/370)) ([463e4d7](https://github.com/mclgoerg/inboxrake/commit/463e4d78f56bbb9822c4d94b73f6c25ff42e1134))
+* download a year of your documents as one zip with an index list ([#419](https://github.com/mclgoerg/inboxrake/issues/419)) ([baa1a29](https://github.com/mclgoerg/inboxrake/commit/baa1a2922feb9d4d03920b72d2334b8b21564d5f))
+* find copies across your accounts and search all of them ([#409](https://github.com/mclgoerg/inboxrake/issues/409)) ([bcd20e4](https://github.com/mclgoerg/inboxrake/commit/bcd20e44100caf6356635dc82cc0315d1dfc3821))
+* find mail that is past its date and clean it up safely ([#405](https://github.com/mclgoerg/inboxrake/issues/405)) ([c34c2c8](https://github.com/mclgoerg/inboxrake/commit/c34c2c8f488ae157223426ea2a6d2ef59acfa4d7))
+* find the subscriptions you still pay for ([#373](https://github.com/mclgoerg/inboxrake/issues/373)) ([30f77dd](https://github.com/mclgoerg/inboxrake/commit/30f77dd4c6a6bab057e1e406b793b32a12d87b00))
+* hosted AI apps can connect over OAuth ([#366](https://github.com/mclgoerg/inboxrake/issues/366)) ([458867b](https://github.com/mclgoerg/inboxrake/commit/458867b51a51d30102dfecb09e7516cb8b0fa014))
+* keep invoices, bookings and contracts out of big cleanups ([#371](https://github.com/mclgoerg/inboxrake/issues/371)) ([2ec6fdb](https://github.com/mclgoerg/inboxrake/commit/2ec6fdb2d7b9cde40cdc9908db390996b04aec60))
+* mute a busy conversation so its new mail is archived and read ([#412](https://github.com/mclgoerg/inboxrake/issues/412)) ([c15c580](https://github.com/mclgoerg/inboxrake/commit/c15c580bd40310e83ef29222729fc0abd093b29b))
+* notifications that reach you with the app closed, iPhone included ([#358](https://github.com/mclgoerg/inboxrake/issues/358)) ([2537669](https://github.com/mclgoerg/inboxrake/commit/2537669bad294873488c949753615dcc0edda2e5))
+* read-only MCP endpoint for AI assistants ([#361](https://github.com/mclgoerg/inboxrake/issues/361)) ([589abac](https://github.com/mclgoerg/inboxrake/commit/589abac33628306580dffc13f4a7c9deafd5e000))
+* remove attachments and keep the mail ([#411](https://github.com/mclgoerg/inboxrake/issues/411)) ([98f9a2d](https://github.com/mclgoerg/inboxrake/commit/98f9a2dcfec8d8db2a78a8a140697d9c7fe616a5))
+* restore your mailbox to an earlier point in time ([#374](https://github.com/mclgoerg/inboxrake/issues/374)) ([d996b3e](https://github.com/mclgoerg/inboxrake/commit/d996b3e1708f928e463de226638b15311f7ee2be))
+* rules suggested from the cleanups you keep doing by hand ([#415](https://github.com/mclgoerg/inboxrake/issues/415)) ([63c75ed](https://github.com/mclgoerg/inboxrake/commit/63c75ede93aa5d2ed87da2b7337721559e147b07))
+* see and tidy your own folders ([#410](https://github.com/mclgoerg/inboxrake/issues/410)) ([85037ec](https://github.com/mclgoerg/inboxrake/commit/85037ec89639ffba8a49634bf6b0286287c67002))
+* see what kinds of mail a sender sends and act on one kind ([#406](https://github.com/mclgoerg/inboxrake/issues/406)) ([dfc2af2](https://github.com/mclgoerg/inboxrake/commit/dfc2af21db9cd9d6f5dcc35cc69000b6a058b02d))
+* see when your mail arrives ([#369](https://github.com/mclgoerg/inboxrake/issues/369)) ([4029560](https://github.com/mclgoerg/inboxrake/commit/40295608e6c6cb621776497f2eced8c1421d4711))
+* see which mails you sent are still waiting for a reply ([#407](https://github.com/mclgoerg/inboxrake/issues/407)) ([d2b35a3](https://github.com/mclgoerg/inboxrake/commit/d2b35a3e10f059d8b7e7950cd7ee4633ac1495b8))
+* see which of your addresses leaked and retire an alias ([#372](https://github.com/mclgoerg/inboxrake/issues/372)) ([c89e28d](https://github.com/mclgoerg/inboxrake/commit/c89e28d13341e33c93f0925b098a37a0695c5dd4))
+* see which senders got louder or came back ([#404](https://github.com/mclgoerg/inboxrake/issues/404)) ([a14c231](https://github.com/mclgoerg/inboxrake/commit/a14c231a68661da246fb84f5d7cc3cbfabe91c35))
+* snooze mail or a sender, or get a noisy sender in one batch ([#417](https://github.com/mclgoerg/inboxrake/issues/417)) ([553a7ee](https://github.com/mclgoerg/inboxrake/commit/553a7eed39b02e2d9a6ba2533311e3c5e77d811e))
+* start a rule from a recipe ([#367](https://github.com/mclgoerg/inboxrake/issues/367)) ([df1ed8c](https://github.com/mclgoerg/inboxrake/commit/df1ed8c0d97795f4b15554cbd92ecc553489cb55))
+* your documents by year, with a download for each file ([#416](https://github.com/mclgoerg/inboxrake/issues/416)) ([0c15de8](https://github.com/mclgoerg/inboxrake/commit/0c15de8d05fae5516ccc51031e42a190dd3a89b9))
+
+
+### Bug Fixes
+
+* clearer assistant access choice in Settings ([#377](https://github.com/mclgoerg/inboxrake/issues/377)) ([df4bfec](https://github.com/mclgoerg/inboxrake/commit/df4bfec673651f90130839051271f8a0eb404463))
+* keep unsubscribe links out of the server log ([#400](https://github.com/mclgoerg/inboxrake/issues/400)) ([7d94d20](https://github.com/mclgoerg/inboxrake/commit/7d94d204f3f1338350eedc8bd9c1830196a0c53a))
+* notification titles say what happened instead of repeating the app name ([#360](https://github.com/mclgoerg/inboxrake/issues/360)) ([82b7630](https://github.com/mclgoerg/inboxrake/commit/82b7630433c208f1d4a411441f19fca5f909d64c))
+
 ## [2.3.0](https://github.com/mclgoerg/inboxrake/compare/v2.2.1...v2.3.0) (2026-11-10)
 
 
