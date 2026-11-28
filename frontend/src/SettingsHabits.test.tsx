@@ -57,11 +57,12 @@ const cfg: Config = {
 };
 
 let goto: (s: SettingsSection | null) => void = () => {};
-function Settings({ c = cfg, section: first = "general" }: {
-  c?: Config; section?: SettingsSection | null }) {
+function Settings({ c = cfg, section: first = "general", routeAccount }: {
+  c?: Config; section?: SettingsSection | null; routeAccount?: string }) {
   const [section, setSection] = useState<SettingsSection | null>(first);
   goto = setSection;
-  return <SettingsPage cfg={c} account="default" onClose={() => {}}
+  return <SettingsPage cfg={c} account="default" routeAccount={routeAccount}
+    onClose={() => {}}
     onAddAccount={() => {}} onSaved={() => {}} onAccountsChanged={() => {}}
     section={section} onSection={(s) => setSection(s)} />;
 }
@@ -126,6 +127,19 @@ test("Hidden suggestions: the count, and Show brings them back at once", async (
   expect(screen.queryByRole("button", { name: "Show" })).toBeNull();
   expect(shown).toHaveBeenCalled();
   expect(await screen.findByText("Hidden suggestions are shown again.")).toBeTruthy();
+});
+
+test("Hidden suggestions belong to the account the page is editing, like the "
+  + "per-account rows before them", async () => {
+  const two = { ...cfg, accounts: { default: acct,
+    other: { ...acct, user: "me@other.example" } } } as Config;
+  render(<Settings c={two} routeAccount="other" />);
+  expect(await screen.findByText("2 you dismissed with “Not this one”"))
+    .toBeTruthy();
+  expect(habits).toHaveBeenCalledWith("other");
+  expect(habits).not.toHaveBeenCalledWith("default");
+  fireEvent.click(screen.getByRole("button", { name: "Show" }));
+  await waitFor(() => expect(habitsShow).toHaveBeenCalledWith("other"));
 });
 
 test("nothing hidden: no Show button; one is singular", async () => {

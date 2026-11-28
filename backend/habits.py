@@ -160,9 +160,21 @@ def mine(entries: list[dict], now: float | None = None) -> list[dict]:
                   key=lambda c: (-c["last"], c["key"]))
 
 
+def _stand_in(key: str) -> dict:
+    """What a rule's filter sees of a sender that has no mail left in the scan
+    (everything was trashed, which is exactly what makes it a habit): its key
+    and nothing else. A rule that names the sender (`from:`, `domain:`, a plain
+    word of its address) still matches it; a filter that needs anything the
+    mails would say (tags, age, unread) does not."""
+    return {"key": key, "label": "", "sub": key, "tags": [], "count": 0,
+            "unread": 0, "size": 0, "ai": None, "protected": False,
+            "unsub": False, "replied": False, "pinned": 0}
+
+
 def _covered(acc, keys: list[str]) -> set[str]:
     """The keys an existing rule of this account already matches (a rule of
-    any mode and action, on the sender or its domain)."""
+    any mode and action, on the sender or its domain - a Block rule too), also
+    when the sender has no mail left to look at."""
     mine_ = [r for r in rulesmod.load_rules()
              if r.get("scope", "mail") == "mail"
              and (r.get("account") or accounts.default_name()) == acc.name
@@ -177,8 +189,8 @@ def _covered(acc, keys: list[str]) -> set[str]:
         for key in keys:
             gkey = key if r["grouping"] == "sender" else key.rsplit(
                 "@", 1)[-1]
-            g = pool.get(gkey)
-            if g is not None and rulesmod.match_group(g, f):
+            g = pool.get(gkey) or _stand_in(gkey)
+            if rulesmod.match_group(g, f):
                 out.add(key)
     return out
 

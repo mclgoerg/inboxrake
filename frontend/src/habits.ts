@@ -16,7 +16,10 @@ const REFETCH_MS = 600;
 /** The habits of `account`, fetched when it, `on` (signed in, scanned) or
  *  `sig` (anything that can change them: a finished action, the rule list,
  *  the setting) changes. `reload` fetches at once (after Make it a rule /
- *  Not this one). A failed fetch keeps what there was. */
+ *  Not this one). `drop` takes one suggestion off the shown list right away
+ *  (its rule was made, or it was dismissed): every place that shows it - the
+ *  Rules card, the Overview line - follows before the next answer arrives. A
+ *  failed fetch keeps what there was. */
 export function useHabits(account: string, on: boolean, sig: string) {
   const [data, setData] = useState<HabitsResp | null>(null);
   const ask = useRef(0);
@@ -28,13 +31,16 @@ export function useHabits(account: string, on: boolean, sig: string) {
       .then((d) => { if (me === ask.current) setData(d); return d; })
       .catch(() => null);
   }, []);
+  const drop = useCallback((id: string) => setData((d) => d
+    ? { ...d, suggestions: d.suggestions.filter((h) => h.id !== id) } : d),
+  []);
   useEffect(() => { ask.current++; setData(null); }, [account]);
   useEffect(() => {
     if (!on) return;
     const h = setTimeout(() => { void reload(); }, REFETCH_MS);
     return () => clearTimeout(h);
   }, [account, on, sig, reload]);
-  return { data, reload, dataRef };
+  return { data, reload, drop, dataRef };
 }
 
 /** The manual steps a rule can repeat - the only ones a suggestion is made
@@ -106,16 +112,13 @@ export function habitStepNote(h: Habit, s: Habit["steps"][number]): string {
  *  back (e.g. its rule was deleted) is not offered. */
 const FRESH_STEP_S = 600;
 
-/** The habit a step just made appear: asks the server again (at most
- *  `waitMs`; slower = none) and returns the first suggestion `known` did not
- *  have whose newest step is recent. The toast uses it to offer Automate…. */
+/** The habit a step just made appear: asks the server again and returns the
+ *  first suggestion `known` did not have whose newest step is recent. The
+ *  toast of the step is already up; it gets Automate… when this answers (a
+ *  toast that is gone by then simply stays as it was). */
 export async function newHabit(
     reload: () => Promise<HabitsResp | null>, known: Set<string>,
-    waitMs = 400, now = Date.now() / 1000): Promise<Habit | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const slow = new Promise<null>((r) => { timer = setTimeout(() => r(null), waitMs); });
-  const got = await Promise.race([reload(), slow]);
-  clearTimeout(timer);
-  return habitList(got).find(
+    now = Date.now() / 1000): Promise<Habit | undefined> {
+  return habitList(await reload()).find(
     (h) => !known.has(h.id) && h.last >= now - FRESH_STEP_S);
 }

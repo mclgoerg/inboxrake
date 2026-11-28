@@ -897,22 +897,21 @@ export default function App() {
             if (i >= 0) void undo(i, false, true);
           } } : undefined,
         };
-        // A step of the user's own that made "You keep doing this" find a new
-        // suggestion gets Automate… next to Undo (it opens that card). The
-        // toast itself stays as it is: it asks the server once, briefly, and
-        // never waits longer than that for it.
+        // The toast is up at once. A step of the user's own that made "You
+        // keep doing this" find a new suggestion gets Automate… next to Undo
+        // when the server's answer arrives (it opens that card); a toast that
+        // has gone by then is left alone.
+        const toastId = toast.show(text, opts);
         const before = habitsApi.dataRef.current;
         const ownStep = !freshA.length && botName === null
           && (!del.actor || del.actor === "user")
           && HABIT_ACTIONS.includes(del.action ?? "");
-        if (!ownStep || !before?.enabled) {
-          toast.show(text, opts);
-        } else {
+        if (ownStep && before?.enabled) {
           const known = new Set(before.suggestions.map((h) => h.id));
           void newHabit(habitsApi.reload, known).then((h) => {
-            toast.show(text, h ? { ...opts, action2: {
+            if (h) toast.update(toastId, { action2: {
               label: t("habit.automate"),
-              onClick: () => openHabitRef.current(h.id) } } : opts);
+              onClick: () => openHabitRef.current(h.id) } });
           });
         }
         if (del.error) notify(t("err.generic", { msg: errorText(del.error) }), "error");
@@ -3301,7 +3300,10 @@ export default function App() {
       <RulesModal key={account}
         state={state} initialQuery={rulesSeed} initialRecipe={rulesRecipe || undefined}
         habits={habits} habitFocus={habitFocus || undefined}
-        onHabitsChanged={() => { void habitsApi.reload(); }}
+        onHabitsChanged={(h) => {
+          if (h) habitsApi.drop(h.id);
+          void habitsApi.reload();
+        }}
         ai={aiEnabled || demo ? { disabled: demo,
           hint: demo ? demoHint() : undefined } : undefined}
         onClose={() => closeTool(() => {

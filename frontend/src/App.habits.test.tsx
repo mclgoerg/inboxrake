@@ -9,6 +9,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 let state: any;
 const habits = vi.fn();
+const createRule = vi.fn();
+const runRule = vi.fn();
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -31,6 +33,8 @@ vi.mock("./api", async (importOriginal) => ({
     undo: vi.fn().mockResolvedValue({ ok: true }),
     clearNotice: vi.fn().mockResolvedValue({ ok: true }),
     habits: () => habits(),
+    createRule: (b: unknown) => createRule(b),
+    runRule: (id: string) => runRule(id),
     rules: () => Promise.resolve({ rules: [], cap: 500 }),
     subscriptions: () => Promise.reject(new Error("none")),
     subscriptionReminders: () => Promise.resolve({ reminders: [] }),
@@ -91,12 +95,15 @@ const baseState: AppState = {
 beforeEach(() => {
   window.location.hash = "";
   habits.mockResolvedValue(habitsResp([]));
+  createRule.mockResolvedValue({ id: "r1", name: "Trash Prize" });
+  runRule.mockResolvedValue({});
 });
 afterEach(() => {
   cleanup(); vi.useRealTimers(); vi.unstubAllGlobals();
   vi.stubGlobal("EventSource", FakeEventSource);
   localStorage.clear(); FakeEventSource.instances.length = 0;
-  habits.mockReset(); setLang("en");
+  habits.mockReset(); createRule.mockReset(); runRule.mockReset();
+  setLang("en");
   window.location.hash = "";
 });
 Element.prototype.scrollIntoView = () => {};
@@ -193,13 +200,75 @@ test("setting off: no suggestions, no Overview line, no toast button", async () 
   expect(screen.queryByTestId("habit-step")).toBeNull();
 });
 
-test("a slow answer never holds the toast back for long", async () => {
+test("the toast is up at once; Automate… joins it when the answer arrives",
+  async () => {
+  habits.mockResolvedValue(habitsResp([deals]));
+  await mount({ ...baseState });
+  let answer: (v: unknown) => void = () => {};
+  habits.mockReturnValue(new Promise((r) => { answer = r; }));
+  finishTrash();
+  // no waiting for the server: the toast and its Undo are there, Automate… is not
+  const msg = await screen.findByText("Moved 12 mails to Trash");
+  const bar = msg.closest("[data-variant]") as HTMLElement;
+  expect(within(bar).getByRole("button", { name: "Undo" })).toBeTruthy();
+  expect(within(bar).queryByRole("button", { name: "Automate…" })).toBeNull();
+  // the answer names a new suggestion: the SAME toast gets the button
+  await act(async () => {
+    answer(habitsResp([deals, { ...news, last: Math.floor(Date.now() / 1000) }]));
+  });
+  expect(await within(bar).findByRole("button", { name: "Automate…" })).toBeTruthy();
+  expect(screen.getAllByText("Moved 12 mails to Trash")).toHaveLength(1);
+  expect(within(bar).getByRole("button", { name: "Undo" })).toBeTruthy();
+});
+
+test("an answer that never comes leaves the toast as it is", async () => {
   await mount({ ...baseState });
   habits.mockReturnValue(new Promise(() => {}));
   finishTrash();
-  const msg = await screen.findByText("Moved 12 mails to Trash", {}, { timeout: 3000 });
+  const msg = await screen.findByText("Moved 12 mails to Trash");
   expect(within(msg.closest("[data-variant]") as HTMLElement)
     .queryByRole("button", { name: "Automate…" })).toBeNull();
+});
+
+test("a toast that is gone when the answer arrives is not brought back",
+  async () => {
+  habits.mockResolvedValue(habitsResp([deals]));
+  await mount({ ...baseState });
+  let answer: (v: unknown) => void = () => {};
+  habits.mockReturnValue(new Promise((r) => { answer = r; }));
+  finishTrash();
+  const msg = await screen.findByText("Moved 12 mails to Trash");
+  fireEvent.click(within(msg.closest("[data-variant]") as HTMLElement)
+    .getByLabelText("Dismiss"));
+  expect(screen.queryByText("Moved 12 mails to Trash")).toBeNull();
+  await act(async () => {
+    answer(habitsResp([deals, { ...news, last: Math.floor(Date.now() / 1000) }]));
+  });
+  expect(screen.queryByText("Moved 12 mails to Trash")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Automate…" })).toBeNull();
+});
+
+test("Make it a rule: the card and the Overview line go at once, before the "
+  + "server has answered again", async () => {
+  habits.mockResolvedValue(habitsResp([deals, news]));
+  await mount({ ...baseState });
+  fireEvent.click(within(await screen.findByTestId("habit-step"))
+    .getByRole("button", { name: /^Review/ }));
+  await screen.findByTestId("habit-card");
+  expect(screen.getByTestId("habit-step").textContent).toContain("2");
+  habits.mockReturnValue(new Promise(() => {}));      // the next answer is slow
+  fireEvent.click(within(document.querySelector(
+    '[data-habit="h-deals"]') as HTMLElement)
+    .getByRole("button", { name: "Make it a rule" }));
+  await waitFor(() => expect(createRule).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(document.querySelector('[data-habit="h-deals"]'))
+    .toBeNull());
+  // the other suggestion stays, and the Overview line counts one fewer
+  expect(document.querySelector('[data-habit="h-news"]')).toBeTruthy();
+  expect(screen.getByTestId("habit-step").textContent).toContain("1");
+  expect(screen.getByTestId("habit-step").textContent).not.toContain("2");
+  // no second click can make the same rule twice
+  expect(screen.queryAllByRole("button", { name: "Make it a rule" })).toHaveLength(1);
 });
 
 test("a mark-as-read step (no Undo) can offer Automate… too", async () => {

@@ -1354,7 +1354,7 @@ export function SettingsPage({ cfg, account, section, routeAccount = null,
     )}
     <SubscriptionsSettings account={editAcct} />
     {cfg.habits && (
-      <HabitsSettings account={account} on={f.habitsSuggest}
+      <HabitsSettings account={editAcct} on={f.habitsSuggest}
         onChange={(on) => put("habitsSuggest", on)}
         onShown={onHabitsChanged} />
     )}

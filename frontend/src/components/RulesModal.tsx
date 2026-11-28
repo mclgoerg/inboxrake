@@ -533,7 +533,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
    *  Overview line); `onHabitsChanged` after Make it a rule / Not this one. */
   habits?: Habit[];
   habitFocus?: string;
-  onHabitsChanged?: () => void;
+  onHabitsChanged?: (h?: Habit) => void;
   /** The Rule checkup's "Show the N senders" / "Show the N mails": the page
    *  that lists them, narrowed to those (the sender addresses / the finding's
    *  id). */
@@ -1210,7 +1210,7 @@ export function RulesModal({ state, onClose, onChanged, initialQuery = "",
             onWhat={() => setWhat(true)} />
           <HabitSection habits={habits} phone={phone} focusId={habitFocus}
             renderSentence={(h) => <RuleSentence rule={habitAsRule(h)} />}
-            onChanged={() => { onHabitsChanged?.(); onChanged(); }} />
+            onChanged={(h) => { onHabitsChanged?.(h); onChanged(); }} />
           {rules.filter((r) => !isProposal(r)).map((rule) => (
             <RuleCard key={rule.id} rule={rule} busy={busyId === rule.id}
               error={cardErr?.id === rule.id ? cardErr.text : undefined}

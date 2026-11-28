@@ -78,22 +78,31 @@ test("nothing is listed while the setting is off or nothing was loaded", () => {
 test("newHabit: only a suggestion the baseline did not have", async () => {
   const reload = vi.fn().mockResolvedValue(habitsResp([deals, bank]));
   const now = bank.last + 5;
-  expect(await newHabit(reload, new Set([deals.id]), 400, now)).toBe(bank);
-  expect(await newHabit(reload, new Set([deals.id, bank.id]), 400, now))
+  expect(await newHabit(reload, new Set([deals.id]), now)).toBe(bank);
+  expect(await newHabit(reload, new Set([deals.id, bank.id]), now))
     .toBeUndefined();
 });
 
 test("newHabit: a suggestion whose newest step is old is not credited to this step", async () => {
   const reload = vi.fn().mockResolvedValue(habitsResp([bank]));
-  expect(await newHabit(reload, new Set(), 400, bank.last + 601)).toBeUndefined();
-  expect(await newHabit(reload, new Set(), 400, bank.last + 599)).toBe(bank);
+  expect(await newHabit(reload, new Set(), bank.last + 601)).toBeUndefined();
+  expect(await newHabit(reload, new Set(), bank.last + 599)).toBe(bank);
 });
 
-test("newHabit: a slow or failed answer is no answer", async () => {
-  vi.useFakeTimers();
-  const slow = vi.fn().mockReturnValue(new Promise(() => {}));
-  const p = newHabit(slow, new Set(), 400);
-  await vi.advanceTimersByTimeAsync(401);
-  expect(await p).toBeUndefined();
+test("newHabit: a failed answer is no answer", async () => {
   expect(await newHabit(vi.fn().mockResolvedValue(null), new Set())).toBeUndefined();
+});
+
+test("useHabits.drop takes one suggestion off the list at once", async () => {
+  const { renderHook, act, waitFor } = await import("@testing-library/react");
+  const { api } = await import("./api");
+  const { useHabits } = await import("./habits");
+  vi.spyOn(api, "habits").mockResolvedValue(habitsResp([deals, bank]));
+  const { result } = renderHook(() => useHabits("proton", true, "a"));
+  await waitFor(() => expect(result.current.data?.suggestions).toHaveLength(2));
+  act(() => result.current.drop(deals.id));
+  expect(result.current.data?.suggestions.map((h) => h.id)).toEqual([bank.id]);
+  act(() => result.current.drop("nobody"));
+  expect(result.current.data?.suggestions).toHaveLength(1);
+  vi.restoreAllMocks();
 });

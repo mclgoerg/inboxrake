@@ -2002,6 +2002,9 @@ const TOAST_STYLE: Record<ToastVariant, string> = {
 
 type ToastApi = {
   show: (message: ReactNode, opts?: ToastOptions) => number;
+  /** Changes a toast that is still up (a button that arrives later); the
+   *  auto-close timer keeps running, a toast that is gone stays gone. */
+  update: (id: number, opts: ToastOptions) => void;
   dismiss: (id: number) => void;
 };
 const ToastContext = createContext<ToastApi | null>(null);
@@ -2201,7 +2204,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setItems((xs) => [...xs, { ...opts, id, message }]);
     return id;
   }, []);
-  const api = useMemo(() => ({ show, dismiss }), [show, dismiss]);
+  const update = useCallback((id: number, opts: ToastOptions) =>
+    setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...opts } : x))),
+  []);
+  const api = useMemo(() => ({ show, update, dismiss }),
+    [show, update, dismiss]);
   return (
     <ToastContext.Provider value={api}>
       {children}

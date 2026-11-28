@@ -116,7 +116,7 @@ test("Make it a rule creates an ordinary rule (no mode sent: the server starts "
   expect(createRule.mock.calls[0][0]).not.toHaveProperty("mode");
   expect(await screen.findByText(/Rule .Trash Deals Daily. created\. It starts in Report only/))
     .toBeTruthy();
-  await waitFor(() => expect(changed).toHaveBeenCalled());
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(deals));
 });
 
 test("a move rule carries its folder; mark read has no age", async () => {
@@ -147,7 +147,7 @@ test("Not this one hides the sender for good and creates nothing", async () => {
   expect(createRule).not.toHaveBeenCalled();
   expect(await screen.findByText(/Deals Daily won't be suggested again/))
     .toBeTruthy();
-  await waitFor(() => expect(changed).toHaveBeenCalled());
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(deals));
 });
 
 test("Why these? lists every step with its date, and what never counts", () => {
@@ -229,7 +229,7 @@ test("phone: one box, each suggestion in plain words with big buttons", async ()
     expect(b.className).toContain("coarse:min-h-11");
   fireEvent.click(within(first).getByRole("button", { name: "Make it a rule" }));
   await waitFor(() => expect(runRule).toHaveBeenCalled());
-  expect(changed).toHaveBeenCalled();
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(deals));
 });
 
 test("phone: Not this one hides the sender; Why these? is there too", async () => {

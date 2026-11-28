@@ -12,7 +12,7 @@ import { Avatar, Button, LINK_ACCENT, Modal, PanelHeader, Spinner,
  *  offers it: Make it a rule creates an ordinary rule (the server always
  *  starts it in Report only) through the usual create call and runs its
  *  report once; Not this one hides the sender. */
-export function useHabitActions(onChanged: () => void) {
+export function useHabitActions(onChanged: (h: Habit) => void) {
   const toast = useOptionalToast();
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState<{ id: string; text: string } | null>(null);
@@ -31,10 +31,11 @@ export function useHabitActions(onChanged: () => void) {
         { variant: "success" });
     } catch (e: any) {
       setErr({ id: h.id, text: t("err.generic", { msg: e.message ?? e }) });
-    } finally {
       setBusy("");
-      onChanged();
+      return;
     }
+    setBusy("");
+    onChanged(h);                    // its rule exists: the card goes at once
   };
   const dismiss = async (h: Habit) => {
     setBusy(h.id);
@@ -44,10 +45,11 @@ export function useHabitActions(onChanged: () => void) {
       toast?.show(t("habit.hidden", { sender: h.label }));
     } catch (e: any) {
       setErr({ id: h.id, text: t("err.generic", { msg: e.message ?? e }) });
-    } finally {
       setBusy("");
-      onChanged();
+      return;
     }
+    setBusy("");
+    onChanged(h);
   };
   return { busy, err, make, dismiss };
 }
@@ -200,7 +202,8 @@ export function HabitSection({ habits, phone, focusId, renderSentence,
   onChanged }: {
   habits: Habit[]; phone: boolean; focusId?: string;
   renderSentence: (h: Habit) => ReactNode;
-  onChanged: () => void;
+  /** A suggestion was answered (its rule made / dismissed): it should go. */
+  onChanged: (h: Habit) => void;
 }) {
   const { busy, err, make, dismiss } = useHabitActions(onChanged);
   const [why, setWhy] = useState(false);
@@ -210,14 +213,16 @@ export function HabitSection({ habits, phone, focusId, renderSentence,
   return (
     <section aria-label={title} data-testid="habit-card"
       className="rounded-card border border-line bg-panel2 p-3 sm:p-4">
-      <div className="flex flex-wrap items-center gap-3 pb-1">
+      {/* one row at every width: on a small phone the title wraps itself
+          before "Why these?" is pushed onto a line of its own */}
+      <div className="flex items-center gap-3 pb-1">
         <Tile />
-        <div className="min-w-0 flex-1 basis-40">
+        <div className="min-w-0 flex-1">
           <h3 className="type-body font-medium">
             {phone ? title : t("habit.title_n", { n: habits.length })}</h3>
           {!phone && <div className="type-meta text-muted">{sub}</div>}
         </div>
-        <button type="button" className={`${LINK_ACCENT} type-meta
+        <button type="button" className={`${LINK_ACCENT} shrink-0 type-meta
           coarse:min-h-11`} onClick={() => setWhy(true)}>
           {t("habit.why")}</button>
       </div>

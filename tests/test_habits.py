@@ -449,6 +449,69 @@ def test_a_sender_an_existing_rule_covers_is_skipped(bridge):
     assert habits.suggestions(acc)["suggestions"] == []
 
 
+def test_a_rule_covers_a_sender_with_no_mail_left(bridge):
+    # "trash everything from X" leaves X no mail in the scan - the rule made
+    # from the suggestion has to cover it all the same, or the card stays
+    scan(bridge)
+    gone = "gone@x.example"
+    put(real_steps(key=gone))
+    acc = accountsmod.get("default")
+    assert gone not in mailops.STATE["groups"]["sender"]
+    assert len(habits.suggestions(acc)["suggestions"]) == 1
+    rule = rulesmod.create_rule({"name": "Gone", "query": f"from:{gone}",
+                                 "action": "trash"})
+    assert habits.suggestions(acc)["suggestions"] == []
+    rulesmod.delete_rule(rule["id"])
+    # a domain rule and a Block rule of the sender or its domain do too
+    domain = rulesmod.create_rule({"name": "D", "grouping": "domain",
+                                   "query": "domain:x.example",
+                                   "action": "trash"})
+    assert habits.suggestions(acc)["suggestions"] == []
+    rulesmod.delete_rule(domain["id"])
+    assert client.post("/api/block", json={
+        "grouping": "sender", "key": gone, "label": "Gone"}).status_code == 200
+    assert habits.suggestions(acc)["suggestions"] == []
+
+
+def test_a_filter_that_needs_mails_does_not_cover_a_sender_without_any(bridge):
+    scan(bridge)
+    put(real_steps(key="gone@x.example"))
+    acc = accountsmod.get("default")
+    for query in ("tag:newsletter", "age:>1y", "unread:>50", "is:unsub",
+                  "from:other@x.example"):
+        rule = rulesmod.create_rule({"name": "Q", "query": query,
+                                     "action": "trash"})
+        assert len(habits.suggestions(acc)["suggestions"]) == 1, query
+        rulesmod.delete_rule(rule["id"])
+
+
+def test_trash_everything_three_times_then_make_it_a_rule(bridge):
+    # the whole flow of the demo: the sender has no mail left each time
+    deals = "deals@dealsdaily.example"
+    now = time.time()
+    for i in range(3):
+        bridge.mailbox["INBOX"].append(make_msg(
+            100 + i, frm='"Deal Daily" <deals@dealsdaily.example>',
+            subject=f"Today {i}", seen=False))
+        scan(bridge)
+        mailops.delete_groups("sender", [deals])
+        wait_delete_done()
+    rows = [json.loads(x) for x in auditlog._path().read_text().splitlines()]
+    k = 0
+    for row in rows:                     # three steps on three different days
+        if row.get("keys") == [deals]:
+            row["ts"] = int(now - (30, 20, 10)[k] * DAY)
+            k += 1
+    auditlog._path().write_text("".join(json.dumps(r) + "\n" for r in rows))
+    (s,) = client.get("/api/habits").json()["suggestions"]
+    assert s["key"] == deals and s["label"] == "Deal Daily" and s["catch"] == 0
+    r = client.post("/api/rules", json={"name": "Trash deals", **s["rule"]})
+    assert r.status_code == 200
+    run = client.post(f"/api/rules/{r.json()['id']}/run").json()
+    assert run["mode"] == "report" and run["error"] == ""
+    assert client.get("/api/habits").json()["suggestions"] == []
+
+
 def test_a_rule_of_another_account_does_not_cover(bridge, monkeypatch):
     scan(bridge)
     put(real_steps())
